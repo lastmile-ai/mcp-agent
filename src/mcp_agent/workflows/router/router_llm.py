@@ -197,9 +197,10 @@ class LLMRouter(Router):
             include_functions=include_functions,
         )
 
-        logger.debug(
-            f"Requesting routing from LLM, \nrequest: {request} \ntop_k: {top_k} \nrouting_instruction: {routing_instruction} \ncontext={context}"
-        )
+        # logger.debug(
+        #     f"Requesting routing from LLM, \nrequest: {request} \ntop_k: {top_k} \nrouting_instruction: {routing_instruction} \ncontext={context}",
+        #     data={"progress_action": "Routing", "agent_name": "LLM Router"},
+        # )
 
         # Format the prompt with all the necessary information
         prompt = routing_instruction.format(
@@ -211,6 +212,11 @@ class LLMRouter(Router):
             message=prompt,
             response_model=StructuredResponse,
         )
+
+        # logger.debug(
+        #     "Routing Response received",
+        #     data={"progress_action": "Finished", "agent_name": "LLM Router"},
+        # )
 
         # Construct the result
         if not response or not response.categories:

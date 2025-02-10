@@ -38,8 +38,6 @@ from mcp_agent.workflows.llm.augmented_llm import (
 )
 from mcp_agent.logging.logger import get_logger
 
-logger = get_logger(__name__)
-
 
 class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
     """
@@ -57,6 +55,8 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         )
 
         self.provider = "Anthropic"
+        # Initialize logger with name if available
+        self.logger = get_logger(f"{__name__}.{self.name}" if self.name else __name__)
 
         self.model_preferences = self.model_preferences or ModelPreferences(
             costPriority=0.3,
@@ -124,10 +124,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             if params.metadata:
                 arguments = {**arguments, **params.metadata}
 
-            logger.debug(
-                f"Iteration {i}: Calling {model} with messages:",
-                data=messages,
-            )
+            self._log_chat_progress(chat_turn=(len(messages) + 1) // 2, model=model)
 
             executor_result = await self.executor.execute(
                 anthropic.messages.create, **arguments
@@ -136,11 +133,11 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             response = executor_result[0]
 
             if isinstance(response, BaseException):
-                logger.error(f"Error: {executor_result}")
+                self.logger.error(f"Error: {executor_result}")
                 break
 
-            logger.debug(
-                f"Iteration {i}: {model} response:",
+            self.logger.debug(
+                f"{model} response:",
                 data=response,
             )
 
@@ -149,19 +146,19 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             responses.append(response)
 
             if response.stop_reason == "end_turn":
-                logger.debug(
+                self.logger.debug(
                     f"Iteration {i}: Stopping because finish_reason is 'end_turn'"
                 )
                 break
             elif response.stop_reason == "stop_sequence":
                 # We have reached a stop sequence
-                logger.debug(
+                self.logger.debug(
                     f"Iteration {i}: Stopping because finish_reason is 'stop_sequence'"
                 )
                 break
             elif response.stop_reason == "max_tokens":
                 # We have reached the max tokens limit
-                logger.debug(
+                self.logger.debug(
                     f"Iteration {i}: Stopping because finish_reason is 'max_tokens'"
                 )
                 # TODO: saqadri - would be useful to return the reason for stopping to the caller
@@ -201,7 +198,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         if params.use_history:
             self.history.set(messages)
 
-        logger.debug("Final response:", data=responses)
+        self._log_chat_finished(model=model)
 
         return responses
 

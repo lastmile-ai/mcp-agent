@@ -1,10 +1,13 @@
+import logging
 from mcp_agent.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 def send_usage_data():
     config = get_settings()
     if not config.usage_telemetry.enabled:
-        print("Usage tracking disabled")
+        logger.info("Usage tracking is disabled")
         return
 
     # TODO: saqadri - implement usage tracking

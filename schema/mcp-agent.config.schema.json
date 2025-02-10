@@ -66,8 +66,14 @@
           "type": "string",
           "description": "Minimum logging level"
         },
+        "progress_display": {
+          "default": true,
+          "title": "Progress Display",
+          "type": "boolean",
+          "description": "Enable or disable the progress display"
+        },
         "path": {
-          "default": "mcp-agent.log",
+          "default": "mcp-agent.jsonl",
           "title": "Path",
           "type": "string",
           "description": "Path to log file, if logger 'type' is 'file'."
@@ -127,6 +133,48 @@
         }
       },
       "title": "LoggerSettings",
+      "type": "object"
+    },
+    "MCPRootSettings": {
+      "additionalProperties": true,
+      "description": "Represents a root directory configuration for an MCP server.",
+      "properties": {
+        "uri": {
+          "title": "Uri",
+          "type": "string",
+          "description": "The URI identifying the root. Must start with file://"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name",
+          "description": "Optional name for the root."
+        },
+        "server_uri_alias": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Server Uri Alias",
+          "description": "Optional URI alias for presentation to the server"
+        }
+      },
+      "required": [
+        "uri"
+      ],
+      "title": "MCPRootSettings",
       "type": "object"
     },
     "MCPServerAuthSettings": {
@@ -255,6 +303,22 @@
           "default": null,
           "description": "The authentication configuration for the server."
         },
+        "roots": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/MCPRootSettings"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Roots",
+          "description": "Root directories this server has access to."
+        },
         "env": {
           "anyOf": [
             {
@@ -306,6 +370,16 @@
           ],
           "default": null,
           "title": "Api Key"
+        },
+        "reasoning_effort": {
+          "default": "medium",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "title": "Reasoning Effort",
+          "type": "string"
         },
         "base_url": {
           "anyOf": [
@@ -552,7 +626,8 @@
       "default": {
         "type": "console",
         "level": "info",
-        "path": "mcp-agent.log",
+        "progress_display": true,
+        "path": "mcp-agent.jsonl",
         "batch_size": 100,
         "flush_interval": 2.0,
         "max_queue_size": 2048,

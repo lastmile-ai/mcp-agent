@@ -22,7 +22,9 @@ if TYPE_CHECKING:
     from mcp_agent.context import Context
 
 
-logger = get_logger(__name__)
+logger = get_logger(
+    __name__
+)  # This will be replaced per-instance when agent_name is available
 
 SEP = "-"
 
@@ -77,6 +79,7 @@ class MCPAggregator(ContextDependent):
         server_names: List[str],
         connection_persistence: bool = False,
         context: Optional["Context"] = None,
+        name: str = None,
         **kwargs,
     ):
         """
@@ -90,8 +93,13 @@ class MCPAggregator(ContextDependent):
 
         self.server_names = server_names
         self.connection_persistence = connection_persistence
-
+        self.agent_name = name
         self._persistent_connection_manager: MCPConnectionManager = None
+
+        # Set up logger with agent name in namespace if available
+        global logger
+        logger_name = f"{__name__}.{name}" if name else __name__
+        logger = get_logger(logger_name)
 
         # Maps namespaced_tool_name -> namespaced tool info
         self._namespaced_tool_map: Dict[str, NamespacedTool] = {}
@@ -107,6 +115,7 @@ class MCPAggregator(ContextDependent):
         """
         if self.connection_persistence and self._persistent_connection_manager:
             try:
+                logger.info("Shutting down all persistent connections...")
                 await self._persistent_connection_manager.disconnect_all()
                 self.initialized = False
             finally:
@@ -159,6 +168,14 @@ class MCPAggregator(ContextDependent):
 
         for server_name in self.server_names:
             if self.connection_persistence:
+                logger.info(
+                    f"Creating persistent connection to server: {server_name}",
+                    data={
+                        "progress_action": "Starting",
+                        "server_name": server_name,
+                        "agent_name": self.agent_name,
+                    },
+                )
                 await self._persistent_connection_manager.get_server(
                     server_name, client_session_factory=MCPAgentClientSession
                 )
@@ -210,7 +227,14 @@ class MCPAggregator(ContextDependent):
 
                 self._namespaced_tool_map[namespaced_tool_name] = namespaced_tool
                 self._server_to_tool_map[server_name].append(namespaced_tool)
-
+            logger.debug(
+                "MCP Aggregator initialized",
+                data={
+                    "progress_action": "Running",
+                    "server_name": server_name,
+                    "agent_name": self.agent_name,
+                },
+            )
         self.initialized = True
 
     async def list_servers(self) -> List[str]:
@@ -262,7 +286,13 @@ class MCPAggregator(ContextDependent):
                 return CallToolResult(isError=True, message=f"Tool '{name}' not found")
 
         logger.info(
-            f"MCPServerAggregator: Requesting tool call '{name}'. Calling tool '{local_tool_name}' on server '{server_name}'"
+            "Requesting tool call",
+            data={
+                "progress_action": "Calling Tool",
+                "tool_name": local_tool_name,
+                "server_name": server_name,
+                "agent_name": self.agent_name,
+            },
         )
 
         async def try_call_tool(client: ClientSession):
@@ -280,10 +310,27 @@ class MCPAggregator(ContextDependent):
             )
             return await try_call_tool(server_connection.session)
         else:
+            logger.debug(
+                f"Creating temporary connection to server: {server_name}",
+                data={
+                    "progress_action": "Starting",
+                    "server_name": server_name,
+                    "agent_name": self.agent_name,
+                },
+            )
             async with gen_client(
                 server_name, server_registry=self.context.server_registry
             ) as client:
-                return await try_call_tool(client)
+                result = await try_call_tool(client)
+                logger.debug(
+                    f"Closing temporary connection to server: {server_name}",
+                    data={
+                        "progress_action": "Starting",
+                        "server_name": server_name,
+                        "agent_name": self.agent_name,
+                    },
+                )
+                return result
 
 
 class MCPCompoundServer(Server):

@@ -2,8 +2,8 @@ $schema: ../../schema/mcp-agent.config.schema.json
 
 execution_engine: asyncio
 logger:
-  type: console
-  level: debug
+  type: file
+  level: info
   batch_size: 100
   flush_interval: 2
   max_queue_size: 2048
@@ -18,10 +18,4 @@ mcp:
       args: ["mcp-server-fetch"]
     filesystem:
       command: "npx"
-      args:
-        [
-          "-y",
-          "@modelcontextprotocol/server-filesystem",
-          "/Users/saqadri/Desktop",
-          "/Users/saqadri/Downloads",
-        ]
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "."]

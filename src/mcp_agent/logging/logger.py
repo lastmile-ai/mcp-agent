@@ -16,7 +16,11 @@ from typing import Any, Dict
 from contextlib import asynccontextmanager, contextmanager
 
 from mcp_agent.logging.events import Event, EventContext, EventFilter, EventType
-from mcp_agent.logging.listeners import BatchingListener, LoggingListener
+from mcp_agent.logging.listeners import (
+    BatchingListener,
+    LoggingListener,
+    ProgressListener,
+)
 from mcp_agent.logging.transport import AsyncEventBus, EventTransport
 
 
@@ -209,6 +213,10 @@ class LoggingConfig:
         # Add standard listeners
         if "logging" not in bus.listeners:
             bus.add_listener("logging", LoggingListener(event_filter=event_filter))
+
+        # Only add progress listener if enabled in settings
+        if "progress" not in bus.listeners and kwargs.get("progress_display", True):
+            bus.add_listener("progress", ProgressListener())
 
         if "batching" not in bus.listeners:
             bus.add_listener(

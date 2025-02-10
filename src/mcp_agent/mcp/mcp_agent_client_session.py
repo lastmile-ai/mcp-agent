@@ -3,6 +3,8 @@ A derived client session for the MCP Agent framework.
 It adds logging and supports sampling requests.
 """
 
+from typing import Optional
+
 from mcp import ClientSession
 from mcp.shared.session import (
     RequestResponder,
@@ -22,8 +24,12 @@ from mcp.types import (
     JSONRPCRequest,
     ServerRequest,
     TextContent,
+    ListRootsRequest,
+    ListRootsResult,
+    Root,
 )
 
+from mcp_agent.config import MCPServerSettings
 from mcp_agent.context_dependent import ContextDependent
 from mcp_agent.logging.logger import get_logger
 
@@ -36,30 +42,14 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
     This is a simple client session for those server connections, and supports
         - handling sampling requests
         - notifications
+        - MCP root configuration
 
     Developers can extend this class to add more custom functionality as needed
     """
 
-    async def initialize(self) -> None:
-        logger.debug("initialize...")
-        try:
-            await super().initialize()
-            logger.debug("initialized")
-        except Exception as e:
-            logger.error(f"initialize failed: {e}")
-            raise
-
-    async def __aenter__(self):
-        # logger.debug(
-        #     f"__aenter__ {str(self)}: current_task={anyio.get_current_task()}, id={id(anyio.get_current_task())}"
-        # )
-        return await super().__aenter__()
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        # logger.debug(
-        #     f"__aexit__ {str(self)}: current_task={anyio.get_current_task()}, id={id(anyio.get_current_task())}"
-        # )
-        return await super().__aexit__(exc_type, exc_val, exc_tb)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.server_config: Optional[MCPServerSettings] = None
 
     async def _received_request(
         self, responder: RequestResponder[ServerRequest, ClientResult]
@@ -69,6 +59,21 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
 
         if isinstance(request, CreateMessageRequest):
             return await self.handle_sampling_request(request, responder)
+        elif isinstance(request, ListRootsRequest):
+            # Handle list_roots request by returning configured roots
+            if hasattr(self, "server_config") and self.server_config.roots:
+                roots = [
+                    Root(
+                        uri=root.server_uri_alias or root.uri,
+                        name=root.name,
+                    )
+                    for root in self.server_config.roots
+                ]
+
+                await responder.respond(ListRootsResult(roots=roots))
+            else:
+                await responder.respond(ListRootsResult(roots=[]))
+            return
 
         # Handle other requests as usual
         await super()._received_request(responder)

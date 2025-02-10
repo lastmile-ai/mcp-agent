@@ -7,6 +7,7 @@ from mcp_agent.agents.agent import Agent
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 from mcp_agent.workflows.router.router_llm import LLMRouter
 from mcp_agent.workflows.router.router_llm_anthropic import AnthropicLLMRouter
+from rich import print
 
 app = MCPApp(name="router")
 

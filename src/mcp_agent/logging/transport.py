@@ -12,14 +12,16 @@ from pathlib import Path
 
 import aiohttp
 from opentelemetry import trace
-from rich.console import Console
 from rich.json import JSON
 from rich.text import Text
 
 from mcp_agent.config import LoggerSettings
+from mcp_agent.console import console
 from mcp_agent.logging.events import Event, EventFilter
 from mcp_agent.logging.json_serializer import JSONSerializer
 from mcp_agent.logging.listeners import EventListener, LifecycleAwareListener
+from rich import print
+import traceback
 
 
 class EventTransport(Protocol):
@@ -67,18 +69,22 @@ class ConsoleTransport(FilteredEventTransport):
 
     def __init__(self, event_filter: EventFilter | None = None):
         super().__init__(event_filter=event_filter)
-        self.console = Console()
+        # Use shared console instances
+        self._serializer = JSONSerializer()
         self.log_level_styles: Dict[str, str] = {
             "info": "bold green",
             "debug": "dim white",
             "warning": "bold yellow",
             "error": "bold red",
         }
-        self._serializer = JSONSerializer()
 
     async def send_matched_event(self, event: Event):
         # Map log levels to styles
         style = self.log_level_styles.get(event.type, "white")
+
+        # Use the appropriate console based on event type
+        #        output_console = error_console if event.type == "error" else console
+        output_console = console
 
         # Create namespace without None
         namespace = event.namespace
@@ -87,16 +93,16 @@ class ConsoleTransport(FilteredEventTransport):
 
         log_text = Text.assemble(
             (f"[{event.type.upper()}] ", style),
-            (f"{event.timestamp.isoformat()} ", "cyan"),
+            (f"{event.timestamp.replace(microsecond=0).isoformat()} ", "cyan"),
             (f"{namespace} ", "magenta"),
             (f"- {event.message}", "white"),
         )
-        self.console.print(log_text)
+        output_console.print(log_text)
 
-        # Print additional data as a JSON if available
+        # Print additional data as JSON if available
         if event.data:
             serialized_data = self._serializer(event.data)
-            self.console.print(JSON.from_data(serialized_data))
+            output_console.print(JSON.from_data(serialized_data))
 
 
 class FileTransport(FilteredEventTransport):
@@ -150,8 +156,8 @@ class FileTransport(FilteredEventTransport):
 
         try:
             with open(self.filepath, mode=self.mode, encoding=self.encoding) as f:
-                # Write the log entry as JSON with newline
-                f.write(json.dumps(log_entry, indent=2) + "\n")
+                # Write the log entry as compact JSON (JSONL format)
+                f.write(json.dumps(log_entry, separators=(",", ":")) + "\n")
                 f.flush()  # Ensure writing to disk
         except IOError as e:
             # Log error without recursion
@@ -397,6 +403,9 @@ class AsyncEventBus:
                     for r in results:
                         if isinstance(r, Exception):
                             print(f"Error in listener: {r}")
+                            print(
+                                f"Stacktrace: {''.join(traceback.format_exception(type(r), r, r.__traceback__))}"
+                            )
 
                 self._queue.task_done()
 

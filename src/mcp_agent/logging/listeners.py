@@ -10,6 +10,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, List
 
 from mcp_agent.logging.events import Event, EventFilter, EventType
+from mcp_agent.event_progress import convert_log_event
 
 
 class EventListener(ABC):
@@ -85,11 +86,17 @@ class LoggingListener(FilteredListener):
         }
         level = level_map.get(event.type, logging.INFO)
 
+        # Check if this is a server stderr message and format accordingly
+        if event.name == "mcpserver.stderr":
+            message = f"MCP Server: {event.message}"
+        else:
+            message = event.message
+
         self.logger.log(
             level,
             "[%s] %s",
             event.namespace,
-            event.message,
+            message,
             extra={
                 "event_data": event.data,
                 "span_id": event.span_id,
@@ -97,6 +104,39 @@ class LoggingListener(FilteredListener):
                 "event_name": event.name,
             },
         )
+
+
+class ProgressListener(LifecycleAwareListener):
+    """
+    Listens for all events pre-filtering and converts them to progress events
+    for display. By inheriting directly from LifecycleAwareListener instead of
+    FilteredListener, we get events before any filtering occurs.
+    """
+
+    def __init__(self, display=None):
+        """Initialize the progress listener.
+        Args:
+            display: Optional display handler. If None, the shared progress_display will be used.
+        """
+        from mcp_agent.progress_display import progress_display
+
+        self.display = display or progress_display
+
+    async def start(self):
+        """Start the progress display."""
+        self.display.start()
+
+    async def stop(self):
+        """Stop the progress display."""
+        self.display.stop()
+
+    async def handle_event(self, event: Event):
+        """Process an incoming event and display progress if relevant."""
+
+        if event.data:
+            progress_event = convert_log_event(event)
+            if progress_event:
+                self.display.update(progress_event)
 
 
 class BatchingListener(FilteredListener):

@@ -5,6 +5,7 @@ from mcp_agent.app import MCPApp
 from mcp_agent.workflows.swarm.swarm import DoneAgent, SwarmAgent
 from mcp_agent.workflows.swarm.swarm_anthropic import AnthropicSwarm
 from mcp_agent.human_input.handler import console_input_callback
+from rich import print
 
 app = MCPApp(
     name="airline_customer_service", human_input_callback=console_input_callback

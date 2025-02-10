@@ -9,6 +9,7 @@
 import subprocess
 import sys
 import typer
+from rich import print
 
 
 def main(path: str = None):

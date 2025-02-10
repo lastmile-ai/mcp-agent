@@ -4,9 +4,9 @@ for the application configuration.
 """
 
 from pathlib import Path
-from typing import Dict, List, Literal
+from typing import Dict, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,6 +14,29 @@ class MCPServerAuthSettings(BaseModel):
     """Represents authentication configuration for a server."""
 
     api_key: str | None = None
+
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
+
+class MCPRootSettings(BaseModel):
+    """Represents a root directory configuration for an MCP server."""
+
+    uri: str
+    """The URI identifying the root. Must start with file://"""
+
+    name: Optional[str] = None
+    """Optional name for the root."""
+
+    server_uri_alias: Optional[str] = None
+    """Optional URI alias for presentation to the server"""
+
+    @field_validator("uri", "server_uri_alias")
+    @classmethod
+    def validate_uri(cls, v: str) -> str:
+        """Validate that the URI starts with file:// (required by specification 2024-11-05)"""
+        if not v.startswith("file://"):
+            raise ValueError("Root URI must start with file://")
+        return v
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
@@ -48,6 +71,12 @@ class MCPServerSettings(BaseModel):
 
     auth: MCPServerAuthSettings | None = None
     """The authentication configuration for the server."""
+
+    roots: Optional[List[MCPRootSettings]] = None
+    """Root directories this server has access to."""
+
+    env: Dict[str, str] | None = None
+    """Environment variables to pass to the server process."""
 
     env: Dict[str, str] | None = None
     """Environment variables to pass to the server process."""
@@ -86,6 +115,7 @@ class OpenAISettings(BaseModel):
     """
 
     api_key: str | None = None
+    reasoning_effort: Literal["low", "medium", "high"] = "medium"
 
     base_url: str | None = None
 
@@ -147,7 +177,10 @@ class LoggerSettings(BaseModel):
     level: Literal["debug", "info", "warning", "error"] = "info"
     """Minimum logging level"""
 
-    path: str = "mcp-agent.log"
+    progress_display: bool = True
+    """Enable or disable the progress display"""
+
+    path: str = "mcp-agent.jsonl"
     """Path to log file, if logger 'type' is 'file'."""
 
     batch_size: int = 100

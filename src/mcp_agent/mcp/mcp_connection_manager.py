@@ -18,14 +18,15 @@ from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStre
 from mcp import ClientSession
 from mcp.client.stdio import (
     StdioServerParameters,
-    stdio_client,
     get_default_environment,
 )
 from mcp.client.sse import sse_client
 from mcp.types import JSONRPCMessage
 
+
 from mcp_agent.config import MCPServerSettings
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.mcp.stdio import stdio_client_with_rich_stderr
 
 if TYPE_CHECKING:
     from mcp_agent.mcp_server_registry import InitHookCallable, ServerRegistry
@@ -66,7 +67,6 @@ class ServerConnection:
         self._client_session_factory = client_session_factory
         self._init_hook = init_hook
         self._transport_context_factory = transport_context_factory
-
         # Signal that session is fully up and initialized
         self._initialized_event = Event()
 
@@ -90,9 +90,8 @@ class ServerConnection:
         Initializes the server connection and session.
         Must be called within an async context.
         """
-        logger.info(f"{self.server_name}: Initializing server session...")
+
         await self.session.initialize()
-        logger.info(f"{self.server_name}: Session initialized.")
 
         # If there's an init hook, run it
         if self._init_hook:
@@ -125,6 +124,10 @@ class ServerConnection:
 
         session = self._client_session_factory(read_stream, send_stream, read_timeout)
 
+        # Make the server config available to the session for initialization
+        if hasattr(session, "server_config"):
+            session.server_config = self.server_config
+
         self.session = session
 
         return session
@@ -147,7 +150,7 @@ async def _server_lifecycle_task(server_conn: ServerConnection) -> None:
                 # Initialize the session
                 await server_conn.initialize_session()
 
-                # Wait until we’re asked to shut down
+                # Wait until we're asked to shut down
                 await server_conn.wait_for_shutdown_request()
 
     except Exception as exc:
@@ -158,8 +161,6 @@ async def _server_lifecycle_task(server_conn: ServerConnection) -> None:
         # 'get_server' won't hang
         server_conn._initialized_event.set()
         raise
-    finally:
-        logger.debug(f"{server_name}: _lifecycle_task is exiting.")
 
 
 class MCPConnectionManager:
@@ -218,7 +219,8 @@ class MCPConnectionManager:
                     args=config.args,
                     env={**get_default_environment(), **(config.env or {})},
                 )
-                return stdio_client(server_params)
+                # Create stdio client config with redirected stderr
+                return stdio_client_with_rich_stderr(server_params)
             elif config.transport == "sse":
                 return sse_client(config.url)
             else:

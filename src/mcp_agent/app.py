@@ -4,7 +4,6 @@ import asyncio
 from contextlib import asynccontextmanager
 
 from mcp import ServerSession
-
 from mcp_agent.context import Context, initialize_context, cleanup_context
 from mcp_agent.config import Settings
 from mcp_agent.logging.logger import get_logger
@@ -130,13 +129,29 @@ class MCPApp:
         self._context.model_selector = self._model_selector
 
         self._initialized = True
-        self.logger.info("MCPAgent initialized")
+        self.logger.info(
+            "MCPAgent initialized",
+            data={
+                "progress_action": "Running",
+                "target": self.name,
+                "agent_name": "mcp_application_loop",
+            },
+        )
 
     async def cleanup(self):
         """Cleanup application resources."""
         if not self._initialized:
             return
 
+        # Updatre progress display before logging is shut down
+        self.logger.info(
+            "MCPAgent cleanup",
+            data={
+                "progress_action": "Finished",
+                "target": self.name,
+                "agent_name": "mcp_application_loop",
+            },
+        )
         await cleanup_context()
         self._context = None
         self._initialized = False

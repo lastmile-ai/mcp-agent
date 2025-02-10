@@ -42,15 +42,6 @@ class WorkflowResult(BaseModel, Generic[T]):
     start_time: float | None = None
     end_time: float | None = None
 
-    # def complete(self) -> "WorkflowResult[T]":
-    #     import asyncio
-
-    #     if self.start_time is None:
-    #         self.start_time = asyncio.get_event_loop().time()
-    #     self.end_time = asyncio.get_event_loop().time()
-    #     self.metadata["duration"] = self.end_time - self.start_time
-    #     return self
-
 
 class Workflow(ABC, Generic[T]):
     """
@@ -86,7 +77,7 @@ class Workflow(ABC, Generic[T]):
     @abstractmethod
     async def run(self, *args: Any, **kwargs: Any) -> "WorkflowResult[T]":
         """
-        Main workflow implementation. Myst be overridden by subclasses.
+        Main workflow implementation. Must be overridden by subclasses.
         """
 
     async def update_state(self, **kwargs):

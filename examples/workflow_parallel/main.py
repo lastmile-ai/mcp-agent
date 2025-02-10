@@ -1,16 +1,14 @@
 import asyncio
-import os
 
 from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
-from mcp_agent.workflows.llm.augmented_llm import RequestParams
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 
 # from mcp_agent.workflows.parallel.fan_in import FanIn
 # from mcp_agent.workflows.parallel.fan_out import FanOut
 from mcp_agent.workflows.parallel.parallel_llm import ParallelLLM
-
-# To illustrate a parallel workflow, we will build a student assignment grader,
+from rich import print
+# To illustrate a parallel workflow, we will build a student assignment grader,``
 # which will use a fan-out agent to grade the assignment in parallel using multiple agents,
 # and a fan-in agent to aggregate the results and provide a final grade.
 
@@ -42,12 +40,6 @@ app = MCPApp(name="mcp_parallel_workflow")
 async def example_usage():
     async with app.run() as short_story_grader:
         logger = short_story_grader.logger
-
-        context = short_story_grader.context
-        logger.info("Current config:", data=context.config.model_dump())
-
-        # Add the current directory to the filesystem server's args
-        context.config.mcp.servers["filesystem"].args.extend([os.getcwd()])
 
         proofreader = Agent(
             name="proofreader",
@@ -86,7 +78,6 @@ async def example_usage():
 
         result = await parallel.generate_str(
             message=f"Student short story submission: {SHORT_STORY}",
-            request_params=RequestParams(model="gpt-4o"),
         )
 
         logger.info(f"{result}")

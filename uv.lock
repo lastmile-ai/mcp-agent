@@ -1,6 +1,12 @@
 version = 1
 requires-python = ">=3.10"
 
+[manifest]
+members = [
+    "mcp-agent",
+    "streamlit-mcp-basic-agent",
+]
+
 [[package]]
 name = "aiohappyeyeballs"
 version = "2.4.4"
@@ -753,7 +759,7 @@ wheels = [
 
 [[package]]
 name = "mcp"
-version = "1.2.0"
+version = "1.2.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -765,9 +771,9 @@ dependencies = [
     { name = "starlette" },
     { name = "uvicorn" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ab/a5/b08dc846ebedae9f17ced878e6975826e90e448cd4592f532f6a88a925a7/mcp-1.2.0.tar.gz", hash = "sha256:2b06c7ece98d6ea9e6379caa38d74b432385c338fb530cb82e2c70ea7add94f5", size = 102973 }
+sdist = { url = "https://files.pythonhosted.org/packages/fc/30/51e4555826126e3954fa2ab1e934bf74163c5fe05e98f38ca4d0f8abbf63/mcp-1.2.1.tar.gz", hash = "sha256:c9d43dbfe943aa1530e2be8f54b73af3ebfb071243827b4483d421684806cb45", size = 103968 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/af/84/fca78f19ac8ce6c53ba416247c71baa53a9e791e98d3c81edbc20a77d6d1/mcp-1.2.0-py3-none-any.whl", hash = "sha256:1d0e77d8c14955a5aea1f5aa1f444c8e531c09355c829b20e42f7a142bc0755f", size = 66468 },
+    { url = "https://files.pythonhosted.org/packages/4c/0d/6770742a84c8aa1d36c0d628896a380584c5759612e66af7446af07d8775/mcp-1.2.1-py3-none-any.whl", hash = "sha256:579bf9c9157850ebb1344f3ca6f7a3021b0123c44c9f089ef577a7062522f0fd", size = 66453 },
 ]
 
 [[package]]
@@ -821,7 +827,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115.6" },
     { name = "instructor", specifier = ">=1.7.0" },
     { name = "instructor", extras = ["anthropic"], marker = "extra == 'anthropic'", specifier = ">=1.7.2" },
-    { name = "mcp", specifier = ">=1.2.0" },
+    { name = "mcp", specifier = ">=1.2.1" },
     { name = "numpy", specifier = ">=2.2.1" },
     { name = "openai", marker = "extra == 'openai'", specifier = ">=1.58.1" },
     { name = "opentelemetry-distro", specifier = ">=0.50b0" },
@@ -1619,6 +1625,11 @@ sdist = { url = "https://files.pythonhosted.org/packages/1a/4c/9b5764bd22eec91c4
 wheels = [
     { url = "https://files.pythonhosted.org/packages/96/00/2b325970b3060c7cecebab6d295afe763365822b1306a12eeab198f74323/starlette-0.41.3-py3-none-any.whl", hash = "sha256:44cedb2b7c77a9de33a8b74b2b90e9f50d11fcf25d8270ea525ad71a25374ff7", size = 73225 },
 ]
+
+[[package]]
+name = "streamlit-mcp-basic-agent"
+version = "0.1.0"
+source = { virtual = "examples/streamlit_mcp_basic_agent" }
 
 [[package]]
 name = "temporalio"

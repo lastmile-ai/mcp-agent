@@ -1,0 +1,3 @@
+this project uses the "uv" package manager to run, install and manage python
+the "src" and "tests" directory contain source code and tests respectively.
+there are a number of example applications. they are run by using "uv run scripts/example.py run <example_name>"

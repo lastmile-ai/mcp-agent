@@ -1,0 +1,6 @@
+# Core framework dependency
+mcp-agent @ file://../../  # Link to the local mcp-agent project root
+
+# Additional dependencies specific to this example
+# Additional dependencies specific to this example
+anthropic

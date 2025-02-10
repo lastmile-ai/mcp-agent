@@ -5,6 +5,7 @@ from mcp.types import ModelHint, ModelPreferences
 from mcp_agent.app import MCPApp
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.workflows.llm.llm_selector import ModelSelector
+from rich import print
 
 app = MCPApp(name="llm_selector")
 

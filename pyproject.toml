@@ -16,7 +16,7 @@ requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.115.6",
     "instructor>=1.7.0",
-    "mcp>=1.2.0",
+    "mcp>=1.2.1",
     "opentelemetry-distro>=0.50b0",
     "opentelemetry-exporter-otlp-proto-http>=1.29.0",
     "pydantic-settings>=2.7.0",
@@ -68,3 +68,6 @@ include = ["mcp-agent"]
 
 [tool.setuptools.package-data]
 mcp-agent = ["data/*.json"]
+
+[tool.uv.workspace]
+members = ["examples/streamlit_mcp_basic_agent"]

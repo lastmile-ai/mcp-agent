@@ -1,6 +1,11 @@
 $schema: ../../schema/mcp-agent.config.schema.json
 
 execution_engine: asyncio
+logger:
+  type: console
+  level: info
+  path: "./mcp-agent.log"
+
 mcp:
   servers:
     fetch:
@@ -8,10 +13,4 @@ mcp:
       args: ["mcp-server-fetch"]
     filesystem:
       command: "npx"
-      args:
-        [
-          "-y",
-          "@modelcontextprotocol/server-filesystem",
-          "/Users/saqadri/Desktop",
-          "/Users/saqadri/Downloads",
-        ]
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "."]

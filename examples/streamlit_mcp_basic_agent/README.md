@@ -9,4 +9,10 @@ To run this example:
 streamlit run main.py
 ```
 
+With uv:
+
+```bash
+uv run streamlit run ./main.py
+```
+
 <img src="https://github.com/user-attachments/assets/7ad27d23-9ed6-4e0e-ba7f-2d3b0afef847" height="512">

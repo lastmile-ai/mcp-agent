@@ -9,6 +9,7 @@ from mcp_agent.workflows.evaluator_optimizer.evaluator_optimizer import (
     EvaluatorOptimizerLLM,
     QualityRating,
 )
+from rich import print
 
 # To illustrate an evaluator-optimizer workflow, we will build a job cover letter refinement system,
 # which generates a draft based on job description, company information, and candidate details.
