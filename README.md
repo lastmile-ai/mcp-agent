@@ -82,7 +82,7 @@ app = MCPApp(name="hello_world_agent")
 
 async def example_usage():
     async with app.run() as mcp_agent_app:
-        logger = agent_app.logger
+        logger = mcp_agent_app.logger
         # This agent can read the filesystem or fetch URLs
         finder_agent = Agent(
             name="finder",
@@ -115,7 +115,7 @@ async def example_usage():
             result = await llm.generate_str("Summarize that in a 128-char tweet")
             logger.info(f"Tweet: {result}")
 
-if __name__ == "main":
+if __name__ == "__main__":
     asyncio.run(example_usage())
 
 ```
