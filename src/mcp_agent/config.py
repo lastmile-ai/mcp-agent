@@ -57,6 +57,9 @@ class MCPServerSettings(BaseModel):
     transport: Literal["stdio", "sse"] = "stdio"
     """The transport mechanism."""
 
+    headers: Dict[str, str] | None = None
+    """Headers to send with the request when connecting using SSE transport."""
+
     command: str | None = None
     """The command to execute the server (e.g. npx)."""
 
