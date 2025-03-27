@@ -275,7 +275,7 @@ class MCPConnectionManager(ContextDependent):
                 # Create stdio client config with redirected stderr
                 return stdio_client_with_rich_stderr(server_params)
             elif config.transport == "sse":
-                return sse_client(config.url)
+                return sse_client(url=config.url, headers=config.headers)
             else:
                 raise ValueError(f"Unsupported transport: {config.transport}")
 
