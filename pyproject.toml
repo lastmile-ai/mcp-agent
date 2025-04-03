@@ -51,6 +51,15 @@ azure = [
 cohere = [
     "cohere>=5.13.4",
 ]
+cloud = [
+    "aiohttp[speedups]>=3.9.0",
+    "docker>=7.0.0",
+    "bcrypt>=4.1.0",
+    "jinja2>=3.1.0",
+    "python-dotenv>=1.0.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+]
 
 [build-system]
 requires = ["hatchling"]

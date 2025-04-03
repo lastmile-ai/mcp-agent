@@ -1,0 +1,469 @@
+openapi: 3.0.3
+info:
+  title: MCP Agent Cloud API
+  description: |-
+    API for deploying and managing MCP Servers and Agent Apps as Docker containers.
+    
+    This API allows for deploying two types of services:
+    - Utility Servers: Simple MCP servers that provide utility functions (filesystem, fetch, etc.)
+    - Agent Apps: Full MCP Agent applications deployed as MCP Servers
+    
+    Authentication is required via the X-Master-API-Key header for all management endpoints.
+    Each deployed service gets its own unique API key for access.
+  version: 0.1.0
+  contact:
+    name: MCP Team
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+security:
+  - MasterApiKey: []
+paths:
+  /health:
+    get:
+      summary: Check API server health
+      description: Returns 200 OK if the API server is running
+      security: []  # No authentication required
+      responses:
+        '200':
+          description: API server is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+  /deployments/utility:
+    post:
+      summary: Deploy a utility server
+      description: |-
+        Deploy a new utility server container.
+        The server can use either STDIO or SSE transport.
+      operationId: deployUtility
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/STDIOServerConfigInput'
+                - $ref: '#/components/schemas/SSEServerConfigInput'
+      responses:
+        '201':
+          description: Utility server deployed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /deployments/app:
+    post:
+      summary: Deploy an Agent App as MCP Server
+      description: |-
+        Deploy a new Agent App as an MCP Server.
+        Requires a multipart request with a config object and a zip package.
+      operationId: deployApp
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AgentAppDeployInputMultipart'
+      responses:
+        '201':
+          description: Agent App deployed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /deployments:
+    get:
+      summary: List all deployments
+      description: Returns a list of all deployments
+      operationId: listDeployments
+      responses:
+        '200':
+          description: List of deployments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DeploymentSummary'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /deployments/{id}:
+    get:
+      summary: Get deployment details
+      description: Returns details of a specific deployment
+      operationId: getDeployment
+      parameters:
+        - $ref: '#/components/parameters/deploymentId'
+      responses:
+        '200':
+          description: Deployment details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Deployment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Delete a deployment
+      description: |-
+        Stops and removes a deployment and its associated container.
+        The deployment record is also removed from the registry.
+      operationId: deleteDeployment
+      parameters:
+        - $ref: '#/components/parameters/deploymentId'
+      responses:
+        '204':
+          description: Deployment deleted successfully
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Deployment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /deployments/{id}/logs:
+    get:
+      summary: Get deployment logs
+      description: Returns the logs from the container associated with the deployment
+      operationId: getDeploymentLogs
+      parameters:
+        - $ref: '#/components/parameters/deploymentId'
+        - name: tail
+          in: query
+          description: Number of log lines to return from the end
+          required: false
+          schema:
+            type: integer
+            default: 100
+      responses:
+        '200':
+          description: Container logs
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Deployment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Container not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  securitySchemes:
+    MasterApiKey:
+      type: apiKey
+      name: X-Master-API-Key
+      in: header
+      description: Master API key for managing deployments
+  parameters:
+    deploymentId:
+      name: id
+      in: path
+      description: Unique identifier of the deployment
+      required: true
+      schema:
+        type: string
+  schemas:
+    DeploymentStatus:
+      type: string
+      enum:
+        - packaging
+        - building
+        - running
+        - error
+        - stopped
+      description: |-
+        Status of a deployment
+        * packaging - Only for App deployments during initial packaging
+        * building - During Docker image build
+        * running - Container running and ready
+        * error - Error state (build, run, or readiness check failed)
+        * stopped - Container stopped but not removed
+    DeploymentType:
+      type: string
+      enum:
+        - utility
+        - app
+      description: |-
+        Type of deployment
+        * utility - Simple MCP server providing utility functions
+        * app - Full MCP Agent application deployed as MCP Server
+    TransportType:
+      type: string
+      enum:
+        - stdio
+        - sse
+      description: |-
+        Communication transport type for utility servers
+        * stdio - Standard I/O (requires adapter)
+        * sse - Server-Sent Events (native HTTP)
+    STDIOServerConfigInput:
+      type: object
+      required:
+        - name
+        - command
+        - adapter_port
+      properties:
+        name:
+          type: string
+          description: Name of the deployment
+        description:
+          type: string
+          description: Optional description
+        command:
+          type: array
+          items:
+            type: string
+          description: Command to run the STDIO server (e.g. ["python", "server.py"])
+        adapter_port:
+          type: integer
+          description: Port the adapter will listen on inside the container
+          minimum: 1
+          maximum: 65535
+      example:
+        name: fs-stdio
+        description: Filesystem Server (STDIO)
+        command: ["python", "fs_server.py"]
+        adapter_port: 8080
+    SSEServerConfigInput:
+      type: object
+      required:
+        - name
+        - command
+        - server_port
+      properties:
+        name:
+          type: string
+          description: Name of the deployment
+        description:
+          type: string
+          description: Optional description
+        command:
+          type: array
+          items:
+            type: string
+          description: Command to run the SSE server (e.g. ["python", "server.py"])
+        server_port:
+          type: integer
+          description: Port the server will listen on inside the container
+          minimum: 1
+          maximum: 65535
+      example:
+        name: fetch-sse
+        description: Fetch Server (SSE)
+        command: ["python", "fetch_server.py"]
+        server_port: 8081
+    AgentAppServerConfigInput:
+      type: object
+      required:
+        - name
+        - entrypoint
+        - app_port
+      properties:
+        name:
+          type: string
+          description: Name of the deployment
+        description:
+          type: string
+          description: Optional description
+        entrypoint:
+          type: string
+          description: Python module:variable entrypoint (e.g. "main:app")
+        app_port:
+          type: integer
+          description: Port the app server will listen on inside the container
+          minimum: 1
+          maximum: 65535
+        http_path_prefix:
+          type: string
+          description: URL path prefix for MCP Server endpoints
+          default: /mcp
+        dependencies:
+          type: object
+          additionalProperties:
+            type: string
+          description: Environment variables to be set in the container (e.g. URLs and API keys for utility servers)
+      example:
+        name: info-agent
+        description: Info Agent App
+        entrypoint: main:app
+        app_port: 8000
+        http_path_prefix: /mcp
+        dependencies:
+          FILESYSTEM_URL: http://localhost:8082/mcp
+          FILESYSTEM_API_KEY: fs_api_key
+          FETCH_URL: http://localhost:8083/mcp
+          FETCH_API_KEY: fetch_api_key
+          OPENAI_API_KEY: sk-...
+    AgentAppDeployInputMultipart:
+      type: object
+      required:
+        - config
+        - package
+      properties:
+        config:
+          type: string
+          format: json
+          description: JSON string containing the AgentAppServerConfigInput
+        package:
+          type: string
+          format: binary
+          description: Zip file containing the agent app code
+    DeploymentSummary:
+      type: object
+      required:
+        - id
+        - name
+        - deployment_type
+        - status
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the deployment
+        name:
+          type: string
+          description: User-provided name of the deployment
+        description:
+          type: string
+          description: Optional description
+        deployment_type:
+          $ref: '#/components/schemas/DeploymentType'
+        status:
+          $ref: '#/components/schemas/DeploymentStatus'
+        created_at:
+          type: string
+          format: date-time
+          description: UTC timestamp when deployment was created
+        updated_at:
+          type: string
+          format: date-time
+          description: UTC timestamp when deployment was last updated
+        url:
+          type: string
+          description: URL to access the deployed server
+        error:
+          type: string
+          description: Error details if deployment failed
+    DeploymentResponse:
+      allOf:
+        - $ref: '#/components/schemas/DeploymentSummary'
+        - type: object
+          required:
+            - config
+          properties:
+            config:
+              type: object
+              description: Server configuration
+            api_key:
+              type: string
+              description: API key for server access (only included in create response)
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Error message
+        details:
+          type: object
+          description: Additional error details

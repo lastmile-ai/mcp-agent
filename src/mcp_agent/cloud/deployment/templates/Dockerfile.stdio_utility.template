@@ -1,0 +1,29 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Install uv for faster package installations
+RUN pip install uv
+RUN uv pip install --system aiohttp>=3.9.0 pydantic>=2.0.0
+
+# Copy utility runner and adapter
+COPY utility_runner.py /app/
+COPY stdio_adapter.py /app/
+
+# Copy server files (these will be supplied at build time)
+{% if command %}
+{% for cmd_part in command %}
+COPY {{ cmd_part }} /app/
+{% endfor %}
+{% endif %}
+
+# Expose port
+EXPOSE {{ port }}
+
+# Set environment variables
+ENV PORT={{ port }}
+ENV TRANSPORT_TYPE=stdio
+ENV SERVER_COMMAND="{{ command }}"
+
+# Run utility runner, which will start either the adapter or server directly
+CMD ["python", "utility_runner.py"]

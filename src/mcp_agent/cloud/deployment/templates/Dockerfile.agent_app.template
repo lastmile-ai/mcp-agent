@@ -1,0 +1,27 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Install uv for faster package installations
+RUN pip install uv
+
+# Copy mcp-agent source and app code
+COPY mcp_agent_src /mcp_agent_src
+COPY app /app
+COPY agent_app_runner.py /app/
+
+# Install mcp-agent from local source
+RUN uv pip install --system --no-cache -e /mcp_agent_src
+
+# Install app dependencies if requirements.txt exists
+RUN if [ -f requirements.txt ]; then uv pip install --system --no-cache -r requirements.txt; fi
+
+# Expose port
+EXPOSE {{ app_port }}
+
+# Set environment variables
+ENV PORT={{ app_port }}
+ENV ENTRYPOINT={{ entrypoint }}
+
+# Run the agent app runner, which will load the MCPApp and serve it as an MCP Server
+CMD ["python", "agent_app_runner.py"]
