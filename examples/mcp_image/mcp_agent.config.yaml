@@ -1,0 +1,16 @@
+$schema: ../../schema/mcp-agent.config.schema.json
+
+execution_engine: asyncio
+logger:
+  type: file
+  level: debug
+
+mcp:
+  servers:
+    computer:
+      command: "uv"
+      args: ["run", "server.py"]
+
+anthropic:
+  # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored
+  default_model: claude-3-7-sonnet-latest
