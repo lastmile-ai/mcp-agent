@@ -155,7 +155,10 @@ class ServerRegistry:
                 raise ValueError(f"URL is required for SSE transport: {server_name}")
 
             # Use sse_client to get the read and write streams
-            async with sse_client(config.url) as (read_stream, write_stream):
+            async with sse_client(
+                    url=config.url,
+                    headers=config.headers
+            ) as (read_stream, write_stream):
                 session = client_session_factory(
                     read_stream,
                     write_stream,
