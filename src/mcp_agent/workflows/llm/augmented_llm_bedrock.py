@@ -84,6 +84,27 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
             use_history=True,
         )
 
+    def _reformat_tool_config(self, tool_config: ToolConfigurationTypeDef) -> ToolConfigurationTypeDef:
+        """
+        Reformat the tool configuration to match the expected format.
+        https://docs.aws.amazon.com/bedrock/latest/userguide/tool-use-inference-call.html
+        """
+        # ensure HumanInputRequest has correct JSON format
+        tools = tool_config.get("tools", [])
+        for tool in tools:
+            tool_spec = tool.get("toolSpec", {})
+            if tool_spec.get("name") != "__human_input__":  # TODO: avoid hardcoding
+                continue
+
+            # reformat inputSchema.json to use "HumanInputRequest" value
+            # instead of "$defs" referencing
+            input_schema = tool_spec.get("inputSchema", {})
+            if input_schema.get("json", {}).get("$defs", {}).get("HumanInputRequest") is not None:
+                self.logger.info("Reformatting inputSchema for human input tool by using `HumanInputRequest`")
+                input_schema["json"] = input_schema["json"]["$defs"]["HumanInputRequest"]
+
+        return tool_config
+
     async def generate(self, message, request_params: RequestParams | None = None):
         """
         Process a query using an LLM and available tools.
@@ -119,6 +140,7 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
             ],
             "toolChoice": {"auto": {}},
         }
+        tool_config = self._reformat_tool_config(tool_config)
 
         responses: list[MessageUnionTypeDef] = []
         model = await self.select_model(params)
