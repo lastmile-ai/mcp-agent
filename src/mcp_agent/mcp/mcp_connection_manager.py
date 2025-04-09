@@ -30,6 +30,7 @@ from mcp_agent.event_progress import ProgressAction
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
 from mcp_agent.mcp.stdio import stdio_client_with_rich_stderr
+from mcp_agent.mcp.websocket import websocket_client
 from mcp_agent.context_dependent import ContextDependent
 
 if TYPE_CHECKING:
@@ -277,7 +278,9 @@ class MCPConnectionManager(ContextDependent):
                 # Create stdio client config with redirected stderr
                 return stdio_client_with_rich_stderr(server_params)
             elif config.transport == "sse":
-                return sse_client(config.url)
+                return sse_client(config.url, config.headers)
+            elif config.transport == "websocket":
+                return websocket_client(config.url, config.headers)
             else:
                 raise ValueError(f"Unsupported transport: {config.transport}")
 

@@ -54,7 +54,7 @@ class MCPServerSettings(BaseModel):
     description: str | None = None
     """The description of the server."""
 
-    transport: Literal["stdio", "sse"] = "stdio"
+    transport: Literal["stdio", "sse", "websocket"] = "stdio"
     """The transport mechanism."""
 
     command: str | None = None
@@ -72,11 +72,11 @@ class MCPServerSettings(BaseModel):
     auth: MCPServerAuthSettings | None = None
     """The authentication configuration for the server."""
 
+    headers: Dict[str, str] | None = None
+    """HTTP headers for sse or websocket requests."""
+
     roots: Optional[List[MCPRootSettings]] = None
     """Root directories this server has access to."""
-
-    env: Dict[str, str] | None = None
-    """Environment variables to pass to the server process."""
 
     env: Dict[str, str] | None = None
     """Environment variables to pass to the server process."""

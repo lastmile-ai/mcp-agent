@@ -28,6 +28,7 @@ dependencies = [
     "scikit-learn>=1.6.0",
     "prompt-toolkit>=3.0.50",
     "aiohttp>=3.11.13",
+    "websockets>=12.0",
 ]
 
 [project.optional-dependencies]
@@ -88,3 +89,5 @@ mcp-agent = [ # TODO: should this be mcp_agent?
     "resources/examples/**/mount-point/*.csv"
 ]
 
+[tool.pytest.ini_options]
+pythonpath = ["."]
