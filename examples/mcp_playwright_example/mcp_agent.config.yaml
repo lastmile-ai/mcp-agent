@@ -1,0 +1,30 @@
+execution_engine: asyncio
+
+logger:
+  transports: [console, file]
+  level: debug
+  show_progress: true
+  path: "logs/playwright-to-slack.jsonl"
+  path_settings:
+    path_pattern: "logs/playwright-to-slack-{unique_id}.jsonl"
+    unique_id: "timestamp"
+    timestamp_format: "%Y%m%d_%H%M%S"
+
+mcp:
+  servers:
+    playwright:
+      command: "npx"
+      args: ["@playwright/mcp@latest"]
+      description: "Drive browser automation via Playwright"
+    slack:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-slack"]
+      description: "Access Slack API operations"
+    filesystem:
+      command: "npx"
+      args: [
+          "-y",
+          "@modelcontextprotocol/server-filesystem",
+          "/Users/hanieh/Desktop",
+          "/Users/hanieh/Downloads"]
+      description: "Access Filesystem operations"
