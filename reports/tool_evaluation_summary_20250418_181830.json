@@ -1,0 +1,402 @@
+{
+  "timestamp": "20250418_181830",
+  "examples_analyzed": 6,
+  "overall_basic_accuracy": 0.5972222222222222,
+  "overall_specific_accuracy": 0.9583333333333334,
+  "analyses": {
+    "mcp_basic_agent": {
+      "example_name": "mcp_basic_agent",
+      "status": "analyzed",
+      "available_tools": [
+        "fetch",
+        "filesystem"
+      ],
+      "tool_usage_stats": {
+        "used_tools": [
+          "fetch",
+          "filesystem"
+        ],
+        "tool_usage_count": {
+          "fetch": 1,
+          "filesystem": 1
+        },
+        "avg_processing_time": {
+          "fetch": 0.5,
+          "filesystem": 0.5000002384185791
+        }
+      },
+      "basic_selection_accuracy": 0.5,
+      "specific_selection_accuracy": 1.0,
+      "basic_test_cases": [
+        {
+          "query": "output the first 2 paragraphs of https://modelcontextprotocol.io/introduction",
+          "expected_tool": "fetch",
+          "result": {
+            "selected_tool": "fetch"
+          }
+        },
+        {
+          "query": "output the first 2 paragraphs of https://modelcontextprotocol.io/introduction",
+          "expected_tool": "filesystem",
+          "result": {
+            "selected_tool": "fetch"
+          }
+        }
+      ],
+      "specific_test_cases": [
+        {
+          "query": "Can you retrieve and summarize the introduction section from https://modelcontextprotocol.io/introduction",
+          "expected_tool": "fetch",
+          "selected_tool": "fetch",
+          "description": "Fetch with summarization request",
+          "correct": true
+        },
+        {
+          "query": "I need to read the content from https://modelcontextprotocol.io/introduction and extract the key points",
+          "expected_tool": "fetch",
+          "selected_tool": "fetch",
+          "description": "Fetch with extraction request",
+          "correct": true
+        },
+        {
+          "query": "Find information about MCP protocol online and save it to a file",
+          "expected_tool": "fetch",
+          "selected_tool": "fetch",
+          "description": "Multi-step operation requiring multiple tools",
+          "correct": true
+        }
+      ],
+      "recommendations": [
+        "Improve tool selection for basic queries (current accuracy: 0.50)"
+      ]
+    },
+    "mcp_basic_azure_agent": {
+      "example_name": "mcp_basic_azure_agent",
+      "status": "analyzed",
+      "available_tools": [
+        "fetch"
+      ],
+      "tool_usage_stats": {
+        "used_tools": [
+          "fetch"
+        ],
+        "tool_usage_count": {
+          "fetch": 1
+        },
+        "avg_processing_time": {
+          "fetch": 0.5000002384185791
+        }
+      },
+      "basic_selection_accuracy": 1.0,
+      "specific_selection_accuracy": 1.0,
+      "basic_test_cases": [
+        {
+          "query": "output the first 2 paragraphs of https://modelcontextprotocol.io/introduction",
+          "expected_tool": "fetch",
+          "result": {
+            "selected_tool": "fetch"
+          }
+        }
+      ],
+      "specific_test_cases": [
+        {
+          "query": "Please retrieve information about the first version of MCP from their website",
+          "expected_tool": "fetch",
+          "selected_tool": "fetch",
+          "description": "Information retrieval with specific version",
+          "correct": true
+        },
+        {
+          "query": "I need to understand how MCP differs from other protocols, can you get this from their site?",
+          "expected_tool": "fetch",
+          "selected_tool": "fetch",
+          "description": "Comparative information retrieval",
+          "correct": true
+        }
+      ],
+      "recommendations": [
+        "Consider expanding agent capabilities with additional tools"
+      ]
+    },
+    "mcp_basic_google_agent": {
+      "example_name": "mcp_basic_google_agent",
+      "status": "analyzed",
+      "available_tools": [
+        "fetch"
+      ],
+      "tool_usage_stats": {
+        "used_tools": [
+          "fetch"
+        ],
+        "tool_usage_count": {
+          "fetch": 1
+        },
+        "avg_processing_time": {
+          "fetch": 0.5000002384185791
+        }
+      },
+      "basic_selection_accuracy": 1.0,
+      "specific_selection_accuracy": 1.0,
+      "basic_test_cases": [
+        {
+          "query": "output the first 2 paragraphs of https://modelcontextprotocol.io/introduction",
+          "expected_tool": "fetch",
+          "result": {
+            "selected_tool": "fetch"
+          }
+        }
+      ],
+      "specific_test_cases": [
+        {
+          "query": "Please retrieve information about the first version of MCP from their website",
+          "expected_tool": "fetch",
+          "selected_tool": "fetch",
+          "description": "Information retrieval with specific version",
+          "correct": true
+        },
+        {
+          "query": "I need to understand how MCP differs from other protocols, can you get this from their site?",
+          "expected_tool": "fetch",
+          "selected_tool": "fetch",
+          "description": "Comparative information retrieval",
+          "correct": true
+        }
+      ],
+      "recommendations": [
+        "Consider expanding agent capabilities with additional tools"
+      ]
+    },
+    "mcp_basic_ollama_agent": {
+      "example_name": "mcp_basic_ollama_agent",
+      "status": "analyzed",
+      "available_tools": [
+        "fetch",
+        "filesystem"
+      ],
+      "tool_usage_stats": {
+        "used_tools": [
+          "fetch",
+          "filesystem"
+        ],
+        "tool_usage_count": {
+          "fetch": 1,
+          "filesystem": 1
+        },
+        "avg_processing_time": {
+          "fetch": 0.5000002384185791,
+          "filesystem": 0.5
+        }
+      },
+      "basic_selection_accuracy": 0.5,
+      "specific_selection_accuracy": 1.0,
+      "basic_test_cases": [
+        {
+          "query": "output the first 2 paragraphs of https://modelcontextprotocol.io/introduction",
+          "expected_tool": "fetch",
+          "result": {
+            "selected_tool": "fetch"
+          }
+        },
+        {
+          "query": "output the first 2 paragraphs of https://modelcontextprotocol.io/introduction",
+          "expected_tool": "filesystem",
+          "result": {
+            "selected_tool": "fetch"
+          }
+        }
+      ],
+      "specific_test_cases": [
+        {
+          "query": "Can you fetch and tell me about the key features of the Model Context Protocol from their website?",
+          "expected_tool": "fetch",
+          "selected_tool": "fetch",
+          "description": "Web content with specific information extraction",
+          "correct": true
+        },
+        {
+          "query": "Read through the MCP documentation online and explain how it works",
+          "expected_tool": "fetch",
+          "selected_tool": "fetch",
+          "description": "Web content processing with explanation request",
+          "correct": true
+        }
+      ],
+      "recommendations": [
+        "Improve tool selection for basic queries (current accuracy: 0.50)"
+      ]
+    },
+    "mcp_basic_slack_agent": {
+      "example_name": "mcp_basic_slack_agent",
+      "status": "analyzed",
+      "available_tools": [
+        "slack",
+        "fetch",
+        "filesystem"
+      ],
+      "tool_usage_stats": {
+        "used_tools": [
+          "slack",
+          "fetch",
+          "filesystem"
+        ],
+        "tool_usage_count": {
+          "slack": 1,
+          "fetch": 1,
+          "filesystem": 1
+        },
+        "avg_processing_time": {
+          "slack": 0.5,
+          "fetch": 0.5,
+          "filesystem": 0.5
+        }
+      },
+      "basic_selection_accuracy": 0.3333333333333333,
+      "specific_selection_accuracy": 1.0,
+      "basic_test_cases": [
+        {
+          "query": "tell me was the last message in the general channel?",
+          "expected_tool": "slack",
+          "result": {
+            "selected_tool": "slack"
+          }
+        },
+        {
+          "query": "tell me was the last message in the general channel?",
+          "expected_tool": "fetch",
+          "result": {
+            "selected_tool": "slack"
+          }
+        },
+        {
+          "query": "tell me was the last message in the general channel?",
+          "expected_tool": "filesystem",
+          "result": {
+            "selected_tool": "slack"
+          }
+        }
+      ],
+      "specific_test_cases": [
+        {
+          "query": "What are the most recent conversations in the general channel?",
+          "expected_tool": "slack",
+          "selected_tool": "slack",
+          "description": "Slightly different way to ask for Slack messages",
+          "correct": true
+        },
+        {
+          "query": "Give me a summary of the discussion in the general channel from yesterday",
+          "expected_tool": "slack",
+          "selected_tool": "slack",
+          "description": "Slack request with time specification",
+          "correct": true
+        },
+        {
+          "query": "Has anyone mentioned 'meeting' in the general channel recently?",
+          "expected_tool": "slack",
+          "selected_tool": "slack",
+          "description": "Slack request with keyword search",
+          "correct": true
+        }
+      ],
+      "recommendations": [
+        "Improve tool selection for basic queries (current accuracy: 0.33)"
+      ]
+    },
+    "mcp_researcher": {
+      "example_name": "mcp_researcher",
+      "status": "analyzed",
+      "available_tools": [
+        "brave",
+        "interpreter",
+        "fetch",
+        "filesystem"
+      ],
+      "tool_usage_stats": {
+        "used_tools": [
+          "brave",
+          "interpreter",
+          "fetch",
+          "filesystem"
+        ],
+        "tool_usage_count": {
+          "brave": 1,
+          "interpreter": 1,
+          "fetch": 1,
+          "filesystem": 1
+        },
+        "avg_processing_time": {
+          "brave": 0.5,
+          "interpreter": 0.5000002384185791,
+          "fetch": 0.5,
+          "filesystem": 0.5
+        }
+      },
+      "basic_selection_accuracy": 0.25,
+      "specific_selection_accuracy": 0.75,
+      "basic_test_cases": [
+        {
+          "query": "create an investment report for the company Eutelsat",
+          "expected_tool": "brave",
+          "result": {
+            "selected_tool": "brave"
+          }
+        },
+        {
+          "query": "create an investment report for the company Eutelsat",
+          "expected_tool": "interpreter",
+          "result": {
+            "selected_tool": "brave"
+          }
+        },
+        {
+          "query": "create an investment report for the company Eutelsat",
+          "expected_tool": "fetch",
+          "result": {
+            "selected_tool": "brave"
+          }
+        },
+        {
+          "query": "create an investment report for the company Eutelsat",
+          "expected_tool": "filesystem",
+          "result": {
+            "selected_tool": "brave"
+          }
+        }
+      ],
+      "specific_test_cases": [
+        {
+          "query": "Research Eutelsat's financial performance over the last fiscal year and create a chart",
+          "expected_tool": "brave",
+          "selected_tool": "brave",
+          "description": "Research with visualization requirement",
+          "correct": true
+        },
+        {
+          "query": "Gather data about Eutelsat's market position compared to competitors and analyze using Python",
+          "expected_tool": "interpreter",
+          "selected_tool": "brave",
+          "description": "Research with explicit Python requirement",
+          "correct": false
+        },
+        {
+          "query": "Find recent news about Eutelsat's satellite launches and create a timeline",
+          "expected_tool": "brave",
+          "selected_tool": "brave",
+          "description": "Research with timeline creation request",
+          "correct": true
+        },
+        {
+          "query": "Calculate Eutelsat's revenue growth rate based on publicly available financial data",
+          "expected_tool": "interpreter",
+          "selected_tool": "interpreter",
+          "description": "Financial calculation requiring Python",
+          "correct": true
+        }
+      ],
+      "recommendations": [
+        "Improve tool selection for basic queries (current accuracy: 0.25)",
+        "Improve handling of 'Research with explicit Python requirement' queries - expected 'interpreter' but got 'brave'"
+      ]
+    }
+  }
+}

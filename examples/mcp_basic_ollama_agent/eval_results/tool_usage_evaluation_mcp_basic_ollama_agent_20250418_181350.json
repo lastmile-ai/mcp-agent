@@ -1,0 +1,38 @@
+{
+  "agent_name": "mcp_basic_ollama_agent",
+  "timestamp": "20250418_181350",
+  "available_tools": [
+    "fetch",
+    "filesystem"
+  ],
+  "used_tools": [
+    "fetch",
+    "filesystem"
+  ],
+  "tool_usage_count": {
+    "fetch": 1,
+    "filesystem": 1
+  },
+  "avg_processing_time": {
+    "fetch": 0.5000002384185791,
+    "filesystem": 0.5
+  },
+  "parameter_errors": {},
+  "selection_accuracy": 0.5,
+  "test_cases": [
+    {
+      "query": "output the first 2 paragraphs of https://modelcontextprotocol.io/introduction",
+      "expected_tool": "fetch",
+      "result": {
+        "selected_tool": "fetch"
+      }
+    },
+    {
+      "query": "output the first 2 paragraphs of https://modelcontextprotocol.io/introduction",
+      "expected_tool": "filesystem",
+      "result": {
+        "selected_tool": "fetch"
+      }
+    }
+  ]
+}

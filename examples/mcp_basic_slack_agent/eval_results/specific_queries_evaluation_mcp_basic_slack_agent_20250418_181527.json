@@ -1,0 +1,33 @@
+{
+  "agent_name": "mcp_basic_slack_agent",
+  "timestamp": "20250418_181527",
+  "available_tools": [
+    "slack",
+    "fetch",
+    "filesystem"
+  ],
+  "selection_accuracy": 1.0,
+  "test_cases": [
+    {
+      "query": "What are the most recent conversations in the general channel?",
+      "expected_tool": "slack",
+      "selected_tool": "slack",
+      "description": "Slightly different way to ask for Slack messages",
+      "correct": true
+    },
+    {
+      "query": "Give me a summary of the discussion in the general channel from yesterday",
+      "expected_tool": "slack",
+      "selected_tool": "slack",
+      "description": "Slack request with time specification",
+      "correct": true
+    },
+    {
+      "query": "Has anyone mentioned 'meeting' in the general channel recently?",
+      "expected_tool": "slack",
+      "selected_tool": "slack",
+      "description": "Slack request with keyword search",
+      "correct": true
+    }
+  ]
+}

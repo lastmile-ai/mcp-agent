@@ -1,0 +1,19 @@
+{
+  "task_id": "flight_change",
+  "task_name": "Flight Change Request",
+  "difficulty": "medium",
+  "timestamps": [
+    1744345351.7402008,
+    1744345352.5642354
+  ],
+  "progress_rates": [
+    20.0
+  ],
+  "subgoals": [
+    "greet_customer",
+    "identify_request",
+    "request_booking_info",
+    "explain_policy",
+    "provide_options"
+  ]
+}

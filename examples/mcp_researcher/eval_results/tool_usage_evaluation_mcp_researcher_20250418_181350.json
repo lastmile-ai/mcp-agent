@@ -1,0 +1,60 @@
+{
+  "agent_name": "mcp_researcher",
+  "timestamp": "20250418_181350",
+  "available_tools": [
+    "brave",
+    "interpreter",
+    "fetch",
+    "filesystem"
+  ],
+  "used_tools": [
+    "brave",
+    "interpreter",
+    "fetch",
+    "filesystem"
+  ],
+  "tool_usage_count": {
+    "brave": 1,
+    "interpreter": 1,
+    "fetch": 1,
+    "filesystem": 1
+  },
+  "avg_processing_time": {
+    "brave": 0.5,
+    "interpreter": 0.5000002384185791,
+    "fetch": 0.5,
+    "filesystem": 0.5
+  },
+  "parameter_errors": {},
+  "selection_accuracy": 0.25,
+  "test_cases": [
+    {
+      "query": "create an investment report for the company Eutelsat",
+      "expected_tool": "brave",
+      "result": {
+        "selected_tool": "brave"
+      }
+    },
+    {
+      "query": "create an investment report for the company Eutelsat",
+      "expected_tool": "interpreter",
+      "result": {
+        "selected_tool": "brave"
+      }
+    },
+    {
+      "query": "create an investment report for the company Eutelsat",
+      "expected_tool": "fetch",
+      "result": {
+        "selected_tool": "brave"
+      }
+    },
+    {
+      "query": "create an investment report for the company Eutelsat",
+      "expected_tool": "filesystem",
+      "result": {
+        "selected_tool": "brave"
+      }
+    }
+  ]
+}

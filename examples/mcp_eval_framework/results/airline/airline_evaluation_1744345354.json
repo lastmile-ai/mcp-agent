@@ -1,0 +1,60 @@
+{
+  "scenario": "airline",
+  "tasks": {
+    "flight_change": {
+      "name": "Flight Change Request",
+      "difficulty": "medium",
+      "progress_trajectory": [
+        20.0
+      ],
+      "completion_time": 0.8240346908569336,
+      "subgoals_matched": 1,
+      "total_subgoals": 5,
+      "subgoal_match_rate": 20.0,
+      "is_completed": true,
+      "turns_taken": 1
+    },
+    "baggage_policy": {
+      "name": "Baggage Policy Information",
+      "difficulty": "easy",
+      "progress_trajectory": [
+        40.0
+      ],
+      "completion_time": 1.1904001235961914,
+      "subgoals_matched": 2,
+      "total_subgoals": 5,
+      "subgoal_match_rate": 40.0,
+      "is_completed": true,
+      "turns_taken": 1
+    },
+    "delay_compensation": {
+      "name": "Flight Delay Compensation",
+      "difficulty": "hard",
+      "progress_trajectory": [
+        33.33333333333333
+      ],
+      "completion_time": 0.9192075729370117,
+      "subgoals_matched": 2,
+      "total_subgoals": 6,
+      "subgoal_match_rate": 33.33333333333333,
+      "is_completed": true,
+      "turns_taken": 1
+    }
+  },
+  "overall": {
+    "total_tasks": 3,
+    "tasks_completed": 3,
+    "completion_rate": 100.0,
+    "difficulty_breakdown": {
+      "TaskDifficulty.EASY": 100.0,
+      "TaskDifficulty.MEDIUM": 100.0,
+      "TaskDifficulty.HARD": 100.0
+    },
+    "average_subgoal_match_rate": 31.11111111111111,
+    "turn_efficiency": {
+      "flight_change": 100.0,
+      "baggage_policy": 100.0,
+      "delay_compensation": 100.0
+    }
+  }
+}

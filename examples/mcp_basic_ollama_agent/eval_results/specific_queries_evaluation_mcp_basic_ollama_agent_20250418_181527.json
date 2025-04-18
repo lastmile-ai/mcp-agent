@@ -1,0 +1,25 @@
+{
+  "agent_name": "mcp_basic_ollama_agent",
+  "timestamp": "20250418_181527",
+  "available_tools": [
+    "fetch",
+    "filesystem"
+  ],
+  "selection_accuracy": 1.0,
+  "test_cases": [
+    {
+      "query": "Can you fetch and tell me about the key features of the Model Context Protocol from their website?",
+      "expected_tool": "fetch",
+      "selected_tool": "fetch",
+      "description": "Web content with specific information extraction",
+      "correct": true
+    },
+    {
+      "query": "Read through the MCP documentation online and explain how it works",
+      "expected_tool": "fetch",
+      "selected_tool": "fetch",
+      "description": "Web content processing with explanation request",
+      "correct": true
+    }
+  ]
+}

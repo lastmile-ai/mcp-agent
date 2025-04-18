@@ -1,0 +1,8 @@
+name: "mcp_eval_framework"
+
+logger:
+  level: "info"
+  
+openai:
+  model: "gpt-4"
+  temperature: 0.2

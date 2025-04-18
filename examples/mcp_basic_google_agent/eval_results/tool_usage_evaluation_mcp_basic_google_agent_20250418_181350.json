@@ -1,0 +1,27 @@
+{
+  "agent_name": "mcp_basic_google_agent",
+  "timestamp": "20250418_181350",
+  "available_tools": [
+    "fetch"
+  ],
+  "used_tools": [
+    "fetch"
+  ],
+  "tool_usage_count": {
+    "fetch": 1
+  },
+  "avg_processing_time": {
+    "fetch": 0.5000002384185791
+  },
+  "parameter_errors": {},
+  "selection_accuracy": 1.0,
+  "test_cases": [
+    {
+      "query": "output the first 2 paragraphs of https://modelcontextprotocol.io/introduction",
+      "expected_tool": "fetch",
+      "result": {
+        "selected_tool": "fetch"
+      }
+    }
+  ]
+}

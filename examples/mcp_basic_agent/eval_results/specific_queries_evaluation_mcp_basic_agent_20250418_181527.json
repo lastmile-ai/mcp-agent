@@ -1,0 +1,32 @@
+{
+  "agent_name": "mcp_basic_agent",
+  "timestamp": "20250418_181527",
+  "available_tools": [
+    "fetch",
+    "filesystem"
+  ],
+  "selection_accuracy": 1.0,
+  "test_cases": [
+    {
+      "query": "Can you retrieve and summarize the introduction section from https://modelcontextprotocol.io/introduction",
+      "expected_tool": "fetch",
+      "selected_tool": "fetch",
+      "description": "Fetch with summarization request",
+      "correct": true
+    },
+    {
+      "query": "I need to read the content from https://modelcontextprotocol.io/introduction and extract the key points",
+      "expected_tool": "fetch",
+      "selected_tool": "fetch",
+      "description": "Fetch with extraction request",
+      "correct": true
+    },
+    {
+      "query": "Find information about MCP protocol online and save it to a file",
+      "expected_tool": "fetch",
+      "selected_tool": "fetch",
+      "description": "Multi-step operation requiring multiple tools",
+      "correct": true
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+execution_engine: asyncio
+logger:
+  type: file
+  level: debug
+mcp:
+  servers: {}

@@ -1,0 +1,27 @@
+{
+  "agent_name": "decorator",
+  "timestamp": "20250418_161707",
+  "available_tools": [
+    "mcp_root"
+  ],
+  "used_tools": [
+    "mcp_root"
+  ],
+  "tool_usage_count": {
+    "mcp_root": 1
+  },
+  "avg_processing_time": {
+    "mcp_root": 0.5
+  },
+  "parameter_errors": {},
+  "selection_accuracy": 1.0,
+  "test_cases": [
+    {
+      "query": "assist me with decorator",
+      "expected_tool": "mcp_root",
+      "result": {
+        "selected_tool": "mcp_root"
+      }
+    }
+  ]
+}

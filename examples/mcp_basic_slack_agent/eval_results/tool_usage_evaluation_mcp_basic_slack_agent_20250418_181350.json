@@ -1,0 +1,49 @@
+{
+  "agent_name": "mcp_basic_slack_agent",
+  "timestamp": "20250418_181350",
+  "available_tools": [
+    "slack",
+    "fetch",
+    "filesystem"
+  ],
+  "used_tools": [
+    "slack",
+    "fetch",
+    "filesystem"
+  ],
+  "tool_usage_count": {
+    "slack": 1,
+    "fetch": 1,
+    "filesystem": 1
+  },
+  "avg_processing_time": {
+    "slack": 0.5,
+    "fetch": 0.5,
+    "filesystem": 0.5
+  },
+  "parameter_errors": {},
+  "selection_accuracy": 0.3333333333333333,
+  "test_cases": [
+    {
+      "query": "tell me was the last message in the general channel?",
+      "expected_tool": "slack",
+      "result": {
+        "selected_tool": "slack"
+      }
+    },
+    {
+      "query": "tell me was the last message in the general channel?",
+      "expected_tool": "fetch",
+      "result": {
+        "selected_tool": "slack"
+      }
+    },
+    {
+      "query": "tell me was the last message in the general channel?",
+      "expected_tool": "filesystem",
+      "result": {
+        "selected_tool": "slack"
+      }
+    }
+  ]
+}

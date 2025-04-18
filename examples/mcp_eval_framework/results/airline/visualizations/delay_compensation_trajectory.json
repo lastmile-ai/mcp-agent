@@ -1,0 +1,20 @@
+{
+  "task_id": "delay_compensation",
+  "task_name": "Flight Delay Compensation",
+  "difficulty": "hard",
+  "timestamps": [
+    1744345353.7547188,
+    1744345354.6739264
+  ],
+  "progress_rates": [
+    33.33333333333333
+  ],
+  "subgoals": [
+    "express_empathy",
+    "clarify_delay_info",
+    "explain_compensation_policy",
+    "explain_process",
+    "provide_timeframe",
+    "offer_alternatives"
+  ]
+}

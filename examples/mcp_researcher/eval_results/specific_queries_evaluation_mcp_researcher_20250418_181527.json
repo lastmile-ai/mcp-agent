@@ -1,0 +1,41 @@
+{
+  "agent_name": "mcp_researcher",
+  "timestamp": "20250418_181527",
+  "available_tools": [
+    "brave",
+    "interpreter",
+    "fetch",
+    "filesystem"
+  ],
+  "selection_accuracy": 0.75,
+  "test_cases": [
+    {
+      "query": "Research Eutelsat's financial performance over the last fiscal year and create a chart",
+      "expected_tool": "brave",
+      "selected_tool": "brave",
+      "description": "Research with visualization requirement",
+      "correct": true
+    },
+    {
+      "query": "Gather data about Eutelsat's market position compared to competitors and analyze using Python",
+      "expected_tool": "interpreter",
+      "selected_tool": "brave",
+      "description": "Research with explicit Python requirement",
+      "correct": false
+    },
+    {
+      "query": "Find recent news about Eutelsat's satellite launches and create a timeline",
+      "expected_tool": "brave",
+      "selected_tool": "brave",
+      "description": "Research with timeline creation request",
+      "correct": true
+    },
+    {
+      "query": "Calculate Eutelsat's revenue growth rate based on publicly available financial data",
+      "expected_tool": "interpreter",
+      "selected_tool": "interpreter",
+      "description": "Financial calculation requiring Python",
+      "correct": true
+    }
+  ]
+}

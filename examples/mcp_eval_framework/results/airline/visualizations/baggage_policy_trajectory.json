@@ -1,0 +1,19 @@
+{
+  "task_id": "baggage_policy",
+  "task_name": "Baggage Policy Information",
+  "difficulty": "easy",
+  "timestamps": [
+    1744345352.5642793,
+    1744345353.7546794
+  ],
+  "progress_rates": [
+    40.0
+  ],
+  "subgoals": [
+    "acknowledge_query",
+    "specify_international",
+    "explain_weight_limits",
+    "explain_dimensions",
+    "explain_fees"
+  ]
+}

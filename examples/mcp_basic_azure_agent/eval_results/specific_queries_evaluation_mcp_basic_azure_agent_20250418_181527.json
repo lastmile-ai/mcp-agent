@@ -1,0 +1,24 @@
+{
+  "agent_name": "mcp_basic_azure_agent",
+  "timestamp": "20250418_181527",
+  "available_tools": [
+    "fetch"
+  ],
+  "selection_accuracy": 1.0,
+  "test_cases": [
+    {
+      "query": "Please retrieve information about the first version of MCP from their website",
+      "expected_tool": "fetch",
+      "selected_tool": "fetch",
+      "description": "Information retrieval with specific version",
+      "correct": true
+    },
+    {
+      "query": "I need to understand how MCP differs from other protocols, can you get this from their site?",
+      "expected_tool": "fetch",
+      "selected_tool": "fetch",
+      "description": "Comparative information retrieval",
+      "correct": true
+    }
+  ]
+}
