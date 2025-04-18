@@ -1,0 +1,19 @@
+execution_engine: asyncio
+logger:
+  transports: [console, file]
+  level: info
+  show_progress: true
+  path: "logs/browser_agent.jsonl"
+  path_settings:
+    path_pattern: "logs/browser_agent_{unique_id}.jsonl"
+    unique_id: "timestamp"
+    timestamp_format: "%Y%m%d_%H%M%S"
+
+mcp:
+  servers:
+    puppeteer:
+      command: "npx"
+      args: [
+        "-y", 
+        "@modelcontextprotocol/server-puppeteer"
+      ]
