@@ -31,6 +31,9 @@ if TYPE_CHECKING:
     from mcp_agent.context import Context
     from mcp_agent.logging.logger import Logger
 
+MemoryItemT = TypeVar("MemoryItemT")
+"""A type representing a memory item."""
+
 MessageParamT = TypeVar("MessageParamT")
 """A type representing an input message to an LLM."""
 
@@ -40,12 +43,15 @@ MessageT = TypeVar("MessageT")
 ModelT = TypeVar("ModelT")
 """A type representing a structured output message from an LLM."""
 
+ResponseT = TypeVar("ResponseT")
+"""A type representing a response from an LLM."""
+
 # TODO: saqadri - SamplingMessage is fairly limiting - consider extending
 MCPMessageParam = SamplingMessage
 MCPMessageResult = CreateMessageResult
 
 
-class Memory(Protocol, Generic[MessageParamT]):
+class Memory(Protocol, Generic[MemoryItemT]):
     """
     Simple memory management for storing past interactions in-memory.
     """
@@ -54,35 +60,35 @@ class Memory(Protocol, Generic[MessageParamT]):
 
     def __init__(self): ...
 
-    def extend(self, messages: List[MessageParamT]) -> None: ...
+    def extend(self, items: List[MemoryItemT]) -> None: ...
 
-    def set(self, messages: List[MessageParamT]) -> None: ...
+    def set(self, items: List[MemoryItemT]) -> None: ...
 
-    def append(self, message: MessageParamT) -> None: ...
+    def append(self, item: MemoryItemT) -> None: ...
 
-    def get(self) -> List[MessageParamT]: ...
+    def get(self) -> List[MemoryItemT]: ...
 
     def clear(self) -> None: ...
 
 
-class SimpleMemory(Memory, Generic[MessageParamT]):
+class SimpleMemory(Memory, Generic[MemoryItemT]):
     """
     Simple memory management for storing past interactions in-memory.
     """
 
     def __init__(self):
-        self.history: List[MessageParamT] = []
+        self.history: List[MemoryItemT] = []
 
-    def extend(self, messages: List[MessageParamT]):
-        self.history.extend(messages)
+    def extend(self, items: List[MemoryItemT]):
+        self.history.extend(items)
 
-    def set(self, messages: List[MessageParamT]):
-        self.history = messages.copy()
+    def set(self, items: List[MemoryItemT]):
+        self.history = items.copy()
 
-    def append(self, message: MessageParamT):
-        self.history.append(message)
+    def append(self, item: MemoryItemT):
+        self.history.append(item)
 
-    def get(self) -> List[MessageParamT]:
+    def get(self) -> List[MemoryItemT]:
         return self.history
 
     def clear(self):
@@ -131,7 +137,7 @@ class RequestParams(CreateMessageRequestParams):
     """
 
 
-class AugmentedLLMProtocol(Protocol, Generic[MessageParamT, MessageT]):
+class AugmentedLLMProtocol(Protocol, Generic[MessageParamT, MessageT, ResponseT]):
     """Protocol defining the interface for augmented LLMs"""
 
     async def generate(
@@ -183,7 +189,9 @@ class ProviderToMCPConverter(Protocol, Generic[MessageParamT, MessageT]):
         """Convert an MCP tool result to an LLM input type"""
 
 
-class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, MessageT]):
+class AugmentedLLM(
+    ContextDependent, AugmentedLLMProtocol[MessageParamT, MessageT, ResponseT]
+):
     """
     The basic building block of agentic systems is an LLM enhanced with augmentations
     such as retrieval, tools, and memory provided from a collection of MCP servers.
@@ -223,6 +231,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
             agent.instruction if agent and isinstance(agent.instruction, str) else None
         )
         self.history: Memory[MessageParamT] = SimpleMemory[MessageParamT]()
+        self.response_history: Memory[ResponseT] = SimpleMemory[ResponseT]()
         self.default_request_params = default_request_params
         self.model_preferences = (
             self.default_request_params.modelPreferences

@@ -2,6 +2,7 @@ import json
 from typing import Iterable, List, Optional, Type, Union
 from azure.ai.inference import ChatCompletionsClient
 from azure.ai.inference.models import (
+    ChatCompletions,
     ChatResponseMessage,
     UserMessage,
     AssistantMessage,
@@ -57,7 +58,7 @@ class ResponseMessage(ChatResponseMessage):
     content: Optional[str]
 
 
-class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
+class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage, ChatCompletions]):
     """
     The basic building block of agentic systems is an LLM enhanced with augmentations
     such as retrieval, tools, and memory provided from a collection of MCP servers.
@@ -164,6 +165,8 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
             executor_result = await self.executor.execute(
                 self.azure_client.complete, **arguments
             )
+
+            self.response_history.extend(executor_result)
 
             response = executor_result[0]
 

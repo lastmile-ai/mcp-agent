@@ -62,7 +62,7 @@ MessageParamContent = Union[
 ]
 
 
-class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
+class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message, Message]):
     """
     The basic building block of agentic systems is an LLM enhanced with augmentations
     such as retrieval, tools, and memory provided from a collection of MCP servers.
@@ -169,6 +169,8 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             executor_result = await self.executor.execute(
                 anthropic.messages.create, **arguments
             )
+
+            self.response_history.extend(executor_result)
 
             response = executor_result[0]
 
