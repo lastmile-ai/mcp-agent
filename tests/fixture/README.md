@@ -12,8 +12,9 @@ This directory contains test fixtures used for verifying event processing and di
 If you need to update these fixtures (e.g., when changing event processing logic), you can:
 
 1. Run an example to generate a new log file:
+
    ```bash
-   cd examples/mcp_basic_agent
+   cd examples/basic/mcp_basic_agent
    rm -f mcp-agent.jsonl  # Start with a clean log file
    uv run python main.py "What is the timestamp in different timezones?"
    cp mcp-agent.jsonl ../../tests/fixture/mcp_basic_agent_20250131_205604.jsonl

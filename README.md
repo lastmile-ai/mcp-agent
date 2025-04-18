@@ -60,12 +60,12 @@ pip install mcp-agent
 > To run an example, clone this repo, then:
 >
 > ```bash
-> cd examples/mcp_basic_agent # Or any other example
+> cd examples/basic/mcp_basic_agent # Or any other example
 > cp mcp_agent.secrets.yaml.example mcp_agent.secrets.yaml # Update API keys
 > uv run main.py
 > ```
 
-Here is a basic "finder" agent that uses the fetch and filesystem servers to look up a file, read a blog and write a tweet. [Example link](./examples/mcp_basic_agent/):
+Here is a basic "finder" agent that uses the fetch and filesystem servers to look up a file, read a blog and write a tweet. [Example link](./examples/basic/mcp_basic_agent/):
 
 <details open>
 <summary>finder_agent.py</summary>
@@ -128,9 +128,9 @@ if __name__ == "__main__":
 ```yaml
 execution_engine: asyncio
 logger:
-  transports: [console]  # You can use [file, console] for both
+  transports: [console] # You can use [file, console] for both
   level: debug
-  path: "logs/mcp-agent.jsonl"  # Used for file transport
+  path: "logs/mcp-agent.jsonl" # Used for file transport
   # For dynamic log filenames:
   # path_settings:
   #   path_pattern: "logs/mcp-agent-{unique_id}.jsonl"
@@ -223,7 +223,7 @@ then an aggregator summarizes their findings into a final response.
 - dynamically defines agents to do the job
 - uses the appropriate workflow to orchestrate those agents (in this case the Parallel workflow)
 
-**Link to code**: [examples/mcp_agent_server](./examples/mcp_agent_server)
+**Link to code**: [examples/basic/mcp_agent_server](./examples/basic/mcp_agent_server)
 
 > [!NOTE]
 > Huge thanks to [Jerron Lim (@StreetLamb)](https://github.com/StreetLamb)
@@ -252,7 +252,7 @@ This app uses a Qdrant vector database (via an MCP server) to do Q&A over a corp
 
 https://github.com/user-attachments/assets/f4dcd227-cae9-4a59-aa9e-0eceeb4acaf4
 
-**Link to code**: [examples/streamlit_mcp_rag_agent](./examples/streamlit_mcp_rag_agent/)
+**Link to code**: [examples/interactive_demos/streamlit_mcp_rag_agent](./examples/interactive_demos/streamlit_mcp_rag_agent/)
 
 > [!NOTE]
 > Huge thanks to [Jerron Lim (@StreetLamb)](https://github.com/StreetLamb)
@@ -265,7 +265,7 @@ Here's the "file finder" agent from [Quickstart](#quickstart) implemented in Mar
 
 <img src="https://github.com/user-attachments/assets/139a95a5-e3ac-4ea7-9c8f-bad6577e8597" width="400"/>
 
-**Link to code**: [examples/marimo_mcp_basic_agent](./examples/marimo_mcp_basic_agent/)
+**Link to code**: [examples/interactive_demos/marimo_mcp_basic_agent](./examples/interactive_demos/marimo_mcp_basic_agent/)
 
 > [!NOTE]
 > Huge thanks to [Akshay Agrawal (@akshayka)](https://github.com/akshayka)
@@ -281,7 +281,7 @@ This example demonstrates a multi-agent setup for handling different customer se
 
 https://github.com/user-attachments/assets/b314d75d-7945-4de6-965b-7f21eb14a8bd
 
-**Link to code**: [examples/workflow_swarm](./examples/workflow_swarm/)
+**Link to code**: [examples/workflows/workflow_swarm](./examples/workflows/workflow_swarm/)
 
 ## Core Components
 
@@ -350,7 +350,7 @@ Fan-out tasks to multiple sub-agents and fan-in the results. Each subtask is an 
 
 > [!NOTE]
 >
-> **[Link to full example](examples/workflow_parallel/main.py)**
+> **[Link to full example](examples/workflows/workflow_parallel/main.py)**
 
 <details>
 <summary>Example</summary>
@@ -386,7 +386,7 @@ mcp-agent provides several router implementations, including:
 
 > [!NOTE]
 >
-> **[Link to full example](examples/workflow_router/main.py)**
+> **[Link to full example](examples/workflows/workflow_router/main.py)**
 
 <details>
 <summary>Example</summary>
@@ -429,7 +429,7 @@ One LLM (the “optimizer”) refines a response, another (the “evaluator”) 
 
 > [!NOTE]
 >
-> **[Link to full example](examples/workflow_evaluator_optimizer/main.py)**
+> **[Link to full example](examples/workflows/workflow_evaluator_optimizer/main.py)**
 
 <details>
 <summary>Example</summary>
@@ -460,7 +460,7 @@ The Orchestrator workflow automatically parallelizes steps that can be done in p
 
 > [!NOTE]
 >
-> **[Link to full example](examples/workflow_orchestrator_worker/main.py)**
+> **[Link to full example](examples/workflows/workflow_orchestrator_worker/main.py)**
 
 <details>
 <summary>Example</summary>
@@ -494,7 +494,7 @@ The mcp-agent Swarm pattern works seamlessly with MCP servers, and is exposed as
 
 > [!NOTE]
 >
-> **[Link to full example](examples/workflow_swarm/main.py)**
+> **[Link to full example](examples/workflows/workflow_swarm/main.py)**
 
 <details>
 <summary>Example</summary>
@@ -557,7 +557,7 @@ orchestrator = Orchestrator(
 <details>
 <summary>Example</summary>
 
-The [Swarm example](examples/workflow_swarm/main.py) shows this in action.
+The [Swarm example](examples/workflows/workflow_swarm/main.py) shows this in action.
 
 ```python
 from mcp_agent.human_input.handler import console_input_callback
@@ -586,7 +586,7 @@ lost_baggage = SwarmAgent(
 
 ### App Config
 
-Create an [`mcp_agent.config.yaml`](/schema/mcp-agent.config.schema.json) and a gitignored [`mcp_agent.secrets.yaml`](./examples/mcp_basic_agent/mcp_agent.secrets.yaml.example) to define MCP app configuration. This controls logging, execution, LLM provider APIs, and MCP server configuration.
+Create an [`mcp_agent.config.yaml`](/schema/mcp-agent.config.schema.json) and a gitignored [`mcp_agent.secrets.yaml`](./examples/basic/mcp_basic_agent/mcp_agent.secrets.yaml.example) to define MCP app configuration. This controls logging, execution, LLM provider APIs, and MCP server configuration.
 
 ### MCP server management
 
@@ -681,7 +681,7 @@ async with aggregator:
 
    # no namespacing -- first server in the aggregator exposing that tool wins
    read_file_result = await aggregator.call_tool(name="read_file", arguments={})
-````
+```
 
 </details>
 
@@ -732,7 +732,7 @@ Here's all the ways you can set up your mcp-agent application:
 
 #### MCP-Agent Server
 
-You can expose mcp-agent applications as MCP servers themselves (see [example](./examples/mcp_agent_server)), allowing MCP clients to interface with sophisticated AI workflows using the standard tools API of MCP servers. This is effectively a server-of-servers.
+You can expose mcp-agent applications as MCP servers themselves (see [example](./examples/basic/mcp_agent_server)), allowing MCP clients to interface with sophisticated AI workflows using the standard tools API of MCP servers. This is effectively a server-of-servers.
 
 #### MCP Client or Host
 

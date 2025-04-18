@@ -1,0 +1,29 @@
+$schema: ../../../schema/mcp-agent.config.schema.json
+
+execution_engine: asyncio
+logger:
+  type: console
+  level: debug
+  batch_size: 100
+  flush_interval: 2
+  max_queue_size: 2048
+  http_endpoint:
+  http_headers:
+  http_timeout: 5
+  progress_display: false
+
+mcp:
+  servers:
+    qdrant:
+      command: "uvx"
+      args: ["mcp-server-qdrant"]
+      env:
+        {
+          "QDRANT_URL": "http://localhost:6333",
+          "COLLECTION_NAME": "my_collection",
+          "EMBEDDING_MODEL": "BAAI/bge-small-en-v1.5",
+        }
+
+openai:
+  # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored
+  default_model: gpt-4o-mini

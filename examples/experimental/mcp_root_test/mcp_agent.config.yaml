@@ -1,0 +1,41 @@
+$schema: ../../../schema/mcp-agent.config.schema.json
+
+execution_engine: asyncio
+logger:
+  type: file
+  level: debug
+  path: "./mcp_root_test.jsonl"
+
+mcp:
+  servers:
+    root_test:
+      command: "uv"
+      args: ["run", "root_test_server.py"]
+      roots:
+        - uri: "file:///./test_data/"
+          name: "test_data"
+          server_uri_alias: "file:///mnt/data/"
+    interpreter:
+      command: "docker"
+      args:
+        [
+          "run",
+          "-i",
+          "--rm",
+          "--pull=always",
+          "-v",
+          "./test_data:/mnt/data/",
+          "ghcr.io/evalstate/mcp-py-repl:latest",
+        ]
+      roots:
+        - uri: "file://./test_data/"
+          name: "test_data"
+          server_uri_alias: "file:///mnt/data/"
+
+      # command: "uv"
+      # args: ["run", "/home/ssmith/source/mcp-python/src/mcp_python/server.py"]
+
+openai:
+  # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored
+  default_model: o3-mini
+  reasoning_effort: low

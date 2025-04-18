@@ -1,0 +1,39 @@
+$schema: ../../../schema/mcp-agent.config.schema.json
+
+execution_engine: asyncio
+logger:
+  type: file
+  level: info
+
+mcp:
+  servers:
+    brave:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-brave-search"]
+    interpreter:
+      command: "docker"
+      args:
+        [
+          "run",
+          "-i",
+          "--rm",
+          "--pull=always",
+          "-v",
+          "./agent_folder:/mnt/data/",
+          "ghcr.io/evalstate/mcp-py-repl:latest",
+        ]
+      roots:
+        - uri: "file://./agent_folder/"
+          name: "agent_folder"
+          server_uri_alias: "file:///mnt/data/"
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+    filesystem:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "./agent_folder/"]
+
+openai:
+  # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored
+  default_model: o3-mini
+  reasoning_effort: high

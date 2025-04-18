@@ -112,29 +112,42 @@ def list_examples():
         console.print("[red]No examples directory found[/]")
         raise typer.Exit(1)
 
-    examples = [
+    # Get top-level categories
+    categories = [
         d for d in examples_dir.iterdir() if d.is_dir() and not d.name.startswith(".")
     ]
 
-    if not examples:
-        console.print("No examples found")
+    if not categories:
+        console.print("No example categories found")
         return
 
-    console.print("\n[bold]Available examples:[/]")
-    for example in examples:
-        example_readme = example / "README.md"
-        description = ""
-        if example_readme.exists():
-            with open(file=example_readme, mode="r", encoding="utf-8") as f:
-                # Get first line of README as description
-                description = f.readline().strip("#").strip()
+    console.print("\n[bold]Available example categories:[/]")
+    for category in categories:
+        console.print(f"\n[bold cyan]{category.name}[/]")
+        
+        # List examples in this category
+        examples = [
+            d for d in category.iterdir() if d.is_dir() and not d.name.startswith(".")
+        ]
+        
+        if not examples:
+            console.print("  No examples in this category")
+            continue
+            
+        for example in examples:
+            example_readme = example / "README.md"
+            description = ""
+            if example_readme.exists():
+                with open(file=example_readme, mode="r", encoding="utf-8") as f:
+                    # Get first line of README as description
+                    description = f.readline().strip("#").strip()
 
-        console.print(f"• [cyan]{example.name}[/] - {description}")
+            console.print(f"  • [cyan]{example.name}[/] - {description}")
 
 
 @app.command()
 def run(
-    example_name: str = typer.Argument(..., help="Name of the example to run"),
+    example_path: str = typer.Argument(..., help="Path to the example (e.g., 'basic/mcp_basic_agent')"),
     use_local: bool = typer.Option(
         True, "--local", "-l", help="Use local version of mcp-agent"
     ),
@@ -148,11 +161,19 @@ def run(
 ):
     """Run a specific example."""
     examples_dir = Path("examples").resolve()
-    example_dir = (examples_dir / example_name).resolve()
     project_root = Path(__file__).resolve().parent.parent
-
+    
+    # Split path into category and example name
+    parts = example_path.replace("\\", "/").split("/")
+    if len(parts) != 2:
+        console.print(f"[red]Invalid example path format: '{example_path}'. Use 'category/example_name'[/]")
+        raise typer.Exit(1)
+        
+    category, example_name = parts
+    example_dir = (examples_dir / category / example_name).resolve()
+    
     if not example_dir.exists():
-        console.print(f"[red]Example '{example_name}' not found[/]")
+        console.print(f"[red]Example '{example_name}' not found in category '{category}'[/]")
         raise typer.Exit(1)
 
     # Clean if requested
@@ -231,21 +252,38 @@ def run(
 
 @app.command(name="clean")
 def clean_env(
-    example_name: str | None = typer.Argument(
-        None, help="Name of the example to clean, or all if not specified"
+    example_path: str | None = typer.Argument(
+        None, help="Path to the example to clean (e.g., 'basic/mcp_basic_agent'), or all if not specified"
     ),
 ):
     """Clean up virtual environments from examples."""
     examples_dir = Path("examples")
 
-    if example_name:
-        dirs = [examples_dir / example_name]
+    if example_path:
+        # Split path into category and example name
+        parts = example_path.replace("\\", "/").split("/")
+        if len(parts) != 2:
+            console.print(f"[red]Invalid example path format: '{example_path}'. Use 'category/example_name'[/]")
+            raise typer.Exit(1)
+            
+        category, example_name = parts
+        example_dir = examples_dir / category / example_name
+        
+        if not example_dir.exists():
+            console.print(f"[red]Example '{example_name}' not found in category '{category}'[/]")
+            raise typer.Exit(1)
+            
+        dirs = [example_dir]
     else:
-        dirs = [
-            d
-            for d in examples_dir.iterdir()
-            if d.is_dir() and not d.name.startswith(".")
-        ]
+        # Clean all examples in all categories
+        dirs = []
+        for category_dir in examples_dir.iterdir():
+            if not category_dir.is_dir() or category_dir.name.startswith("."):
+                continue
+                
+            for example_dir in category_dir.iterdir():
+                if example_dir.is_dir() and not example_dir.name.startswith("."):
+                    dirs.append(example_dir)
 
     for d in dirs:
         clean_venv(d)
