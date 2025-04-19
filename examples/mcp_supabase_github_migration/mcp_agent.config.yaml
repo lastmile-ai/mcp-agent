@@ -1,0 +1,21 @@
+execution_engine: asyncio
+logger:
+  transports: [console, file]
+  level: debug
+  show_progress: true
+  path: "logs/github-supabase.jsonl"
+  path_settings:
+    path_pattern: "logs/github-supabase-{unique_id}.jsonl"
+    unique_id: "timestamp"
+    timestamp_format: "%Y%m%d_%H%M%S"
+
+mcp:
+  servers:
+    github:
+      command: "docker"
+      args: ["run", "-i", "--rm", "-e", "GITHUB_PERSONAL_ACCESS_TOKEN", "ghcr.io/github/github-mcp-server"]
+      description: "Access GitHub API operations"
+    supabase:
+      command: "npx"
+      args: ["-y", "@supabase/mcp-server-supabase@latest"]
+      description: "Access Supabase API operations"
