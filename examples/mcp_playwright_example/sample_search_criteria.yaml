@@ -1,0 +1,16 @@
+# Sample search criteria for hiring a Senior Backend Developer
+search_criteria:
+  title: "Senior Backend Developer"
+  location: "Remote OR New York, NY"
+  skills:
+    - "Python"
+    - "Django"
+    - "REST APIs"
+    - "Microservices"
+  experience_years: "5+"
+  keywords:
+    - "scalable"
+    - "performance optimization"
+    - "cloud"
+slack_channel: "#recruiting"
+max_results: 10
