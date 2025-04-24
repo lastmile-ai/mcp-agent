@@ -12,7 +12,6 @@ from typing import Optional, Union, Any
 import typer
 
 from ..config import settings
-from ..secrets.constants import SecretsMode
 from ..secrets.processor import process_config_secrets
 from ..ux import print_info, print_success, print_warning, print_error
 
@@ -44,11 +43,6 @@ def deploy_config(
         dir_okay=False,
         resolve_path=True,
     ),
-    secrets_mode: Optional[str] = typer.Option(
-        None,
-        "--secrets-mode",
-        help="Mode for handling secrets in configuration files (direct_vault or api).",
-    ),
     output_file: Optional[Path] = typer.Option(
         None,
         "--output-file",
@@ -65,16 +59,6 @@ def deploy_config(
         False,
         "--dry-run",
         help="Validate the deployment but don't actually deploy.",
-    ),
-    vault_addr: Optional[str] = typer.Option(
-        None,
-        "--vault-addr",
-        help="Vault server address. Overrides VAULT_ADDR environment variable.",
-    ),
-    vault_token: Optional[str] = typer.Option(
-        None,
-        "--vault-token",
-        help="Vault token. Overrides VAULT_TOKEN environment variable.",
     ),
     api_url: Optional[str] = typer.Option(
         None,
@@ -95,27 +79,17 @@ def deploy_config(
     
     Args:
         config_file: Path to the configuration file
-        secrets_mode: The secrets handling mode (direct_vault or api)
         output_file: Path to write the transformed configuration file
         no_secrets: Skip secrets processing
         dry_run: Validate the deployment but don't actually deploy
-        vault_addr: Vault server address
-        vault_token: Vault token
         api_url: Secrets API URL
         api_token: Secrets API token
         
     Returns:
         Path to the processed configuration file
     """
-    # Get effective secrets mode from param or env var
-    effective_secrets_mode = (
-        secrets_mode 
-        or settings.SECRETS_MODE  # Use uppercase for backward compatibility
-    )
-    
     # Display deployment info
     print_info(f"Starting deployment with configuration: {config_file}")
-    print_info(f"Secrets Mode: {effective_secrets_mode}")
     print_info(f"Dry Run: {dry_run}")
     
     # Track the path to the configuration to use for deployment
@@ -124,31 +98,18 @@ def deploy_config(
     try:
         # Validate secrets-related environment variables or parameters
         if not no_secrets:
-            effective_vault_addr = vault_addr or settings.VAULT_ADDR
-            effective_vault_token = vault_token or settings.VAULT_TOKEN
             effective_api_url = api_url or settings.SECRETS_API_URL
             effective_api_token = api_token or settings.SECRETS_API_TOKEN
             
-            if effective_secrets_mode == SecretsMode.DIRECT_VAULT:
-                # Check for required Vault credentials
-                if not effective_vault_addr:
-                    print_error("VAULT_ADDR environment variable or --vault-addr option must be set.")
-                    raise typer.Exit(1)
-                if not effective_vault_token:
-                    print_error("VAULT_TOKEN environment variable or --vault-token option must be set.")
-                    raise typer.Exit(1)
-                
-                print_info(f"Using Vault at {effective_vault_addr}")
-            elif effective_secrets_mode == SecretsMode.API:
-                # Check for required Secrets API credentials
-                if not effective_api_url:
-                    print_error("MCP_SECRETS_API_URL environment variable or --api-url option must be set.")
-                    raise typer.Exit(1)
-                if not effective_api_token:
-                    print_error("MCP_SECRETS_API_TOKEN environment variable or --api-token option must be set.")
-                    raise typer.Exit(1)
-                
-                print_info(f"Using Secrets API at {effective_api_url}")
+            # Check for required Secrets API credentials
+            if not effective_api_url:
+                print_error("MCP_SECRETS_API_URL environment variable or --api-url option must be set.")
+                raise typer.Exit(1)
+            if not effective_api_token:
+                print_error("MCP_SECRETS_API_TOKEN environment variable or --api-token option must be set.")
+                raise typer.Exit(1)
+            
+            print_info(f"Using Secrets API at {effective_api_url}")
         
         # Process configuration
         if not no_secrets:
@@ -160,11 +121,8 @@ def deploy_config(
                 process_config_secrets(
                     config_path=config_file,
                     output_path=transformed_config_path,
-                    secrets_mode=effective_secrets_mode,
-                    vault_addr=effective_vault_addr,
-                    vault_token=effective_vault_token,
                     api_url=effective_api_url,
-                    api_token=effective_api_token,
+                    api_token=effective_api_token
                 )
             )
             

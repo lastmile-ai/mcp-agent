@@ -12,17 +12,18 @@ from mcp_agent_cloud.secrets.processor import (
     DeveloperSecret,
     UserSecret
 )
-from mcp_agent_cloud.secrets.constants import SecretType, SecretsMode
+from mcp_agent_cloud.secrets.constants import SecretType
+from mcp_agent_cloud.secrets.api_client import SecretsClient
 
 
 @pytest.fixture
 def mock_secrets_client():
-    """Create a mock SecretsApiClientInterface."""
-    client = AsyncMock()
+    """Create a mock SecretsClient."""
+    client = AsyncMock(spec=SecretsClient)
     
     # Configure create_secret to return different handles for dev/user secrets
-    async def mock_create_secret(name, type_, value=None):
-        if type_ == SecretType.DEVELOPER:
+    async def mock_create_secret(name, secret_type, value=None):
+        if secret_type == SecretType.DEVELOPER:
             return f"mcpac_dev_{name.replace('.', '_')}"
         else:
             return f"mcpac_usr_{name.replace('.', '_')}"
@@ -54,7 +55,7 @@ async def test_transform_config_recursive_developer_secret(mock_secrets_client):
     # Verify client was called correctly
     mock_secrets_client.create_secret.assert_called_once_with(
         name="server.bedrock.api_key",
-        type_=SecretType.DEVELOPER,
+        secret_type=SecretType.DEVELOPER,
         value="test-api-key"
     )
 
@@ -78,7 +79,7 @@ async def test_transform_config_recursive_user_secret(mock_secrets_client):
     # Verify client was called correctly
     mock_secrets_client.create_secret.assert_called_once_with(
         name="server.bedrock.user_access_key",
-        type_=SecretType.USER,
+        secret_type=SecretType.USER,
         value=None
     )
 
@@ -167,6 +168,56 @@ async def test_env_var_resolution(mock_secrets_client, monkeypatch):
     # Verify client was called correctly with resolved value
     mock_secrets_client.create_secret.assert_called_once_with(
         name="server.bedrock.api_key",
-        type_=SecretType.DEVELOPER,
+        secret_type=SecretType.DEVELOPER,
         value="env-var-value"
     )
+
+
+@pytest.mark.asyncio
+async def test_process_config_secrets(mock_secrets_client, tmp_path, monkeypatch):
+    """Test processing a config file."""
+    # Create a temporary config file
+    config_path = tmp_path / "config.yaml"
+    config_str = """
+server:
+  bedrock:
+    default_model: anthropic.claude-3-haiku-20240307-v1:0
+    api_key: !developer_secret test-api-key
+    user_access_key: !user_secret
+"""
+    config_path.write_text(config_str)
+    
+    # Create a temporary output file
+    output_path = tmp_path / "transformed_config.yaml"
+    
+    # Mock the settings
+    api_url = "http://example.com/api"
+    api_token = "test-token"
+    
+    # Patch the SecretsClient class to return our mock
+    with patch("mcp_agent_cloud.secrets.processor.SecretsClient", return_value=mock_secrets_client):
+        # Process the config
+        await process_config_secrets(
+            config_path=str(config_path),
+            output_path=str(output_path),
+            api_url=api_url,
+            api_token=api_token
+        )
+    
+    # Check the output file exists
+    assert output_path.exists()
+    
+    # Parse the output
+    transformed_yaml = yaml.safe_load(output_path.read_text())
+    
+    # Check the structure is preserved
+    assert "server" in transformed_yaml
+    assert "bedrock" in transformed_yaml["server"]
+    assert "default_model" in transformed_yaml["server"]["bedrock"]
+    
+    # Check the secrets are replaced with handles
+    assert transformed_yaml["server"]["bedrock"]["api_key"] == "mcpac_dev_server_bedrock_api_key"
+    assert transformed_yaml["server"]["bedrock"]["user_access_key"] == "mcpac_usr_server_bedrock_user_access_key"
+    
+    # Verify client was called for each secret
+    assert mock_secrets_client.create_secret.call_count == 2

@@ -7,10 +7,8 @@ from typing import Any, Dict, Generator
 # Set environment variables needed for tests
 def pytest_configure(config):
     """Configure pytest environment."""
-    os.environ.setdefault("MCP_SECRETS_MODE", "direct_vault")
-    os.environ.setdefault("VAULT_ADDR", "http://localhost:8200")
-    os.environ.setdefault("VAULT_TOKEN", "dev-token")
-    os.environ.setdefault("MCP_SECRETS_API_URL", "http://localhost:3000/api/v1")
+    # API endpoint configuration
+    os.environ.setdefault("MCP_SECRETS_API_URL", "http://localhost:3000/api")
     os.environ.setdefault("MCP_SECRETS_API_TOKEN", "test-token")
     os.environ.setdefault("MCP_VERBOSE", "true")
 

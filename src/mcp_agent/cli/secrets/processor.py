@@ -3,7 +3,7 @@
 This module handles the processing of user configuration files, including:
 1. Detection of !developer_secret and !user_secret tags
 2. Resolution of OmegaConf-style environment variables (${oc.env:VAR_NAME})
-3. Integration with the secrets backend (Vault or API)
+3. Integration with the Secrets API service
 4. Transformation of configuration files for deployment
 
 IMPORTANT NOTE ON CONFIGURATION SYSTEMS:
@@ -16,28 +16,26 @@ Two separate configuration systems work together:
    - Controls the actual values being stored as secrets
 
 2. Pydantic Settings (settings.py):
-   - Controls CLI behavior, connections to services, and secrets handling modes
+   - Controls CLI behavior and connections to the Secrets API service
    - Determines how this processor behaves, not what values are processed
 
 For example, when processing:
   api_key: !developer_secret ${oc.env:API_KEY}
   
 1. This module resolves ${oc.env:API_KEY} to get the actual secret value
-2. Then uses settings from settings.py to determine how to store it in Vault/API
+2. Then uses settings from settings.py to connect to the Secrets API
 """
 
-import asyncio
 import os
-from typing import Any, Dict, Optional, List, Union
+from typing import Any, Dict, Optional, Union
 from pathlib import Path
 
 import yaml
 
 from ..config import settings
-from .constants import SecretsMode
-from .factory import get_secrets_client
-from .interface import SecretType, SecretsApiClientInterface
-from ..ux import print_info, print_success, print_warning, print_error
+from .constants import SecretType
+from .api_client import SecretsClient
+from ..ux import print_info, print_warning, print_error
 
 
 # Custom YAML tag handlers for secrets
@@ -71,9 +69,6 @@ class UserSecret(SecretBase):
 async def process_config_secrets(
     config_path: Union[str, Path],
     output_path: Union[str, Path],
-    secrets_mode: Union[str, SecretsMode],
-    vault_addr: Optional[str] = None,
-    vault_token: Optional[str] = None,
     api_url: Optional[str] = None,
     api_token: Optional[str] = None,
 ) -> None:
@@ -82,22 +77,12 @@ async def process_config_secrets(
     Args:
         config_path: Path to the configuration file
         output_path: Path to write the transformed configuration to
-        secrets_mode: The secrets handling mode (DIRECT_VAULT or API)
-        vault_addr: Optional Vault address, overrides environment variable
-        vault_token: Optional Vault token, overrides environment variable
         api_url: Optional Secrets API URL, overrides environment variable
         api_token: Optional Secrets API token, overrides environment variable
     
     Raises:
         Exception: If processing fails
     """
-    # Ensure the mode is a SecretsMode enum
-    if isinstance(secrets_mode, str):
-        try:
-            secrets_mode = SecretsMode(secrets_mode)
-        except ValueError:
-            raise ValueError(f"Invalid secrets mode: {secrets_mode}")
-    
     # Ensure paths are strings
     if isinstance(config_path, Path):
         config_path = str(config_path)
@@ -115,13 +100,10 @@ async def process_config_secrets(
     except Exception as e:
         raise Exception(f"Error loading configuration file {config_path}: {e}")
     
-    # Initialize the appropriate secrets client with optional override parameters
-    client = get_secrets_client(
-        secrets_mode,
-        vault_addr=vault_addr,
-        vault_token=vault_token,
-        api_url=api_url,
-        api_token=api_token
+    # Initialize the secrets client
+    client = SecretsClient(
+        api_url=api_url or settings.SECRETS_API_URL,
+        api_token=api_token or settings.SECRETS_API_TOKEN
     )
     
     # Process the configuration file for secrets
@@ -143,7 +125,7 @@ async def process_config_secrets(
 
 async def process_secrets_in_config(
     config_str: str, 
-    client: SecretsApiClientInterface
+    client: SecretsClient
 ) -> str:
     """Process secrets in the configuration string.
     
@@ -168,7 +150,7 @@ async def process_secrets_in_config(
 
 async def transform_config_recursive(
     config: Any, 
-    client: SecretsApiClientInterface, 
+    client: SecretsClient, 
     path: str = ""
 ) -> Any:
     """Recursively transform a config dictionary, replacing secrets with handles.
@@ -201,7 +183,7 @@ async def transform_config_recursive(
             print_info(f"Creating developer secret at {path}...")
             handle = await client.create_secret(
                 name=path or "unknown.path",
-                type_=SecretType.DEVELOPER,
+                secret_type=SecretType.DEVELOPER,
                 value=value
             )
             
@@ -217,7 +199,7 @@ async def transform_config_recursive(
             print_info(f"Creating user secret placeholder at {path}...")
             handle = await client.create_secret(
                 name=path or "unknown.path",
-                type_=SecretType.USER,
+                secret_type=SecretType.USER,
                 value=None
             )
             
@@ -273,12 +255,9 @@ async def compare_configs(original: Dict[Any, Any], transformed: Dict[Any, Any])
                 walk_configs(o, t, new_path)
         else:
             # If values are different, it might be a transformed secret
-            if orig != trans and isinstance(trans, str) and (
-                trans.startswith("mcpac_") or
-                trans.startswith("mcpac_mvp0_")
-            ):
+            if orig != trans and isinstance(trans, str) and trans.startswith("mcpac_"):
                 # Determine secret type from handle prefix
-                if "mvp0_dev_" in trans or "dev_" in trans:
+                if "dev_" in trans:
                     secret_type = SecretType.DEVELOPER
                 else:
                     secret_type = SecretType.USER

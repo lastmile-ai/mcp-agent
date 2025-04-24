@@ -1,9 +1,9 @@
 """MCP Agent Cloud secrets functionality.
 
-This package provides interfaces and implementations for secrets management.
+This package provides implementations for secrets management.
 """
 
-from .interface import SecretsApiClientInterface
-from .constants import SecretType, SecretsMode
+from .constants import SecretType
+from .api_client import SecretsClient
 
-__all__ = ["SecretsApiClientInterface", "SecretType", "SecretsMode"]
+__all__ = ["SecretType", "SecretsClient"]

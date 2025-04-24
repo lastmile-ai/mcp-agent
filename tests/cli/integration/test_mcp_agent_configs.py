@@ -1,13 +1,12 @@
 """Integration tests for processing MCP Agent configurations.
 
-These tests require a running Vault server and should be run manually.
-They are marked with 'vault_integration' so they can be skipped by default.
+These tests require a running web app and Vault instance.
+They are marked with 'integration' so they can be skipped by default.
 
 To run these tests:
-    1. Start a Vault server (e.g., using docker-compose)
-    2. Set the VAULT_ADDR and VAULT_TOKEN environment variables
-    3. Run pytest with the vault_integration mark:
-       pytest -m vault_integration
+    1. Start the web app: pnpm run webdev
+    2. Run pytest with the integration mark:
+       pytest -m integration
 """
 
 import asyncio
@@ -20,14 +19,13 @@ import yaml
 from typer.testing import CliRunner
 
 from mcp_agent_cloud.cli.main import app
-from mcp_agent_cloud.secrets.constants import SecretsMode
-from mcp_agent_cloud.secrets.factory import get_secrets_client
+from mcp_agent_cloud.secrets.constants import SecretType
+from mcp_agent_cloud.secrets.api_client import SecretsClient
+from tests.fixtures.api_test_utils import setup_api_for_testing, APIMode
 
 
-# These tests will be marked with the vault_integration marker
-pytestmark = [
-    pytest.mark.vault_integration
-]
+# These tests will be marked with the integration marker
+pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
@@ -50,13 +48,28 @@ def setup_env_vars():
     os.environ.update(orig_env)
 
 
+@pytest.fixture
+def api_credentials():
+    """Get API credentials using the API test manager."""
+    # Use the API test manager to set up the API
+    api_url, api_token = setup_api_for_testing(APIMode.AUTO)
+    return api_url, api_token
+
+
+@pytest.fixture
+def api_client(api_credentials):
+    """Create a SecretsClient."""
+    api_url, api_token = api_credentials
+    return SecretsClient(api_url=api_url, api_token=api_token)
+
+
 class TestMcpAgentConfigIntegration:
     """Test processing of MCP Agent configurations."""
     
-    def test_bedrock_config_cli(self, setup_env_vars, vault_instance):
+    def test_bedrock_config_cli(self, setup_env_vars, api_credentials):
         """Test processing a Bedrock configuration via CLI."""
-        # Get Vault credentials from fixture
-        vault_addr, vault_token = vault_instance
+        # Get API credentials from fixture
+        api_url, api_token = api_credentials
         
         runner = CliRunner()
         
@@ -69,9 +82,8 @@ class TestMcpAgentConfigIntegration:
                 app, 
                 [
                     "deploy", 
-                    "--secrets-mode", "direct_vault",
-                    "--vault-addr", vault_addr,
-                    "--vault-token", vault_token,
+                    "--api-url", api_url,
+                    "--api-token", api_token,
                     "--dry-run",
                     "-o", output_path,
                     str(Path(__file__).parent.parent / "fixtures" / "bedrock_config.yaml")
@@ -98,9 +110,9 @@ class TestMcpAgentConfigIntegration:
             
             # Check that secrets were replaced with handles
             assert isinstance(config["server"]["bedrock"]["api_key"], str)
-            assert config["server"]["bedrock"]["api_key"].startswith("mcpac_mvp0_dev_")
+            assert config["server"]["bedrock"]["api_key"].startswith("mcpac_dev_")
             assert isinstance(config["server"]["bedrock"]["user_access_key"], str)
-            assert config["server"]["bedrock"]["user_access_key"].startswith("mcpac_mvp0_usr_")
+            assert config["server"]["bedrock"]["user_access_key"].startswith("mcpac_usr_")
             
             # Ensure non-secret values were not changed
             assert config["server"]["bedrock"]["default_model"] == "anthropic.claude-3-haiku-20240307-v1:0"
@@ -111,25 +123,18 @@ class TestMcpAgentConfigIntegration:
                 Path(output_path).unlink()
     
     @pytest.mark.asyncio
-    async def test_service_integration_config(self, setup_env_vars, vault_instance):
+    async def test_service_integration_config(self, setup_env_vars, api_client, api_credentials):
         """Test processing a complex service integration configuration."""
-        # Get Vault credentials from fixture
-        vault_addr, vault_token = vault_instance
+        # Get API credentials from fixture
+        api_url, api_token = api_credentials
         
         # Set additional environment variables for this test
-        os.environ["VAULT_ADDR"] = vault_addr
-        os.environ["VAULT_TOKEN"] = vault_token
+        os.environ["MCP_SECRETS_API_URL"] = api_url
+        os.environ["MCP_SECRETS_API_TOKEN"] = api_token
         os.environ["SLACK_BOT_TOKEN"] = "xoxb-test-bot-token"
         os.environ["SLACK_TEAM_ID"] = "T01234567"
         os.environ["GITHUB_PAT"] = "github_pat_test_token"
         os.environ["DB_PASSWORD"] = "test-db-password"
-        
-        # Get the client for direct Vault mode with explicit credentials
-        client = get_secrets_client(
-            SecretsMode.DIRECT_VAULT,
-            vault_addr=vault_addr,
-            vault_token=vault_token
-        )
         
         # Load the config file
         config_path = Path(__file__).parent.parent / "fixtures" / "service_integration_config.yaml"
@@ -147,9 +152,8 @@ class TestMcpAgentConfigIntegration:
             await process_config_secrets(
                 config_path=str(config_path),
                 output_path=output_path,
-                secrets_mode=SecretsMode.DIRECT_VAULT,
-                vault_addr=vault_addr,
-                vault_token=vault_token
+                api_url=api_url,
+                api_token=api_token
             )
             
             # Check that the output file exists
@@ -162,32 +166,33 @@ class TestMcpAgentConfigIntegration:
             
             # Check that nested secrets were transformed
             assert isinstance(config["mcp"]["servers"]["slack"]["env"]["SLACK_BOT_TOKEN"], str)
-            assert config["mcp"]["servers"]["slack"]["env"]["SLACK_BOT_TOKEN"].startswith("mcpac_mvp0_dev_")
+            assert config["mcp"]["servers"]["slack"]["env"]["SLACK_BOT_TOKEN"].startswith("mcpac_dev_")
             
             assert isinstance(config["mcp"]["servers"]["github"]["env"]["GITHUB_PERSONAL_ACCESS_TOKEN"], str)
-            assert config["mcp"]["servers"]["github"]["env"]["GITHUB_PERSONAL_ACCESS_TOKEN"].startswith("mcpac_mvp0_dev_")
+            assert config["mcp"]["servers"]["github"]["env"]["GITHUB_PERSONAL_ACCESS_TOKEN"].startswith("mcpac_dev_")
             
             assert isinstance(config["openai"]["api_key"], str)
-            assert config["openai"]["api_key"].startswith("mcpac_mvp0_dev_")
+            assert config["openai"]["api_key"].startswith("mcpac_dev_")
             
             assert isinstance(config["openai"]["organization_id"], str)
-            assert config["openai"]["organization_id"].startswith("mcpac_mvp0_usr_")
+            assert config["openai"]["organization_id"].startswith("mcpac_usr_")
             
-            # Check some of the transformed values in Vault
+            # Check some of the transformed values via the API
             slack_token_handle = config["mcp"]["servers"]["slack"]["env"]["SLACK_BOT_TOKEN"]
-            slack_token_value = await client.get_secret_value(slack_token_handle)
+            slack_token_value = await api_client.get_secret_value(slack_token_handle)
             assert slack_token_value == "xoxb-test-bot-token"
             
-            # Confirm user secrets don't have values yet
-            with pytest.raises(ValueError):
-                await client.get_secret_value(config["openai"]["organization_id"])
-            
             # Set a value for a user secret
-            await client.set_secret_value(config["openai"]["organization_id"], "org-123456")
+            user_secret_handle = config["openai"]["organization_id"]
+            await api_client.set_secret_value(user_secret_handle, "org-123456")
             
             # Verify it was set correctly
-            org_id_value = await client.get_secret_value(config["openai"]["organization_id"])
+            org_id_value = await api_client.get_secret_value(user_secret_handle)
             assert org_id_value == "org-123456"
+            
+            # Clean up created secrets
+            await api_client.delete_secret(slack_token_handle)
+            await api_client.delete_secret(user_secret_handle)
             
         finally:
             # Clean up the output file

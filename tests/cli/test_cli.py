@@ -19,8 +19,9 @@ def test_deploy_command_help(runner):
     assert result.exit_code == 0
     assert "Deploy an MCP agent" in result.stdout
     
-    # Check parameters are in the help text
-    assert "--secrets-mode" in result.stdout
+    # Check parameters are in the help text - updated for new API-only approach
+    assert "--api-url" in result.stdout
+    assert "--api-token" in result.stdout
     assert "--output-file" in result.stdout
     assert "--no-secrets" in result.stdout
     assert "--dry-run" in result.stdout
