@@ -5,22 +5,26 @@ with secret tags and transforms them into deployment-ready configurations with s
 """
 
 import asyncio
-import os
 from pathlib import Path
-from typing import Optional, Union, Any
+from typing import Optional
 
 import typer
 
-from ..config import settings
-from ..secrets.processor import process_config_secrets
-from ..secrets.mock_client import MockSecretsClient
-from ..ux import print_info, print_success, print_warning, print_error
+from mcp_agent_cloud.config import settings
+from mcp_agent_cloud.secrets.processor import process_config_secrets
+from mcp_agent_cloud.secrets.mock_client import MockSecretsClient
+from mcp_agent_cloud.ux import (
+    print_info,
+    print_success,
+    print_error,
+)
+from .wrangler_wrapper import wrangler_deploy
 
 
 def _run_async(coro):
     """
     Simple helper to run an async coroutine from synchronous code.
-    
+
     This properly handles the event loop setup in all contexts:
     - Normal application usage
     - Within tests that use pytest-asyncio
@@ -87,11 +91,11 @@ def deploy_config(
     ),
 ) -> str:
     """Deploy an MCP agent using the specified configuration and secrets files.
-    
+
     This function:
     1. Processes the secrets file, transforming secret tags to secret IDs
     2. Deploys the agent with the main configuration and transformed secrets
-    
+
     Args:
         config_file: Path to the main configuration file
         secrets_file: Path to the secrets file to process
@@ -101,57 +105,65 @@ def deploy_config(
         dry_run: Validate the deployment but don't actually deploy
         api_url: API base URL
         api_key: API key for authentication
-        
+
     Returns:
         Path to the main configuration file
     """
     # Display stylized deployment header
-    from ..ux import print_deployment_header
+    from mcp_agent_cloud.ux import print_deployment_header
+
     print_deployment_header(config_file, secrets_file, dry_run)
-    
+
     # Track the path to the configuration to use for deployment
     deployment_config_path = str(config_file)
-    
+
     try:
         # Validate API-related environment variables or parameters
         if not no_secrets:
             # Use the provided api_key
             provided_key = api_key
-            
+
             effective_api_url = api_url or settings.API_BASE_URL
             effective_api_key = provided_key or settings.API_KEY
-            
+
             # Check for required API credentials - but only for real deployment
             if not dry_run:
                 if not effective_api_url:
-                    print_error("MCP_API_BASE_URL environment variable or --api-url option must be set.")
+                    print_error(
+                        "MCP_API_BASE_URL environment variable or --api-url option must be set."
+                    )
                     raise typer.Exit(1)
                 if not effective_api_key:
-                    print_error("MCP_API_KEY environment variable or --api-key option must be set.")
+                    print_error(
+                        "MCP_API_KEY environment variable or --api-key option must be set."
+                    )
                     raise typer.Exit(1)
                 print_info(f"Using API at {effective_api_url}")
             else:
                 # For dry run, we'll use mock values if not provided
-                effective_api_url = effective_api_url or "http://localhost:3000/api"
+                effective_api_url = (
+                    effective_api_url or "http://localhost:3000/api"
+                )
                 effective_api_key = effective_api_key or "mock-key-for-dry-run"
                 print_info(f"Using mock API at {effective_api_url} (dry run)")
-        
+
         # Process secrets file
         if not no_secrets:
             # Process secrets file
             print_info("Processing secrets file...")
-            secrets_transformed_path = secrets_output_file or f"{secrets_file}.transformed.yaml"
-            
+            secrets_transformed_path = (
+                secrets_output_file or f"{secrets_file}.transformed.yaml"
+            )
+
             if dry_run:
                 # Use the mock client in dry run mode
                 print_info("Using MOCK Secrets API client for dry run")
-                
+
                 # Create the mock client
                 mock_client = MockSecretsClient(
-                    api_url=effective_api_url,
-                    api_key=effective_api_key
+                    api_url=effective_api_url, api_key=effective_api_key
                 )
-                
+
                 # Process with the mock client
                 try:
                     secrets_context = _run_async(
@@ -159,11 +171,13 @@ def deploy_config(
                             config_path=secrets_file,
                             output_path=secrets_transformed_path,
                             client=mock_client,
-                            no_prompt=no_prompt
+                            no_prompt=no_prompt,
                         )
                     )
                 except Exception as e:
-                    print_error(f"Error during secrets processing with mock client: {str(e)}")
+                    print_error(
+                        f"Error during secrets processing with mock client: {str(e)}"
+                    )
                     raise
             else:
                 # Use the real API client
@@ -173,42 +187,46 @@ def deploy_config(
                         output_path=secrets_transformed_path,
                         api_url=effective_api_url,
                         api_key=effective_api_key,
-                        no_prompt=no_prompt
+                        no_prompt=no_prompt,
                     )
                 )
-            
+
             print_success("Secrets file processed successfully")
-            print_info(f"Transformed secrets file written to {secrets_transformed_path}")
-            
-            # The secrets summary has already been shown by compare_configs, 
+            print_info(
+                f"Transformed secrets file written to {secrets_transformed_path}"
+            )
+
+            # The secrets summary has already been shown by compare_configs,
             # so we don't need to show stats again
-            
+
         else:
             print_info("Skipping secrets processing...")
-        
+
         # Deploy agent
         if not dry_run:
             from rich.panel import Panel
-            from ..ux import console
-            
-            console.print(Panel(
-                "Ready to deploy MCP Agent with processed configuration",
-                title="Deployment Ready",
-                border_style="green"
-            ))
-            
-            print_warning("TODO: Implement actual deployment logic")
-            print_info("Deployment would happen here.")
+            from mcp_agent_cloud.ux import console
+
+            console.print(
+                Panel(
+                    "Ready to deploy MCP Agent with processed configuration",
+                    title="Deployment Ready",
+                    border_style="green",
+                )
+            )
+
+            wrangler_deploy()
         else:
             print_info("Dry run - skipping actual deployment.")
-        
+
         # Final success message
         print_success("Deployment preparation completed successfully!")
         return deployment_config_path
-        
+
     except Exception as e:
         print_error(f"{str(e)}")
         if settings.VERBOSE:
             import traceback
+
             typer.echo(traceback.format_exc())
         raise typer.Exit(1)
