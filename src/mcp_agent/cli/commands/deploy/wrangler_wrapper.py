@@ -16,7 +16,7 @@ from .constants import (
 )
 
 
-def wrangler_deploy():
+def wrangler_deploy(api_key: str):
     """Deploy the MCP Agent using Wrangler."""
 
     # Copy existing env to avoid overwriting
@@ -25,7 +25,7 @@ def wrangler_deploy():
     env.update(
         {
             "CLOUDFLARE_ACCOUNT_ID": CLOUDFLARE_ACCOUNT_ID,
-            "CLOUDFLARE_API_TOKEN": settings.API_KEY,
+            "CLOUDFLARE_API_TOKEN": api_key,
             "CLOUDFLARE_EMAIL": CLOUDFLARE_EMAIL,
             "WRANGLER_AUTH_DOMAIN": WRANGLER_AUTH_DOMAIN,
             "WRANGLER_AUTH_URL": WRANGLER_AUTH_URL,

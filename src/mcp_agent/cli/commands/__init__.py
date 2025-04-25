@@ -5,5 +5,6 @@ Each command is exported as a single function with a signature that matches the 
 """
 
 from .deploy.main import deploy_config
+from .login import login
 
-__all__ = ["deploy_config"]
+__all__ = ["deploy_config", "login"]

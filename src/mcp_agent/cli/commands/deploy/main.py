@@ -10,6 +10,7 @@ from typing import Optional
 
 import typer
 
+from mcp_agent_cloud.auth import load_api_key_credentials
 from mcp_agent_cloud.config import settings
 from mcp_agent_cloud.secrets.processor import process_config_secrets
 from mcp_agent_cloud.secrets.mock_client import MockSecretsClient
@@ -119,33 +120,34 @@ def deploy_config(
 
     try:
         # Validate API-related environment variables or parameters
-        if not no_secrets:
-            # Use the provided api_key
-            provided_key = api_key
+        # Use the provided api_key
+        provided_key = api_key
 
-            effective_api_url = api_url or settings.API_BASE_URL
-            effective_api_key = provided_key or settings.API_KEY
+        effective_api_url = api_url or settings.API_BASE_URL
+        effective_api_key = (
+            provided_key or settings.API_KEY or load_api_key_credentials()
+        )
 
-            # Check for required API credentials - but only for real deployment
-            if not dry_run:
-                if not effective_api_url:
-                    print_error(
-                        "MCP_API_BASE_URL environment variable or --api-url option must be set."
-                    )
-                    raise typer.Exit(1)
-                if not effective_api_key:
-                    print_error(
-                        "MCP_API_KEY environment variable or --api-key option must be set."
-                    )
-                    raise typer.Exit(1)
-                print_info(f"Using API at {effective_api_url}")
-            else:
-                # For dry run, we'll use mock values if not provided
-                effective_api_url = (
-                    effective_api_url or "http://localhost:3000/api"
+        # Check for required API credentials - but only for real deployment
+        if not dry_run:
+            if not effective_api_url:
+                print_error(
+                    "MCP_API_BASE_URL environment variable or --api-url option must be set."
                 )
-                effective_api_key = effective_api_key or "mock-key-for-dry-run"
-                print_info(f"Using mock API at {effective_api_url} (dry run)")
+                raise typer.Exit(1)
+            if not effective_api_key:
+                print_error(
+                    "Must be logged in to deploy. Run 'mcp-agent login', set MCP_API_KEY environment variable or specify --api-key option."
+                )
+                raise typer.Exit(1)
+            print_info(f"Using API at {effective_api_url}")
+        else:
+            # For dry run, we'll use mock values if not provided
+            effective_api_url = (
+                effective_api_url or "http://localhost:3000/api"
+            )
+            effective_api_key = effective_api_key or "mock-key-for-dry-run"
+            print_info(f"Using mock API at {effective_api_url} (dry run)")
 
         # Process secrets file
         if not no_secrets:
@@ -215,7 +217,7 @@ def deploy_config(
                 )
             )
 
-            wrangler_deploy()
+            wrangler_deploy(api_key=effective_api_key)
         else:
             print_info("Dry run - skipping actual deployment.")
 
