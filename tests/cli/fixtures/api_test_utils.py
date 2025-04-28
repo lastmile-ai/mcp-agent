@@ -92,6 +92,47 @@ class APITestManager:
         
         # Verify connection to local API
         if not self._verify_api_connection(api_url, api_token):
+            import httpx
+            
+            # Try to get more diagnostic information
+            try:
+                # Check if web app is running but has errors
+                response = httpx.get(f"{api_url.rstrip('/api')}/api/health", timeout=2.0)
+                
+                # Check for API token errors by testing a secrets endpoint
+                try:
+                    secrets_response = httpx.post(
+                        f"{api_url}/secrets/create_secret",
+                        json={"name": "test", "type": "dev", "value": "test"},
+                        headers={"Authorization": f"Bearer {api_token}"},
+                        timeout=2.0
+                    )
+                    if "Error decoding API token" in secrets_response.text:
+                        raise RuntimeError(
+                            f"API token validation error. "
+                            f"The provided token '{api_token}' is not valid for the running web app. "
+                            f"Use an appropriate test token for this environment."
+                        )
+                except:
+                    # Ignore connection errors here
+                    pass
+                
+                if response.status_code == 500:
+                    if "Can't resolve '@mcpac/proto" in response.text:
+                        raise RuntimeError(
+                            f"API is running but returning 500 errors. "
+                            f"Missing proto files. Please generate the proto files first."
+                        )
+                    else:
+                        raise RuntimeError(
+                            f"API is running but returning 500 errors. "
+                            f"Check the web app logs for details."
+                        )
+            except httpx.ConnectError:
+                # If we can't connect at all, it's likely that the web app isn't running
+                pass
+            
+            # Default error message
             raise RuntimeError(
                 f"Failed to connect to local API at {api_url}. "
                 f"Please ensure the web app is running with 'cd www && pnpm run webdev'."

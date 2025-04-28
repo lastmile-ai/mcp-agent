@@ -3,9 +3,21 @@
 These tests verify that the SecretsClient can correctly interact with
 a real Secrets API service. They require a running web app instance.
 
-To run these tests:
-1. Start the web app: cd www && pnpm run webdev
-2. Run the tests: pytest -m "integration and api" -v
+IMPORTANT: These tests require the web app to have properly generated 
+proto files for the secrets service. The current error appears to be:
+
+  Module not found: Can't resolve '@mcpac/proto/mcpac/api/secrets/v1/secrets_api_service_pb'
+
+If you're seeing a 500 error from the API, this may be the cause.
+
+To run these tests successfully:
+1. Check that the proto files are properly generated:
+   - Make sure idl/proto-mcpac/mcpac/api/secrets/v1/ exists and has proto files
+   - Run any necessary code generation steps for the proto files
+   
+2. Start the web app: cd www && pnpm run webdev
+
+3. Run the tests: pytest -m "integration and api" -v
 """
 
 import uuid
