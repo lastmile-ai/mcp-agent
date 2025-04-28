@@ -20,7 +20,7 @@ class APITestManager:
     
     # Environment variable names
     API_URL_ENV = "MCP_SECRETS_API_URL"
-    API_TOKEN_ENV = "MCP_SECRETS_API_TOKEN"
+    API_TOKEN_ENV = "MCP_API_TOKEN"
     
     # Default values
     DEFAULT_LOCAL_API_URL = "http://localhost:3000/api"
@@ -117,7 +117,13 @@ class APITestManager:
             import httpx
             
             # Make a test request to the health endpoint
-            health_url = api_url.rstrip("/").rsplit("/", 1)[0] + "/health"
+            # Use the direct /api/health endpoint instead of stripping the last part
+            if api_url.endswith('/api'):
+                health_url = api_url + "/health"
+            else:
+                health_url = api_url.rstrip("/") + "/health"
+                
+            print(f"Checking API health at: {health_url}")
             response = httpx.get(health_url, timeout=5.0)
             
             # Check if the connection is successful

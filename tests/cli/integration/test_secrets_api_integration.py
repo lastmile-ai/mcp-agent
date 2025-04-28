@@ -48,8 +48,10 @@ async def test_create_and_get_secret(api_client):
         value=secret_value
     )
     
-    # Verify handle format
-    assert handle.startswith("mcpac_dev_")
+    # API returns UUID format handles 
+    # We validate against UUID pattern
+    from mcp_agent_cloud.secrets.constants import HANDLE_PATTERN
+    assert HANDLE_PATTERN.match(handle), f"Handle format '{handle}' doesn't match expected UUID pattern"
     
     try:
         # Retrieve the secret value
@@ -78,8 +80,10 @@ async def test_update_secret_value(api_client):
         secret_type=SecretType.USER
     )
     
-    # Verify handle format
-    assert handle.startswith("mcpac_usr_")
+    # API returns UUID format handles 
+    # We validate against UUID pattern
+    from mcp_agent_cloud.secrets.constants import HANDLE_PATTERN
+    assert HANDLE_PATTERN.match(handle), f"Handle format '{handle}' doesn't match expected UUID pattern"
     
     try:
         # Set a value for the user secret
@@ -120,7 +124,7 @@ async def test_list_secrets(api_client):
         all_secrets = await api_client.list_secrets()
         
         # Verify our test secrets are in the list
-        found_handles = [s.get("id") for s in all_secrets]
+        found_handles = [s.get("secretId") for s in all_secrets]
         for handle in created_handles:
             assert handle in found_handles
         
@@ -133,7 +137,7 @@ async def test_list_secrets(api_client):
         # Check at least one of our secrets is in the filtered list
         found = False
         for s in filtered_secrets:
-            if s.get("id") in created_handles:
+            if s.get("secretId") in created_handles:
                 found = True
                 break
         assert found, "None of our test secrets found in filtered list"

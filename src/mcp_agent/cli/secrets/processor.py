@@ -31,12 +31,7 @@ from typing import Any, Dict, Optional, Union
 from pathlib import Path
 
 import yaml
-
-from ..config import settings
-from .constants import SecretType
-from .api_client import SecretsClient
-from ..ux import print_info, print_warning, print_error
-
+import typer
 
 # Custom YAML tag handlers for secrets
 class SecretBase(yaml.YAMLObject):
@@ -66,19 +61,64 @@ class UserSecret(SecretBase):
     yaml_tag = u'!user_secret'
 
 
+# Create a custom YAML dumper to handle empty tags properly
+class EmptyTagDumper(yaml.SafeDumper):
+    """Custom YAML dumper that processes empty tags better."""
+    
+    def represent_scalar(self, tag, value, style=None):
+        """Customize the representation of scalar values."""
+        # For user_secret tags with empty strings, treat them specially
+        if tag == '!user_secret' and (value is None or value == ''):
+            # Use a null style (plain) for empty tags
+            return yaml.ScalarNode(tag, '', style='')
+        
+        # For all other cases, use the default behavior
+        return super().represent_scalar(tag, value, style=style)
+
+# Register representation functions for our custom tag classes
+def represent_user_secret(dumper, data):
+    """Custom representation for UserSecret objects."""
+    if data.value is None or data.value == '':
+        # For empty values, use a tag with no content
+        return dumper.represent_scalar('!user_secret', '')
+    # For non-empty values, preserve them
+    return dumper.represent_scalar('!user_secret', data.value)
+
+def represent_developer_secret(dumper, data):
+    """Custom representation for DeveloperSecret objects."""
+    if data.value is None or data.value == '':
+        # For empty values, use a tag with no content
+        return dumper.represent_scalar('!developer_secret', '')
+    # For non-empty values, preserve them
+    return dumper.represent_scalar('!developer_secret', data.value)
+
+# Register these representation functions with our dumper
+EmptyTagDumper.add_representer(UserSecret, represent_user_secret)
+EmptyTagDumper.add_representer(DeveloperSecret, represent_developer_secret)
+
+from ..config import settings
+from .constants import SecretType
+from .api_client import SecretsClient
+from ..ux import print_info, print_warning, print_error
+
+
 async def process_config_secrets(
     config_path: Union[str, Path],
     output_path: Union[str, Path],
     api_url: Optional[str] = None,
     api_token: Optional[str] = None,
+    client: Optional[Any] = None,
+    no_prompt: bool = False,
 ) -> None:
-    """Process a configuration file, transforming secret tags to handles.
+    """Process a configuration file, transforming secret tags to secret IDs.
     
     Args:
         config_path: Path to the configuration file
         output_path: Path to write the transformed configuration to
         api_url: Optional Secrets API URL, overrides environment variable
         api_token: Optional Secrets API token, overrides environment variable
+        client: Optional pre-initialized secrets client (for testing or dry runs)
+        no_prompt: Never prompt for missing values (fail instead)
     
     Raises:
         Exception: If processing fails
@@ -100,14 +140,15 @@ async def process_config_secrets(
     except Exception as e:
         raise Exception(f"Error loading configuration file {config_path}: {e}")
     
-    # Initialize the secrets client
-    client = SecretsClient(
-        api_url=api_url or settings.SECRETS_API_URL,
-        api_token=api_token or settings.SECRETS_API_TOKEN
-    )
+    # Initialize the secrets client if not provided
+    if client is None:
+        client = SecretsClient(
+            api_url=api_url or settings.SECRETS_API_URL,
+            api_token=api_token or settings.SECRETS_API_TOKEN
+        )
     
     # Process the configuration file for secrets
-    transformed_str = await process_secrets_in_config(config_str, client)
+    transformed_str = await process_secrets_in_config(config_str, client, no_prompt)
     
     # Parse the transformed string back to YAML to validate
     try:
@@ -125,25 +166,27 @@ async def process_config_secrets(
 
 async def process_secrets_in_config(
     config_str: str, 
-    client: SecretsClient
+    client: SecretsClient,
+    no_prompt: bool = False
 ) -> str:
     """Process secrets in the configuration string.
     
     Args:
         config_str: The configuration string containing secret tags
         client: The secrets client to use for creating secrets
+        no_prompt: Never prompt for missing values (fail instead)
     
     Returns:
-        The transformed configuration string with secret tags replaced by handles
+        The transformed configuration string with secret tags replaced by secret IDs
     """
     # Load the config with custom tag handlers
     config_yaml = yaml.load(config_str, Loader=yaml.FullLoader)
     
     # Process the loaded YAML recursively
-    transformed_yaml = await transform_config_recursive(config_yaml, client)
+    transformed_yaml = await transform_config_recursive(config_yaml, client, "", no_prompt)
     
-    # Convert back to YAML string
-    transformed_str = yaml.dump(transformed_yaml, default_flow_style=False)
+    # Convert back to YAML string using our custom dumper
+    transformed_str = yaml.dump(transformed_yaml, Dumper=EmptyTagDumper, default_flow_style=False)
     
     return transformed_str
 
@@ -151,18 +194,29 @@ async def process_secrets_in_config(
 async def transform_config_recursive(
     config: Any, 
     client: SecretsClient, 
-    path: str = ""
+    path: str = "",
+    no_prompt: bool = False
 ) -> Any:
-    """Recursively transform a config dictionary, replacing secrets with handles.
+    """Recursively transform a config dictionary, replacing developer secrets with handles.
+    
+    For deploy-phase, only developer secrets are processed and replaced with secret handles.
+    User secrets are left as-is to be processed during the configure phase.
     
     Args:
         config: The configuration dictionary/value to transform
         client: The secrets client
         path: The current path in the config (for naming secrets)
+        no_prompt: Never prompt for missing values (fail instead)
         
     Returns:
         The transformed configuration
     """
+    print_info(f"Processing config at path '{path}', type: {type(config)}")
+    
+    # For debugging, check if the config is a string with a tag prefix
+    if isinstance(config, str) and (config.startswith('!developer_secret') or config.startswith('!user_secret')):
+        print_warning(f"Found raw string with tag prefix at path '{path}': {config}")
+        # This indicates a YAML parsing issue - tags should be objects, not strings
     if isinstance(config, DeveloperSecret):
         # Process developer secret
         value = config.value
@@ -173,48 +227,84 @@ async def transform_config_recursive(
             env_var = value[9:-1]  # Extract VAR_NAME from ${oc.env:VAR_NAME}
             env_value = os.environ.get(env_var)
             if env_value is None:
-                print_warning(f"Environment variable {env_var} not found. Using empty string.")
-                env_value = ""
-            print_info(f"Resolved environment variable {env_var} for developer secret at {path}")
+                if no_prompt:
+                    # Don't prompt - just warn and set empty string
+                    print_warning(f"Environment variable {env_var} not found. (--no-prompt is set)")
+                    env_value = ""
+                else:
+                    # Prompt the user for the missing value
+                    print_warning(f"Environment variable {env_var} not found.")
+                    env_value = typer.prompt(
+                        f"Enter value for {env_var} (secret at {path})",
+                        hide_input=True,
+                        default="",
+                        show_default=False
+                    )
+                    if not env_value:
+                        print_warning(f"No value provided for {env_var}.")
+            print_info(f"Resolved value for developer secret at {path}")
             value = env_value
             
         # Create the secret in the backend
         try:
             print_info(f"Creating developer secret at {path}...")
+            # Developer secrets must have values
+            if value is None or value == "":
+                if no_prompt:
+                    # Don't prompt - just fail immediately
+                    error_msg = f"Developer secret at {path} has no value. Developer secrets must have values. (--no-prompt is set)"
+                    print_error(error_msg)
+                    raise ValueError(error_msg)
+                else:
+                    # Prompt for a value with retries
+                    max_attempts = 3
+                    attempt = 1
+                    
+                    while (value is None or value == "") and attempt <= max_attempts:
+                        if attempt > 1:
+                            print_warning(f"Attempt {attempt}/{max_attempts}: Developer secret at {path} still has no value.")
+                        else:
+                            print_warning(f"Developer secret at {path} has no value. Developer secrets must have values.")
+                        
+                        # Give the user a chance to provide a value
+                        value = typer.prompt(
+                            f"Enter value for developer secret at {path}",
+                            hide_input=True,
+                            default="",
+                            show_default=False
+                        )
+                        attempt += 1
+                    
+                    if value is None or value == "":
+                        error_msg = f"Developer secret at {path} has no value after {max_attempts} attempts. Developer secrets must have values."
+                        print_error(error_msg)
+                        raise ValueError(error_msg)
+                
+            # Create the secret in the backend, getting a handle in return
             handle = await client.create_secret(
                 name=path or "unknown.path",
                 secret_type=SecretType.DEVELOPER,
                 value=value
             )
             
-            print_info(f"Created developer secret at path {path} with handle {handle}")
+            print_info(f"Created developer secret at path {path} with handle: {handle}")
             return handle
         except Exception as e:
             print_error(f"Failed to create developer secret at {path}: {str(e)}")
             raise
         
     elif isinstance(config, UserSecret):
-        # Process user secret
-        try:
-            print_info(f"Creating user secret placeholder at {path}...")
-            handle = await client.create_secret(
-                name=path or "unknown.path",
-                secret_type=SecretType.USER,
-                value=None
-            )
-            
-            print_info(f"Created user secret placeholder at path {path} with handle {handle}")
-            return handle
-        except Exception as e:
-            print_error(f"Failed to create user secret at {path}: {str(e)}")
-            raise
+        # For deploy phase, keep user secrets as-is
+        # They will be processed during the configure phase
+        print_info(f"Keeping user secret at {path} as-is for configure phase")
+        return config
         
     elif isinstance(config, dict):
         # Process each key in the dictionary
         result = {}
         for key, value in config.items():
             new_path = f"{path}.{key}" if path else key
-            result[key] = await transform_config_recursive(value, client, new_path)
+            result[key] = await transform_config_recursive(value, client, new_path, no_prompt)
         return result
         
     elif isinstance(config, list):
@@ -222,7 +312,7 @@ async def transform_config_recursive(
         result = []
         for i, value in enumerate(config):
             new_path = f"{path}[{i}]" if path else f"[{i}]"
-            result.append(await transform_config_recursive(value, client, new_path))
+            result.append(await transform_config_recursive(value, client, new_path, no_prompt))
         return result
         
     else:
@@ -233,6 +323,10 @@ async def transform_config_recursive(
 async def compare_configs(original: Dict[Any, Any], transformed: Dict[Any, Any]) -> None:
     """Compare and print the differences between original and transformed configs.
     
+    In deploy phase:
+    - Developer secrets are transformed to UUID handles
+    - User secrets are kept as-is
+    
     Args:
         original: The original configuration
         transformed: The transformed configuration
@@ -240,9 +334,10 @@ async def compare_configs(original: Dict[Any, Any], transformed: Dict[Any, Any])
     print_info("\nSecret Transformations Summary:")
     
     # Track transformations for a summary table
-    transformations = []
+    dev_transformations = []
+    retained_user_secrets = []
     
-    # This is a simplified comparison that just shows replaced values
+    # This is a simplified comparison that shows replaced values and retained user secrets
     def walk_configs(orig: Any, trans: Any, path: str = "") -> None:
         if isinstance(orig, dict) and isinstance(trans, dict):
             for key in orig:
@@ -254,22 +349,26 @@ async def compare_configs(original: Dict[Any, Any], transformed: Dict[Any, Any])
                 new_path = f"{path}[{i}]"
                 walk_configs(o, t, new_path)
         else:
-            # If values are different, it might be a transformed secret
-            if orig != trans and isinstance(trans, str) and trans.startswith("mcpac_"):
-                # Determine secret type from handle prefix
-                if "dev_" in trans:
-                    secret_type = SecretType.DEVELOPER
-                else:
-                    secret_type = SecretType.USER
-                
-                # Add to our list of transformations
-                transformations.append((path, secret_type, trans))
-                
-                # Print individual transformation
-                print_info(f"Secret at {path} ({secret_type.value}) transformed to handle: {trans}")
+            # Developer secrets have been transformed to handles
+            if isinstance(orig, DeveloperSecret) and isinstance(trans, str):
+                dev_transformations.append((path, trans))
+                print_info(f"Developer secret at {path} transformed to handle: {trans}")
+            
+            # User secrets remain as tags for the configure phase
+            elif isinstance(orig, UserSecret) and isinstance(trans, UserSecret):
+                retained_user_secrets.append(path)
+                print_info(f"User secret at {path} retained for configure phase")
     
     # Walk through both configurations and find differences
     walk_configs(original, transformed)
     
-    if not transformations:
-        print_warning("No secrets were transformed in the configuration.")
+    # Print summary
+    if dev_transformations:
+        print_info(f"\nTransformed {len(dev_transformations)} developer secret(s) to handles")
+    else:
+        print_warning("No developer secrets were found in the configuration")
+        
+    if retained_user_secrets:
+        print_info(f"\nRetained {len(retained_user_secrets)} user secret(s) for configure phase")
+    else:
+        print_info("No user secrets were found in the configuration")

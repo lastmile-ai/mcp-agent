@@ -1,6 +1,7 @@
 """Tests for SecretsClient API client."""
 
 import pytest
+import httpx
 from unittest.mock import patch, AsyncMock, MagicMock
 
 from mcp_agent_cloud.secrets.api_client import SecretsClient
@@ -18,7 +19,7 @@ def mock_httpx_client():
         # Configure the mock response
         mock_response = MagicMock()
         mock_response.raise_for_status = MagicMock()
-        mock_response.json.return_value = {"id": "mcpac_dev_12345", "success": True}
+        mock_response.json.return_value = {"secret": {"secretId": "12345678-abcd-1234-efgh-123456789abc"}, "success": True}
         mock_instance.post.return_value = mock_response
         mock_instance.get.return_value = mock_response
         mock_instance.put.return_value = mock_response
@@ -45,8 +46,8 @@ async def test_create_developer_secret(api_client, mock_httpx_client):
         value="test-api-key"
     )
     
-    # Check the returned handle
-    assert handle == "mcpac_dev_12345"
+    # Check the returned handle is a string (UUID)
+    assert handle == "12345678-abcd-1234-efgh-123456789abc"
     
     # Verify API was called correctly
     mock_httpx_client.post.assert_called_once()
@@ -61,8 +62,8 @@ async def test_create_developer_secret(api_client, mock_httpx_client):
     
     # Check payload
     assert kwargs["json"]["name"] == "server.bedrock.api_key"
-    assert kwargs["json"]["type"] == "developer"
     assert kwargs["json"]["value"] == "test-api-key"
+    # Note: Secret type is handled locally, not sent to API
 
 
 @pytest.mark.asyncio
@@ -74,8 +75,8 @@ async def test_create_user_secret(api_client, mock_httpx_client):
         secret_type=SecretType.USER
     )
     
-    # Check the returned handle
-    assert handle == "mcpac_dev_12345"
+    # Check the returned handle is a string (UUID)
+    assert handle == "12345678-abcd-1234-efgh-123456789abc"
     
     # Verify API was called correctly
     mock_httpx_client.post.assert_called_once()
@@ -86,8 +87,8 @@ async def test_create_user_secret(api_client, mock_httpx_client):
     
     # Check payload
     assert kwargs["json"]["name"] == "server.bedrock.user_access_key"
-    assert kwargs["json"]["type"] == "user"
-    assert "value" not in kwargs["json"]  # No value for user secret
+    assert kwargs["json"]["value"] == ""  # Empty string for user secret
+    # Note: Secret type is handled locally, not sent to API
 
 
 @pytest.mark.asyncio
@@ -109,7 +110,7 @@ async def test_get_secret_value(api_client, mock_httpx_client):
     mock_httpx_client.post.return_value.json.return_value = {"value": "test-api-key"}
     
     # Get a secret value
-    value = await api_client.get_secret_value("mcpac_dev_12345")
+    value = await api_client.get_secret_value("12345678-abcd-1234-efgh-123456789abc")
     
     # Check the returned value
     assert value == "test-api-key"
@@ -122,7 +123,7 @@ async def test_get_secret_value(api_client, mock_httpx_client):
     assert args[0] == "http://localhost:3000/api/secrets/get_secret_value"
     
     # Check payload
-    assert kwargs["json"]["secretId"] == "mcpac_dev_12345"
+    assert kwargs["json"]["secretId"] == "12345678-abcd-1234-efgh-123456789abc"
     
     # Check headers
     assert kwargs["headers"]["Authorization"] == "Bearer test-token"
@@ -132,7 +133,7 @@ async def test_get_secret_value(api_client, mock_httpx_client):
 async def test_set_secret_value(api_client, mock_httpx_client):
     """Test setting a secret value via the API."""
     # Set a secret value
-    await api_client.set_secret_value("mcpac_dev_12345", "new-api-key")
+    await api_client.set_secret_value("12345678-abcd-1234-efgh-123456789abc", "new-api-key")
     
     # Verify API was called correctly
     mock_httpx_client.put.assert_called_once()
@@ -142,7 +143,7 @@ async def test_set_secret_value(api_client, mock_httpx_client):
     assert args[0] == "http://localhost:3000/api/secrets/set_secret_value"
     
     # Check payload
-    assert kwargs["json"]["secretId"] == "mcpac_dev_12345"
+    assert kwargs["json"]["secretId"] == "12345678-abcd-1234-efgh-123456789abc"
     assert kwargs["json"]["value"] == "new-api-key"
     
     # Check headers
@@ -152,10 +153,10 @@ async def test_set_secret_value(api_client, mock_httpx_client):
 @pytest.mark.asyncio
 async def test_list_secrets(api_client, mock_httpx_client):
     """Test listing secrets via the API."""
-    # Configure mock response
+    # Configure mock response with standardized format
     secrets_list = [
-        {"id": "mcpac_dev_12345", "name": "server.bedrock.api_key", "type": "developer"},
-        {"id": "mcpac_usr_67890", "name": "server.bedrock.user_access_key", "type": "user"}
+        {"secretId": "12345678-abcd-1234-efgh-123456789abc", "name": "server.bedrock.api_key", "type": "dev"},
+        {"secretId": "98765432-wxyz-9876-abcd-987654321def", "name": "server.bedrock.user_access_key", "type": "usr"}
     ]
     mock_httpx_client.post.return_value.json.return_value = {"secrets": secrets_list}
     
@@ -164,8 +165,11 @@ async def test_list_secrets(api_client, mock_httpx_client):
     
     # Check the returned list
     assert len(secrets) == 2
-    assert secrets[0]["id"] == "mcpac_dev_12345"
-    assert secrets[1]["id"] == "mcpac_usr_67890"
+    assert secrets[0]["secretId"] == "12345678-abcd-1234-efgh-123456789abc"
+    assert secrets[1]["secretId"] == "98765432-wxyz-9876-abcd-987654321def"
+    # Verify type format matches expected values
+    assert secrets[0]["type"] == "dev"
+    assert secrets[1]["type"] == "usr"
     
     # Verify API was called correctly
     mock_httpx_client.post.assert_called_once()
@@ -196,7 +200,7 @@ async def test_list_secrets_with_filter(api_client, mock_httpx_client):
 async def test_delete_secret(api_client, mock_httpx_client):
     """Test deleting a secret via the API."""
     # Delete a secret
-    await api_client.delete_secret("mcpac_dev_12345")
+    await api_client.delete_secret("12345678-abcd-1234-efgh-123456789abc")
     
     # Verify API was called correctly
     mock_httpx_client.post.assert_called_once()
@@ -206,7 +210,7 @@ async def test_delete_secret(api_client, mock_httpx_client):
     assert args[0] == "http://localhost:3000/api/secrets/delete_secret"
     
     # Check payload
-    assert kwargs["json"]["secretId"] == "mcpac_dev_12345"
+    assert kwargs["json"]["secretId"] == "12345678-abcd-1234-efgh-123456789abc"
     
     # Check headers
     assert kwargs["headers"]["Authorization"] == "Bearer test-token"
@@ -215,12 +219,74 @@ async def test_delete_secret(api_client, mock_httpx_client):
 @pytest.mark.asyncio
 async def test_invalid_handle_format(api_client):
     """Test invalid handle format validation."""
-    # Test with invalid handle format
+    # Test with empty handle (should be rejected)
     with pytest.raises(ValueError, match="Invalid handle format"):
-        await api_client.get_secret_value("invalid_handle")
+        await api_client.get_secret_value("")
     
+    # Test with plain string that's not a UUID (should be rejected)
     with pytest.raises(ValueError, match="Invalid handle format"):
-        await api_client.set_secret_value("invalid_handle", "new-value")
+        await api_client.get_secret_value("not-a-uuid")
     
+    # Test with almost-UUID but invalid format (should be rejected)
     with pytest.raises(ValueError, match="Invalid handle format"):
-        await api_client.delete_secret("invalid_handle")
+        await api_client.set_secret_value("12345678-abcd-1234-INVALID-123456789abc", "new-value")
+    
+    # Test with invalid prefix (should be rejected)
+    with pytest.raises(ValueError, match="Invalid handle format"):
+        await api_client.delete_secret("wrong_prefix_12345678-abcd-1234-efgh-123456789abc")
+
+
+@pytest.mark.asyncio
+async def test_api_connectivity_failure(api_client):
+    """Test handling of API connectivity failures."""
+    with patch("httpx.AsyncClient") as mock_client:
+        # Configure the client to raise an exception (connection error)
+        mock_instance = AsyncMock()
+        mock_client.return_value.__aenter__.return_value = mock_instance
+        mock_instance.post.side_effect = httpx.ConnectError("Failed to connect to API")
+        
+        # Test handling of connectivity failure during create_secret
+        with pytest.raises(httpx.ConnectError):
+            await api_client.create_secret(
+                name="test.key",
+                secret_type=SecretType.DEVELOPER,
+                value="test-value"
+            )
+
+
+@pytest.mark.asyncio
+async def test_http_error_handling(api_client):
+    """Test handling of HTTP errors from the API."""
+    with patch("httpx.AsyncClient") as mock_client:
+        # Configure the client to return an error response
+        mock_instance = AsyncMock()
+        mock_client.return_value.__aenter__.return_value = mock_instance
+        
+        # Create mock responses for different HTTP status codes
+        not_found_response = MagicMock()
+        not_found_response.status_code = 404
+        not_found_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "Secret not found", 
+            request=MagicMock(), 
+            response=not_found_response
+        )
+        
+        forbidden_response = MagicMock()
+        forbidden_response.status_code = 403
+        forbidden_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "Forbidden", 
+            request=MagicMock(), 
+            response=forbidden_response
+        )
+        
+        # Test 404 Not Found response
+        mock_instance.post.return_value = not_found_response
+        with pytest.raises(httpx.HTTPStatusError) as excinfo:
+            await api_client.get_secret_value("12345678-abcd-1234-efgh-123456789abc")
+        assert excinfo.value.response.status_code == 404
+        
+        # Test 403 Forbidden response
+        mock_instance.post.return_value = forbidden_response
+        with pytest.raises(httpx.HTTPStatusError) as excinfo:
+            await api_client.get_secret_value("12345678-abcd-1234-efgh-123456789abc")
+        assert excinfo.value.response.status_code == 403

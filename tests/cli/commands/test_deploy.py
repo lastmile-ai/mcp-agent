@@ -8,14 +8,14 @@ from unittest.mock import patch, AsyncMock, MagicMock
 from mcp_agent_cloud.commands.deploy import deploy_config
 
 
-def test_deploy_config_no_secrets(sample_config_yaml, tmp_path):
+def test_deploy_config_no_secrets(sample_config_yaml, sample_secrets_yaml, tmp_path):
     """Test deploy_config with no_secrets=True."""
-    output_path = tmp_path / "output.yaml"
     
     # Deploy with no_secrets=True should just skip processing
     with patch("mcp_agent_cloud.commands.deploy.process_config_secrets") as mock_process:
         result = deploy_config(
             config_file=Path(sample_config_yaml),
+            secrets_file=Path(sample_secrets_yaml),
             no_secrets=True,
             dry_run=True,
         )
@@ -27,9 +27,9 @@ def test_deploy_config_no_secrets(sample_config_yaml, tmp_path):
         assert result == sample_config_yaml
 
 
-def test_deploy_config_with_secrets(sample_config_yaml, tmp_path):
+def test_deploy_config_with_secrets(sample_config_yaml, sample_secrets_yaml, tmp_path):
     """Test deploy_config with secrets processing."""
-    output_path = tmp_path / "output.yaml"
+    secrets_output_path = tmp_path / "output_secrets.yaml"
     
     # We need to patch the settings module first to override the default behavior
     with patch("mcp_agent_cloud.commands.deploy.settings") as mock_settings:
@@ -43,7 +43,8 @@ def test_deploy_config_with_secrets(sample_config_yaml, tmp_path):
             # Call deploy_config with explicit no_secrets=False to ensure processing
             result = deploy_config(
                 config_file=Path(sample_config_yaml),
-                output_file=Path(output_path),
+                secrets_file=Path(sample_secrets_yaml),
+                secrets_output_file=Path(secrets_output_path),
                 no_secrets=False,  # Explicitly set to process secrets
                 api_url="http://test-api",
                 api_token="test-token",
@@ -61,5 +62,5 @@ def test_deploy_config_with_secrets(sample_config_yaml, tmp_path):
             coro_str = str(coro_arg)
             assert "process_config_secrets" in coro_str
             
-            # Check that result is the path to the transformed config
-            assert result == str(output_path)
+            # Check that result is the path to the original config (not transformed)
+            assert result == str(sample_config_yaml)

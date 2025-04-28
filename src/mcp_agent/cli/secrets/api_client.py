@@ -4,7 +4,7 @@ from typing import Optional, Dict, Any, List
 
 import httpx
 
-from .constants import DEV_HANDLE_PREFIX, USR_HANDLE_PREFIX, SecretType
+from .constants import SecretType  # Removed SECRET_TYPE_PATHS, using SecretType.value directly
 
 
 class SecretsClient:
@@ -25,11 +25,11 @@ class SecretsClient:
         
         Args:
             name: The configuration path (e.g., 'server.bedrock.api_key')
-            secret_type: DEVELOPER or USER
+            secret_type: DEVELOPER ("dev") or USER ("usr") 
             value: The secret value (required for DEVELOPER, optional for USER)
             
         Returns:
-            str: A handle to the secret (e.g., mcpac_dev_uuid)
+            str: The secret UUID/handle returned by the API
             
         Raises:
             ValueError: If a developer secret is created without a value
@@ -42,12 +42,12 @@ class SecretsClient:
         # Prepare request payload
         payload: Dict[str, Any] = {
             "name": name,
-            "type": secret_type.value,
+            "type": secret_type.value,  # Send "dev" or "usr" directly from enum value
         }
         
-        # Include value if provided
-        if value is not None:
-            payload["value"] = value
+        # Include value if provided (required for API)
+        # For user secrets, we'll send an empty string as the API requires a value
+        payload["value"] = value if value is not None else ""
         
         # Make the API request
         async with httpx.AsyncClient() as client:
@@ -61,13 +61,17 @@ class SecretsClient:
             # Raise for HTTP errors
             response.raise_for_status()
             
-            # Parse the response to get the handle
+            # Parse the response to get the UUID/handle
             data = response.json()
-            # Extract the secretId from the response - may be in the secret object
-            handle = data.get("secret", {}).get("secretId") or data.get("secretId") or data.get("id")
+            # Extract the secretId (UUID) from the response - it should be in the secret object
+            handle = data.get("secret", {}).get("secretId")
             
             if not handle:
-                raise ValueError("API did not return a valid handle")
+                raise ValueError("API did not return a valid secret handle in the expected format")
+            
+            # Validate that the returned value is a proper UUID format
+            if not self._is_valid_handle(handle):
+                raise ValueError(f"API returned an invalid UUID/handle format: {handle}")
             
             return handle
         
@@ -75,7 +79,7 @@ class SecretsClient:
         """Get a secret value from the Secrets API.
         
         Args:
-            handle: The secret handle (e.g., mcpac_dev_uuid)
+            handle: The secret ID returned by the API (Prisma UUID)
             
         Returns:
             str: The secret value
@@ -113,7 +117,7 @@ class SecretsClient:
         """Set a secret value via the Secrets API.
         
         Args:
-            handle: The secret handle (e.g., mcpac_dev_uuid)
+            handle: The secret ID returned by the API (Prisma UUID)
             value: The secret value to store
             
         Raises:
@@ -182,7 +186,7 @@ class SecretsClient:
         """Delete a secret via the Secrets API.
         
         Args:
-            handle: The secret handle (e.g., mcpac_dev_uuid)
+            handle: The secret ID returned by the API (Prisma UUID)
             
         Raises:
             ValueError: If the handle is invalid
@@ -222,13 +226,18 @@ class SecretsClient:
         }
     
     def _is_valid_handle(self, handle: str) -> bool:
-        """Check if a handle has a valid format.
+        """Check if a handle has a valid UUID format.
         
         Args:
-            handle: The handle to check
+            handle: The UUID handle to check
             
         Returns:
-            bool: True if the handle has a valid format, False otherwise
+            bool: True if the handle has a valid UUID format, False otherwise
         """
-        return (handle.startswith(DEV_HANDLE_PREFIX) or 
-                handle.startswith(USR_HANDLE_PREFIX))
+        from .constants import HANDLE_PATTERN
+        
+        if not isinstance(handle, str) or not handle:
+            return False
+            
+        # Validate against the UUID pattern
+        return bool(HANDLE_PATTERN.match(handle))

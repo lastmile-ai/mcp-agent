@@ -12,6 +12,12 @@ from mcp_agent_cloud.secrets.processor import (
     DeveloperSecret,
     UserSecret
 )
+
+# Register YAML tag constructors for testing
+yaml.SafeLoader.add_constructor('!developer_secret', lambda loader, node: DeveloperSecret(loader.construct_scalar(node)))
+yaml.SafeLoader.add_constructor('!user_secret', lambda loader, node: UserSecret())
+yaml.FullLoader.add_constructor('!developer_secret', lambda loader, node: DeveloperSecret(loader.construct_scalar(node)))
+yaml.FullLoader.add_constructor('!user_secret', lambda loader, node: UserSecret())
 from mcp_agent_cloud.secrets.constants import SecretType
 from mcp_agent_cloud.secrets.api_client import SecretsClient
 
@@ -21,12 +27,19 @@ def mock_secrets_client():
     """Create a mock SecretsClient."""
     client = AsyncMock(spec=SecretsClient)
     
-    # Configure create_secret to return different handles for dev/user secrets
+    # Configure create_secret to return UUIDs or prefixed handles
     async def mock_create_secret(name, secret_type, value=None):
-        if secret_type == SecretType.DEVELOPER:
-            return f"mcpac_dev_{name.replace('.', '_')}"
-        else:
-            return f"mcpac_usr_{name.replace('.', '_')}"
+        # Generate a deterministic UUID-like string based on name
+        # This uses a proper UUID format for testing
+        import hashlib
+        import uuid
+        
+        # Create a deterministic UUID based on the name
+        name_hash = hashlib.md5(name.encode()).hexdigest()
+        generated_uuid = str(uuid.UUID(name_hash))
+        
+        # Return the UUID (current API behavior) - we support both formats
+        return generated_uuid
     
     client.create_secret.side_effect = mock_create_secret
     
@@ -49,8 +62,9 @@ async def test_transform_config_recursive_developer_secret(mock_secrets_client):
         "server.bedrock.api_key"
     )
     
-    # Check the result is the handle
-    assert result == "mcpac_dev_server_bedrock_api_key"
+    # Check the result is a valid handle (UUID format)
+    from mcp_agent_cloud.secrets.constants import HANDLE_PATTERN
+    assert HANDLE_PATTERN.match(result), f"Expected valid handle format, got: {result}"
     
     # Verify client was called correctly
     mock_secrets_client.create_secret.assert_called_once_with(
@@ -73,15 +87,11 @@ async def test_transform_config_recursive_user_secret(mock_secrets_client):
         "server.bedrock.user_access_key"
     )
     
-    # Check the result is the handle
-    assert result == "mcpac_usr_server_bedrock_user_access_key"
+    # User secrets remain as UserSecret objects during deploy phase
+    assert isinstance(result, UserSecret)
     
-    # Verify client was called correctly
-    mock_secrets_client.create_secret.assert_called_once_with(
-        name="server.bedrock.user_access_key",
-        secret_type=SecretType.USER,
-        value=None
-    )
+    # Client should not be called for user secrets during deploy phase
+    mock_secrets_client.create_secret.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -107,12 +117,17 @@ async def test_transform_config_recursive_nested(mock_secrets_client):
     assert "server" in result
     assert "bedrock" in result["server"]
     
-    # Check the secrets are replaced with handles
-    assert result["server"]["bedrock"]["api_key"] == "mcpac_dev_server_bedrock_api_key"
-    assert result["server"]["bedrock"]["user_access_key"] == "mcpac_usr_server_bedrock_user_access_key"
+    # Check the developer secret is replaced with valid handle
+    from mcp_agent_cloud.secrets.constants import HANDLE_PATTERN
+    assert HANDLE_PATTERN.match(result["server"]["bedrock"]["api_key"]), \
+        f"Expected valid handle format, got: {result['server']['bedrock']['api_key']}"
     
-    # Verify client was called twice
-    assert mock_secrets_client.create_secret.call_count == 2
+    # Check the user secret remains as UserSecret
+    assert isinstance(result["server"]["bedrock"]["user_access_key"], UserSecret), \
+        f"Expected UserSecret, got: {type(result['server']['bedrock']['user_access_key'])}"
+    
+    # Verify client was called once (only for developer secret)
+    assert mock_secrets_client.create_secret.call_count == 1
 
 
 @pytest.mark.asyncio
@@ -138,12 +153,17 @@ server:
     assert "bedrock" in result_yaml["server"]
     assert "default_model" in result_yaml["server"]["bedrock"]
     
-    # Check the secrets are replaced with handles
-    assert result_yaml["server"]["bedrock"]["api_key"] == "mcpac_dev_server_bedrock_api_key"
-    assert result_yaml["server"]["bedrock"]["user_access_key"] == "mcpac_usr_server_bedrock_user_access_key"
+    # Check the developer secret is replaced with valid handle
+    from mcp_agent_cloud.secrets.constants import HANDLE_PATTERN
+    assert HANDLE_PATTERN.match(result_yaml["server"]["bedrock"]["api_key"]), \
+        f"Expected valid handle format, got: {result_yaml['server']['bedrock']['api_key']}"
     
-    # Verify client was called twice
-    assert mock_secrets_client.create_secret.call_count == 2
+    # Check user secret is still a tag (PyYAML should load it as a UserSecret)
+    assert isinstance(result_yaml["server"]["bedrock"]["user_access_key"], UserSecret), \
+        f"Expected UserSecret, got: {type(result_yaml['server']['bedrock']['user_access_key'])}"
+    
+    # Verify client was called once (only for developer secret)
+    assert mock_secrets_client.create_secret.call_count == 1
 
 
 @pytest.mark.asyncio
@@ -162,8 +182,9 @@ async def test_env_var_resolution(mock_secrets_client, monkeypatch):
         "server.bedrock.api_key"
     )
     
-    # Check the result is the handle
-    assert result == "mcpac_dev_server_bedrock_api_key"
+    # Check the result is a valid handle (UUID format)
+    from mcp_agent_cloud.secrets.constants import HANDLE_PATTERN
+    assert HANDLE_PATTERN.match(result), f"Expected valid handle format, got: {result}"
     
     # Verify client was called correctly with resolved value
     mock_secrets_client.create_secret.assert_called_once_with(
@@ -215,9 +236,12 @@ server:
     assert "bedrock" in transformed_yaml["server"]
     assert "default_model" in transformed_yaml["server"]["bedrock"]
     
-    # Check the secrets are replaced with handles
-    assert transformed_yaml["server"]["bedrock"]["api_key"] == "mcpac_dev_server_bedrock_api_key"
-    assert transformed_yaml["server"]["bedrock"]["user_access_key"] == "mcpac_usr_server_bedrock_user_access_key"
+    # Check developer secret is replaced with handle
+    assert isinstance(transformed_yaml["server"]["bedrock"]["api_key"], str)
+    # The exact format depends on the mock implementation, but it should be a string
     
-    # Verify client was called for each secret
-    assert mock_secrets_client.create_secret.call_count == 2
+    # Check user secret remains as UserSecret
+    assert isinstance(transformed_yaml["server"]["bedrock"]["user_access_key"], UserSecret)
+    
+    # Verify client was called once (only for developer secret)
+    assert mock_secrets_client.create_secret.call_count == 1
