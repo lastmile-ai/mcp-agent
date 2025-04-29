@@ -38,13 +38,11 @@ user_token: !user_secret
 Following the established pattern in MCP Agent, secrets are managed using a dedicated `mcp_agent.secrets.yaml` file, separate from the main configuration.
 
 This approach:
-
 - Keeps sensitive information separate from regular configuration
 - Allows you to gitignore the secrets file for security
 - Creates a clear separation between configuration and credentials
 
 The standard pattern for MCP Agent projects:
-
 1. Keep all regular configuration in `mcp_agent.config.yaml`
 2. Keep all secrets in `mcp_agent.secrets.yaml`
 
@@ -86,13 +84,11 @@ After deployment, your transformed configuration contains only secret IDs, not a
 ## Current Limitations
 
 The current implementation supports:
-
 - Tag detection and transformation
 - Developer and user secret registration
 - Separate secrets file processing
 
 Future releases will add:
-
 - `configure` command for user secret collection
 - Runtime secret resolution
 - Enhanced security and permission controls
@@ -102,9 +98,8 @@ Future releases will add:
 ### Secret Types vs API Design
 
 While the CLI distinguishes between developer and user secrets:
-
 - Developer secrets: Values known at deploy time
-- User secrets: Values collected at runtime
+- User secrets: Values collected at configure time
 
 The backend API itself doesn't have this distinction. From the API's perspective, all secrets are just "secrets" with a name and value. The SDK maintains this developer/user distinction locally for better UX, but doesn't transmit this typing information to the API.
 

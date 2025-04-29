@@ -4,34 +4,40 @@ from typing import Optional, Dict, Any, List
 
 import httpx
 
-from .constants import SecretType  # Removed SECRET_TYPE_PATHS, using SecretType.value directly
+from .constants import (
+    SecretType,
+)  # Removed SECRET_TYPE_PATHS, using SecretType.value directly
 
 
 class SecretsClient:
     """Client for interacting with the API service over HTTP."""
-    
+
     def __init__(self, api_url: str, api_key: str, api_token: str = None):
         """Initialize the API client.
-        
+
         Args:
             api_url: The base URL of the API (e.g., http://localhost:3000/api)
             api_key: The API authentication key
             api_token: Unused, kept for API compatibility
         """
-        self.api_url = api_url.rstrip("/")  # Remove trailing slash for consistent URL building
+        self.api_url = api_url.rstrip(
+            "/"
+        )  # Remove trailing slash for consistent URL building
         self.api_key = api_key
-        
-    async def create_secret(self, name: str, secret_type: SecretType, value: Optional[str] = None) -> str:
+
+    async def create_secret(
+        self, name: str, secret_type: SecretType, value: str
+    ) -> str:
         """Create a secret via the API.
-        
+
         Args:
             name: The configuration path (e.g., 'server.bedrock.api_key')
-            secret_type: DEVELOPER ("dev") or USER ("usr") 
+            secret_type: DEVELOPER ("dev") or USER ("usr")
             value: The secret value (required for all secret types)
-            
+
         Returns:
             str: The secret UUID/handle returned by the API
-            
+
         Raises:
             ValueError: If a secret is created without a non-empty value
             httpx.HTTPError: If the API request fails
@@ -39,21 +45,21 @@ class SecretsClient:
         # For all secrets, non-empty values are required (based on test expectations)
         if value is None:
             raise ValueError(f"Secret '{name}' requires a non-empty value")
-        
+
         # Ensure values are not empty or just whitespace
         if isinstance(value, str) and value.strip() == "":
             raise ValueError(f"Secret '{name}' requires a non-empty value")
-        
+
         # Prepare request payload
         payload: Dict[str, Any] = {
             "name": name,
             "type": secret_type.value,  # Send "dev" or "usr" directly from enum value
         }
-        
+
         # Add value to payload if provided
         if value is not None:
             payload["value"] = value
-            
+
         # Make the API request
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -62,30 +68,32 @@ class SecretsClient:
                 headers=self._get_headers(),
                 timeout=30.0,  # Reasonable timeout for API operations
             )
-            
+
             # Raise for HTTP errors
             response.raise_for_status()
-            
+
             # Parse the response to get the UUID/handle
             data = response.json()
             # Extract the secretId from the response - it should be in the secret object
             handle = data.get("secret", {}).get("secretId")
-            
+
             if not handle:
-                raise ValueError("API did not return a valid secret handle in the expected format")
-            
+                raise ValueError(
+                    "API did not return a valid secret handle in the expected format"
+                )
+
             # The handle is already a standard UUID
             return handle
-        
+
     async def get_secret_value(self, handle: str) -> str:
         """Get a secret value from the API.
-        
+
         Args:
             handle: The secret UUID returned by the API
-            
+
         Returns:
             str: The secret value
-            
+
         Raises:
             ValueError: If the handle is invalid
             httpx.HTTPStatusError: If the API returns an error (e.g., 404, 403)
@@ -93,7 +101,7 @@ class SecretsClient:
         """
         if not self._is_valid_handle(handle):
             raise ValueError(f"Invalid handle format: {handle}")
-        
+
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{self.api_url}/secrets/get_secret_value",
@@ -101,29 +109,29 @@ class SecretsClient:
                 headers=self._get_headers(),
                 timeout=30.0,
             )
-            
+
             # Raise for HTTP errors
             response.raise_for_status()
-            
+
             # Parse the response to get the value
             data = response.json()
             value = data.get("value")
-            
+
             if value is None:
                 raise ValueError(f"Secret {handle} doesn't have a value")
-            
+
             return value
-        
+
     async def set_secret_value(self, handle: str, value: str) -> bool:
         """Set a secret value via the API.
-        
+
         Args:
             handle: The secret UUID returned by the API
             value: The secret value to store
-            
+
         Returns:
             bool: True if the operation was successful
-            
+
         Raises:
             ValueError: If the handle is invalid
             httpx.HTTPStatusError: If the API returns an error (e.g., 404, 403)
@@ -131,40 +139,42 @@ class SecretsClient:
         """
         if not self._is_valid_handle(handle):
             raise ValueError(f"Invalid handle format: {handle}")
-        
+
         # Prepare request payload
         payload = {
             "secretId": handle,
             "value": value,
         }
-        
+
         # Make the API request
         async with httpx.AsyncClient() as client:
             response = await client.post(  # Route is POST even though HTTP semantics suggest PUT
-                f"{self.api_url}/secrets/set_secret_value", 
+                f"{self.api_url}/secrets/set_secret_value",
                 json=payload,
                 headers=self._get_headers(),
                 timeout=30.0,
             )
-            
+
             # Raise for HTTP errors
             response.raise_for_status()
-            
+
             # Parse the response to get the success flag
             data = response.json()
             success = data.get("success", False)
-            
+
             return success
-            
-    async def list_secrets(self, name_filter: Optional[str] = None) -> List[Dict[str, Any]]:
+
+    async def list_secrets(
+        self, name_filter: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
         """List secrets via the API.
-        
+
         Args:
             name_filter: Optional filter for secret names
-            
+
         Returns:
             List[Dict[str, Any]]: List of secret metadata
-            
+
         Raises:
             httpx.HTTPStatusError: If the API returns an error
             httpx.HTTPError: If the request fails
@@ -173,7 +183,7 @@ class SecretsClient:
         payload = {}
         if name_filter:
             payload["nameFilter"] = name_filter
-        
+
         # Make the API request
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -182,25 +192,25 @@ class SecretsClient:
                 headers=self._get_headers(),
                 timeout=30.0,
             )
-            
+
             # Raise for HTTP errors
             response.raise_for_status()
-            
+
             # Parse the response
             data = response.json()
             secrets = data.get("secrets", [])
-            
+
             return secrets
-            
+
     async def delete_secret(self, handle: str) -> str:
         """Delete a secret via the API.
-        
+
         Args:
             handle: The secret UUID returned by the API
-            
+
         Returns:
             str: The ID of the deleted secret
-            
+
         Raises:
             ValueError: If the handle is invalid
             httpx.HTTPStatusError: If the API returns an error (e.g., 404, 403)
@@ -208,12 +218,12 @@ class SecretsClient:
         """
         if not self._is_valid_handle(handle):
             raise ValueError(f"Invalid handle format: {handle}")
-        
+
         # Prepare request payload
         payload = {
             "secretId": handle,
         }
-        
+
         # Make the API request
         async with httpx.AsyncClient() as client:
             response = await client.delete(
@@ -222,22 +232,24 @@ class SecretsClient:
                 headers=self._get_headers(),
                 timeout=30.0,
             )
-            
+
             # Raise for HTTP errors
             response.raise_for_status()
-            
+
             # Parse the response to get the deleted secret ID
             data = response.json()
             deleted_id = data.get("secretId")
-            
+
             if not deleted_id:
-                raise ValueError("API didn't return the ID of the deleted secret")
-                
+                raise ValueError(
+                    "API didn't return the ID of the deleted secret"
+                )
+
             return deleted_id
-    
+
     def _get_headers(self) -> Dict[str, str]:
         """Get the headers for API requests.
-        
+
         Returns:
             Dict[str, str]: The request headers
         """
@@ -246,20 +258,20 @@ class SecretsClient:
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
-    
+
     def _is_valid_handle(self, handle: str) -> bool:
         """Check if a handle has a valid format.
-        
+
         Args:
             handle: The handle to check (UUID format)
-            
+
         Returns:
             bool: True if the handle has a valid format, False otherwise
         """
         from .constants import HANDLE_PATTERN
-        
+
         if not isinstance(handle, str) or not handle:
             return False
-            
+
         # Validate against the pattern (standard UUID format)
         return bool(HANDLE_PATTERN.match(handle))
