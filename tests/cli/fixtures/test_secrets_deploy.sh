@@ -6,8 +6,8 @@ export OPENAI_API_KEY="sk-openai-test-key"
 export ANTHROPIC_API_KEY="sk-anthropic-test-key"
 
 # Set API credentials
-export MCP_SECRETS_API_URL="http://localhost:3000/api"
-export MCP_API_TOKEN="your-api-token"
+export MCP_API_BASE_URL="http://localhost:3000/api"
+export MCP_API_KEY="your-api-key"
 
 # Run deploy with secrets file (dry run mode)
 python -m mcp_agent_cloud.cli.main deploy \

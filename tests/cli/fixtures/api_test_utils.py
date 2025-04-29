@@ -3,9 +3,13 @@
 import os
 import subprocess
 import time
+import uuid
 from enum import Enum
 from pathlib import Path
 from typing import Dict, Optional, Tuple
+
+# Import the JWT generator from our utils package
+from tests.utils.jwt_generator import generate_jwt
 
 
 class APIMode(Enum):
@@ -19,8 +23,8 @@ class APITestManager:
     """Manages API testing configurations."""
     
     # Environment variable names
-    API_URL_ENV = "MCP_SECRETS_API_URL"
-    API_TOKEN_ENV = "MCP_API_TOKEN"
+    API_URL_ENV = "MCP_API_BASE_URL"
+    API_KEY_ENV = "MCP_API_KEY"
     
     # Default values
     DEFAULT_LOCAL_API_URL = "http://localhost:3000/api"
@@ -40,29 +44,29 @@ class APITestManager:
         """Set up the API for testing.
         
         Returns:
-            Tuple of (api_url, api_token)
+            Tuple of (api_url, api_key)
         """
         # Check if API credentials are already set and we're not forcing a check
         api_url = os.environ.get(self.API_URL_ENV)
-        api_token = os.environ.get(self.API_TOKEN_ENV)
+        api_key = os.environ.get(self.API_KEY_ENV)
         
-        if not self.force_check and api_url and api_token:
+        if not self.force_check and api_url and api_key:
             # Verify the API connection
-            if self._verify_api_connection(api_url, api_token):
+            if self._verify_api_connection(api_url, api_key):
                 print(f"Using existing API credentials for {api_url}")
-                return api_url, api_token
+                return api_url, api_key
         
         # Determine the mode to use
         if self.mode == APIMode.AUTO:
             # Check if remote credentials are available
             api_url = os.environ.get(self.API_URL_ENV)
-            api_token = os.environ.get(self.API_TOKEN_ENV)
+            api_key = os.environ.get(self.API_KEY_ENV)
             
-            if api_url and api_token:
+            if api_url and api_key:
                 # Try to use remote
-                if self._verify_api_connection(api_url, api_token):
+                if self._verify_api_connection(api_url, api_key):
                     print(f"Successfully connected to remote API at {api_url}")
-                    return api_url, api_token
+                    return api_url, api_key
                 else:
                     print(f"Failed to connect to remote API at {api_url}, falling back to local")
             
@@ -72,26 +76,71 @@ class APITestManager:
         if self.mode == APIMode.REMOTE:
             # Require remote credentials to be set
             api_url = os.environ.get(self.API_URL_ENV)
-            api_token = os.environ.get(self.API_TOKEN_ENV)
+            api_key = os.environ.get(self.API_KEY_ENV)
             
-            if not api_url or not api_token:
-                raise RuntimeError(f"Remote API mode requires {self.API_URL_ENV} and {self.API_TOKEN_ENV} environment variables")
+            if not api_url or not api_key:
+                raise RuntimeError(f"Remote API mode requires {self.API_URL_ENV} and {self.API_KEY_ENV} environment variables")
             
-            if not self._verify_api_connection(api_url, api_token):
+            if not self._verify_api_connection(api_url, api_key):
                 raise RuntimeError(f"Failed to connect to remote API at {api_url}")
             
             print(f"Successfully connected to remote API at {api_url}")
-            return api_url, api_token
+            return api_url, api_key
         
         # Local mode
         api_url = self.DEFAULT_LOCAL_API_URL
-        api_token = os.environ.get(self.API_TOKEN_ENV)
+        api_key = os.environ.get(self.API_KEY_ENV)
         
-        if not api_token:
-            raise RuntimeError(f"Local API mode requires {self.API_TOKEN_ENV} environment variable")
+        # If no token is provided, generate one for testing
+        if not api_key:
+            print("No API key found in environment, generating a test JWT token...")
+            # Get the NEXTAUTH_SECRET from the environment or .env file
+            nextauth_secret = os.environ.get("NEXTAUTH_SECRET")
+            
+            # If not in environment, try to read from www/.env file
+            if not nextauth_secret:
+                env_path = str(self.base_dir / "www" / ".env")
+                if os.path.exists(env_path):
+                    print(f"Reading NEXTAUTH_SECRET from {env_path}")
+                    with open(env_path, "r") as f:
+                        for line in f:
+                            if line.startswith("NEXTAUTH_SECRET="):
+                                # Extract value between quotes if present
+                                parts = line.strip().split("=", 1)
+                                if len(parts) == 2:
+                                    secret = parts[1].strip()
+                                    # Remove surrounding quotes if present
+                                    if (secret.startswith('"') and secret.endswith('"')) or \
+                                       (secret.startswith("'") and secret.endswith("'")):
+                                        secret = secret[1:-1]
+                                    nextauth_secret = secret
+                                    # Save in environment
+                                    os.environ["NEXTAUTH_SECRET"] = nextauth_secret
+                                    print(f"Found NEXTAUTH_SECRET in .env file")
+                                    break
+            
+            # If still not found, use the hardcoded value from the .env file
+            if not nextauth_secret:
+                print("Warning: NEXTAUTH_SECRET not found in environment or .env. Using hardcoded secret for testing.")
+                nextauth_secret = "3Jk0h98K1KKB7Jyh3/Kgp0bAKM0DSMcx1Jk7FJ6boNw"
+                # Set it in the environment for future use
+                os.environ["NEXTAUTH_SECRET"] = nextauth_secret
+            
+            # Generate a test token with required fields
+            api_key = generate_jwt(
+                user_id=f"test-user-{uuid.uuid4()}",
+                email="test@example.com",
+                name="Test User",
+                api_token=True,
+                prefix=True,  # Add the prefix for API tokens
+                nextauth_secret=nextauth_secret
+            )
+            print(f"Generated test API key: {api_key[:15]}...{api_key[-5:]}")
+            # Store it in the environment
+            os.environ[self.API_KEY_ENV] = api_key
         
         # Verify connection to local API
-        if not self._verify_api_connection(api_url, api_token):
+        if not self._verify_api_connection(api_url, api_key):
             import httpx
             
             # Try to get more diagnostic information
@@ -104,13 +153,13 @@ class APITestManager:
                     secrets_response = httpx.post(
                         f"{api_url}/secrets/create_secret",
                         json={"name": "test", "type": "dev", "value": "test"},
-                        headers={"Authorization": f"Bearer {api_token}"},
+                        headers={"Authorization": f"Bearer {api_key}"},
                         timeout=2.0
                     )
                     if "Error decoding API token" in secrets_response.text:
                         raise RuntimeError(
                             f"API token validation error. "
-                            f"The provided token '{api_token}' is not valid for the running web app. "
+                            f"The provided API key '{api_key}' is not valid for the running web app. "
                             f"Use an appropriate test token for this environment."
                         )
                 except:
@@ -140,16 +189,16 @@ class APITestManager:
         
         print(f"Successfully connected to local API at {api_url}")
         os.environ[self.API_URL_ENV] = api_url
-        os.environ[self.API_TOKEN_ENV] = api_token
+        os.environ[self.API_KEY_ENV] = api_key
         
-        return api_url, api_token
+        return api_url, api_key
     
-    def _verify_api_connection(self, api_url: str, api_token: str) -> bool:
+    def _verify_api_connection(self, api_url: str, api_key: str) -> bool:
         """Verify that we can connect to the API.
         
         Args:
             api_url: The API URL.
-            api_token: The API token.
+            api_key: The API key.
             
         Returns:
             True if connection is successful, False otherwise.
@@ -195,7 +244,7 @@ def setup_api_for_testing(mode: APIMode = APIMode.AUTO, force_check: bool = Fals
         force_check: Force checking the API connection even if it was already set up.
         
     Returns:
-        Tuple of (api_url, api_token)
+        Tuple of (api_url, api_key)
     """
     manager = get_api_manager(mode=mode, force_check=force_check)
     return manager.setup()
@@ -204,9 +253,9 @@ def setup_api_for_testing(mode: APIMode = APIMode.AUTO, force_check: bool = Fals
 if __name__ == "__main__":
     # When run directly, verify API connection and print results
     try:
-        api_url, api_token = setup_api_for_testing()
+        api_url, api_key = setup_api_for_testing()
         print(f"API URL: {api_url}")
-        print(f"API Token: {'*' * 6 + api_token[-4:] if api_token else 'Not set'}")
+        print(f"API Key: {'*' * 6 + api_key[-4:] if api_key else 'Not set'}")
         print("API connection successful!")
     except Exception as e:
         print(f"Error: {e}")

@@ -33,10 +33,10 @@ def test_deploy_config_with_secrets(sample_config_yaml, sample_secrets_yaml, tmp
     
     # We need to patch the settings module first to override the default behavior
     with patch("mcp_agent_cloud.commands.deploy.settings") as mock_settings:
-        # Ensure settings.SECRETS_API_URL and settings.SECRETS_API_TOKEN are empty
+        # Ensure settings.API_BASE_URL and settings.API_KEY are empty
         # so we rely only on the parameters
-        mock_settings.SECRETS_API_URL = ""
-        mock_settings.SECRETS_API_TOKEN = ""
+        mock_settings.API_BASE_URL = ""
+        mock_settings.API_KEY = ""
         
         # Then mock the _run_async function
         with patch("mcp_agent_cloud.commands.deploy._run_async") as mock_run_async:
@@ -47,7 +47,7 @@ def test_deploy_config_with_secrets(sample_config_yaml, sample_secrets_yaml, tmp
                 secrets_output_file=Path(secrets_output_path),
                 no_secrets=False,  # Explicitly set to process secrets
                 api_url="http://test-api",
-                api_token="test-token",
+                api_key="test-token",
                 dry_run=True,
             )
             

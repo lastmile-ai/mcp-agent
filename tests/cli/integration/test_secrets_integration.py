@@ -58,7 +58,7 @@ def test_cli_deploy_with_realistic_configs(mock_api_credentials, setup_test_env_
             "--secrets-file", str(secrets_path),
             "--secrets-output-file", str(output_path),
             "--api-url", API_URL,
-            "--api-token", API_TOKEN,
+            "--api-key", API_TOKEN,
             "--dry-run"  # Don't actually deploy
         ]
         
@@ -139,7 +139,7 @@ def test_cli_deploy_with_mixed_secrets(mock_api_credentials, setup_test_env_vars
             "--secrets-file", str(secrets_path),
             "--secrets-output-file", str(output_path),
             "--api-url", API_URL,
-            "--api-token", API_TOKEN,
+            "--api-key", API_TOKEN,
             "--dry-run"  # Don't actually deploy
         ]
         
@@ -223,7 +223,7 @@ test: value
             str(config_path),
             "--secrets-file", non_existent_path,
             "--api-url", API_URL,
-            "--api-token", API_TOKEN,
+            "--api-key", API_TOKEN,
             "--dry-run"
         ]
         
@@ -242,7 +242,7 @@ test: value
             str(config_path),
             # No secrets-file parameter
             "--api-url", API_URL,
-            "--api-token", API_TOKEN,
+            "--api-key", API_TOKEN,
             "--dry-run"
         ]
         
@@ -301,7 +301,7 @@ api:
             str(config_path),
             "--secrets-file", str(secrets_path),
             "--api-url", API_URL,
-            "--api-token", API_TOKEN,
+            "--api-key", API_TOKEN,
             "--dry-run",
             "--no-prompt"  # Prevent interactive prompting
         ]
@@ -322,7 +322,7 @@ api:
             str(config_path),
             "--secrets-file", str(space_secrets_path),
             "--api-url", API_URL,
-            "--api-token", API_TOKEN,
+            "--api-key", API_TOKEN,
             "--dry-run",
             "--no-prompt"  # Prevent interactive prompting
         ]

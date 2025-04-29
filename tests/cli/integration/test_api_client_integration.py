@@ -17,7 +17,7 @@ To run these tests successfully:
    
 2. Start the web app: cd www && pnpm run webdev
 
-3. Run the tests: pytest -m "integration and api" -v
+3. Run the tests: pytest -m integration -v
 """
 
 import uuid
@@ -25,8 +25,8 @@ import pytest
 
 from mcp_agent_cloud.secrets.constants import SecretType, HANDLE_PATTERN
 
-# Mark all tests in this module with the integration and api markers
-pytestmark = [pytest.mark.integration, pytest.mark.api]
+# Mark all tests in this module with the integration marker
+pytestmark = pytest.mark.integration
 
 
 @pytest.mark.asyncio
@@ -44,7 +44,7 @@ async def test_create_and_get_real_secret(real_secrets_client):
         value=secret_value
     )
     
-    # Verify the handle format
+    # Verify the handle is a standard UUID
     assert HANDLE_PATTERN.match(handle), f"Handle format '{handle}' doesn't match expected UUID pattern"
     print(f"Created secret with handle: {handle}")
     
@@ -56,9 +56,10 @@ async def test_create_and_get_real_secret(real_secrets_client):
         assert retrieved_value == secret_value, f"Retrieved value '{retrieved_value}' doesn't match '{secret_value}'"
         
     finally:
-        # Clean up - delete the secret
+        # Clean up
         try:
-            await real_secrets_client.delete_secret(handle)
+            deleted_id = await real_secrets_client.delete_secret(handle)
+            assert deleted_id == handle, f"Deleted secret ID {deleted_id} doesn't match handle {handle}"
             print(f"Deleted test secret: {handle}")
         except Exception as e:
             print(f"Warning: Failed to delete test secret {handle}: {e}")
@@ -82,19 +83,18 @@ async def test_update_real_secret_value(real_secrets_client):
     
     try:
         # Update the secret value
-        await real_secrets_client.set_secret_value(handle, updated_value)
+        success = await real_secrets_client.set_secret_value(handle, updated_value)
+        assert success is True, "set_secret_value operation failed"
         
-        # Retrieve the updated value
+        # Verify the value was updated
         retrieved_value = await real_secrets_client.get_secret_value(handle)
+        assert retrieved_value == updated_value, f"Retrieved value '{retrieved_value}' doesn't match updated value '{updated_value}'"
         
-        # Verify it matches the updated value
-        assert retrieved_value == updated_value, \
-            f"Retrieved value '{retrieved_value}' doesn't match updated value '{updated_value}'"
-            
     finally:
-        # Clean up - delete the secret
+        # Clean up
         try:
-            await real_secrets_client.delete_secret(handle)
+            deleted_id = await real_secrets_client.delete_secret(handle)
+            assert deleted_id == handle, f"Deleted secret ID {deleted_id} doesn't match handle {handle}"
             print(f"Deleted test secret: {handle}")
         except Exception as e:
             print(f"Warning: Failed to delete test secret {handle}: {e}")
@@ -134,7 +134,8 @@ async def test_list_real_secrets(real_secrets_client):
         # Clean up - delete the test secrets
         for handle in handles:
             try:
-                await real_secrets_client.delete_secret(handle)
+                deleted_id = await real_secrets_client.delete_secret(handle)
+                assert deleted_id == handle, f"Deleted secret ID {deleted_id} doesn't match handle {handle}"
                 print(f"Deleted test secret: {handle}")
             except Exception as e:
                 print(f"Warning: Failed to delete test secret {handle}: {e}")

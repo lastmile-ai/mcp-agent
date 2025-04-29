@@ -12,19 +12,19 @@ class SecretType(Enum):
     USER = "usr"  # Secrets collected from end-users at configure time
 
 
-# For future URI implementation, see URI_PROPOSAL.md
-# This simpler implementation uses UUIDs with a type field instead of full URIs
-
-# Regular expression for validating UUID format
-# This supports both standard UUID format and test UUIDs with 'abcd' etc.
+# Standard UUID pattern for secret IDs
+# The API now returns standard UUIDs directly
 UUID_PATTERN = r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+
+# Support for test UUIDs in test environments (allows letters in some segments)
 TEST_UUID_PATTERN = r"^[0-9a-f]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12}$"
-# Use less strict pattern for testing
-HANDLE_PATTERN = re.compile(TEST_UUID_PATTERN)
+
+# Combined pattern for UUID validation
+HANDLE_PATTERN = re.compile(f"({UUID_PATTERN})|({TEST_UUID_PATTERN})")
 
 # Environment variable names
-ENV_SECRETS_API_URL = "MCP_SECRETS_API_URL"
-ENV_API_TOKEN = "MCP_API_TOKEN"
+ENV_API_BASE_URL = "MCP_API_BASE_URL"
+ENV_API_KEY = "MCP_API_KEY"
 
 # Default values
-DEFAULT_SECRETS_API_URL = "http://localhost:3000/api"
+DEFAULT_API_BASE_URL = "http://localhost:3000/api"

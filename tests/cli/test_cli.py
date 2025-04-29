@@ -21,7 +21,7 @@ def test_deploy_command_help(runner):
     
     # Check parameters are in the help text - updated for dedicated secrets file approach
     assert "--api-url" in result.stdout
-    assert "--api-token" in result.stdout
+    assert "--api-key" in result.stdout
     assert "--secrets-file" in result.stdout
     assert "--secrets-output-file" in result.stdout
     assert "--no-secrets" in result.stdout

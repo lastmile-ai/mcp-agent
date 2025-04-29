@@ -19,6 +19,11 @@ import pytest
 import yaml
 from typer.testing import CliRunner
 
+from mcp_agent_cloud.secrets.yaml_tags import (
+    SecretYamlLoader, UserSecret, DeveloperSecret,
+    load_yaml_with_secrets
+)
+
 from mcp_agent_cloud.cli.main import app
 from mcp_agent_cloud.secrets.constants import SecretType
 from mcp_agent_cloud.secrets.api_client import SecretsClient
@@ -81,7 +86,7 @@ def api_credentials():
 def api_client(api_credentials):
     """Create a SecretsClient."""
     api_url, api_token = api_credentials
-    return SecretsClient(api_url=api_url, api_token=api_token)
+    return SecretsClient(api_url=api_url, api_key=api_token)
 
 
 class TestMcpAgentConfigIntegration:
@@ -113,7 +118,7 @@ class TestMcpAgentConfigIntegration:
                 [
                     "deploy", 
                     "--api-url", api_url,
-                    "--api-token", api_token,
+                    "--api-key", api_token,
                     "--secrets-file", str(secrets_path),
                     "--secrets-output-file", output_path,
                     "--dry-run",
@@ -123,7 +128,7 @@ class TestMcpAgentConfigIntegration:
             
             # Check that the command succeeded
             assert result.exit_code == 0, f"Error: {result.stdout}"
-            assert "Secrets processed successfully" in result.stdout
+            assert "Secrets file processed successfully" in result.stdout
             
             # Check that the output file exists and was transformed properly
             assert Path(output_path).exists()
@@ -192,10 +197,10 @@ class TestMcpAgentConfigIntegration:
         # Ensure the fixture files exist
         assert secrets_path.exists(), f"Secrets fixture {secrets_path} does not exist"
         
-        # Load the original secrets file
+        # Load the original secrets file with custom YAML loader for secret tags
         with open(secrets_path, "r") as f:
             config_str = f.read()
-        config = yaml.safe_load(config_str)
+        config = load_yaml_with_secrets(config_str)
         
         # List to store created secret IDs for cleanup
         created_secrets = []
@@ -210,32 +215,36 @@ class TestMcpAgentConfigIntegration:
                         if isinstance(value, (dict, list)):
                             await process_secrets_recursive(value, current_path)
                         # Process developer secrets using the API
-                        elif isinstance(value, str) and "!developer_secret" in value:
-                            # Extract actual value (should be env var reference)
-                            env_var = value.replace("!developer_secret ", "").strip()
-                            if env_var.startswith("${oc.env:") and env_var.endswith("}"):
+                        elif isinstance(value, DeveloperSecret):
+                            # Get the value - might be env var reference
+                            env_var = value.value
+                            secret_value = env_var
+                            
+                            if env_var and env_var.startswith("${oc.env:") and env_var.endswith("}"):
                                 # Extract env var name
                                 env_name = env_var[9:-1]
                                 secret_value = os.environ.get(env_name, "")
-                                # Create secret via API
-                                secret_id = await api_client.create_secret(
-                                    name=current_path,
-                                    secret_type=SecretType.DEVELOPER,
-                                    value=secret_value
-                                )
-                                created_secrets.append(secret_id)
                                 
-                                # Verify we can retrieve the secret
-                                retrieved_value = await api_client.get_secret_value(secret_id)
-                                assert retrieved_value == secret_value, f"Retrieved value {retrieved_value} does not match expected {secret_value}"
+                            # Create secret via API
+                            secret_id = await api_client.create_secret(
+                                name=current_path,
+                                secret_type=SecretType.DEVELOPER,
+                                value=secret_value or "test-value-for-empty-developer-secret"
+                            )
+                            created_secrets.append(secret_id)
+                            
+                            # Verify we can retrieve the secret
+                            retrieved_value = await api_client.get_secret_value(secret_id)
+                            assert retrieved_value == (secret_value or "test-value-for-empty-developer-secret"), \
+                                f"Retrieved value {retrieved_value} does not match expected {secret_value}"
                                 
                         # Process user secrets using the API
-                        elif isinstance(value, str) and "!user_secret" in value:
+                        elif isinstance(value, UserSecret):
                             # Create user secret (placeholder)
                             secret_id = await api_client.create_secret(
                                 name=current_path,
                                 secret_type=SecretType.USER,
-                                value=""  # Empty for user secrets
+                                value="initial-value-required"  # API requires a value
                             )
                             created_secrets.append(secret_id)
                             
@@ -261,6 +270,7 @@ class TestMcpAgentConfigIntegration:
             # Clean up created secrets
             for secret_id in created_secrets:
                 try:
-                    await api_client.delete_secret(secret_id)
+                    deleted_id = await api_client.delete_secret(secret_id)
+                    assert deleted_id == secret_id, f"Deleted secret ID {deleted_id} doesn't match original {secret_id}"
                 except Exception as e:
                     print(f"Error cleaning up secret {secret_id}: {str(e)}")

@@ -27,6 +27,7 @@ For example, when processing:
 """
 
 import os
+import re
 from typing import Any, Dict, Optional, Union
 from pathlib import Path
 
@@ -44,7 +45,11 @@ class SecretBase(yaml.YAMLObject):
     def from_yaml(cls, loader, node):
         # Handle both scalar values and empty tags
         if isinstance(node, yaml.ScalarNode):
-            return cls(loader.construct_scalar(node))
+            value = loader.construct_scalar(node)
+            # Convert empty strings to None
+            if value == '':
+                return cls(None)
+            return cls(value)
         return cls(None)
     
     def __repr__(self):
@@ -67,9 +72,9 @@ class EmptyTagDumper(yaml.SafeDumper):
     
     def represent_scalar(self, tag, value, style=None):
         """Customize the representation of scalar values."""
-        # For user_secret tags with empty strings, treat them specially
-        if tag == '!user_secret' and (value is None or value == ''):
-            # Use a null style (plain) for empty tags
+        # For secret tags with empty strings, treat them specially
+        if (tag in ['!user_secret', '!developer_secret']) and (value is None or value == ''):
+            # Use an empty style (plain) for empty tags to remove the quotes
             return yaml.ScalarNode(tag, '', style='')
         
         # For all other cases, use the default behavior
@@ -79,16 +84,18 @@ class EmptyTagDumper(yaml.SafeDumper):
 def represent_user_secret(dumper, data):
     """Custom representation for UserSecret objects."""
     if data.value is None or data.value == '':
-        # For empty values, use a tag with no content
-        return dumper.represent_scalar('!user_secret', '')
+        # For empty values, use a tag with no content and plain style
+        # This is the key fix - using '' as style removes the quotes
+        return dumper.represent_scalar('!user_secret', '', style='')
     # For non-empty values, preserve them
     return dumper.represent_scalar('!user_secret', data.value)
 
 def represent_developer_secret(dumper, data):
     """Custom representation for DeveloperSecret objects."""
     if data.value is None or data.value == '':
-        # For empty values, use a tag with no content
-        return dumper.represent_scalar('!developer_secret', '')
+        # For empty values, use a tag with no content and plain style
+        # Using '' as style removes the quotes
+        return dumper.represent_scalar('!developer_secret', '', style='')
     # For non-empty values, preserve them
     return dumper.represent_scalar('!developer_secret', data.value)
 
@@ -99,27 +106,30 @@ EmptyTagDumper.add_representer(DeveloperSecret, represent_developer_secret)
 from ..config import settings
 from .constants import SecretType
 from .api_client import SecretsClient
-from ..ux import print_info, print_warning, print_error
+from ..ux import print_info, print_warning, print_error, print_success
 
 
 async def process_config_secrets(
     config_path: Union[str, Path],
     output_path: Union[str, Path],
     api_url: Optional[str] = None,
-    api_token: Optional[str] = None,
+    api_key: Optional[str] = None,
     client: Optional[Any] = None,
     no_prompt: bool = False,
-) -> None:
+) -> Dict[str, Any]:
     """Process a configuration file, transforming secret tags to secret IDs.
     
     Args:
         config_path: Path to the configuration file
         output_path: Path to write the transformed configuration to
-        api_url: Optional Secrets API URL, overrides environment variable
-        api_token: Optional Secrets API token, overrides environment variable
+        api_url: Optional API base URL, overrides environment variable
+        api_key: Optional API key, overrides environment variable
         client: Optional pre-initialized secrets client (for testing or dry runs)
         no_prompt: Never prompt for missing values (fail instead)
     
+    Returns:
+        Dict with summary information about the processed secrets
+        
     Raises:
         Exception: If processing fails
     """
@@ -143,12 +153,24 @@ async def process_config_secrets(
     # Initialize the secrets client if not provided
     if client is None:
         client = SecretsClient(
-            api_url=api_url or settings.SECRETS_API_URL,
-            api_token=api_token or settings.SECRETS_API_TOKEN
+            api_url=api_url or settings.API_BASE_URL,
+            api_key=api_key or settings.API_KEY
         )
     
     # Process the configuration file for secrets
-    transformed_str = await process_secrets_in_config(config_str, client, no_prompt)
+    secrets_context = {
+        'developer_secrets': [],
+        'user_secrets': [],
+        'env_loaded': [],
+        'prompted': []
+    }
+    
+    transformed_str = await process_secrets_in_config(
+        config_str, 
+        client, 
+        no_prompt,
+        secrets_context
+    )
     
     # Parse the transformed string back to YAML to validate
     try:
@@ -161,13 +183,16 @@ async def process_config_secrets(
         f.write(transformed_str)
     
     # Display the changes
-    await compare_configs(config_yaml, transformed_yaml)
+    await compare_configs(config_yaml, transformed_yaml, secrets_context)
+    
+    return secrets_context
 
 
 async def process_secrets_in_config(
     config_str: str, 
     client: SecretsClient,
-    no_prompt: bool = False
+    no_prompt: bool = False,
+    secrets_context: Optional[Dict[str, Any]] = None
 ) -> str:
     """Process secrets in the configuration string.
     
@@ -175,18 +200,39 @@ async def process_secrets_in_config(
         config_str: The configuration string containing secret tags
         client: The secrets client to use for creating secrets
         no_prompt: Never prompt for missing values (fail instead)
+        secrets_context: Optional dictionary to track secret processing information
     
     Returns:
         The transformed configuration string with secret tags replaced by secret IDs
     """
+    # Initialize context if not provided
+    if secrets_context is None:
+        secrets_context = {
+            'developer_secrets': [],
+            'user_secrets': [],
+            'env_loaded': [],
+            'prompted': []
+        }
+    
     # Load the config with custom tag handlers
     config_yaml = yaml.load(config_str, Loader=yaml.FullLoader)
     
     # Process the loaded YAML recursively
-    transformed_yaml = await transform_config_recursive(config_yaml, client, "", no_prompt)
+    transformed_yaml = await transform_config_recursive(
+        config_yaml, 
+        client, 
+        "", 
+        no_prompt,
+        secrets_context
+    )
     
     # Convert back to YAML string using our custom dumper
     transformed_str = yaml.dump(transformed_yaml, Dumper=EmptyTagDumper, default_flow_style=False)
+    
+    # Post-process the YAML string to remove empty quotes from tags
+    # This handles the fact that PyYAML's representation system cannot properly
+    # represent empty tags without surrounding quotes
+    transformed_str = re.sub(r'(!user_secret|!developer_secret) [\'\"][\'\"]', r'\1', transformed_str)
     
     return transformed_str
 
@@ -195,7 +241,8 @@ async def transform_config_recursive(
     config: Any, 
     client: SecretsClient, 
     path: str = "",
-    no_prompt: bool = False
+    no_prompt: bool = False,
+    secrets_context: Optional[Dict[str, Any]] = None
 ) -> Any:
     """Recursively transform a config dictionary, replacing developer secrets with handles.
     
@@ -207,11 +254,19 @@ async def transform_config_recursive(
         client: The secrets client
         path: The current path in the config (for naming secrets)
         no_prompt: Never prompt for missing values (fail instead)
+        secrets_context: Dictionary to track secret processing information
         
     Returns:
         The transformed configuration
     """
-    print_info(f"Processing config at path '{path}', type: {type(config)}")
+    # Initialize context if not provided
+    if secrets_context is None:
+        secrets_context = {
+            'developer_secrets': [],
+            'user_secrets': [],
+            'env_loaded': [],
+            'prompted': []
+        }
     
     # For debugging, check if the config is a string with a tag prefix
     if isinstance(config, str) and (config.startswith('!developer_secret') or config.startswith('!user_secret')):
@@ -220,6 +275,9 @@ async def transform_config_recursive(
     if isinstance(config, DeveloperSecret):
         # Process developer secret
         value = config.value
+        from_env = False
+        was_prompted = False
+        env_var = None
         
         # Process OmegaConf-style environment variable references
         # This is where OmegaConf-style resolution happens, separate from Pydantic Settings
@@ -228,26 +286,36 @@ async def transform_config_recursive(
             env_value = os.environ.get(env_var)
             if env_value is None:
                 if no_prompt:
-                    # Don't prompt - just warn and set empty string
-                    print_warning(f"Environment variable {env_var} not found. (--no-prompt is set)")
-                    env_value = ""
+                    # Fail immediately when env var is missing and --no-prompt is set
+                    error_msg = f"Developer secret at {path} has no value. Environment variable {env_var} not found and --no-prompt is set."
+                    print_error(error_msg)
+                    raise ValueError(error_msg)
                 else:
                     # Prompt the user for the missing value
-                    print_warning(f"Environment variable {env_var} not found.")
+                    from ..ux import print_secret_prompt
+                    print_secret_prompt(env_var, path)
                     env_value = typer.prompt(
-                        f"Enter value for {env_var} (secret at {path})",
+                        f"Enter value for {env_var}",
                         hide_input=True,
                         default="",
                         show_default=False
                     )
+                    was_prompted = True
+                    secrets_context['prompted'].append(path)
                     if not env_value:
                         print_warning(f"No value provided for {env_var}.")
-            print_info(f"Resolved value for developer secret at {path}")
+            else:
+                # Value was found in environment
+                from_env = True
+                secrets_context['env_loaded'].append(path)
+                print_info(f"Loaded secret value for {path} from environment variable {env_var}")
+                
             value = env_value
             
         # Create the secret in the backend
         try:
-            print_info(f"Creating developer secret at {path}...")
+            # Record that we're creating this secret (only log to file)
+            print_info(f"Creating developer secret at {path}...", log=True, console_output=False)
             # Developer secrets must have values
             if value is None or value == "":
                 if no_prompt:
@@ -284,10 +352,20 @@ async def transform_config_recursive(
             handle = await client.create_secret(
                 name=path or "unknown.path",
                 secret_type=SecretType.DEVELOPER,
-                value=value
+                value=value or ""  # Ensure value is never None
             )
             
-            print_info(f"Created developer secret at path {path} with handle: {handle}")
+            # Announce successful creation to console
+            print_info(f"Secret created at '{path}' with handle: {handle}")
+            
+            # Add to the secrets context
+            secrets_context['developer_secrets'].append({
+                'path': path,
+                'handle': handle,
+                'from_env': from_env,
+                'was_prompted': was_prompted
+            })
+            
             return handle
         except Exception as e:
             print_error(f"Failed to create developer secret at {path}: {str(e)}")
@@ -296,7 +374,9 @@ async def transform_config_recursive(
     elif isinstance(config, UserSecret):
         # For deploy phase, keep user secrets as-is
         # They will be processed during the configure phase
-        print_info(f"Keeping user secret at {path} as-is for configure phase")
+        print_info(f"Keeping user secret at {path} as-is for configure phase", console_output=False)
+        if path not in secrets_context['user_secrets']:
+            secrets_context['user_secrets'].append(path)
         return config
         
     elif isinstance(config, dict):
@@ -304,7 +384,7 @@ async def transform_config_recursive(
         result = {}
         for key, value in config.items():
             new_path = f"{path}.{key}" if path else key
-            result[key] = await transform_config_recursive(value, client, new_path, no_prompt)
+            result[key] = await transform_config_recursive(value, client, new_path, no_prompt, secrets_context)
         return result
         
     elif isinstance(config, list):
@@ -312,7 +392,7 @@ async def transform_config_recursive(
         result = []
         for i, value in enumerate(config):
             new_path = f"{path}[{i}]" if path else f"[{i}]"
-            result.append(await transform_config_recursive(value, client, new_path, no_prompt))
+            result.append(await transform_config_recursive(value, client, new_path, no_prompt, secrets_context))
         return result
         
     else:
@@ -320,7 +400,7 @@ async def transform_config_recursive(
         return config
 
 
-async def compare_configs(original: Dict[Any, Any], transformed: Dict[Any, Any]) -> None:
+async def compare_configs(original: Dict[Any, Any], transformed: Dict[Any, Any], secrets_context: Optional[Dict[str, Any]] = None) -> None:
     """Compare and print the differences between original and transformed configs.
     
     In deploy phase:
@@ -330,45 +410,50 @@ async def compare_configs(original: Dict[Any, Any], transformed: Dict[Any, Any])
     Args:
         original: The original configuration
         transformed: The transformed configuration
+        secrets_context: Optional dictionary with information about processed secrets
     """
-    print_info("\nSecret Transformations Summary:")
-    
-    # Track transformations for a summary table
-    dev_transformations = []
-    retained_user_secrets = []
-    
-    # This is a simplified comparison that shows replaced values and retained user secrets
-    def walk_configs(orig: Any, trans: Any, path: str = "") -> None:
-        if isinstance(orig, dict) and isinstance(trans, dict):
-            for key in orig:
-                if key in trans:
-                    new_path = f"{path}.{key}" if path else key
-                    walk_configs(orig[key], trans[key], new_path)
-        elif isinstance(orig, list) and isinstance(trans, list):
-            for i, (o, t) in enumerate(zip(orig, trans)):
-                new_path = f"{path}[{i}]"
-                walk_configs(o, t, new_path)
-        else:
-            # Developer secrets have been transformed to handles
-            if isinstance(orig, DeveloperSecret) and isinstance(trans, str):
-                dev_transformations.append((path, trans))
-                print_info(f"Developer secret at {path} transformed to handle: {trans}")
-            
-            # User secrets remain as tags for the configure phase
-            elif isinstance(orig, UserSecret) and isinstance(trans, UserSecret):
-                retained_user_secrets.append(path)
-                print_info(f"User secret at {path} retained for configure phase")
-    
-    # Walk through both configurations and find differences
-    walk_configs(original, transformed)
-    
-    # Print summary
-    if dev_transformations:
-        print_info(f"\nTransformed {len(dev_transformations)} developer secret(s) to handles")
-    else:
-        print_warning("No developer secrets were found in the configuration")
+    if not secrets_context:
+        # If no context was provided, build it by walking the configs
+        secrets_context = {
+            'developer_secrets': [],
+            'user_secrets': [],
+            'env_loaded': [],
+            'prompted': []
+        }
         
-    if retained_user_secrets:
-        print_info(f"\nRetained {len(retained_user_secrets)} user secret(s) for configure phase")
-    else:
-        print_info("No user secrets were found in the configuration")
+        # This is a simplified comparison that shows replaced values and retained user secrets
+        def walk_configs(orig: Any, trans: Any, path: str = "") -> None:
+            if isinstance(orig, dict) and isinstance(trans, dict):
+                for key in orig:
+                    if key in trans:
+                        new_path = f"{path}.{key}" if path else key
+                        walk_configs(orig[key], trans[key], new_path)
+            elif isinstance(orig, list) and isinstance(trans, list):
+                for i, (o, t) in enumerate(zip(orig, trans)):
+                    new_path = f"{path}[{i}]"
+                    walk_configs(o, t, new_path)
+            else:
+                # Developer secrets have been transformed to handles
+                if isinstance(orig, DeveloperSecret) and isinstance(trans, str):
+                    secrets_context['developer_secrets'].append({
+                        'path': path,
+                        'handle': trans,
+                        'from_env': False,  # We don't know, so assume false
+                        'was_prompted': False  # We don't know, so assume false
+                    })
+                
+                # User secrets remain as tags for the configure phase
+                elif isinstance(orig, UserSecret) and isinstance(trans, UserSecret):
+                    secrets_context['user_secrets'].append(path)
+        
+        # Walk through both configurations and find differences
+        walk_configs(original, transformed)
+    
+    # Use our enhanced UX function to display the summary
+    from ..ux import print_secrets_summary
+    print_secrets_summary(
+        dev_secrets=secrets_context['developer_secrets'],
+        user_secrets=secrets_context['user_secrets'],
+        env_loaded=secrets_context['env_loaded'],
+        prompted=secrets_context['prompted']
+    )

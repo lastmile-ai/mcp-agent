@@ -90,7 +90,7 @@ def test_deploy_with_separate_secrets_file():
                 secrets_output_file=secrets_output,
                 no_secrets=False,  # Explicitly set to process secrets
                 api_url="http://test.api/",
-                api_token="test-token",
+                api_key="test-token",
                 dry_run=True
             )
             

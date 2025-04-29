@@ -1,4 +1,4 @@
-"""Mock SecretsClient for dry run mode.
+"""Mock Client for dry run mode.
 
 This module provides a mock implementation of the SecretsClient interface
 that generates fake UUIDs instead of making real API calls.
@@ -11,36 +11,37 @@ from .constants import SecretType
 
 
 class MockSecretsClient:
-    """Mock SecretsClient that generates fake UUIDs for dry run mode."""
+    """Mock client that generates fake UUIDs for dry run mode."""
     
-    def __init__(self, api_url: str = "http://mock-api", api_token: str = "mock-token"):
+    def __init__(self, api_url: str = "http://mock-api", api_key: str = "mock-key", api_token: str = None):
         """Initialize the mock client.
         
         Args:
             api_url: Mock API URL (ignored)
-            api_token: Mock API token (ignored)
+            api_key: Mock API key
+            api_token: Unused, kept for API compatibility
         """
         self.api_url = api_url
-        self.api_token = api_token
+        self.api_key = api_key
         self._created_secrets: Dict[str, Dict[str, Any]] = {}
     
-    async def create_secret(self, name: str, secret_type: SecretType, value: Optional[str] = None) -> str:
+    async def create_secret(self, name: str, secret_type: SecretType, value: str) -> str:
         """Create a mock secret with a fake UUID.
         
         Args:
             name: The configuration path (e.g., 'server.bedrock.api_key')
             secret_type: DEVELOPER ("dev") or USER ("usr") 
-            value: The secret value (required for DEVELOPER)
+            value: The secret value (required for all secret types)
             
         Returns:
             str: A fake UUID for dry run mode
             
         Raises:
-            ValueError: If a developer secret is created without a value
+            ValueError: If any secret is created without a value
         """
-        # For developer secrets, a value is required
-        if secret_type == SecretType.DEVELOPER and value is None:
-            raise ValueError(f"Developer secret '{name}' requires a value")
+        # Value is required for all secret types
+        if value is None or value.strip() == "":
+            raise ValueError(f"Secret '{name}' requires a non-empty value")
         
         # Generate a predictable fake UUID based on the name
         # This ensures consistent UUIDs for the same name
@@ -51,7 +52,7 @@ class MockSecretsClient:
         self._created_secrets[fake_uuid] = {
             "name": name,
             "type": secret_type.value,
-            "value": value or ""
+            "value": value  # Value is always required now
         }
         
         return fake_uuid

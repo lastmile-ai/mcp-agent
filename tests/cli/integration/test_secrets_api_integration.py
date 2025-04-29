@@ -29,7 +29,7 @@ def api_client():
     
     return SecretsClient(
         api_url=api_url,
-        api_token=api_token
+        api_key=api_token
     )
 
 
@@ -48,13 +48,13 @@ async def test_create_and_get_secret(api_client):
         value=secret_value
     )
     
-    # API returns UUID format handles 
-    # We validate against UUID pattern
+    # API now returns standard UUID handles
+    # We validate against the UUID pattern
     from mcp_agent_cloud.secrets.constants import HANDLE_PATTERN
     assert HANDLE_PATTERN.match(handle), f"Handle format '{handle}' doesn't match expected UUID pattern"
     
     try:
-        # Retrieve the secret value
+        # Get the secret value
         retrieved_value = await api_client.get_secret_value(handle)
         
         # Verify the value matches
@@ -62,8 +62,10 @@ async def test_create_and_get_secret(api_client):
     finally:
         # Clean up
         try:
-            await api_client.delete_secret(handle)
-        except Exception:
+            deleted_id = await api_client.delete_secret(handle)
+            assert deleted_id == handle, f"Deleted secret ID {deleted_id} doesn't match handle {handle}"
+        except Exception as e:
+            print(f"Error deleting secret: {e}")
             pass
 
 
@@ -72,34 +74,43 @@ async def test_update_secret_value(api_client):
     """Test updating a secret's value via the API."""
     # Create a unique test name to avoid collisions
     test_id = str(uuid.uuid4())
-    secret_name = f"test.user_secret.{test_id}"
+    secret_name = f"test.developer_secret.{test_id}"
     
-    # Create a user secret (no initial value)
-    handle = await api_client.create_secret(
-        name=secret_name,
-        secret_type=SecretType.USER
-    )
-    
-    # API returns UUID format handles 
-    # We validate against UUID pattern
-    from mcp_agent_cloud.secrets.constants import HANDLE_PATTERN
-    assert HANDLE_PATTERN.match(handle), f"Handle format '{handle}' doesn't match expected UUID pattern"
+    # Initial value
+    test_value = f"initial-value-{test_id}"
     
     try:
-        # Set a value for the user secret
-        new_value = f"user-value-{test_id}"
-        await api_client.set_secret_value(handle, new_value)
+        # Create a secret with an initial value
+        handle = await api_client.create_secret(
+            name=secret_name,
+            secret_type=SecretType.DEVELOPER,
+            value=test_value
+        )
         
-        # Retrieve the secret value
+        # API returns standard UUID handles
+        # We validate against the UUID pattern
+        from mcp_agent_cloud.secrets.constants import HANDLE_PATTERN
+        assert HANDLE_PATTERN.match(handle), f"Handle format '{handle}' doesn't match expected UUID pattern"
+        
+        # Update the secret value
+        new_value = f"updated-value-{test_id}"
+        success = await api_client.set_secret_value(handle, new_value)
+        
+        # Verify the operation was successful
+        assert success is True, "set_secret_value did not return success"
+        
+        # Get the updated value to verify
         retrieved_value = await api_client.get_secret_value(handle)
         
-        # Verify the value matches
-        assert retrieved_value == new_value
+        # Verify the value matches the updated value
+        assert retrieved_value == new_value, f"Retrieved value '{retrieved_value}' doesn't match updated value '{new_value}'"
     finally:
         # Clean up
         try:
-            await api_client.delete_secret(handle)
-        except Exception:
+            deleted_id = await api_client.delete_secret(handle)
+            assert deleted_id == handle, f"Deleted secret ID {deleted_id} doesn't match handle {handle}"
+        except Exception as e:
+            print(f"Error deleting secret: {e}")
             pass
 
 
@@ -146,6 +157,8 @@ async def test_list_secrets(api_client):
         # Clean up
         for handle in created_handles:
             try:
-                await api_client.delete_secret(handle)
-            except Exception:
+                deleted_id = await api_client.delete_secret(handle)
+                assert deleted_id == handle, f"Deleted secret ID {deleted_id} doesn't match handle {handle}"
+            except Exception as e:
+                print(f"Error deleting secret: {e}")
                 pass

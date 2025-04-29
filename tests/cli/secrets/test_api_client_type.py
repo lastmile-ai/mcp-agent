@@ -28,7 +28,7 @@ def mock_httpx_client():
 async def test_create_secret_sends_correct_type_for_developer_secret(mock_httpx_client):
     """Test that create_secret sends the correct type for developer secrets."""
     # Arrange
-    client = SecretsClient(api_url="http://test.com/api", api_token="test-token")
+    client = SecretsClient(api_url="http://test.com/api", api_key="test-token")
     
     # Act
     await client.create_secret(
@@ -58,13 +58,13 @@ async def test_create_secret_sends_correct_type_for_developer_secret(mock_httpx_
 async def test_create_secret_sends_correct_type_for_user_secret(mock_httpx_client):
     """Test that create_secret sends the correct type for user secrets."""
     # Arrange
-    client = SecretsClient(api_url="http://test.com/api", api_token="test-token")
+    client = SecretsClient(api_url="http://test.com/api", api_key="test-token")
     
     # Act
     await client.create_secret(
         name="test-secret",
         secret_type=SecretType.USER,
-        value=""  # Empty string for user secrets
+        value="test-user-secret-value"  # Non-empty value for user secrets
     )
     
     # Assert

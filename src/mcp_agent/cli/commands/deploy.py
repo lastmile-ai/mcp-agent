@@ -78,12 +78,12 @@ def deploy_config(
     api_url: Optional[str] = typer.Option(
         None,
         "--api-url",
-        help="Secrets API URL. Overrides MCP_SECRETS_API_URL environment variable.",
+        help="API base URL. Overrides MCP_API_BASE_URL environment variable.",
     ),
-    api_token: Optional[str] = typer.Option(
+    api_key: Optional[str] = typer.Option(
         None,
-        "--api-token",
-        help="Secrets API token. Overrides MCP_API_TOKEN environment variable.",
+        "--api-key",
+        help="API key for authentication. Overrides MCP_API_KEY environment variable.",
     ),
 ) -> str:
     """Deploy an MCP agent using the specified configuration and secrets files.
@@ -99,40 +99,42 @@ def deploy_config(
         no_secrets: Skip secrets processing
         no_prompt: Never prompt for missing values (fail instead)
         dry_run: Validate the deployment but don't actually deploy
-        api_url: Secrets API URL
-        api_token: Secrets API token
+        api_url: API base URL
+        api_key: API key for authentication
         
     Returns:
         Path to the main configuration file
     """
-    # Display deployment info
-    print_info(f"Starting deployment with configuration: {config_file}")
-    print_info(f"Using secrets file: {secrets_file}")
-    print_info(f"Dry Run: {dry_run}")
+    # Display stylized deployment header
+    from ..ux import print_deployment_header
+    print_deployment_header(config_file, secrets_file, dry_run)
     
     # Track the path to the configuration to use for deployment
     deployment_config_path = str(config_file)
     
     try:
-        # Validate secrets-related environment variables or parameters
+        # Validate API-related environment variables or parameters
         if not no_secrets:
-            effective_api_url = api_url or settings.SECRETS_API_URL
-            effective_api_token = api_token or settings.SECRETS_API_TOKEN
+            # Use the provided api_key
+            provided_key = api_key
             
-            # Check for required Secrets API credentials - but only for real deployment
+            effective_api_url = api_url or settings.API_BASE_URL
+            effective_api_key = provided_key or settings.API_KEY
+            
+            # Check for required API credentials - but only for real deployment
             if not dry_run:
                 if not effective_api_url:
-                    print_error("MCP_SECRETS_API_URL environment variable or --api-url option must be set.")
+                    print_error("MCP_API_BASE_URL environment variable or --api-url option must be set.")
                     raise typer.Exit(1)
-                if not effective_api_token:
-                    print_error("MCP_API_TOKEN environment variable or --api-token option must be set.")
+                if not effective_api_key:
+                    print_error("MCP_API_KEY environment variable or --api-key option must be set.")
                     raise typer.Exit(1)
-                print_info(f"Using Secrets API at {effective_api_url}")
+                print_info(f"Using API at {effective_api_url}")
             else:
                 # For dry run, we'll use mock values if not provided
                 effective_api_url = effective_api_url or "http://localhost:3000/api"
-                effective_api_token = effective_api_token or "mock-token-for-dry-run"
-                print_info(f"Using mock Secrets API at {effective_api_url} (dry run)")
+                effective_api_key = effective_api_key or "mock-key-for-dry-run"
+                print_info(f"Using mock API at {effective_api_url} (dry run)")
         
         # Process secrets file
         if not no_secrets:
@@ -144,16 +146,15 @@ def deploy_config(
                 # Use the mock client in dry run mode
                 print_info("Using MOCK Secrets API client for dry run")
                 
-                # Create the mock client, capturing the return value to see the debug output
+                # Create the mock client
                 mock_client = MockSecretsClient(
                     api_url=effective_api_url,
-                    api_token=effective_api_token
+                    api_key=effective_api_key
                 )
                 
-                # Process with the mock client, with more debug output
-                print_info(f"Processing secrets file {secrets_file} with mock client")
+                # Process with the mock client
                 try:
-                    _run_async(
+                    secrets_context = _run_async(
                         process_config_secrets(
                             config_path=secrets_file,
                             output_path=secrets_transformed_path,
@@ -161,29 +162,41 @@ def deploy_config(
                             no_prompt=no_prompt
                         )
                     )
-                    print_info("Secrets file processing completed successfully with mock client")
                 except Exception as e:
                     print_error(f"Error during secrets processing with mock client: {str(e)}")
                     raise
             else:
                 # Use the real API client
-                _run_async(
+                secrets_context = _run_async(
                     process_config_secrets(
                         config_path=secrets_file,
                         output_path=secrets_transformed_path,
                         api_url=effective_api_url,
-                        api_token=effective_api_token,
+                        api_key=effective_api_key,
                         no_prompt=no_prompt
                     )
                 )
             
             print_success("Secrets file processed successfully")
             print_info(f"Transformed secrets file written to {secrets_transformed_path}")
+            
+            # The secrets summary has already been shown by compare_configs, 
+            # so we don't need to show stats again
+            
         else:
             print_info("Skipping secrets processing...")
         
         # Deploy agent
         if not dry_run:
+            from rich.panel import Panel
+            from ..ux import console
+            
+            console.print(Panel(
+                "Ready to deploy MCP Agent with processed configuration",
+                title="Deployment Ready",
+                border_style="green"
+            ))
+            
             print_warning("TODO: Implement actual deployment logic")
             print_info("Deployment would happen here.")
         else:

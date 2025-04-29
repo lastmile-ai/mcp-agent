@@ -8,6 +8,8 @@ The MCP Agent Cloud SDK provides a command-line tool and Python library for depl
 - Process secret tags in configuration files
 - Securely manage secrets through the MCP Agent Cloud API
 - Support for developer and user secrets
+- Enhanced UX with rich formatting and intuitive prompts
+- Detailed logging with minimal console output
 
 ## Project Structure
 
@@ -64,7 +66,8 @@ The SDK uses a streamlined approach to secrets management:
 
 Two types of secrets are supported:
 
-1. **Developer Secrets** (`!developer_secret`): 
+1. **Developer Secrets** (`!developer_secret`):
+
    - Used for secrets that are provided by developers
    - Values are known at deployment time
    - Example: API keys, service credentials, etc.
@@ -77,6 +80,7 @@ Two types of secrets are supported:
 ### Secret IDs
 
 All secrets are referenced using database-generated IDs:
+
 - These are UUID strings returned by the Secrets API
 - Internal Vault handles are not exposed to clients
 
@@ -87,17 +91,16 @@ All secrets are referenced using database-generated IDs:
 server:
   host: localhost
   port: 8000
-
 # Note: Secrets are stored in a separate mcp_agent.secrets.yaml file
 ```
 
 ```yaml
 # mcp_agent.secrets.yaml (separate secrets file)
 api:
-  key: !developer_secret ${oc.env:API_KEY}  # Developer provides this value
-  
+  key: !developer_secret ${oc.env:API_KEY} # Developer provides this value
+
 database:
-  password: !user_secret  # User will provide this later
+  password: !user_secret # User will provide this later
 ```
 
 When processed during deployment, the secrets file is transformed into:
@@ -106,9 +109,9 @@ When processed during deployment, the secrets file is transformed into:
 # mcp_agent.secrets.yaml.transformed.yaml
 api:
   key: 123e4567-e89b-12d3-a456-426614174000
-  
+
 database:
-  password: 523e4127-e19b-82d3-a426-426618971234
+  password: !user_secret
 ```
 
 ## Usage
@@ -122,8 +125,14 @@ mcp-agent deploy mcp_agent.config.yaml --secrets-file mcp_agent.secrets.yaml
 # With custom output path for transformed secrets
 mcp-agent deploy mcp_agent.config.yaml --secrets-file mcp_agent.secrets.yaml --secrets-output-file secrets.deployed.yaml
 
-# With explicit API URL and token
-mcp-agent deploy mcp_agent.config.yaml --secrets-file mcp_agent.secrets.yaml --api-url=https://mcp-api.example.com --api-token=your-token
+# With explicit API URL and key
+mcp-agent deploy mcp_agent.config.yaml --secrets-file mcp_agent.secrets.yaml --api-url=https://mcp-api.example.com --api-key=your-api-key
+
+# Dry run mode (for testing)
+mcp-agent deploy mcp_agent.config.yaml --secrets-file mcp_agent.secrets.yaml --dry-run
+
+# Demo the enhanced UX
+./demo_secrets_ux.sh
 
 # Help information
 mcp-agent --help
@@ -136,8 +145,8 @@ You can set these environment variables:
 
 ```bash
 # API configuration
-export MCP_SECRETS_API_URL=https://mcp-api.example.com
-export MCP_API_TOKEN=your-token
+export MCP_API_BASE_URL=https://mcp-api.example.com
+export MCP_API_KEY=your-api-key
 ```
 
 ### As a Library
@@ -151,7 +160,7 @@ await deploy_config(
     secrets_file="path/to/mcp_agent.secrets.yaml",
     secrets_output_file="path/to/output_secrets.yaml",
     api_url="https://mcp-api.example.com",
-    api_token="your-token",
+    api_key="your-api-key",
     dry_run=True
 )
 ```
@@ -167,7 +176,7 @@ from mcp_agent_cloud.secrets.constants import SecretType
 # Initialize client
 client = SecretsClient(
     api_url="https://mcp-api.example.com",
-    api_token="your-token"
+    api_key="your-api-key"
 )
 
 # Create a developer secret
@@ -230,25 +239,27 @@ uv run pytest tests/secrets/
 
 Integration tests require a running instance of the web app with Secret API enabled:
 
-1. Start the web app: 
+1. Start the web app:
+
    ```bash
    cd www && pnpm run dev
    # or for a complete setup including database and API services
    cd www && pnpm run webdev
    ```
 
-3. Run the integration tests:
+2. Run the integration tests:
+
    ```bash
    # Using the convenience script that checks prerequisites
    ./scripts/run_integration_tests.sh
-   
+
    # Or manually set up environment and run tests
-   export MCP_SECRETS_API_URL="http://localhost:3000/api"
-   export MCP_API_TOKEN="your-api-token"
-   
+   export MCP_API_BASE_URL="http://localhost:3000/api"
+   export MCP_API_KEY="your-api-key"
+
    # Run all integration tests
    uv run pytest -m integration -v
-   
+
    # Run specific test files
    uv run pytest tests/integration/test_secrets_api_integration.py -v  # API client tests
    uv run pytest tests/integration/test_mcp_agent_configs.py -v        # CLI integration tests
@@ -269,13 +280,15 @@ The integration tests verify:
 
 The complete secrets workflow consists of three phases:
 
-1. **Deploy** (implemented): 
+1. **Deploy** (implemented):
+
    - Process the dedicated secrets file
    - Transform all secret tags to Prisma IDs
    - Store developer secrets in the backend
    - Create placeholders for user secrets
 
-2. **Configure** (future): 
+2. **Configure** (future):
+
    - Load the transformed secrets file (containing IDs)
    - Prompt for values for user secrets
    - Store those values in the backend

@@ -8,8 +8,8 @@ from typing import Any, Dict, Generator
 def pytest_configure(config):
     """Configure pytest environment."""
     # API endpoint configuration
-    os.environ.setdefault("MCP_SECRETS_API_URL", "http://localhost:3000/api")
-    os.environ.setdefault("MCP_API_TOKEN", "test-token")
+    os.environ.setdefault("MCP_API_BASE_URL", "http://localhost:3000/api")
+    os.environ.setdefault("MCP_API_KEY", "test-token")
     os.environ.setdefault("MCP_VERBOSE", "true")
 
 
@@ -17,7 +17,7 @@ def pytest_configure(config):
 def sample_config() -> Dict[str, Any]:
     """Return a sample configuration without secrets."""
     return {
-        "$schema": "../../schema/mcp-agent.config.schema.json",
+        "$schema": "../../../../mcp-agent/schema/mcp-agent.config.schema.json",
         "server": {
             "bedrock": {
                 "default_model": "anthropic.claude-3-haiku-20240307-v1:0",
@@ -29,7 +29,7 @@ def sample_config() -> Dict[str, Any]:
 def sample_secrets_config() -> Dict[str, Any]:
     """Return a sample secrets configuration."""
     return {
-        "$schema": "../../schema/mcp-agent.config.schema.json",
+        "$schema": "../../../../mcp-agent/schema/mcp-agent.config.schema.json",
         "server": {
             "bedrock": {
                 "api_key": "!developer_secret ${oc.env:MCP_BEDROCK_API_KEY}",

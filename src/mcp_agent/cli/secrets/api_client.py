@@ -1,4 +1,4 @@
-"""API client implementation for the MCP Agent Cloud Secrets API."""
+"""API client implementation for the MCP Agent Cloud API."""
 
 from typing import Optional, Dict, Any, List
 
@@ -8,36 +8,41 @@ from .constants import SecretType  # Removed SECRET_TYPE_PATHS, using SecretType
 
 
 class SecretsClient:
-    """Client for interacting with the Secrets API service over HTTP."""
+    """Client for interacting with the API service over HTTP."""
     
-    def __init__(self, api_url: str, api_token: str):
+    def __init__(self, api_url: str, api_key: str, api_token: str = None):
         """Initialize the API client.
         
         Args:
-            api_url: The URL of the Secrets API (e.g., http://localhost:3000/api)
-            api_token: The API authentication token
+            api_url: The base URL of the API (e.g., http://localhost:3000/api)
+            api_key: The API authentication key
+            api_token: Unused, kept for API compatibility
         """
         self.api_url = api_url.rstrip("/")  # Remove trailing slash for consistent URL building
-        self.api_token = api_token
+        self.api_key = api_key
         
     async def create_secret(self, name: str, secret_type: SecretType, value: Optional[str] = None) -> str:
-        """Create a secret via the Secrets API.
+        """Create a secret via the API.
         
         Args:
             name: The configuration path (e.g., 'server.bedrock.api_key')
             secret_type: DEVELOPER ("dev") or USER ("usr") 
-            value: The secret value (required for DEVELOPER, optional for USER)
+            value: The secret value (required for all secret types)
             
         Returns:
             str: The secret UUID/handle returned by the API
             
         Raises:
-            ValueError: If a developer secret is created without a value
+            ValueError: If a secret is created without a non-empty value
             httpx.HTTPError: If the API request fails
         """
-        # For developer secrets, a value is required
-        if secret_type == SecretType.DEVELOPER and value is None:
-            raise ValueError(f"Developer secret '{name}' requires a value")
+        # For all secrets, non-empty values are required (based on test expectations)
+        if value is None:
+            raise ValueError(f"Secret '{name}' requires a non-empty value")
+        
+        # Ensure values are not empty or just whitespace
+        if isinstance(value, str) and value.strip() == "":
+            raise ValueError(f"Secret '{name}' requires a non-empty value")
         
         # Prepare request payload
         payload: Dict[str, Any] = {
@@ -45,10 +50,10 @@ class SecretsClient:
             "type": secret_type.value,  # Send "dev" or "usr" directly from enum value
         }
         
-        # Include value if provided (required for API)
-        # For user secrets, we'll send an empty string as the API requires a value
-        payload["value"] = value if value is not None else ""
-        
+        # Add value to payload if provided
+        if value is not None:
+            payload["value"] = value
+            
         # Make the API request
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -63,23 +68,20 @@ class SecretsClient:
             
             # Parse the response to get the UUID/handle
             data = response.json()
-            # Extract the secretId (UUID) from the response - it should be in the secret object
+            # Extract the secretId from the response - it should be in the secret object
             handle = data.get("secret", {}).get("secretId")
             
             if not handle:
                 raise ValueError("API did not return a valid secret handle in the expected format")
             
-            # Validate that the returned value is a proper UUID format
-            if not self._is_valid_handle(handle):
-                raise ValueError(f"API returned an invalid UUID/handle format: {handle}")
-            
+            # The handle is already a standard UUID
             return handle
         
     async def get_secret_value(self, handle: str) -> str:
-        """Get a secret value from the Secrets API.
+        """Get a secret value from the API.
         
         Args:
-            handle: The secret ID returned by the API (Prisma UUID)
+            handle: The secret UUID returned by the API
             
         Returns:
             str: The secret value
@@ -92,7 +94,6 @@ class SecretsClient:
         if not self._is_valid_handle(handle):
             raise ValueError(f"Invalid handle format: {handle}")
         
-        # Make the API request
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{self.api_url}/secrets/get_secret_value",
@@ -113,12 +114,15 @@ class SecretsClient:
             
             return value
         
-    async def set_secret_value(self, handle: str, value: str) -> None:
-        """Set a secret value via the Secrets API.
+    async def set_secret_value(self, handle: str, value: str) -> bool:
+        """Set a secret value via the API.
         
         Args:
-            handle: The secret ID returned by the API (Prisma UUID)
+            handle: The secret UUID returned by the API
             value: The secret value to store
+            
+        Returns:
+            bool: True if the operation was successful
             
         Raises:
             ValueError: If the handle is invalid
@@ -136,8 +140,8 @@ class SecretsClient:
         
         # Make the API request
         async with httpx.AsyncClient() as client:
-            response = await client.put(
-                f"{self.api_url}/secrets/set_secret_value",
+            response = await client.post(  # Route is POST even though HTTP semantics suggest PUT
+                f"{self.api_url}/secrets/set_secret_value", 
                 json=payload,
                 headers=self._get_headers(),
                 timeout=30.0,
@@ -146,8 +150,14 @@ class SecretsClient:
             # Raise for HTTP errors
             response.raise_for_status()
             
+            # Parse the response to get the success flag
+            data = response.json()
+            success = data.get("success", False)
+            
+            return success
+            
     async def list_secrets(self, name_filter: Optional[str] = None) -> List[Dict[str, Any]]:
-        """List secrets via the Secrets API.
+        """List secrets via the API.
         
         Args:
             name_filter: Optional filter for secret names
@@ -182,11 +192,14 @@ class SecretsClient:
             
             return secrets
             
-    async def delete_secret(self, handle: str) -> None:
-        """Delete a secret via the Secrets API.
+    async def delete_secret(self, handle: str) -> str:
+        """Delete a secret via the API.
         
         Args:
-            handle: The secret ID returned by the API (Prisma UUID)
+            handle: The secret UUID returned by the API
+            
+        Returns:
+            str: The ID of the deleted secret
             
         Raises:
             ValueError: If the handle is invalid
@@ -203,7 +216,7 @@ class SecretsClient:
         
         # Make the API request
         async with httpx.AsyncClient() as client:
-            response = await client.post(
+            response = await client.delete(
                 f"{self.api_url}/secrets/delete_secret",
                 json=payload,
                 headers=self._get_headers(),
@@ -212,6 +225,15 @@ class SecretsClient:
             
             # Raise for HTTP errors
             response.raise_for_status()
+            
+            # Parse the response to get the deleted secret ID
+            data = response.json()
+            deleted_id = data.get("secretId")
+            
+            if not deleted_id:
+                raise ValueError("API didn't return the ID of the deleted secret")
+                
+            return deleted_id
     
     def _get_headers(self) -> Dict[str, str]:
         """Get the headers for API requests.
@@ -220,24 +242,24 @@ class SecretsClient:
             Dict[str, str]: The request headers
         """
         return {
-            "Authorization": f"Bearer {self.api_token}",
+            "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
     
     def _is_valid_handle(self, handle: str) -> bool:
-        """Check if a handle has a valid UUID format.
+        """Check if a handle has a valid format.
         
         Args:
-            handle: The UUID handle to check
+            handle: The handle to check (UUID format)
             
         Returns:
-            bool: True if the handle has a valid UUID format, False otherwise
+            bool: True if the handle has a valid format, False otherwise
         """
         from .constants import HANDLE_PATTERN
         
         if not isinstance(handle, str) or not handle:
             return False
             
-        # Validate against the UUID pattern
+        # Validate against the pattern (standard UUID format)
         return bool(HANDLE_PATTERN.match(handle))

@@ -19,7 +19,11 @@ def mock_secrets_client():
     client = MagicMock()
     
     # Mock the create_secret method to return UUIDs based on type
-    async def mock_create_secret(name, secret_type, value=None):
+    async def mock_create_secret(name, secret_type, value):
+        # Check that value is required for all secret types
+        if value is None or value.strip() == "":
+            raise ValueError(f"Secret '{name}' requires a non-empty value")
+            
         # Create predictable but unique UUIDs for testing
         if secret_type == SecretType.DEVELOPER:
             return f"12345678-abcd-1234-efgh-dev-{name.replace('.', '-')}"
@@ -34,7 +38,7 @@ def mock_secrets_client():
 
 @pytest.mark.asyncio
 async def test_transform_config_recursive_developer_secret(mock_secrets_client):
-    """Test transforming developer secrets to URIs."""
+    """Test transforming developer secrets to UUIDs."""
     # Create a config with a developer secret
     config = {
         "api": {
