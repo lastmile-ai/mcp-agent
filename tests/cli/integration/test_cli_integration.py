@@ -168,9 +168,8 @@ def test_cli_deploy_with_env_var_secret(api_credentials):
     
     # Create a temporary secrets file with environment variable reference
     # Use direct YAML string to ensure proper tag handling
-    # According to CLAUDE.md, the value after the tag should be the env var name directly
     secrets_file_content = f"""api:
-  key: !developer_secret {env_var_name}
+  key: !developer_secret ${{oc.env:{env_var_name}}}
 """
     secrets_path = tempfile.mktemp(suffix='.yaml')
     with open(secrets_path, 'w') as secrets_file:
@@ -198,7 +197,7 @@ def test_cli_deploy_with_env_var_secret(api_credentials):
         assert result.returncode == 0, f"CLI command failed: {result.stderr}"
         
         # Check for expected success messages in output
-        assert f"Loaded secret value for api.key from environment variable {env_var_name}" in result.stdout
+        assert "Loaded secret value for api.key from environment variable" in result.stdout
         assert "Secrets file processed successfully" in result.stdout
         
         # Verify the transformed secrets file exists

@@ -1,57 +1,16 @@
 """API client implementation for the MCP Agent Cloud API."""
 
-from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, List
 
 import httpx
 
-from ..core.constants import SecretType, HANDLE_PATTERN
+from .constants import (
+    SecretType,
+)  # Removed SECRET_TYPE_PATHS, using SecretType.value directly
 
 
-class SecretsApiClientInterface(ABC):
-    """Interface for the Secrets API client.
-    
-    This interface defines the required methods for interacting with the Secrets API
-    according to the CLAUDE.md specification. The primary methods are:
-    
-    1. create_secret: Creates a secret and stores its value in one call
-    2. get_secret_value: Retrieves the value by handle (used at runtime)
-    """
-    
-    @abstractmethod
-    async def create_secret(
-        self, name: str, secret_type: SecretType, value: str
-    ) -> str:
-        """Create a secret via the API.
-
-        Args:
-            name: The configuration path (e.g., 'server.bedrock.api_key')
-            secret_type: DEVELOPER ("dev") or USER ("usr")
-            value: The secret value (required for all secret types)
-
-        Returns:
-            str: The secret UUID/handle returned by the API
-        """
-        pass
-        
-    @abstractmethod
-    async def get_secret_value(self, handle: str) -> str:
-        """Get a secret value from the API.
-
-        Args:
-            handle: The secret UUID returned by the API
-
-        Returns:
-            str: The secret value
-        """
-        pass
-
-
-class SecretsClient(SecretsApiClientInterface):
-    """Client for interacting with the API service over HTTP.
-    
-    Implements the SecretsApiClientInterface with additional utility methods.
-    """
+class SecretsClient:
+    """Client for interacting with the API service over HTTP."""
 
     def __init__(self, api_url: str, api_key: str, api_token: str = None):
         """Initialize the API client.
@@ -309,6 +268,8 @@ class SecretsClient(SecretsApiClientInterface):
         Returns:
             bool: True if the handle has a valid format, False otherwise
         """
+        from .constants import HANDLE_PATTERN
+
         if not isinstance(handle, str) or not handle:
             return False
 

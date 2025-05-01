@@ -3,7 +3,7 @@
 This package provides implementations for secrets management.
 """
 
-from ..core.constants import SecretType
+from .constants import SecretType
 from .api_client import SecretsClient
 
 __all__ = ["SecretType", "SecretsClient"]

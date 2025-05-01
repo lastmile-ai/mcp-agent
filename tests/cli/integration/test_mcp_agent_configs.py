@@ -1,10 +1,12 @@
 """Integration tests for processing MCP Agent configurations.
 
-These tests are marked with 'integration' so they can be skipped by default.
+These tests require a running web app and Vault instance.
+They are marked with 'integration' so they can be skipped by default.
 
 To run these tests:
-    1. Ensure API credentials are available as environment variables or use --dry-run
-    2. Run: pytest -m integration tests/integration/test_mcp_agent_configs_updated.py
+    1. Start the web app: pnpm run webdev
+    2. Run pytest with the integration mark:
+       pytest -m integration
 """
 
 import asyncio
@@ -23,14 +25,17 @@ from mcp_agent_cloud.secrets.yaml_tags import (
 )
 
 from mcp_agent_cloud.cli.main import app
-from mcp_agent_cloud.core.constants import SecretType
+from mcp_agent_cloud.secrets.constants import SecretType
 from mcp_agent_cloud.secrets.api_client import SecretsClient
 from tests.fixtures.api_test_utils import setup_api_for_testing, APIMode
 from tests.fixtures.mock_secrets_client import MockSecretsClient
 
 
 # These tests will be marked with the integration marker
-pytestmark = pytest.mark.integration
+pytestmark = [
+    pytest.mark.integration,  # Mark as integration test
+    pytest.mark.mock,  # Also mark as mock test for filtering
+]
 
 
 # Directory containing our realistic fixtures
@@ -82,11 +87,21 @@ def api_credentials():
 
 
 @pytest.fixture
-def mock_secrets_client():
-    """Create a MockSecretsClient for testing."""
-    api_url = "http://test-api.local"
-    api_key = "test-key"
-    return MockSecretsClient(api_url=api_url, api_key=api_key)
+def api_client(api_credentials, request):
+    """Create a SecretsClient or MockSecretsClient based on markers.
+    
+    If the test is marked with 'mock', use the MockSecretsClient.
+    Otherwise, use the real SecretsClient with the provided credentials.
+    """
+    api_url, api_token = api_credentials
+    
+    # Check if the test is marked with 'mock'
+    if request.node.get_closest_marker("mock"):
+        print("Using MockSecretsClient for tests")
+        return MockSecretsClient(api_url=api_url, api_key=api_token)
+    else:
+        print("Using real SecretsClient for tests")
+        return SecretsClient(api_url=api_url, api_key=api_token)
 
 
 class TestMcpAgentConfigIntegration:
@@ -210,6 +225,10 @@ class TestMcpAgentConfigIntegration:
             
             # Check for success message in CLI output
             assert "Secrets file processed successfully" in result.stdout, "Success message not found in output"
+            
+            # In mock mode, we're less concerned with exact wording as this might differ
+            # between real and mock implementations. The important thing is that secrets
+            # are properly processed.
                 
         finally:
             # Clean up the output file
@@ -217,7 +236,7 @@ class TestMcpAgentConfigIntegration:
                 Path(output_path).unlink()
     
     @pytest.mark.asyncio
-    async def test_complex_config_direct_api(self, setup_env_vars, mock_secrets_client):
+    async def test_complex_config_direct_api(self, setup_env_vars, api_client):
         """Test processing a complex configuration directly with the API client."""
         # Get path for the complex integration scenario
         scenario = "complex_integrations"
@@ -245,33 +264,26 @@ class TestMcpAgentConfigIntegration:
                             await process_secrets_recursive(value, current_path)
                         # Process developer secrets using the API
                         elif isinstance(value, DeveloperSecret):
-                            # Get the value - direct env var name in new design
-                            env_var_name = value.value
-                            secret_value = None
+                            # Get the value - might be env var reference
+                            env_var = value.value
+                            secret_value = env_var
                             
-                            # If there's a value, it's an environment variable name
-                            if env_var_name:
-                                # Get the actual value from the environment
-                                secret_value = os.environ.get(env_var_name)
-                                if secret_value:
-                                    print(f"Loaded value for {current_path} from env var {env_var_name}")
-                                
-                            # If no value from env, use a mock value for testing
-                            if not secret_value:
-                                secret_value = f"test-value-for-{current_path}"
-                                print(f"Using mock value for {current_path}")
+                            if env_var and env_var.startswith("${oc.env:") and env_var.endswith("}"):
+                                # Extract env var name
+                                env_name = env_var[9:-1]
+                                secret_value = os.environ.get(env_name, "")
                                 
                             # Create secret via API
-                            secret_id = await mock_secrets_client.create_secret(
+                            secret_id = await api_client.create_secret(
                                 name=current_path,
                                 secret_type=SecretType.DEVELOPER,
-                                value=secret_value
+                                value=secret_value or "test-value-for-empty-developer-secret"
                             )
                             created_secrets.append(secret_id)
                             
                             # Verify we can retrieve the secret
-                            retrieved_value = await mock_secrets_client.get_secret_value(secret_id)
-                            assert retrieved_value == secret_value, \
+                            retrieved_value = await api_client.get_secret_value(secret_id)
+                            assert retrieved_value == (secret_value or "test-value-for-empty-developer-secret"), \
                                 f"Retrieved value {retrieved_value} does not match expected {secret_value}"
                                 
                         # Process user secrets - in deploy phase, should be kept as-is
@@ -288,14 +300,14 @@ class TestMcpAgentConfigIntegration:
             await process_secrets_recursive(config)
             
             # List secrets to verify they were created
-            secrets_list = await mock_secrets_client.list_secrets()
+            secrets_list = await api_client.list_secrets()
             assert len(secrets_list) >= len(created_secrets), "Not all secrets were listed"
             
         finally:
             # Clean up created secrets
             for secret_id in created_secrets:
                 try:
-                    deleted_id = await mock_secrets_client.delete_secret(secret_id)
+                    deleted_id = await api_client.delete_secret(secret_id)
                     assert deleted_id == secret_id, f"Deleted secret ID {deleted_id} doesn't match original {secret_id}"
                 except Exception as e:
                     print(f"Error cleaning up secret {secret_id}: {str(e)}")

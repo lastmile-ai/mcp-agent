@@ -1,17 +1,16 @@
 """Mock Client for dry run mode.
 
-This module provides a mock implementation of the SecretsApiClientInterface
+This module provides a mock implementation of the SecretsClient interface
 that generates fake UUIDs instead of making real API calls.
 """
 
 import uuid
 from typing import Dict, Optional, List, Any
 
-from ..core.constants import SecretType
-from .api_client import SecretsApiClientInterface
+from .constants import SecretType
 
 
-class MockSecretsClient(SecretsApiClientInterface):
+class MockSecretsClient:
     """Mock client that generates fake UUIDs for dry run mode."""
     
     def __init__(self, api_url: str = "http://mock-api", api_key: str = "mock-key", api_token: str = None):

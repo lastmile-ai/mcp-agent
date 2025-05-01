@@ -1,43 +1,66 @@
 # Integration Tests
 
-This directory contains integration tests that require external dependencies, such as a running API server or other services.
+This directory contains integration tests that verify the MCP Agent Cloud SDK components work together correctly.
 
-## Running Integration Tests
+## Test Organization
 
-By default, these tests are skipped. To run them:
+The tests are organized with two markers:
+
+- `integration`: All tests in this directory have this marker
+- `mock`: Tests that use a mock backend and work without external dependencies
+- `api`: Tests that require a real API connection
+
+## Running Tests
+
+### Mock Tests (No API needed)
+
+Run mock integration tests (fast, works offline):
 
 ```bash
-pytest -m integration
+pytest -m "integration and mock" -v
 ```
 
-## Testing Philosophy
+### API Tests (Web App Required)
 
-Integration tests in this directory should:
+These tests need a running web app:
 
-1. **Test True Integration**: These tests should verify the interaction between multiple components or with external services.
-2. **Be Environment Aware**: Tests should handle missing dependencies gracefully by skipping rather than failing.
-3. **Clearly Document Dependencies**: Each test should clearly state its external dependencies.
+1. Ensure the proto files are properly generated
+   - Current issue: Missing `@mcpac/proto/mcpac/api/secrets/v1/secrets_api_service_pb`
+   - Make sure the proto generation steps have been completed
 
-## Markers
+2. Start the web app: `cd www && pnpm run webdev`
 
-- `integration`: Marks tests that require external dependencies. These are skipped by default.
+3. Set a valid API token:
+   ```bash
+   export MCP_API_TOKEN="valid-test-token-for-your-environment"
+   ```
+   - The token must be valid for JWT decoding with your web app's NEXTAUTH_SECRET
+   - Current issue: "Error decoding API token JWEInvalid: Invalid Compact JWE"
 
-## Deprecated Markers
+4. Run the tests: `pytest -m "integration and api" -v`
 
-- `mock`: This marker has been removed as mock-based tests should be regular unit tests without special markers.
+If you're seeing 500 errors from the API endpoints, check for:
+- Missing proto files (need to run proto generation)
+- Invalid API token (need to set MCP_API_TOKEN to a valid value)
+- Other issues in the web app logs
 
-## Fixtures
+### All Integration Tests
 
-Common fixtures are defined in `conftest.py` and include:
+Run all integration tests (will skip API tests if API is unreachable):
 
-- `real_api_credentials` - Retrieves real API credentials for testing
-- `mock_api_credentials` - Provides mock credentials for dry-run tests
-- `setup_test_env_vars` - Sets up environment variables for testing
+```bash
+pytest -m integration -v
+```
 
-## Test Structure
+## Test Files
 
-The integration tests are organized as follows:
+- `test_secrets_integration.py`: Tests for the CLI's ability to process secrets with mock client
+- `test_api_client_integration.py`: Tests for the API client with a real API connection
+- `conftest.py`: Common fixtures for integration tests
 
-1. **API Client Integration**: Tests real API client interaction with the API service
-2. **Deploy Command Integration**: Tests end-to-end deploy functionality with real configurations
-3. **MCP Agent Configs**: Tests processing of realistic agent configurations
+## Design Principles
+
+1. **Mock tests**: Should always pass without external dependencies
+2. **API tests**: Will be skipped if API is unavailable
+3. **Clear separation**: Tests should clearly indicate whether they need real connections
+4. **Realistic fixtures**: Use real configuration files from the fixtures directory

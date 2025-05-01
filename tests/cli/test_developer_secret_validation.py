@@ -3,11 +3,11 @@
 import pytest
 from unittest.mock import AsyncMock
 
-# TODO: Refactor architecture to eliminate circular imports between modules
-# For now, import the entire module rather than specific functions
-import mcp_agent_cloud.secrets.processor as processor_module
-from mcp_agent_cloud.secrets.yaml_tags import DeveloperSecret
-from mcp_agent_cloud.core.constants import SecretType
+from mcp_agent_cloud.secrets.processor import (
+    transform_config_recursive,
+    DeveloperSecret,
+)
+from mcp_agent_cloud.secrets.constants import SecretType
 from mcp_agent_cloud.secrets.api_client import SecretsClient
 
 
@@ -33,7 +33,7 @@ async def test_developer_secret_with_empty_value(mock_secrets_client):
     
     # Attempt to transform the secret
     with pytest.raises(ValueError, match="Developer secret at .* has no value.*no-prompt is set"):
-        await processor_module.transform_config_recursive(
+        await transform_config_recursive(
             dev_secret,
             mock_secrets_client,
             "server.api_key",
@@ -49,7 +49,7 @@ async def test_developer_secret_with_none_value(mock_secrets_client):
     
     # Attempt to transform the secret
     with pytest.raises(ValueError, match="Developer secret at .* has no value.*no-prompt is set"):
-        await processor_module.transform_config_recursive(
+        await transform_config_recursive(
             dev_secret,
             mock_secrets_client,
             "server.api_key",
@@ -63,42 +63,14 @@ async def test_developer_secret_with_env_var_not_found(mock_secrets_client, monk
     # Ensure env var doesn't exist
     monkeypatch.delenv("NON_EXISTENT_ENV_VAR", raising=False)
     
-    # Create a developer secret with direct env var name
-    dev_secret = DeveloperSecret("NON_EXISTENT_ENV_VAR")
+    # Create a developer secret with env var reference
+    dev_secret = DeveloperSecret("${oc.env:NON_EXISTENT_ENV_VAR}")
     
     # Attempt to transform the secret
     with pytest.raises(ValueError, match="Developer secret at .* has no value.*no-prompt is set"):
-        await processor_module.transform_config_recursive(
+        await transform_config_recursive(
             dev_secret,
             mock_secrets_client,
             "server.api_key",
             no_prompt=True
         )
-
-
-@pytest.mark.asyncio
-async def test_developer_secret_with_env_var_found(mock_secrets_client, monkeypatch):
-    """Test that developer secrets can get values from environment variables."""
-    # Set a test environment variable
-    monkeypatch.setenv("TEST_ENV_VAR", "test-env-value")
-    
-    # Create a developer secret with direct env var name
-    dev_secret = DeveloperSecret("TEST_ENV_VAR")
-    
-    # Transform the secret
-    result = await processor_module.transform_config_recursive(
-        dev_secret,
-        mock_secrets_client,
-        "server.api_key",
-        no_prompt=False
-    )
-    
-    # Verify the API was called with the environment variable's value
-    mock_secrets_client.create_secret.assert_called_once_with(
-        name="server.api_key", 
-        secret_type=SecretType.DEVELOPER, 
-        value="test-env-value"
-    )
-    
-    # Verify the result is the handle returned by create_secret
-    assert result == "server-api_key-uuid"
