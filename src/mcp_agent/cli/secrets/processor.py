@@ -2,109 +2,50 @@
 
 This module handles the processing of user configuration files, including:
 1. Detection of !developer_secret and !user_secret tags
-2. Resolution of OmegaConf-style environment variables (${oc.env:VAR_NAME})
+2. Resolution of environment variables based on tag values
 3. Integration with the Secrets API service
 4. Transformation of configuration files for deployment
 
-IMPORTANT NOTE ON CONFIGURATION SYSTEMS:
-This module uses OmegaConf-style environment variable resolution in user YAML config files,
-which is separate from the Pydantic Settings used for CLI configuration in settings.py.
+ENVIRONMENT VARIABLE RESOLUTION:
+When a value is provided after a !developer_secret or !user_secret tag, 
+that value is interpreted as the name of an environment variable to read.
 
 Two separate configuration systems work together:
-1. OmegaConf-style resolution (this module):
-   - Processes environment variables in user configuration files using ${oc.env:VAR_NAME} syntax
+1. Environment Variable Resolution (this module):
+   - Interprets tag values as environment variable names
    - Controls the actual values being stored as secrets
+   - For example: api_key: !developer_secret API_KEY
 
 2. Pydantic Settings (settings.py):
    - Controls CLI behavior and connections to the Secrets API service
    - Determines how this processor behaves, not what values are processed
 
 For example, when processing:
-  api_key: !developer_secret ${oc.env:API_KEY}
+  api_key: !developer_secret API_KEY
   
-1. This module resolves ${oc.env:API_KEY} to get the actual secret value
+1. This module looks for the environment variable API_KEY to get the actual secret value
 2. Then uses settings from settings.py to connect to the Secrets API
 """
 
 import os
-import re
 from typing import Any, Dict, Optional, Union
 from pathlib import Path
 
 import yaml
 import typer
 
-# Custom YAML tag handlers for secrets
-class SecretBase(yaml.YAMLObject):
-    """Base class for secret YAML tags."""
-    
-    def __init__(self, value: Optional[str] = None):
-        self.value = value
-    
-    @classmethod
-    def from_yaml(cls, loader, node):
-        # Handle both scalar values and empty tags
-        if isinstance(node, yaml.ScalarNode):
-            value = loader.construct_scalar(node)
-            # Convert empty strings to None
-            if value == '':
-                return cls(None)
-            return cls(value)
-        return cls(None)
-    
-    def __repr__(self):
-        return f"{self.__class__.__name__}(value={self.value})"
-
-
-class DeveloperSecret(SecretBase):
-    """Custom YAML tag for developer-provided secrets."""
-    yaml_tag = u'!developer_secret'
-
-
-class UserSecret(SecretBase):
-    """Custom YAML tag for user-provided secrets."""
-    yaml_tag = u'!user_secret'
-
-
-# Create a custom YAML dumper to handle empty tags properly
-class EmptyTagDumper(yaml.SafeDumper):
-    """Custom YAML dumper that processes empty tags better."""
-    
-    def represent_scalar(self, tag, value, style=None):
-        """Customize the representation of scalar values."""
-        # For secret tags with empty strings, treat them specially
-        if (tag in ['!user_secret', '!developer_secret']) and (value is None or value == ''):
-            # Use an empty style (plain) for empty tags to remove the quotes
-            return yaml.ScalarNode(tag, '', style='')
-        
-        # For all other cases, use the default behavior
-        return super().represent_scalar(tag, value, style=style)
-
-# Register representation functions for our custom tag classes
-def represent_user_secret(dumper, data):
-    """Custom representation for UserSecret objects."""
-    if data.value is None or data.value == '':
-        # For empty values, use a tag with no content and plain style
-        # This is the key fix - using '' as style removes the quotes
-        return dumper.represent_scalar('!user_secret', '', style='')
-    # For non-empty values, preserve them
-    return dumper.represent_scalar('!user_secret', data.value)
-
-def represent_developer_secret(dumper, data):
-    """Custom representation for DeveloperSecret objects."""
-    if data.value is None or data.value == '':
-        # For empty values, use a tag with no content and plain style
-        # Using '' as style removes the quotes
-        return dumper.represent_scalar('!developer_secret', '', style='')
-    # For non-empty values, preserve them
-    return dumper.represent_scalar('!developer_secret', data.value)
-
-# Register these representation functions with our dumper
-EmptyTagDumper.add_representer(UserSecret, represent_user_secret)
-EmptyTagDumper.add_representer(DeveloperSecret, represent_developer_secret)
+# Import tag classes and YAML utilities from yaml_tags
+from .yaml_tags import (
+    UserSecret,
+    DeveloperSecret,
+    SecretYamlLoader, 
+    SecretYamlDumper,
+    load_yaml_with_secrets,
+    dump_yaml_with_secrets
+)
 
 from ..config import settings
-from .constants import SecretType
+from ..core.constants import SecretType
 from .api_client import SecretsClient
 from ..ux import print_info, print_warning, print_error, print_success
 
@@ -145,8 +86,8 @@ async def process_config_secrets(
             # Parse as string first to keep the tags
             config_str = f.read()
             # Also parse as YAML to work with the structure
-            # Use yaml.load with our custom tag handlers
-            config_yaml = yaml.load(config_str, Loader=yaml.FullLoader)
+            # Use our custom loader with tag handlers from yaml_tags
+            config_yaml = load_yaml_with_secrets(config_str)
     except Exception as e:
         raise Exception(f"Error loading configuration file {config_path}: {e}")
     
@@ -174,7 +115,7 @@ async def process_config_secrets(
     
     # Parse the transformed string back to YAML to validate
     try:
-        transformed_yaml = yaml.load(transformed_str, Loader=yaml.FullLoader)
+        transformed_yaml = load_yaml_with_secrets(transformed_str)
     except Exception as e:
         raise Exception(f"Error parsing transformed configuration: {e}")
     
@@ -214,8 +155,8 @@ async def process_secrets_in_config(
             'prompted': []
         }
     
-    # Load the config with custom tag handlers
-    config_yaml = yaml.load(config_str, Loader=yaml.FullLoader)
+    # Load the config with custom tag handlers from yaml_tags
+    config_yaml = load_yaml_with_secrets(config_str)
     
     # Process the loaded YAML recursively
     transformed_yaml = await transform_config_recursive(
@@ -226,13 +167,8 @@ async def process_secrets_in_config(
         secrets_context
     )
     
-    # Convert back to YAML string using our custom dumper
-    transformed_str = yaml.dump(transformed_yaml, Dumper=EmptyTagDumper, default_flow_style=False)
-    
-    # Post-process the YAML string to remove empty quotes from tags
-    # This handles the fact that PyYAML's representation system cannot properly
-    # represent empty tags without surrounding quotes
-    transformed_str = re.sub(r'(!user_secret|!developer_secret) [\'\"][\'\"]', r'\1', transformed_str)
+    # Convert back to YAML string using the custom dumper from yaml_tags
+    transformed_str = dump_yaml_with_secrets(transformed_yaml)
     
     return transformed_str
 
@@ -279,10 +215,11 @@ async def transform_config_recursive(
         was_prompted = False
         env_var = None
         
-        # Process OmegaConf-style environment variable references
-        # This is where OmegaConf-style resolution happens, separate from Pydantic Settings
-        if isinstance(value, str) and value.startswith('${oc.env:') and value.endswith('}'):
-            env_var = value[9:-1]  # Extract VAR_NAME from ${oc.env:VAR_NAME}
+        # If a value is provided with the tag, interpret it as an environment variable name
+        # This follows the design in CLAUDE.md: The value immediately following a tag
+        # is interpreted as the name of the environment variable to read the secret from
+        if value:  # If the tag has a value (which is the env var name)
+            env_var = value  # The value IS the environment variable name
             env_value = os.environ.get(env_var)
             if env_value is None:
                 if no_prompt:

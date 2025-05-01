@@ -41,28 +41,31 @@ def _run_async(coro):
 
 
 def deploy_config(
-    config_file: Path = typer.Argument(
-        ...,
-        help="Path to the MCP agent configuration file.",
+    secrets_file: Path = typer.Option(
+        Path("mcp-agent.secrets.yaml"),
+        "--secrets-file",
+        "-s",
+        help="Path to the input secrets YAML file.",
         exists=True,
         readable=True,
         dir_okay=False,
         resolve_path=True,
     ),
-    secrets_file: Path = typer.Option(
-        ...,
-        "--secrets-file",
-        "-s",
-        help="Path to the secrets YAML file to process.",
+    config_file: Optional[Path] = typer.Option(
+        Path("mcp-agent.config.yaml"),
+        "--config-file",
+        "-c",
+        help="Path to the main config YAML file.",
         exists=True,
         readable=True,
         dir_okay=False,
         resolve_path=True,
     ),
     secrets_output_file: Optional[Path] = typer.Option(
-        None,
+        Path("mcp-agent.deployed.secrets.yaml"),
         "--secrets-output-file",
-        help="Path to write the transformed secrets file.",
+        "-o",
+        help="Path for the output deployed secrets file.",
         resolve_path=True,
     ),
     no_secrets: bool = typer.Option(
@@ -70,10 +73,10 @@ def deploy_config(
         "--no-secrets",
         help="Skip secrets processing.",
     ),
-    no_prompt: bool = typer.Option(
+    non_interactive: bool = typer.Option(
         False,
-        "--no-prompt",
-        help="Never prompt for missing values. Fail instead.",
+        "--non-interactive",
+        help="Fail if secrets require prompting, do not prompt.",
     ),
     dry_run: bool = typer.Option(
         False,
@@ -173,7 +176,7 @@ def deploy_config(
                             config_path=secrets_file,
                             output_path=secrets_transformed_path,
                             client=mock_client,
-                            no_prompt=no_prompt,
+                            no_prompt=non_interactive,
                         )
                     )
                 except Exception as e:
@@ -189,7 +192,7 @@ def deploy_config(
                         output_path=secrets_transformed_path,
                         api_url=effective_api_url,
                         api_key=effective_api_key,
-                        no_prompt=no_prompt,
+                        no_prompt=non_interactive,
                     )
                 )
 

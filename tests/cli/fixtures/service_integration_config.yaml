@@ -13,15 +13,15 @@ mcp:
       command: "npx"
       args: ["-y", "@modelcontextprotocol/server-slack"]
       env:
-        SLACK_BOT_TOKEN: !developer_secret ${oc.env:SLACK_BOT_TOKEN}
-        SLACK_TEAM_ID: !developer_secret ${oc.env:SLACK_TEAM_ID}
+        SLACK_BOT_TOKEN: !developer_secret SLACK_BOT_TOKEN
+        SLACK_TEAM_ID: !developer_secret SLACK_TEAM_ID
     
     # GitHub configuration
     github:
       command: "npx"
       args: ["-y", "@modelcontextprotocol/server-github"]
       env:
-        GITHUB_PERSONAL_ACCESS_TOKEN: !developer_secret ${oc.env:GITHUB_PAT}
+        GITHUB_PERSONAL_ACCESS_TOKEN: !developer_secret GITHUB_PAT
     
     # Fetch server
     fetch:
@@ -31,7 +31,7 @@ mcp:
 # OpenAI for model provider
 openai:
   default_model: gpt-4o
-  api_key: !developer_secret ${oc.env:OPENAI_API_KEY}
+  api_key: !developer_secret OPENAI_API_KEY
   organization_id: !user_secret
 
 # Database configuration
@@ -40,6 +40,6 @@ database:
   port: 5432
   database: mydb
   user: !developer_secret db-user
-  password: !developer_secret ${oc.env:DB_PASSWORD}
+  password: !developer_secret DB_PASSWORD
   ssl: true
   ssl_cert: !user_secret

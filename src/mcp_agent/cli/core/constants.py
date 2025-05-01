@@ -1,0 +1,42 @@
+"""Core constants for MCP Agent Cloud.
+
+This module contains constants that are used throughout the MCP Agent Cloud codebase.
+Centralizing these constants helps prevent circular imports and provides a single
+source of truth for values that are referenced by multiple modules.
+"""
+
+import re
+from enum import Enum
+
+# File names and patterns
+MCP_CONFIG_FILENAME = "mcp-agent.config.yaml"
+MCP_SECRETS_FILENAME = "mcp-agent.secrets.yaml"
+DEPLOYED_SUFFIX = "deployed"
+CONFIGURED_SUFFIX = "configured"
+
+# Cache and deployment settings
+DEFAULT_CACHE_DIR = "~/.mcp_agent/cloud"  # Moved from commands/deploy/constants.py
+
+# Environment variable names
+ENV_API_BASE_URL = "MCP_API_BASE_URL"  # Moved from secrets/constants.py
+ENV_API_KEY = "MCP_API_KEY"  # Moved from secrets/constants.py
+ENV_VERBOSE = "MCP_VERBOSE"  # Moved from settings.py usage
+
+# API defaults
+DEFAULT_API_BASE_URL = "http://localhost:3000/api"  # Moved from secrets/constants.py
+
+# Secret types (string constants)
+SECRET_TYPE_DEVELOPER = "dev"  # Value from SecretType.DEVELOPER
+SECRET_TYPE_USER = "usr"  # Value from SecretType.USER
+
+# SecretType Enum for backwards compatibility
+class SecretType(Enum):
+    """Enum representing the type of secret."""
+
+    DEVELOPER = SECRET_TYPE_DEVELOPER  # Secrets known at deploy time
+    USER = SECRET_TYPE_USER  # Secrets collected from end-users at configure time
+
+# UUID patterns for secret handles
+UUID_PATTERN = r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+TEST_UUID_PATTERN = r"^[0-9a-f]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12}$"
+HANDLE_PATTERN = re.compile(f"({UUID_PATTERN})|({TEST_UUID_PATTERN})")
