@@ -285,6 +285,23 @@ class LoggerSettings(BaseModel):
     """HTTP timeout seconds for event transport"""
 
 
+class QwenSettings(BaseModel):
+    """
+    Settings for using Qwen models through Ollama's OpenAI-compatible API.
+    """
+
+    api_key: str | None = None
+    """API key for authentication."""
+
+    base_url: str
+    """Base URL for the Ollama API (e.g., http://localhost:11434/v1)."""
+
+    default_model: str = "qwen2.5-coder-32b-instruct"
+    """Default Qwen model to use."""
+
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
+
 class Settings(BaseSettings):
     """
     Settings class for the MCP Agent application.
@@ -333,6 +350,9 @@ class Settings(BaseSettings):
 
     usage_telemetry: UsageTelemetrySettings | None = UsageTelemetrySettings()
     """Usage tracking settings for the MCP Agent application"""
+
+    qwen: QwenSettings | None = None
+    """Settings for using Qwen models in the MCP Agent application"""
 
     @classmethod
     def find_config(cls) -> Path | None:
