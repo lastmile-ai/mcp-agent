@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from mypy_boto3_bedrock_runtime.type_defs import (
         MessageOutputTypeDef,
         ConverseRequestTypeDef,
+        ConverseResponseTypeDef,
         MessageUnionTypeDef,
         ContentBlockUnionTypeDef,
         ToolConfigurationTypeDef,
@@ -31,12 +32,15 @@ if TYPE_CHECKING:
 else:
     MessageOutputTypeDef = object
     ConverseRequestTypeDef = object
+    ConverseResponseTypeDef = object
     MessageUnionTypeDef = object
     ContentBlockUnionTypeDef = object
     ToolConfigurationTypeDef = object
 
 
-class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]):
+class BedrockAugmentedLLM(
+    AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef, ConverseResponseTypeDef]
+):
     """
     The basic building block of agentic systems is an LLM enhanced with augmentations
     such as retrieval, tools, and memory provided from a collection of MCP servers.
@@ -156,6 +160,8 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
             executor_result = await self.executor.execute(
                 self.bedrock_client.converse, **arguments
             )
+
+            self.response_history.extend(executor_result)
 
             response = executor_result[0]
 

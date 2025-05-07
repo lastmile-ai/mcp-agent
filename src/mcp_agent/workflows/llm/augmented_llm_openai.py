@@ -4,6 +4,7 @@ from typing import Iterable, List, Type
 
 from openai import OpenAI
 from openai.types.chat import (
+    ChatCompletion,
     ChatCompletionAssistantMessageParam,
     ChatCompletionContentPartParam,
     ChatCompletionContentPartTextParam,
@@ -38,7 +39,7 @@ from mcp_agent.logging.logger import get_logger
 
 
 class OpenAIAugmentedLLM(
-    AugmentedLLM[ChatCompletionMessageParam, ChatCompletionMessage]
+    AugmentedLLM[ChatCompletionMessageParam, ChatCompletionMessage, ChatCompletion]
 ):
     """
     The basic building block of agentic systems is an LLM enhanced with augmentations
@@ -188,6 +189,8 @@ class OpenAIAugmentedLLM(
             executor_result = await self.executor.execute(
                 openai_client.chat.completions.create, **arguments
             )
+
+            self.response_history.extend(executor_result)
 
             response = executor_result[0]
 
