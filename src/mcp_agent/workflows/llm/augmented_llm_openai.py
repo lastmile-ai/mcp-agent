@@ -139,7 +139,6 @@ class OpenAIAugmentedLLM(
             messages.extend(message)
         else:
             messages.append(message)
-
         response = await self.aggregator.list_tools()
         available_tools: List[ChatCompletionToolParam] = [
             ChatCompletionToolParam(

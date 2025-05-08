@@ -73,15 +73,6 @@ class MCPApp:
         self._context: Optional[Context] = None
         self._initialized = False
 
-        try:
-            # Set event loop policy for Windows
-            if sys.platform == "win32":
-                import asyncio
-
-                asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-        finally:
-            pass
-
     @property
     def context(self) -> Context:
         if self._context is None:
@@ -192,11 +183,28 @@ class MCPApp:
                 # App is initialized here
                 pass
         """
+        original_policy = None  # Used to store the original policy
+        policy_changed = False  # Flag to indicate if the policy was changed
+        # Set event loop policy for Windows if needed
+        if sys.platform == "win32":
+            original_policy = asyncio.get_event_loop_policy()
+            # Only set if the current policy is not Proactor
+            if not isinstance(original_policy, asyncio.WindowsProactorEventLoopPolicy):
+                asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+                policy_changed = True
         await self.initialize()
         try:
             yield self
         finally:
             await self.cleanup()
+            if (
+                policy_changed
+                and original_policy is not None
+                and sys.platform == "win32"
+            ):
+                asyncio.set_event_loop_policy(original_policy)
+                # Optionally log that the policy has been restored
+                # self.logger.debug("Restored original asyncio event loop policy")
 
     def workflow(
         self, cls: Type, *args, workflow_id: str | None = None, **kwargs
