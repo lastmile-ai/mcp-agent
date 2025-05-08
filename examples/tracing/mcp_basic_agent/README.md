@@ -6,4 +6,8 @@ You can ask it information about local files or URLs, and it will make the deter
 
 The tracing implementation will log spans to the console.
 
-<img width="2160" alt="Image" src="https://github.com/user-attachments/assets/14cbfdf4-306f-486b-9ec1-6576acf0aeb7" />
+### Exporting to Collector
+
+If desired, [install jaeger locally](https://www.jaegertracing.io/docs/2.5/getting-started/) and then update the `mcp_agent.config.yaml` for this example to have `otel.otlp_endpoint` point to the collector endpoint (e.g. `http://localhost:4318` is the default for Jaeger via HTTP).
+
+<img width="2160" alt="Image" src="https://github.com/user-attachments/assets/TODO" />

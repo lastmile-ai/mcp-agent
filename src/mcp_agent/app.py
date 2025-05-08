@@ -5,6 +5,8 @@ from datetime import timedelta
 import asyncio
 import sys
 from contextlib import asynccontextmanager
+from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
 from mcp import ServerSession
 from mcp_agent.core.context import Context, initialize_context, cleanup_context
@@ -241,10 +243,17 @@ class MCPApp:
                 pass
         """
         await self.initialize()
-        try:
-            yield self
-        finally:
-            await self.cleanup()
+
+        tracer = self.context.tracer or trace.get_tracer(__name__)
+        with tracer.start_as_current_span(self.name) as span:
+            try:
+                yield self
+            except Exception as e:
+                span.record_exception(e)
+                span.set_status(Status(StatusCode.ERROR))
+                raise
+            finally:
+                await self.cleanup()
 
     def workflow(
         self, cls: Type, *args, workflow_id: str | None = None, **kwargs

@@ -29,6 +29,9 @@ dependencies = [
     "prompt-toolkit>=3.0.50",
     "aiohttp>=3.11.13",
     "websockets>=12.0",
+    "temporalio>=1.10.0",
+    "opentelemetry-instrumentation-openai>=0.39.3",
+    "opentelemetry-instrumentation-anthropic>=0.39.3",
 ]
 
 [project.optional-dependencies]

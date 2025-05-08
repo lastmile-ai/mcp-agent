@@ -5,6 +5,7 @@ A central context object to store global state that is shared across the applica
 import asyncio
 import concurrent.futures
 from typing import Any, Optional, TYPE_CHECKING
+import uuid
 
 from pydantic import BaseModel, ConfigDict
 
@@ -91,15 +92,28 @@ async def configure_otel(config: "Settings"):
         return
 
     # Check if a provider is already set to avoid re-initialization
-    if trace.get_tracer_provider().__class__.__name__ != "NoOpTracerProvider":
+    if isinstance(trace.get_tracer_provider(), TracerProvider):
+        logger.info(
+            f"Otel tracer provider already set: {trace.get_tracer_provider().__class__.__name__}"
+        )
         return
 
     # Set up global textmap propagator first
     set_global_textmap(TraceContextTextMapPropagator())
 
-    service_name = config.otel.service_name
-    service_instance_id = config.otel.service_instance_id
+    # pylint: disable=import-outside-toplevel (do not import if otel is not enabled)
+    from importlib.metadata import version
+
     service_version = config.otel.service_version
+    if not service_version:
+        try:
+            service_version = version("mcp-agent")
+        # pylint: disable=broad-exception-caught
+        except Exception:
+            service_version = "unknown"
+
+    service_name = config.otel.service_name
+    service_instance_id = config.otel.service_instance_id or str(uuid.uuid4())[:6]
 
     # Create resource identifying this service
     resource = Resource.create(
@@ -133,6 +147,14 @@ async def configure_otel(config: "Settings"):
 
     # Set as global tracer provider
     trace.set_tracer_provider(tracer_provider)
+
+    # Set up autoinstrumentation
+    # pylint: disable=import-outside-toplevel (do not import if otel is not enabled)
+    from opentelemetry.instrumentation.anthropic import AnthropicInstrumentor
+    from opentelemetry.instrumentation.openai import OpenAIInstrumentor
+
+    AnthropicInstrumentor().instrument()
+    OpenAIInstrumentor().instrument()
 
 
 async def configure_logger(config: "Settings", session_id: str | None = None):

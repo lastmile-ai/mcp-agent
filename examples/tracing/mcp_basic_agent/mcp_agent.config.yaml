@@ -26,4 +26,7 @@ openai:
 
 otel:
   enable: true
+  # If running jaeger locally, uncomment the following lines
+  otlp_endpoint: "http://localhost:4318/v1/traces"
   console_debug: true
+  service_name: "BasicTracingExample"
