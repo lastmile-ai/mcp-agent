@@ -1,7 +1,9 @@
 import asyncio
+import json
 import uuid
 from typing import Callable, Dict, List, Optional, TypeVar, TYPE_CHECKING, Any
 
+from opentelemetry import trace
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 from mcp.server.fastmcp.tools import Tool as FastTool
@@ -24,6 +26,7 @@ from mcp_agent.human_input.types import (
 )
 
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.logging.tracing import telemetry
 
 if TYPE_CHECKING:
     from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
@@ -167,46 +170,54 @@ class Agent(BaseModel):
 
     async def initialize(self, force: bool = False):
         """Initialize the agent."""
+        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        with tracer.start_as_current_span(f"agent.initialize.{self.name}") as span:
+            span.set_attribute("name", self.name)
+            span.set_attribute("server_names", self.server_names)
+            span.set_attribute("connection_persistence", self.connection_persistence)
+            span.set_attribute("force", force)
 
-        async with self._init_lock:
-            if self.initialized and not force:
-                return
+            async with self._init_lock:
+                if self.initialized and not force:
+                    return
 
-            logger.debug(f"Initializing agent {self.name}...")
+                span.add_event("agent_initialize_start")
+                logger.debug(f"Initializing agent {self.name}...")
 
-            executor = self.context.executor
+                executor = self.context.executor
 
-            result: InitAggregatorResponse = await executor.execute(
-                self._agent_tasks.initialize_aggregator_task,
-                InitAggregatorRequest(
-                    agent_name=self.name,
-                    server_names=self.server_names,
-                    connection_persistence=self.connection_persistence,
-                    force=force,
-                ),
-            )
-
-            if not result.initialized:
-                raise RuntimeError(
-                    f"Failed to initialize agent {self.name}. "
-                    f"Check the server names and connection persistence settings."
+                result: InitAggregatorResponse = await executor.execute(
+                    self._agent_tasks.initialize_aggregator_task,
+                    InitAggregatorRequest(
+                        agent_name=self.name,
+                        server_names=self.server_names,
+                        connection_persistence=self.connection_persistence,
+                        force=force,
+                    ),
                 )
 
-            # TODO: saqadri - check if a lock is needed here
-            self._namespaced_tool_map.clear()
-            self._namespaced_tool_map.update(result.namespaced_tool_map)
+                if not result.initialized:
+                    raise RuntimeError(
+                        f"Failed to initialize agent {self.name}. "
+                        f"Check the server names and connection persistence settings."
+                    )
 
-            self._server_to_tool_map.clear()
-            self._server_to_tool_map.update(result.server_to_tool_map)
+                # TODO: saqadri - check if a lock is needed here
+                self._namespaced_tool_map.clear()
+                self._namespaced_tool_map.update(result.namespaced_tool_map)
 
-            self._namespaced_prompt_map.clear()
-            self._namespaced_prompt_map.update(result.namespaced_prompt_map)
+                self._server_to_tool_map.clear()
+                self._server_to_tool_map.update(result.server_to_tool_map)
 
-            self._server_to_prompt_map.clear()
-            self._server_to_prompt_map.update(result.server_to_prompt_map)
+                self._namespaced_prompt_map.clear()
+                self._namespaced_prompt_map.update(result.namespaced_prompt_map)
 
-            self.initialized = result.initialized
-            logger.debug(f"Agent {self.name} initialized.")
+                self._server_to_prompt_map.clear()
+                self._server_to_prompt_map.update(result.server_to_prompt_map)
+
+                self.initialized = result.initialized
+                span.add_event("agent_initialize_complete")
+                logger.debug(f"Agent {self.name} initialized.")
 
     async def shutdown(self):
         """
@@ -215,20 +226,26 @@ class Agent(BaseModel):
         """
         logger.debug(f"Shutting down agent {self.name}...")
 
-        executor = self.context.executor
-        result: bool = await executor.execute(
-            self._agent_tasks.shutdown_aggregator_task,
-            self.name,
-        )
+        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        with tracer.start_as_current_span(f"agent.shutdown.{self.name}") as span:
+            span.set_attribute("name", self.name)
+            span.add_event("agent_shutdown_start")
 
-        if not result:
-            raise RuntimeError(
-                f"Failed to shutdown agent {self.name}. "
-                f"Check the server names and connection persistence settings."
+            executor = self.context.executor
+            result: bool = await executor.execute(
+                self._agent_tasks.shutdown_aggregator_task,
+                self.name,
             )
 
-        self.initialized = False
-        logger.debug(f"Agent {self.name} shutdown.")
+            if not result:
+                raise RuntimeError(
+                    f"Failed to shutdown agent {self.name}. "
+                    f"Check the server names and connection persistence settings."
+                )
+
+            self.initialized = False
+            span.add_event("agent_shutdown_complete")
+            logger.debug(f"Agent {self.name} shutdown.")
 
     async def __aenter__(self):
         await self.initialize()
@@ -243,80 +260,156 @@ class Agent(BaseModel):
         """
         Get the capabilities of a specific server.
         """
-        if not self.initialized:
-            await self.initialize()
+        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        with tracer.start_as_current_span(
+            f"agent.get_capabilities.{self.name}"
+        ) as span:
+            span.set_attribute("name", self.name)
+            span.set_attribute("server_name", server_name)
+            span.set_attribute("initialized", self.initialized)
 
-        executor = self.context.executor
-        result: Dict[str, ServerCapabilities] = await executor.execute(
-            self._agent_tasks.get_capabilities_task,
-            GetCapabilitiesRequest(agent_name=self.name, server_name=server_name),
-        )
+            if not self.initialized:
+                await self.initialize()
 
-        # If server_name is None, return all server capabilities
-        if server_name is None:
-            return result
-        # If server_name is provided, return the capabilities for that server
-        elif server_name in result:
-            return result[server_name]
-        else:
-            raise ValueError(
-                f"Server '{server_name}' not found in agent '{self.name}'. "
-                f"Available servers: {list(result.keys())}"
+            executor = self.context.executor
+            result: Dict[str, ServerCapabilities] = await executor.execute(
+                self._agent_tasks.get_capabilities_task,
+                GetCapabilitiesRequest(agent_name=self.name, server_name=server_name),
             )
+
+            # If server_name is None, return all server capabilities
+            if server_name is None:
+                for server, capabilities in result.items():
+                    for attr in ["logging", "prompts", "tools", "experimental"]:
+                        value = getattr(capabilities, attr, None)
+                        span.set_attribute(
+                            f"{server}.capabilities.{attr}", value is not None
+                        )
+                return result
+            # If server_name is provided, return the capabilities for that server
+            elif server_name in result:
+                capabilities = result[server_name]
+                for attr in ["logging", "prompts", "tools", "experimental"]:
+                    value = getattr(capabilities, attr, None)
+                    span.set_attribute(
+                        f"{server_name}.capabilities.{attr}", value is not None
+                    )
+                return capabilities
+            else:
+                raise ValueError(
+                    f"Server '{server_name}' not found in agent '{self.name}'. "
+                    f"Available servers: {list(result.keys())}"
+                )
 
     async def list_tools(self, server_name: str | None = None) -> ListToolsResult:
-        if not self.initialized:
-            await self.initialize()
-
-        if server_name:
-            result = ListToolsResult(
-                prompts=[
-                    namespaced_tool.tool.model_copy(
-                        update={"name": namespaced_tool.namespaced_tool_name}
-                    )
-                    for namespaced_tool in self._server_to_tool_map.get(server_name, [])
-                ]
-            )
-        else:
-            result = ListToolsResult(
-                tools=[
-                    namespaced_tool.tool.model_copy(
-                        update={"name": namespaced_tool_name}
-                    )
-                    for namespaced_tool_name, namespaced_tool in self._namespaced_tool_map.items()
-                ]
+        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        with tracer.start_as_current_span(f"agent.list_tools.{self.name}") as span:
+            span.set_attribute("name", self.name)
+            span.set_attribute("server_name", server_name)
+            span.set_attribute("initialized", self.initialized)
+            span.set_attribute(
+                "human_input_callback", self.human_input_callback is not None
             )
 
-        # Add function tools
-        for tool in self._function_tool_map.values():
+            if not self.initialized:
+                await self.initialize()
+
+            if server_name:
+                result = ListToolsResult(
+                    tools=[
+                        namespaced_tool.tool.model_copy(
+                            update={"name": namespaced_tool.namespaced_tool_name}
+                        )
+                        for namespaced_tool in self._server_to_tool_map.get(
+                            server_name, []
+                        )
+                    ]
+                )
+            else:
+                result = ListToolsResult(
+                    tools=[
+                        namespaced_tool.tool.model_copy(
+                            update={"name": namespaced_tool_name}
+                        )
+                        for namespaced_tool_name, namespaced_tool in self._namespaced_tool_map.items()
+                    ]
+                )
+
+            # Add function tools
+            for tool in self._function_tool_map.values():
+                result.tools.append(
+                    Tool(
+                        name=tool.name,
+                        description=tool.description,
+                        inputSchema=tool.parameters,
+                    )
+                )
+
+            # Add a human_input_callback as a tool
+            if not self.human_input_callback:
+                logger.debug("Human input callback not set")
+
+                for tool in result.tools:
+                    span.set_attribute(
+                        f"tool.{tool.name}.description", tool.description
+                    )
+                    span.set_attribute(
+                        f"tool.{tool.name}.inputSchema", json.dumps(tool.inputSchema)
+                    )
+                    if tool.annotations:
+                        for attr in [
+                            "title",
+                            "readOnlyHint",
+                            "destructiveHint",
+                            "idempotentHint",
+                            "openWorldHint",
+                        ]:
+                            value = getattr(tool.annotations, attr, None)
+                            if value is not None:
+                                span.set_attribute(
+                                    f"tool.{tool.name}.annotations.{attr}", value
+                                )
+
+                return result
+
+            # Add a human_input_callback as a tool
+            human_input_tool: FastTool = FastTool.from_function(
+                self.request_human_input
+            )
             result.tools.append(
                 Tool(
-                    name=tool.name,
-                    description=tool.description,
-                    inputSchema=tool.parameters,
+                    name=HUMAN_INPUT_TOOL_NAME,
+                    description=human_input_tool.description,
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "request": HumanInputRequest.model_json_schema()
+                        },
+                        "required": ["request"],
+                    },
                 )
             )
 
-        # Add a human_input_callback as a tool
-        if not self.human_input_callback:
-            logger.debug("Human input callback not set")
+            for tool in result.tools:
+                span.set_attribute(f"tool.{tool.name}.description", tool.description)
+                span.set_attribute(
+                    f"tool.{tool.name}.inputSchema", json.dumps(tool.inputSchema)
+                )
+                if tool.annotations:
+                    for attr in [
+                        "title",
+                        "readOnlyHint",
+                        "destructiveHint",
+                        "idempotentHint",
+                        "openWorldHint",
+                    ]:
+                        value = getattr(tool.annotations, attr, None)
+                        if value is not None:
+                            span.set_attribute(
+                                f"tool.{tool.name}.annotations.{attr}", value
+                            )
+
             return result
-
-        # Add a human_input_callback as a tool
-        human_input_tool: FastTool = FastTool.from_function(self.request_human_input)
-        result.tools.append(
-            Tool(
-                name=HUMAN_INPUT_TOOL_NAME,
-                description=human_input_tool.description,
-                inputSchema={
-                    "type": "object",
-                    "properties": {"request": HumanInputRequest.model_json_schema()},
-                    "required": ["request"],
-                },
-            )
-        )
-
-        return result
 
     async def list_prompts(self, server_name: str | None = None) -> ListPromptsResult:
         if not self.initialized:

@@ -38,6 +38,9 @@ async def example_usage():
             result = await finder_agent.list_tools()
             logger.info("Tools available:", data=result.model_dump())
 
+            capabilities = await finder_agent.get_capabilities("fetch")
+            logger.info("fetch capabilities:", data=capabilities.model_dump())
+
             llm = await finder_agent.attach_llm(OpenAIAugmentedLLM)
             result = await llm.generate_str(
                 message="Print the contents of mcp_agent.config.yaml verbatim",

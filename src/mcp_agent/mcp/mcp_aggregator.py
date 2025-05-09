@@ -1,6 +1,7 @@
 import asyncio
 from typing import List, Literal, Dict, Optional, TypeVar, TYPE_CHECKING
 
+from opentelemetry import trace
 from pydantic import BaseModel
 from mcp.client.session import ClientSession
 from mcp.server.lowlevel.server import Server
@@ -308,41 +309,63 @@ class MCPAggregator(ContextDependent):
         """
         Discover tools and prompts from each server in parallel and build an index of namespaced tool/prompt names.
         """
+        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        with tracer.start_as_current_span("mcp_aggregator.load_servers") as span:
+            span.set_attribute("server_names", self.server_names)
+            span.set_attribute("force", force)
+            span.set_attribute("connection_persistence", self.connection_persistence)
+            span.set_attribute("agent_name", self.agent_name)
+            span.set_attribute("initialized", self.initialized)
 
-        if self.initialized and not force:
-            logger.debug("MCPAggregator already initialized. Skipping reload.")
-            return
+            if self.initialized and not force:
+                logger.debug("MCPAggregator already initialized. Skipping reload.")
+                return
 
-        async with self._tool_map_lock:
-            self._namespaced_tool_map.clear()
-            self._server_to_tool_map.clear()
+            async with self._tool_map_lock:
+                self._namespaced_tool_map.clear()
+                self._server_to_tool_map.clear()
 
-        async with self._prompt_map_lock:
-            self._namespaced_prompt_map.clear()
-            self._server_to_prompt_map.clear()
+            async with self._prompt_map_lock:
+                self._namespaced_prompt_map.clear()
+                self._server_to_prompt_map.clear()
 
-        # TODO: saqadri (FA1) - Verify that this can be removed
-        # if self.connection_persistence:
-        #     # Start all the servers
-        #     await asyncio.gather(
-        #         *(self._start_server(server_name) for server_name in self.server_names),
-        #         return_exceptions=True,
-        #     )
+            # TODO: saqadri (FA1) - Verify that this can be removed
+            # if self.connection_persistence:
+            #     # Start all the servers
+            #     await asyncio.gather(
+            #         *(self._start_server(server_name) for server_name in self.server_names),
+            #         return_exceptions=True,
+            #     )
 
-        # Load tools and prompts from all servers concurrently
-        results = await asyncio.gather(
-            *(self.load_server(server_name) for server_name in self.server_names),
-            return_exceptions=True,
-        )
+            # Load tools and prompts from all servers concurrently
+            results = await asyncio.gather(
+                *(self.load_server(server_name) for server_name in self.server_names),
+                return_exceptions=True,
+            )
 
-        for result in results:
-            if isinstance(result, BaseException):
-                logger.error(
-                    f"Error loading server data: {result}. Attempting to continue"
-                )
-                continue
+            for server_name, result in zip(self.server_names, results):
+                if isinstance(result, BaseException):
+                    logger.error(
+                        f"Error loading server data: {result}. Attempting to continue"
+                    )
+                    span.add_event(
+                        "server_load_error",
+                        {
+                            "server_name": server_name,
+                            "exception.type": type(result).__name__,
+                            "exception.message": str(result),
+                        },
+                    )
+                    continue
+                else:
+                    span.add_event(
+                        "server_load_success",
+                        {
+                            "server_name": server_name,
+                        },
+                    )
 
-        self.initialized = True
+            self.initialized = True
 
     async def get_capabilities(self, server_name: str):
         """Get server capabilities if available."""
