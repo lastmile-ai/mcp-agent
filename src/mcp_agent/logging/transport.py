@@ -271,17 +271,11 @@ class AsyncEventBus:
     def __init__(self, transport: EventTransport | None = None):
         self.transport: EventTransport = transport or NoOpTransport()
         self.listeners: Dict[str, EventListener] = {}
-        self._queue = asyncio.Queue()
         self._task: asyncio.Task | None = None
         self._running = False
-        self._stop_event = asyncio.Event()
-
-        # Store the loop we're created on
-        try:
-            self._loop = asyncio.get_running_loop()
-        except RuntimeError:
-            self._loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self._loop)
+        self._queue = None
+        self._stop_event = None
+        self._loop = None
 
     @classmethod
     def get(cls, transport: EventTransport | None = None) -> "AsyncEventBus":
@@ -310,6 +304,16 @@ class AsyncEventBus:
 
     async def start(self):
         """Start the event bus and all lifecycle-aware listeners."""
+        # Init _loop and _queue in start method to avoid binding loop when importing the module.
+        if self._queue is None:
+            self._stop_event = asyncio.Event()
+            self._queue = asyncio.Queue()
+            # Store the loop we're created on
+            try:
+                self._loop = asyncio.get_running_loop()
+            except RuntimeError:
+                self._loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(self._loop)
         if self._running:
             return
 
@@ -325,6 +329,10 @@ class AsyncEventBus:
 
     async def stop(self):
         """Stop the event bus and all lifecycle-aware listeners."""
+        # In case the event bus is not started, we don't want to stop it.
+        if self._queue is None:
+            return
+
         if not self._running:
             return
 
@@ -373,6 +381,9 @@ class AsyncEventBus:
 
     async def emit(self, event: Event):
         """Emit an event to all listeners and transport."""
+        # In case the event bus is not started, we don't want to queue the event.
+        if self._queue is None:
+            return
         # Inject current tracing info if available
         span = trace.get_current_span()
         if span.is_recording():

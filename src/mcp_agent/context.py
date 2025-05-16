@@ -217,9 +217,10 @@ async def cleanup_context():
     """
     Cleanup the global application context.
     """
-
     # Shutdown logging and telemetry
     await LoggingConfig.shutdown()
+    global _global_context
+    _global_context = None
 
 
 _global_context: Context | None = None

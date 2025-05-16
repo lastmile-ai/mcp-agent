@@ -29,6 +29,7 @@ dependencies = [
     "prompt-toolkit>=3.0.50",
     "aiohttp>=3.11.13",
     "websockets>=12.0",
+    "psutil>=5.9.0",
 ]
 
 [project.optional-dependencies]
