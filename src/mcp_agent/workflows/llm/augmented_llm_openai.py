@@ -408,13 +408,7 @@ class OpenAIAugmentedLLM(
         )
 
         if result.content:
-            return ChatCompletionToolMessageParam(
-                role="tool",
-                tool_call_id=tool_call_id,
-                content="\n".join(
-                    str(mcp_content_to_openai_content(c)) for c in result.content
-                ),
-            )
+            return self.from_mcp_tool_result(result, tool_call_id)
 
         return None
 
@@ -554,15 +548,54 @@ class MCPOpenAITypeConverter(
                 f"Unexpected role: {param.role}, MCP only supports 'assistant', 'user', 'tool', 'system', 'developer', and 'function'"
             )
 
+    @classmethod
+    def from_mcp_tool_result(
+        cls, result: CallToolResult, tool_use_id: str
+    ) -> ChatCompletionMessageParam:
+        # Convert the list of content items to a single string
+        if not result.content:
+            return ChatCompletionToolMessageParam(
+                role="tool",
+                tool_call_id=tool_use_id,
+                content="No result returned",
+            )
+
+        # First convert the content items using the existing function
+        text_parts = []
+        for content_item in result.content:
+            openai_content = mcp_content_to_openai_content(content_item)
+            if hasattr(openai_content, "text"):
+                text_parts.append(openai_content.text)
+            else:
+                text_parts.append(str(openai_content))
+
+        # Join the text parts into a single string
+        content_text = "\n".join(text_parts)
+
+        # Return the properly formatted tool message
+        return ChatCompletionToolMessageParam(
+            role="tool",
+            tool_call_id=tool_use_id,
+            content=content_text,  # String format for compatibility
+        )
+
 
 def mcp_content_to_openai_content(
     content: TextContent | ImageContent | EmbeddedResource,
 ) -> ChatCompletionContentPartTextParam:
     if isinstance(content, list):
         # Handle list of content items
+        text_parts = []
+        for item in content:
+            converted = mcp_content_to_openai_content(item)
+            if hasattr(converted, "text"):
+                text_parts.append(converted.text)
+            else:
+                text_parts.append(str(converted))
+
         return ChatCompletionContentPartTextParam(
             type="text",
-            text="\n".join(mcp_content_to_openai_content(c) for c in content),
+            text="\n".join(text_parts),
         )
 
     if isinstance(content, TextContent):
