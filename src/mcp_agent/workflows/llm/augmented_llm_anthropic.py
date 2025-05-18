@@ -127,21 +127,25 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         else:
             messages.append(message)
 
-        response = await self.aggregator.list_tools()
+        list_tools_result = await self.aggregator.list_tools()
         available_tools: List[ToolParam] = [
             {
                 "name": tool.name,
                 "description": tool.description,
                 "input_schema": tool.inputSchema,
             }
-            for tool in response.tools
+            for tool in list_tools_result.tools
         ]
 
         responses: List[Message] = []
         model = await self.select_model(params)
 
         for i in range(params.max_iterations):
-            if i == params.max_iterations - 1 and response.stop_reason == "tool_use":
+            if (
+                i == params.max_iterations - 1
+                and responses
+                and responses[-1].stop_reason == "tool_use"
+            ):
                 final_prompt_message = MessageParam(
                     role="user",
                     content="""We've reached the maximum number of iterations. 
