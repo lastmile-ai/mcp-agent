@@ -15,6 +15,14 @@ from typer.testing import CliRunner
 
 from mcp_agent_cloud.cli.main import app
 from mcp_agent_cloud.secrets.yaml_tags import UserSecret, DeveloperSecret
+from mcp_agent_cloud.core.constants import UUID_PREFIX, UUID_PATTERN
+from tests.fixtures.test_constants import (
+    TEST_SECRET_UUID,
+    BEDROCK_API_KEY_UUID,
+    DATABASE_PASSWORD_UUID,
+    OPENAI_API_KEY_UUID,
+    ANTHROPIC_API_KEY_UUID,
+)
 
 # Fixtures directory for realistic configurations
 from tests.fixtures.api_test_utils import setup_api_for_testing, APIMode
@@ -119,19 +127,25 @@ database:
         print("\nTransformed YAML Content:")
         print(transformed_yaml_text)
         
-        # Use regex to check the format of the developer secret
-        dev_secret_pattern = r'key:\s+([a-f0-9-]+)'
+        # Extract the UUID using a precise pattern based on the production format
+        dev_secret_pattern = r'key:\s+(' + UUID_PATTERN.strip('^$') + ')'
         dev_match = re.search(dev_secret_pattern, transformed_yaml_text)
-        assert dev_match is not None, f"Developer secret UUID pattern not found in file"
+        assert dev_match is not None, f"Developer secret with production UUID pattern not found in file"
         
-        # Try to parse the extracted UUID to verify format
+        # Validate the UUID format
         dev_uuid_str = dev_match.group(1)
+        # Verify it starts with the correct prefix
+        assert dev_uuid_str.startswith(UUID_PREFIX), f"Expected {UUID_PREFIX} prefix, got: {dev_uuid_str}"
+        
+        # Verify it matches our production UUID pattern exactly
+        uuid_part = dev_uuid_str[len(UUID_PREFIX):]
         try:
-            uuid.UUID(dev_uuid_str)
+            # Should be a valid UUID according to the uuid module
+            uuid.UUID(uuid_part)
             is_uuid = True
         except ValueError:
             is_uuid = False
-        assert is_uuid, f"Expected UUID format, got: {dev_uuid_str}"
+        assert is_uuid, f"Expected standard UUID format after prefix, got: {uuid_part}"
         
         # Verify the user secret was NOT transformed and still has its tag
         user_secret_pattern = r'password:\s+!user_secret'
@@ -214,10 +228,10 @@ def test_cli_deploy_with_env_var_secret(mock_api_credentials, setup_test_env_var
         with open(secrets_output_path, 'r') as f:
             transformed_yaml_text = f.read()
         
-        # Verify the environment variable secret was transformed to a UUID handle
-        uuid_pattern = r'\b[0-9a-f-]+\b'
-        assert re.search(r'key:\s+' + uuid_pattern, transformed_yaml_text) is not None, \
-            "Expected UUID format for transformed secret"
+        # Verify the environment variable secret was transformed to a production-format UUID
+        prod_pattern = UUID_PATTERN.strip('^$')  # Remove regex anchors for use in larger pattern
+        assert re.search(r'key:\s+(' + prod_pattern + ')', transformed_yaml_text) is not None, \
+            "Expected production UUID format for transformed secret"
             
     finally:
         # Clean up temp files
@@ -311,16 +325,16 @@ models:
         with open(secrets_output_path, 'r') as f:
             transformed_yaml = f.read()
         
-        # Check developer secrets were transformed to UUIDs
-        # Both OpenAI and Anthropic keys should be UUIDs now
-        uuid_pattern = r'\b[0-9a-f-]+\b'
+        # Check developer secrets were transformed to production-format UUIDs
+        # Both OpenAI and Anthropic keys should be properly formatted UUIDs
+        prod_pattern = UUID_PATTERN.strip('^$')  # Remove regex anchors for use in larger pattern
         
-        # API keys should be transformed to UUIDs
-        assert re.search(r'api_key:\s+' + uuid_pattern, transformed_yaml) is not None, \
-            "Developer secret not transformed to UUID"
+        # API keys should be transformed to production-format UUIDs
+        assert re.search(r'api_key:\s+(' + prod_pattern + ')', transformed_yaml) is not None, \
+            "Developer secret not transformed to production UUID format"
         
-        # Count how many UUIDs are in the file (should match number of developer secrets)
-        uuid_matches = re.findall(uuid_pattern, transformed_yaml)
+        # Count how many correctly formatted UUIDs are in the file (should match number of developer secrets)
+        uuid_matches = re.findall(prod_pattern, transformed_yaml)
         assert len(uuid_matches) == 2, f"Expected 2 UUIDs, found {len(uuid_matches)}"
         
         # User secrets should remain as tags
@@ -495,10 +509,10 @@ api:
             with open(output_path, 'r') as f:
                 transformed = f.read()
             
-            # Should have UUID in the output
-            uuid_pattern = r'\b[0-9a-f-]+\b'
-            assert re.search(r'key:\s+' + uuid_pattern, transformed) is not None, \
-                "Developer secret not transformed to UUID"
+            # Should have production-format UUID in the output
+            prod_pattern = UUID_PATTERN.strip('^$')  # Remove regex anchors for use in larger pattern
+            assert re.search(r'key:\s+(' + prod_pattern + ')', transformed) is not None, \
+                "Developer secret not transformed to production UUID format"
                 
         finally:
             # Clean up

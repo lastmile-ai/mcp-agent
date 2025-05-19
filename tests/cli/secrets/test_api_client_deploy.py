@@ -6,6 +6,11 @@ from unittest.mock import patch, AsyncMock, MagicMock
 
 from mcp_agent_cloud.secrets.api_client import SecretsClient
 from mcp_agent_cloud.core.constants import SecretType
+from tests.fixtures.test_constants import (
+    TEST_SECRET_UUID,
+    BEDROCK_API_KEY_UUID,
+    DATABASE_PASSWORD_UUID,
+)
 
 # FIXTURES - Streamlined to focus on deploy scenario
 
@@ -17,10 +22,11 @@ def mock_httpx_client():
         mock_instance = AsyncMock()
         mock_client.return_value.__aenter__.return_value = mock_instance
         
-        # Configure the mock response
+        # Configure the mock response with the proper prefixed UUID from constants
         mock_response = MagicMock()
         mock_response.raise_for_status = MagicMock()
-        mock_response.json.return_value = {"secret": {"secretId": "12345678-abcd-1234-efgh-123456789abc"}, "success": True}
+        mock_response.json.return_value = {"secret": {"secretId": TEST_SECRET_UUID}, "success": True}
+        # API should return the production-format prefixed UUID
         mock_instance.post.return_value = mock_response
         
         yield mock_instance
@@ -47,8 +53,8 @@ async def test_create_developer_secret(api_client, mock_httpx_client):
         value="test-api-key"
     )
     
-    # Check the returned handle is a string (UUID)
-    assert handle == "12345678-abcd-1234-efgh-123456789abc"
+    # Check the returned handle matches our constant
+    assert handle == TEST_SECRET_UUID
     
     # Verify API was called correctly
     mock_httpx_client.post.assert_called_once()
@@ -164,10 +170,10 @@ async def test_http_error_handling(api_client):
 @pytest.mark.asyncio
 async def test_deploy_phase_api_usage(api_client, mock_httpx_client):
     """Test API usage during deploy phase as described in CLAUDE.md."""
-    # Configure mock to return different UUIDs for each call
+    # Configure mock to return proper production-format UUIDs for each call
     response_seq = [
-        {"secret": {"secretId": "bedrock-key-uuid"}, "success": True},
-        {"secret": {"secretId": "db-password-uuid"}, "success": True},
+        {"secret": {"secretId": BEDROCK_API_KEY_UUID}, "success": True},  # API returns standardized UUIDs
+        {"secret": {"secretId": DATABASE_PASSWORD_UUID}, "success": True},  # API returns standardized UUIDs
     ]
     mock_httpx_client.post.side_effect = [
         MagicMock(
@@ -189,9 +195,9 @@ async def test_deploy_phase_api_usage(api_client, mock_httpx_client):
         value="prompted-db-password"  # Value from prompt
     )
     
-    # Verify returned handles
-    assert bedrock_handle == "bedrock-key-uuid"
-    assert db_handle == "db-password-uuid"
+    # Verify returned handles match our constants
+    assert bedrock_handle == BEDROCK_API_KEY_UUID
+    assert db_handle == DATABASE_PASSWORD_UUID
     
     # Verify API calls
     assert mock_httpx_client.post.call_count == 2

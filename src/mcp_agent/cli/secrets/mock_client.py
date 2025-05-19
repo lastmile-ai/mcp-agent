@@ -43,19 +43,26 @@ class MockSecretsClient:
         if value is None or value.strip() == "":
             raise ValueError(f"Secret '{name}' requires a non-empty value")
         
-        # Generate a predictable fake UUID based on the name
-        # This ensures consistent UUIDs for the same name
+        # Generate a predictable, production-format UUID based on the name
+        # This ensures consistent UUIDs in the correct format for testing
         name_hash = hash(f"{name}:{secret_type.value}")
-        fake_uuid = str(uuid.UUID(int=abs(name_hash) % (2**128 - 1)))
+        # Generate proper UUID using the hash as a seed
+        raw_uuid = uuid.UUID(int=abs(name_hash) % (2**128 - 1))
+        # Format to standard UUID string
+        uuid_str = str(raw_uuid)
         
-        # Store the secret in the mock storage
-        self._created_secrets[fake_uuid] = {
+        # Add the prefix to identify this as a secret entity
+        from ..core.constants import UUID_PREFIX
+        prefixed_uuid = f"{UUID_PREFIX}{uuid_str}"
+        
+        # Store the secret in the mock storage using the prefixed UUID
+        self._created_secrets[prefixed_uuid] = {
             "name": name,
             "type": secret_type.value,
             "value": value  # Value is always required now
         }
         
-        return fake_uuid
+        return prefixed_uuid
     
     async def get_secret_value(self, handle: str) -> str:
         """Get a mock secret value.

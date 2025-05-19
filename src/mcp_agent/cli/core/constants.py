@@ -37,6 +37,8 @@ class SecretType(Enum):
     USER = SECRET_TYPE_USER  # Secrets collected from end-users at configure time
 
 # UUID patterns for secret handles
-UUID_PATTERN = r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-TEST_UUID_PATTERN = r"^[0-9a-f]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12}$"
-HANDLE_PATTERN = re.compile(f"({UUID_PATTERN})|({TEST_UUID_PATTERN})")
+UUID_PREFIX = "mcpac_sc_"  # Prefix for secret IDs to identify entity type
+# Strict pattern for UUID validation - only standard UUID format with prefix
+UUID_PATTERN = f"^{UUID_PREFIX}[0-9a-f]{{8}}-[0-9a-f]{{4}}-[0-9a-f]{{4}}-[0-9a-f]{{4}}-[0-9a-f]{{12}}$"
+# Use the strict pattern for all validation
+HANDLE_PATTERN = re.compile(UUID_PATTERN)

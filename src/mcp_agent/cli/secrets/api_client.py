@@ -82,7 +82,14 @@ class SecretsClient:
                     "API did not return a valid secret handle in the expected format"
                 )
 
-            # The handle is already a standard UUID
+            # The API should already be returning prefixed UUIDs
+            # Only return the handle if it matches our expected pattern
+            from ..core.constants import HANDLE_PATTERN
+            if not HANDLE_PATTERN.match(handle):
+                raise ValueError(
+                    f"API returned an invalid secret handle format: {handle}. Expected the mcpac_sc_ prefix."
+                )
+                
             return handle
 
     async def get_secret_value(self, handle: str) -> str:
@@ -263,7 +270,7 @@ class SecretsClient:
         """Check if a handle has a valid format.
 
         Args:
-            handle: The handle to check (UUID format)
+            handle: The handle to check (prefixed UUID format)
 
         Returns:
             bool: True if the handle has a valid format, False otherwise
@@ -273,5 +280,5 @@ class SecretsClient:
         if not isinstance(handle, str) or not handle:
             return False
 
-        # Validate against the pattern (standard UUID format)
+        # Validate against the pattern (prefixed UUID format)
         return bool(HANDLE_PATTERN.match(handle))
