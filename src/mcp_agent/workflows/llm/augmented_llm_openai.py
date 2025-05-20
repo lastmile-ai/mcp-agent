@@ -7,6 +7,7 @@ from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
     ChatCompletionContentPartParam,
     ChatCompletionContentPartTextParam,
+    ChatCompletionContentPartImageParam,
     ChatCompletionContentPartRefusalParam,
     ChatCompletionMessage,
     ChatCompletionMessageParam,
@@ -165,9 +166,12 @@ class OpenAIAugmentedLLM(
             arguments = {
                 "model": model,
                 "messages": messages,
-                "stop": params.stopSequences,
                 "tools": available_tools,
             }
+
+            if params.stopSequences is not None:
+                arguments["stop"] = params.stopSequences
+
             if self._reasoning(model):
                 arguments = {
                     **arguments,
@@ -412,7 +416,7 @@ class OpenAIAugmentedLLM(
                 role="tool",
                 tool_call_id=tool_call_id,
                 content="\n".join(
-                    str(mcp_content_to_openai_content(c)) for c in result.content
+                    str(mcp_content_to_openai_content_part(c)) for c in result.content
                 ),
             )
 
@@ -490,14 +494,14 @@ class MCPOpenAITypeConverter(
             extras = param.model_dump(exclude={"role", "content"})
             return ChatCompletionAssistantMessageParam(
                 role="assistant",
-                content=mcp_content_to_openai_content(param.content),
+                content=[mcp_content_to_openai_content_part(param.content)],
                 **extras,
             )
         elif param.role == "user":
             extras = param.model_dump(exclude={"role", "content"})
             return ChatCompletionUserMessageParam(
                 role="user",
-                content=mcp_content_to_openai_content(param.content),
+                content=[mcp_content_to_openai_content_part(param.content)],
                 **extras,
             )
         else:
@@ -555,22 +559,14 @@ class MCPOpenAITypeConverter(
             )
 
 
-def mcp_content_to_openai_content(
+def mcp_content_to_openai_content_part(
     content: TextContent | ImageContent | EmbeddedResource,
-) -> ChatCompletionContentPartTextParam:
-    if isinstance(content, list):
-        # Handle list of content items
-        return ChatCompletionContentPartTextParam(
-            type="text",
-            text="\n".join(mcp_content_to_openai_content(c) for c in content),
-        )
-
+) -> ChatCompletionContentPartParam:
     if isinstance(content, TextContent):
         return ChatCompletionContentPartTextParam(type="text", text=content.text)
     elif isinstance(content, ImageContent):
-        # Best effort to convert an image to text
-        return ChatCompletionContentPartTextParam(
-            type="text", text=f"{content.mimeType}:{content.data}"
+        return ChatCompletionContentPartImageParam(
+            type="image_url", image_url=f"data:{content.mimeType};base64,{content.data}"
         )
     elif isinstance(content, EmbeddedResource):
         if isinstance(content.resource, TextResourceContents):
@@ -578,9 +574,17 @@ def mcp_content_to_openai_content(
                 type="text", text=content.resource.text
             )
         else:  # BlobResourceContents
-            return ChatCompletionContentPartTextParam(
-                type="text", text=f"{content.resource.mimeType}:{content.resource.blob}"
-            )
+            if content.resource.mimeType.startswith("image/"):
+                return ChatCompletionContentPartImageParam(
+                    type="image_url",
+                    image_url=f"data:{content.resource.mimeType};base64,{content.resource.blob}",
+                )
+            else:
+                # Best effort if mime type is unknown
+                return ChatCompletionContentPartTextParam(
+                    type="text",
+                    text=f"{content.resource.mimeType}:{content.resource.blob}",
+                )
     else:
         # Last effort to convert the content to a string
         return ChatCompletionContentPartTextParam(type="text", text=str(content))
@@ -597,37 +601,45 @@ def openai_content_to_mcp_content(
     else:
         # TODO: saqadri - this is a best effort conversion, we should handle all possible content types
         for c in content:
-            if c.type == "text":  # isinstance(c, ChatCompletionContentPartTextParam):
+            if (
+                c["type"] == "text"
+            ):  # isinstance(c, ChatCompletionContentPartTextParam):
                 mcp_content.append(
                     TextContent(
-                        type="text", text=c.text, **typed_dict_extras(c, ["text"])
+                        type="text", text=c["text"], **typed_dict_extras(c, ["text"])
                     )
                 )
             elif (
-                c.type == "image_url"
+                c["type"] == "image_url"
             ):  # isinstance(c, ChatCompletionContentPartImageParam):
-                raise NotImplementedError("Image content conversion not implemented")
-                # TODO: saqadri - need to download the image into a base64-encoded string
-                # Download image from c.image_url
-                # return ImageContent(
-                #     type="image",
-                #     data=downloaded_image,
-                #     **c
-                # )
+                if c["image_url"].startswith("data:"):
+                    mime_type, base64_data = image_url_to_mime_and_base64(
+                        c["image_url"]
+                    )
+                    mcp_content.append(
+                        ImageContent(type="image", data=base64_data, mimeType=mime_type)
+                    )
+                else:
+                    # TODO: saqadri - need to download the image into a base64-encoded string
+                    raise NotImplementedError(
+                        "Image content conversion not implemented"
+                    )
             elif (
-                c.type == "input_audio"
+                c["type"] == "input_audio"
             ):  # isinstance(c, ChatCompletionContentPartInputAudioParam):
                 raise NotImplementedError("Audio content conversion not implemented")
             elif (
-                c.type == "refusal"
+                c["type"] == "refusal"
             ):  # isinstance(c, ChatCompletionContentPartRefusalParam):
                 mcp_content.append(
                     TextContent(
-                        type="text", text=c.refusal, **typed_dict_extras(c, ["refusal"])
+                        type="text",
+                        text=c["refusal"],
+                        **typed_dict_extras(c, ["refusal"]),
                     )
                 )
             else:
-                raise ValueError(f"Unexpected content type: {c.type}")
+                raise ValueError(f"Unexpected content type: {c["type"]}")
 
     return mcp_content
 
@@ -635,3 +647,16 @@ def openai_content_to_mcp_content(
 def typed_dict_extras(d: dict, exclude: List[str]):
     extras = {k: v for k, v in d.items() if k not in exclude}
     return extras
+
+
+def image_url_to_mime_and_base64(image_url: str) -> tuple[str, str]:
+    """
+    Extract mime type and base64 data from ImageUrl
+    """
+    import re
+
+    match = re.match(r"data:(image/\w+);base64,(.*)", image_url)
+    if not match:
+        raise ValueError(f"Invalid image data URI: {image_url[:30]}...")
+    mime_type, base64_data = match.groups()
+    return mime_type, base64_data
