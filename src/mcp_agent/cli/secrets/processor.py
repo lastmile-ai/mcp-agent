@@ -12,10 +12,11 @@ from pathlib import Path
 import typer
 import yaml
 
-from ..core.constants import SecretType, UUID_PREFIX
+from ..core.constants import SecretType, UUID_PREFIX, ENV_API_BASE_URL, ENV_API_KEY, DEFAULT_API_BASE_URL
 from .yaml_tags import DeveloperSecret, UserSecret, load_yaml_with_secrets, dump_yaml_with_secrets
 from .api_client import SecretsClient
 from ..ux import print_info, print_warning, print_error, print_success, print_secret_summary
+import os
 
 
 async def process_config_secrets(
@@ -44,7 +45,7 @@ async def process_config_secrets(
     Returns:
         Dict with statistics about processed secrets
     """
-    # Convert path to string if it's a Path object
+    # Convert path arguments to strings if they're Path objects
     if isinstance(config_path, Path):
         config_path = str(config_path)
     
@@ -61,8 +62,15 @@ async def process_config_secrets(
     
     # Create client if not provided
     if client is None:
-        from .api_client import create_secrets_client
-        client = await create_secrets_client(api_url, api_key)
+        # Get API URL and key from parameters or environment variables
+        effective_api_url = api_url or os.environ.get(ENV_API_BASE_URL, DEFAULT_API_BASE_URL)
+        effective_api_key = api_key or os.environ.get(ENV_API_KEY, "")
+        
+        if not effective_api_key:
+            print_warning("No API key provided. Using empty key.")
+            
+        # Create a new client
+        client = SecretsClient(api_url=effective_api_url, api_key=effective_api_key)
     
     # Process the content
     try:
@@ -85,7 +93,7 @@ async def process_config_secrets(
             print_error(f"Failed to write output file: {str(e)}")
             raise
             
-    # Get the context object from the last run
+    # Get the secrets context from the client if available
     if hasattr(client, 'secrets_context'):
         secrets_context = client.secrets_context
     else:
@@ -123,7 +131,7 @@ async def process_secrets_in_config(
     Returns:
         Transformed YAML string with developer secrets replaced by handles
     """
-    # Initialize secrets context for tracking
+    # Initialize secrets context for tracking statistics
     secrets_context = {
         'developer_secrets': [],
         'user_secrets': [],
@@ -131,16 +139,16 @@ async def process_secrets_in_config(
         'prompted': []
     }
     
+    # Make the context available to the client for later retrieval
+    if hasattr(client, '__setattr__'):
+        client.secrets_context = secrets_context
+    
     # Parse the YAML with custom tag handling
     try:
         config = load_yaml_with_secrets(config_content)
     except Exception as e:
         print_error(f"Failed to parse YAML: {str(e)}")
         raise
-    
-    # Store the context in the client for retrieval later
-    if hasattr(client, 'secrets_context'):
-        client.secrets_context = secrets_context
     
     # Transform the config recursively
     transformed_config = await transform_config_recursive(
