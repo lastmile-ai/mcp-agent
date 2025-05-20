@@ -14,7 +14,7 @@ import uuid
 import pytest
 
 from mcp_agent_cloud.secrets.api_client import SecretsClient
-from mcp_agent_cloud.secrets.constants import SecretType
+from mcp_agent_cloud.core.constants import SecretType
 
 # Mark all tests in this module as requiring API integration
 pytestmark = pytest.mark.integration
@@ -75,7 +75,7 @@ async def test_create_and_get_secret(api_client):
     
     # API now returns standard UUID handles
     # We validate against the UUID pattern
-    from mcp_agent_cloud.secrets.constants import HANDLE_PATTERN
+    from mcp_agent_cloud.core.constants import HANDLE_PATTERN
     assert HANDLE_PATTERN.match(handle), f"Handle format '{handle}' doesn't match expected UUID pattern"
     
     try:
@@ -114,7 +114,7 @@ async def test_update_secret_value(api_client):
         
         # API returns standard UUID handles
         # We validate against the UUID pattern
-        from mcp_agent_cloud.secrets.constants import HANDLE_PATTERN
+        from mcp_agent_cloud.core.constants import HANDLE_PATTERN
         assert HANDLE_PATTERN.match(handle), f"Handle format '{handle}' doesn't match expected UUID pattern"
         
         # Update the secret value

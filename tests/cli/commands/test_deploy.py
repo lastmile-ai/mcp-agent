@@ -12,7 +12,7 @@ def test_deploy_config_no_secrets(sample_config_yaml, sample_secrets_yaml, tmp_p
     """Test deploy_config with no_secrets=True."""
     
     # Deploy with no_secrets=True should just skip processing
-    with patch("mcp_agent_cloud.commands.deploy.process_config_secrets") as mock_process:
+    with patch("mcp_agent_cloud.secrets.processor.process_config_secrets") as mock_process:
         result = deploy_config(
             config_file=Path(sample_config_yaml),
             secrets_file=Path(sample_secrets_yaml),
@@ -32,14 +32,14 @@ def test_deploy_config_with_secrets(sample_config_yaml, sample_secrets_yaml, tmp
     secrets_output_path = tmp_path / "output_secrets.yaml"
     
     # We need to patch the settings module first to override the default behavior
-    with patch("mcp_agent_cloud.commands.deploy.settings") as mock_settings:
+    with patch("mcp_agent_cloud.config.settings") as mock_settings:
         # Ensure settings.API_BASE_URL and settings.API_KEY are empty
         # so we rely only on the parameters
         mock_settings.API_BASE_URL = ""
         mock_settings.API_KEY = ""
         
         # Then mock the _run_async function
-        with patch("mcp_agent_cloud.commands.deploy._run_async") as mock_run_async:
+        with patch("mcp_agent_cloud.commands.deploy.main._run_async") as mock_run_async:
             # Call deploy_config with explicit no_secrets=False to ensure processing
             result = deploy_config(
                 config_file=Path(sample_config_yaml),

@@ -4,9 +4,10 @@ from typing import Optional, Dict, Any, List
 
 import httpx
 
-from .constants import (
+from ..core.constants import (
     SecretType,
-)  # Removed SECRET_TYPE_PATHS, using SecretType.value directly
+    HANDLE_PATTERN,
+)
 
 
 class SecretsClient:
@@ -84,7 +85,6 @@ class SecretsClient:
 
             # The API should already be returning prefixed UUIDs
             # Only return the handle if it matches our expected pattern
-            from ..core.constants import HANDLE_PATTERN
             if not HANDLE_PATTERN.match(handle):
                 raise ValueError(
                     f"API returned an invalid secret handle format: {handle}. Expected the mcpac_sc_ prefix."
@@ -275,8 +275,6 @@ class SecretsClient:
         Returns:
             bool: True if the handle has a valid format, False otherwise
         """
-        from .constants import HANDLE_PATTERN
-
         if not isinstance(handle, str) or not handle:
             return False
 

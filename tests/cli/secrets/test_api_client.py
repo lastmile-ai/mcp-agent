@@ -5,7 +5,7 @@ import httpx
 from unittest.mock import patch, AsyncMock, MagicMock
 
 from mcp_agent_cloud.secrets.api_client import SecretsClient
-from mcp_agent_cloud.secrets.constants import SecretType
+from mcp_agent_cloud.core.constants import SecretType
 
 
 @pytest.fixture
@@ -19,7 +19,7 @@ def mock_httpx_client():
         # Configure the mock response
         mock_response = MagicMock()
         mock_response.raise_for_status = MagicMock()
-        mock_response.json.return_value = {"secret": {"secretId": "12345678-abcd-1234-efgh-123456789abc"}, "success": True}
+        mock_response.json.return_value = {"secret": {"secretId": "mcpac_sc_12345678-abcd-1234-abcd-123456789abc"}, "success": True}
         mock_instance.post.return_value = mock_response
         mock_instance.get.return_value = mock_response
         mock_instance.put.return_value = mock_response
@@ -47,7 +47,7 @@ async def test_create_developer_secret(api_client, mock_httpx_client):
     )
     
     # Check the returned handle is a string (UUID)
-    assert handle == "12345678-abcd-1234-efgh-123456789abc"
+    assert handle == "mcpac_sc_12345678-abcd-1234-abcd-123456789abc"
     
     # Verify API was called correctly
     mock_httpx_client.post.assert_called_once()
@@ -77,7 +77,7 @@ async def test_create_user_secret(api_client, mock_httpx_client):
     )
     
     # Check the returned handle is a string (UUID)
-    assert handle == "12345678-abcd-1234-efgh-123456789abc"
+    assert handle == "mcpac_sc_12345678-abcd-1234-abcd-123456789abc"
     
     # Verify API was called correctly
     mock_httpx_client.post.assert_called_once()

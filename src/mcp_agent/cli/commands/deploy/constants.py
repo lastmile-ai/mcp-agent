@@ -9,5 +9,4 @@ WRANGLER_AUTH_URL = "http://localhost:5959/auth/oauth2/auth"
 WRANGLER_SEND_METRICS = False
 CLOUDFLARE_API_BASE_URL = "http://localhost:5959/api"
 
-# Default values
-DEFAULT_CACHE_DIR = "~/.mcp_agent/cloud"
+# Default values are now in core/constants.py

@@ -25,7 +25,7 @@ from mcp_agent_cloud.secrets.yaml_tags import (
 )
 
 from mcp_agent_cloud.cli.main import app
-from mcp_agent_cloud.secrets.constants import SecretType
+from mcp_agent_cloud.core.constants import SecretType
 from mcp_agent_cloud.secrets.api_client import SecretsClient
 from tests.fixtures.api_test_utils import setup_api_for_testing, APIMode
 from tests.fixtures.mock_secrets_client import MockSecretsClient

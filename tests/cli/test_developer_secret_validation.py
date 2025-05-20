@@ -3,11 +3,9 @@
 import pytest
 from unittest.mock import AsyncMock
 
-from mcp_agent_cloud.secrets.processor import (
-    transform_config_recursive,
-    DeveloperSecret,
-)
-from mcp_agent_cloud.secrets.constants import SecretType
+from mcp_agent_cloud.secrets.processor import transform_config_recursive
+from mcp_agent_cloud.secrets.yaml_tags import DeveloperSecret
+from mcp_agent_cloud.core.constants import SecretType
 from mcp_agent_cloud.secrets.api_client import SecretsClient
 
 
@@ -32,12 +30,12 @@ async def test_developer_secret_with_empty_value(mock_secrets_client):
     dev_secret = DeveloperSecret("")
     
     # Attempt to transform the secret
-    with pytest.raises(ValueError, match="Developer secret at .* has no value.*no-prompt is set"):
+    with pytest.raises(ValueError, match="Developer secret at .* has no value.*non-interactive is set"):
         await transform_config_recursive(
             dev_secret,
             mock_secrets_client,
             "server.api_key",
-            no_prompt=True
+            non_interactive=True
         )
 
 
@@ -48,12 +46,12 @@ async def test_developer_secret_with_none_value(mock_secrets_client):
     dev_secret = DeveloperSecret(None)
     
     # Attempt to transform the secret
-    with pytest.raises(ValueError, match="Developer secret at .* has no value.*no-prompt is set"):
+    with pytest.raises(ValueError, match="Developer secret at .* has no value.*non-interactive is set"):
         await transform_config_recursive(
             dev_secret,
             mock_secrets_client,
             "server.api_key",
-            no_prompt=True
+            non_interactive=True
         )
 
 
@@ -67,10 +65,10 @@ async def test_developer_secret_with_env_var_not_found(mock_secrets_client, monk
     dev_secret = DeveloperSecret("${oc.env:NON_EXISTENT_ENV_VAR}")
     
     # Attempt to transform the secret
-    with pytest.raises(ValueError, match="Developer secret at .* has no value.*no-prompt is set"):
+    with pytest.raises(ValueError, match="Developer secret at .* has no value.*non-interactive is set"):
         await transform_config_recursive(
             dev_secret,
             mock_secrets_client,
             "server.api_key",
-            no_prompt=True
+            non_interactive=True
         )

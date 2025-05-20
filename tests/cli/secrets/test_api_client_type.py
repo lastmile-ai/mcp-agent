@@ -4,7 +4,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from mcp_agent_cloud.secrets.api_client import SecretsClient
-from mcp_agent_cloud.secrets.constants import SecretType
+from mcp_agent_cloud.core.constants import SecretType
 
 
 @pytest.fixture
@@ -12,7 +12,7 @@ def mock_httpx_client():
     with patch("httpx.AsyncClient") as mock_client:
         # Create a response mock
         response_mock = MagicMock()
-        response_mock.json.return_value = {"secret": {"secretId": "12345678-abcd-1234-efgh-123456789abc"}}
+        response_mock.json.return_value = {"secret": {"secretId": "mcpac_sc_12345678-abcd-1234-abcd-123456789abc"}}
         response_mock.raise_for_status = AsyncMock()
         
         # Configure the client's post method

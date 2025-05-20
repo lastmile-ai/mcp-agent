@@ -101,6 +101,20 @@ def print_secret_prompt(env_var: str, path: str) -> None:
     ))
 
 
+def print_secret_summary(secrets_context: Dict[str, Any]) -> None:
+    """Print a summary of processed secrets from context.
+    
+    Args:
+        secrets_context: Dictionary containing info about processed secrets
+    """
+    dev_secrets = secrets_context.get('developer_secrets', [])
+    user_secrets = secrets_context.get('user_secrets', [])
+    env_loaded = secrets_context.get('env_loaded', [])
+    prompted = secrets_context.get('prompted', [])
+    
+    return print_secrets_summary(dev_secrets, user_secrets, env_loaded, prompted)
+
+
 def print_secrets_summary(
     dev_secrets: List[Dict[str, str]], 
     user_secrets: List[str],

@@ -9,7 +9,7 @@ from unittest.mock import patch, MagicMock
 
 from mcp_agent_cloud.commands.deploy import deploy_config
 from mcp_agent_cloud.secrets.api_client import SecretsClient
-from mcp_agent_cloud.secrets.processor import DeveloperSecret, UserSecret
+from mcp_agent_cloud.secrets.yaml_tags import DeveloperSecret, UserSecret
 
 
 # Sample configuration and secrets for testing
@@ -82,7 +82,7 @@ def test_deploy_with_separate_secrets_file():
                 yaml.dump(transformed_secrets, f)
             return None
         
-        with patch("mcp_agent_cloud.commands.deploy._run_async", side_effect=side_effect):
+        with patch("mcp_agent_cloud.commands.deploy.main._run_async", side_effect=side_effect):
             # Run the deploy command
             result = deploy_config(
                 config_file=config_path,

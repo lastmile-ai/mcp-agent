@@ -23,7 +23,7 @@ To run these tests successfully:
 import uuid
 import pytest
 
-from mcp_agent_cloud.secrets.constants import SecretType, HANDLE_PATTERN
+from mcp_agent_cloud.core.constants import SecretType, HANDLE_PATTERN
 
 # Mark all tests in this module with the integration marker
 pytestmark = pytest.mark.integration

@@ -7,7 +7,7 @@ that generates fake UUIDs instead of making real API calls.
 import uuid
 from typing import Dict, Optional, List, Any
 
-from .constants import SecretType
+from ..core.constants import SecretType, UUID_PREFIX
 
 
 class MockSecretsClient:
@@ -52,7 +52,6 @@ class MockSecretsClient:
         uuid_str = str(raw_uuid)
         
         # Add the prefix to identify this as a secret entity
-        from ..core.constants import UUID_PREFIX
         prefixed_uuid = f"{UUID_PREFIX}{uuid_str}"
         
         # Store the secret in the mock storage using the prefixed UUID

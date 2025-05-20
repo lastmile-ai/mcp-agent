@@ -2,7 +2,7 @@
 
 import pytest
 from mcp_agent_cloud.secrets.api_client import SecretsClient
-from mcp_agent_cloud.secrets.constants import SecretType
+from mcp_agent_cloud.core.constants import SecretType
 from mcp_agent_cloud.config import settings
 from unittest.mock import patch, AsyncMock, MagicMock
 
@@ -32,7 +32,7 @@ async def test_api_client_request_uses_api_key():
         # Configure the mock response
         mock_response = MagicMock()
         mock_response.raise_for_status = MagicMock()
-        mock_response.json.return_value = {"secret": {"secretId": "test-id"}, "success": True}
+        mock_response.json.return_value = {"secret": {"secretId": "mcpac_sc_12345678-abcd-1234-abcd-123456789abc"}, "success": True}
         mock_instance.post.return_value = mock_response
         
         # Create the client with api_key

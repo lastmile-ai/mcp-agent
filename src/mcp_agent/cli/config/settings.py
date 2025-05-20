@@ -2,12 +2,10 @@
 
 import os
 from pydantic_settings import BaseSettings
-from ..secrets.constants import (
+from ..core.constants import (
     ENV_API_BASE_URL,
     ENV_API_KEY,
     DEFAULT_API_BASE_URL,
-)
-from ..commands.deploy.constants import (
     DEFAULT_CACHE_DIR,
 )
 
