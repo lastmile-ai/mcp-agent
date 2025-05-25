@@ -439,10 +439,14 @@ class GoogleMCPTypeConverter(ProviderToMCPConverter[types.Content, types.Content
             raise NotImplementedError(
                 "Multiple content elements in a single message are not supported in MCP yet"
             )
+        if result.role == "model":
+            role = "assistant"
+        else:
+            role = result.role
         return MCPMessageResult(
-            role=result.role,
+            role=role,
             content=contents[0],
-            model=None,
+            model="",
             stopReason=None,
         )
 

@@ -84,8 +84,8 @@ class SwarmAgent(Agent):
         self,
         name: str,
         instruction: str | Callable[[Dict], str] = "You are a helpful agent.",
-        server_names: list[str] = None,
-        functions: List["AgentFunctionCallable"] = None,
+        server_names: list[str] = [],
+        functions: List["AgentFunctionCallable"] = [],
         parallel_tool_calls: bool = False,
         human_input_callback: HumanInputCallback = None,
         context: Optional["Context"] = None,
@@ -252,15 +252,17 @@ class Swarm(AugmentedLLM[MessageParamT, MessageT], Generic[MessageParamT, Messag
                 # Set the new agent as the current agent
                 await self.set_agent(content.agent)
                 contents.append(TextContent(type="text", text=content.resource.text))
-            elif isinstance(content, AgentFunctionResult):
+            elif isinstance(
+                content, AgentFunctionResultResource
+            ):  # TODO: jerron - should this be AgentFunctionResult or AgentFunctionResultResource?
                 logger.info(
                     "Updating context variables with new context variables from agent function result",
-                    data=content.context_variables,
+                    data=content.result.context_variables,
                 )
-                self.context_variables.update(content.context_variables)
-                if content.agent:
+                self.context_variables.update(content.result.context_variables)
+                if content.result.agent:
                     # Set the new agent as the current agent
-                    await self.set_agent(content.agent)
+                    await self.set_agent(content.result.agent)
 
                 contents.append(TextContent(type="text", text=content.resource.text))
             else:

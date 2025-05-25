@@ -98,9 +98,9 @@ class EmbeddingRouter(Router):
         ) -> EmbeddingRouterCategory:
             # Get formatted text representation of category
             category_text = self.format_category(category)
-            embedding = self._compute_embedding([category_text])
+            embedding = await self._compute_embedding([category_text])
             category_with_embedding = EmbeddingRouterCategory(
-                **category, embedding=embedding
+                **category.model_dump(), embedding=embedding
             )
 
             return category_with_embedding
@@ -206,7 +206,7 @@ class EmbeddingRouter(Router):
                 p_score=compute_confidence(similarity), result=category.category
             )
 
-        request_embedding = self._compute_embedding([request])
+        request_embedding = await self._compute_embedding([request])
 
         results: List[RouterResult] = []
         if include_servers:

@@ -953,27 +953,27 @@ def anthropic_content_to_mcp_content(
         mcp_content.append(TextContent(type="text", text=content))
     else:
         for block in content:
-            if block.type == "text":
-                mcp_content.append(TextContent(type="text", text=block.text))
-            elif block.type == "image":
+            # Handle pydantic models (ContentBlock) and dict blocks
+            if isinstance(block, BaseModel):
+                block_type = block.type
+                block_text = block.text
+            else:
+                block_type = block["type"]
+                block_text = block["text"]
+
+            if block_type == "text":
+                mcp_content.append(TextContent(type="text", text=block_text))
+            elif block_type == "image":
                 raise NotImplementedError("Image content conversion not implemented")
-            elif block.type == "tool_use":
-                # Best effort to convert a tool use to text (since there's no ToolUseContent)
+            elif block_type == "tool_use" or block_type == "tool_result":
+                # Best effort to convert a tool use and tool result to text (since there's no ToolUseContent or ToolResultContent)
                 mcp_content.append(
                     TextContent(
                         type="text",
                         text=to_string(block),
                     )
                 )
-            elif block.type == "tool_result":
-                # Best effort to convert a tool result to text (since there's no ToolResultContent)
-                mcp_content.append(
-                    TextContent(
-                        type="text",
-                        text=to_string(block),
-                    )
-                )
-            elif block.type == "document":
+            elif block_type == "document":
                 raise NotImplementedError("Document content conversion not implemented")
             else:
                 # Last effort to convert the content to a string

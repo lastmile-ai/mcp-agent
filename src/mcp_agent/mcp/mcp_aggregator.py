@@ -187,6 +187,7 @@ class MCPAggregator(ContextDependent):
                 not self.connection_persistence
                 or not self._persistent_connection_manager
             ):
+                self.initialized = False
                 return
 
             try:
@@ -979,8 +980,9 @@ class MCPAggregator(ContextDependent):
         else:
             raise ValueError(f"Unsupported capability: {capability}")
 
-        # Search across all servers
-        for srv_name, items in capability_map.items():
+        # Search servers in the order of self.server_names
+        for srv_name in self.server_names:
+            items = capability_map.get(srv_name, [])
             for item in items:
                 if getter(item) == name:
                     return srv_name, name

@@ -181,6 +181,14 @@ class PydanticTypeSerializer(BaseModel):
         origin = get_origin(typ)
         if origin is not None:
             args = get_args(typ)
+            # Special handling for Literal: store raw values, not types
+            if origin is Literal:
+                return {
+                    "kind": "generic",
+                    "origin": "Literal",
+                    "literal_values": list(args),
+                    "repr": str(typ),
+                }
             serialized_args = [
                 PydanticTypeSerializer.serialize_type(arg) for arg in args
             ]
@@ -292,7 +300,7 @@ class PydanticTypeSerializer(BaseModel):
                 name,
                 validator,
             ) in model_class.__pydantic_decorators__.field_validators.items():
-                field_names = [str(f) for f in validator.fields]
+                field_names = [str(f) for f in validator.info.fields]
                 validators.append(
                     {
                         "type": "field_validator",
@@ -382,9 +390,7 @@ class PydanticTypeSerializer(BaseModel):
                     "description": make_serializable(
                         getattr(field_info, "description", None)
                     ),
-                    "required": make_serializable(
-                        getattr(field_info, "required", True)
-                    ),
+                    "required": field_info.is_required(),
                 }
 
                 # Add constraints if defined
@@ -411,10 +417,10 @@ class PydanticTypeSerializer(BaseModel):
                 else:
                     default = make_serializable(default)
 
+                # Use type_ if available (Pydantic v2), else fallback to Any
+                attr_type = getattr(private_attr, "type_", Any)
                 private_attrs[name] = {
-                    "type": PydanticTypeSerializer.serialize_type(
-                        private_attr.annotation
-                    ),
+                    "type": PydanticTypeSerializer.serialize_type(attr_type),
                     "default": default,
                 }
 
@@ -436,7 +442,18 @@ class PydanticTypeSerializer(BaseModel):
         else:
             return config_dict
 
-        # Extract serializable config values
+        # If config_source is a dict or ConfigDict (Pydantic v2), just copy its items
+        if isinstance(config_source, dict):
+            for key, value in config_source.items():
+                if not str(key).startswith("_"):
+                    try:
+                        json.dumps({key: value})
+                        config_dict[key] = value
+                    except (TypeError, OverflowError):
+                        config_dict[key] = str(value)
+            return config_dict
+
+        # Otherwise, use inspect.getmembers (for class-based config)
         for key, value in inspect.getmembers(config_source):
             if (
                 not key.startswith("_")
@@ -516,6 +533,12 @@ class PydanticTypeSerializer(BaseModel):
         elif kind == "generic":
             # Handle generics like List[int], Dict[str, Model], etc.
             origin_name = serialized["origin"]
+
+            # Special handling for Literal: use literal_values if present
+            if origin_name == "Literal" and "literal_values" in serialized:
+                literal_values = serialized["literal_values"]
+                return Literal.__getitem__(tuple(literal_values))
+
             args = [
                 PydanticTypeSerializer.deserialize_type(arg)
                 for arg in serialized["args"]
@@ -621,15 +644,13 @@ class PydanticTypeSerializer(BaseModel):
             # Get the field type
             field_type = PydanticTypeSerializer.deserialize_type(field_info["type"])
 
-            # Handle default values
+            # Determine if the field is required
+            is_required = field_info.get("required", True)
             default = field_info.get("default", ...)
-            if default is None and not field_info.get("required", True):
-                default = None
-
-            # Handle default factories
             default_factory = field_info.get("default_factory")
+
+            # This logic ensures that fields with a default or default_factory are not required
             if default_factory:
-                # This is a simplification - ideally we'd recreate the actual factory
                 if default_factory == "list":
                     default_factory = list
                 elif default_factory == "dict":
@@ -658,24 +679,60 @@ class PydanticTypeSerializer(BaseModel):
 
             # Add the field definition
             if constraints or default_factory:
+                # If there is a default_factory, always use default=... and set default_factory
                 field_definitions[field_name] = (
                     field_type,
                     Field(
-                        default=default if default_factory is None else ...,
+                        default=... if default_factory is not None else default,
                         default_factory=default_factory,
                         **constraints,
                     ),
                 )
             else:
-                field_definitions[field_name] = (field_type, default)
+                if is_required:
+                    field_definitions[field_name] = (field_type, Field(default=...))
+                else:
+                    field_definitions[field_name] = (
+                        field_type,
+                        Field(
+                            default=default,
+                        ),
+                    )
 
         # Create model config
         model_config = ConfigDict(**config_dict) if config_dict else None
 
-        # Create the basic model
+        # Collect private attributes to pass to create_model
+        private_attr_kwargs = {}
+        if "__private_attrs__" in fields:
+            for name, attr_info in fields["__private_attrs__"].items():
+                default = attr_info.get("default")
+                if default == "None":
+                    default = None
+                private_attr_kwargs[name] = PrivateAttr(default=default)
+
+        # Create the basic model, including private attributes in the class namespace
         reconstructed_model = create_model(
-            name, __config__=model_config, **field_definitions
+            name, __config__=model_config, **field_definitions, **private_attr_kwargs
         )
+
+        # Patch __init__ to ensure private attributes are initialized on instance
+        private_attrs = getattr(reconstructed_model, "__private_attributes__", {})
+        if private_attrs:
+            orig_init = reconstructed_model.__init__
+
+            def _init_with_private_attrs(self, *args, **kwargs):
+                orig_init(self, *args, **kwargs)
+                for attr_name, private_attr in private_attrs.items():
+                    # Only set if not already set
+                    if not hasattr(self, attr_name):
+                        default = private_attr.default
+                        # If default is ... (Ellipsis), treat as None
+                        if default is ...:
+                            default = None
+                        setattr(self, attr_name, default)
+
+            reconstructed_model.__init__ = _init_with_private_attrs
 
         # Add validators (this gets complex and may require exec/eval)
         if validators:
@@ -718,17 +775,6 @@ class PydanticTypeSerializer(BaseModel):
                                 setattr(reconstructed_model, func_name, decorated_func)
                         except Exception as e:
                             logger.error(f"Error recreating validator: {e}")
-
-        # Add private attributes (simplified)
-        if "__private_attrs__" in fields:
-            for name, attr_info in fields["__private_attrs__"].items():
-                attr_type = PydanticTypeSerializer.deserialize_type(attr_info["type"])
-                default = attr_info.get("default")
-                if default == "None":
-                    default = None
-                reconstructed_model.__private_attributes__[name] = PrivateAttr(
-                    default=default, annotation=attr_type
-                )
 
         return reconstructed_model
 

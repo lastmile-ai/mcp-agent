@@ -225,11 +225,11 @@ class AsyncioSignalHandler(BaseSignalHandler[SignalValueT]):
         self, signal, timeout_seconds: int | None = None
     ) -> SignalValueT:
         event = asyncio.Event()
-        unique_name = str(uuid.uuid4())
+        unique_signal_name = f"{signal.name}_{uuid.uuid4()}"
 
         registration = SignalRegistration(
             signal_name=signal.name,
-            unique_name=unique_name,
+            unique_name=unique_signal_name,
             workflow_id=signal.workflow_id,
             run_id=signal.run_id,
         )
@@ -257,20 +257,24 @@ class AsyncioSignalHandler(BaseSignalHandler[SignalValueT]):
                     self._pending_signals[signal.name] = [
                         ps
                         for ps in self._pending_signals[signal.name]
-                        if ps.registration.unique_name != unique_name
+                        if ps.registration.unique_name != unique_signal_name
                     ]
                     if not self._pending_signals[signal.name]:
                         del self._pending_signals[signal.name]
 
     def on_signal(self, signal_name):
         def decorator(func):
+            unique_signal_name = f"{signal_name}_{uuid.uuid4()}"
+
             async def wrapped(value: SignalValueT):
                 if asyncio.iscoroutinefunction(func):
                     await func(value)
                 else:
                     func(value)
 
-            self._handlers.setdefault(signal_name, []).append(wrapped)
+            self._handlers.setdefault(signal_name, []).append(
+                [unique_signal_name, wrapped]
+            )
             return wrapped
 
         return decorator

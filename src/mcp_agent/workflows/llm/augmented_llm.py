@@ -253,7 +253,12 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
 
             self.agent = Agent(
                 name=self.name,
-                instruction=self.instruction,
+                # Only pass instruction if it's not None
+                **(
+                    {"instruction": self.instruction}
+                    if self.instruction is not None
+                    else {}
+                ),
                 server_names=server_names or [],
                 llm=self,
             )

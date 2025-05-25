@@ -99,16 +99,18 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             )
         )
 
-        self.sythesizer = synthesizer or llm_factory(
+        self.synthesizer = synthesizer or llm_factory(
             agent=Agent(
                 name="LLM Orchestration Synthesizer",
-                instruction="""
-                You are an expert synthesizer. Given the results of a series of steps, your job is to synthesize the results into a cohesive result.
-                """,
+                instruction="You are an expert at synthesizing the results of a plan into a single coherent message.",
             )
         )
 
-        self.plan_type: Literal["full", "iterative"] = plan_type
+        if plan_type not in ["full", "iterative"]:
+            raise ValueError("plan_type must be 'full' or 'iterative'")
+        else:
+            self.plan_type: Literal["full", "iterative"] = plan_type
+
         self.server_registry = self.context.server_registry
         self.agents = {agent.name: agent for agent in available_agents or []}
 
@@ -353,7 +355,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
                         plan_result=format_plan_result(plan_result)
                     )
 
-                    plan_result.result = await self.sythesizer.generate_str(
+                    plan_result.result = await self.synthesizer.generate_str(
                         message=synthesis_prompt,
                         request_params=params.model_copy(update={"max_iterations": 1}),
                     )
