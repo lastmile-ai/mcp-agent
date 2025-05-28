@@ -12,7 +12,6 @@ import typer
 
 from mcp_agent_cloud.auth import load_api_key_credentials
 from mcp_agent_cloud.config import settings
-from mcp_agent_cloud.core.constants import DEFAULT_CACHE_DIR
 from mcp_agent_cloud.secrets.processor import process_config_secrets
 from mcp_agent_cloud.secrets.mock_client import MockSecretsClient
 from mcp_agent_cloud.ux import (
@@ -42,6 +41,9 @@ def _run_async(coro):
 
 
 def deploy_config(
+    app_name: str = typer.Argument(
+        help="Name of the MCP App to deploy.",
+    ),
     secrets_file: Path = typer.Option(
         Path("mcp-agent.secrets.yaml"),
         "--secrets-file",
@@ -220,7 +222,7 @@ def deploy_config(
                 )
             )
 
-            wrangler_deploy(api_key=effective_api_key)
+            wrangler_deploy(app_name=app_name, api_key=effective_api_key)
         else:
             print_info("Dry run - skipping actual deployment.")
 

@@ -16,7 +16,7 @@ from .constants import (
 )
 
 
-def wrangler_deploy(api_key: str):
+def wrangler_deploy(app_name: str, api_key: str):
     """Deploy the MCP Agent using Wrangler."""
 
     # Copy existing env to avoid overwriting
@@ -44,7 +44,14 @@ def wrangler_deploy(api_key: str):
 
         try:
             result = subprocess.run(
-                ["npx", "wrangler", "deploy"],
+                [
+                    "npx",
+                    "wrangler",
+                    "deploy",
+                    "--name",
+                    app_name,
+                    "--assets=.",
+                ],
                 check=True,
                 env=env,
                 capture_output=True,
