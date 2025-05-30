@@ -274,6 +274,9 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         self.model_selector = self.context.model_selector
         self.type_converter = type_converter
 
+    def share_memory_from(self, other: "AugmentedLLM"):
+        self.history = other.history
+
     @abstractmethod
     async def generate(
         self,
