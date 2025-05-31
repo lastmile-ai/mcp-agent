@@ -1,0 +1,9 @@
+# MCP Agent is the main dependency
+mcp-agent[all]
+
+# Rich for enhanced console output (mentioned in CLAUDE.md)
+rich
+
+# Additional dependencies for the RCM implementation
+pydantic
+asyncio
