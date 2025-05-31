@@ -30,6 +30,7 @@ from mcp.types import (
     StopReason,
     TextContent,
     TextResourceContents,
+    PromptMessage,
 )
 
 # from mcp_agent import console
@@ -56,6 +57,7 @@ from mcp_agent.workflows.llm.augmented_llm import (
     CallToolResult,
 )
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.workflows.llm.multipart_converter_anthropic import AnthropicConverter
 
 MessageParamContent = Union[
     str,
@@ -155,10 +157,23 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             if params.use_history:
                 messages.extend(self.history.get())
 
+            # Convert message to MessageParams
             if isinstance(message, str):
-                messages.append({"role": "user", "content": message})
+                messages.append(MessageParam(role="user", content=message))
+            elif isinstance(message, PromptMessage):
+                messages.append(
+                    AnthropicConverter.convert_prompt_message_to_anthropic(message)
+                )
             elif isinstance(message, list):
-                messages.extend(message)
+                for m in message:
+                    if isinstance(m, PromptMessage):
+                        messages.append(
+                            AnthropicConverter.convert_prompt_message_to_anthropic(m)
+                        )
+                    elif isinstance(m, str):
+                        messages.append(MessageParam(role="user", content=m))
+                    else:
+                        messages.append(message)
             else:
                 messages.append(message)
 

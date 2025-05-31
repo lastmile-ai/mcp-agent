@@ -11,6 +11,7 @@ from mcp.types import (
     EmbeddedResource,
     ImageContent,
     ModelPreferences,
+    PromptMessage,
     TextContent,
     TextResourceContents,
     BlobResourceContents,
@@ -29,6 +30,7 @@ from mcp_agent.workflows.llm.augmented_llm import (
     RequestParams,
     CallToolResult,
 )
+from mcp_agent.workflows.llm.multipart_converter_google import GoogleConverter
 
 
 class GoogleAugmentedLLM(
@@ -84,12 +86,23 @@ class GoogleAugmentedLLM(
         if params.use_history:
             messages.extend(self.history.get())
 
+        # Convert message to Content
         if isinstance(message, str):
             messages.append(
                 types.Content(role="user", parts=[types.Part.from_text(text=message)])
             )
+        elif isinstance(message, PromptMessage):
+            messages.append(GoogleConverter.convert_prompt_message_to_google(message))
         elif isinstance(message, list):
-            messages.extend(message)
+            for m in message:
+                if isinstance(m, PromptMessage):
+                    messages.append(GoogleConverter.convert_prompt_message_to_google(m))
+                elif isinstance(m, str):
+                    messages.append(
+                        types.Content(role="user", parts=[types.Part.from_text(text=m)])
+                    )
+                else:
+                    messages.append(m)
         else:
             messages.append(message)
 

@@ -33,6 +33,7 @@ from mcp.types import (
     EmbeddedResource,
     ImageContent,
     ModelPreferences,
+    PromptMessage,
     TextContent,
     TextResourceContents,
 )
@@ -57,6 +58,7 @@ from mcp_agent.workflows.llm.augmented_llm import (
     RequestParams,
 )
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.workflows.llm.multipart_converter_azure import AzureConverter
 
 MessageParam = Union[
     SystemMessage, UserMessage, AssistantMessage, ToolMessage, DeveloperMessage
@@ -152,10 +154,21 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
                 messages.append(SystemMessage(content=system_prompt))
                 span.set_attribute("system_prompt", system_prompt)
 
+            # Convert message to ResponseMessage
             if isinstance(message, str):
                 messages.append(UserMessage(content=message))
+            elif isinstance(message, PromptMessage):
+                messages.append(AzureConverter.convert_prompt_message_to_azure(message))
             elif isinstance(message, list):
-                messages.extend(message)
+                for m in message:
+                    if isinstance(m, PromptMessage):
+                        messages.append(
+                            AzureConverter.convert_prompt_message_to_azure(m)
+                        )
+                    elif isinstance(m, str):
+                        messages.append(UserMessage(content=m))
+                    else:
+                        messages.append(m)
             else:
                 messages.append(message)
 

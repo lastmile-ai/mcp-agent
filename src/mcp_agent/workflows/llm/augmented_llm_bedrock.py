@@ -9,6 +9,7 @@ from mcp.types import (
     EmbeddedResource,
     ImageContent,
     ModelPreferences,
+    PromptMessage,
     TextContent,
     TextResourceContents,
     BlobResourceContents,
@@ -26,6 +27,7 @@ from mcp_agent.workflows.llm.augmented_llm import (
     RequestParams,
 )
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.workflows.llm.multipart_converter_bedrock import BedrockConverter
 
 if TYPE_CHECKING:
     from mypy_boto3_bedrock_runtime.type_defs import (
@@ -93,10 +95,21 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
         if params.use_history:
             messages.extend(self.history.get())
 
+        # Convert message to MessageUnionTypeDef
         if isinstance(message, str):
             messages.append({"role": "user", "content": [{"text": message}]})
+        elif isinstance(message, PromptMessage):
+            messages.append(BedrockConverter.convert_prompt_message_to_bedrock(message))
         elif isinstance(message, list):
-            messages.extend(message)
+            for m in message:
+                if isinstance(m, PromptMessage):
+                    messages.append(
+                        BedrockConverter.convert_prompt_message_to_bedrock(m)
+                    )
+                elif isinstance(m, str):
+                    messages.append({"role": "user", "content": [{"text": m}]})
+                else:
+                    messages.append(m)
         else:
             messages.append(message)
 

@@ -30,6 +30,7 @@ from mcp.types import (
     ImageContent,
     ListToolsResult,
     ModelPreferences,
+    PromptMessage,
     TextContent,
     TextResourceContents,
 )
@@ -58,6 +59,7 @@ from mcp_agent.workflows.llm.augmented_llm import (
     RequestParams,
 )
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.workflows.llm.multipart_converter_openai import OpenAIConverter
 
 
 class RequestCompletionRequest(BaseModel):
@@ -143,7 +145,11 @@ class OpenAIAugmentedLLM(
 
         return ChatCompletionAssistantMessageParam(**assistant_message_params)
 
-    async def generate(self, message, request_params: RequestParams | None = None):
+    async def generate(
+        self,
+        message,
+        request_params: RequestParams | None = None,
+    ):
         """
         Process a query using an LLM and available tools.
         The default implementation uses OpenAI's ChatCompletion as the LLM.
@@ -174,12 +180,27 @@ class OpenAIAugmentedLLM(
                     )
                 )
 
+            # Convert message to ChatCompletionMessageParam
             if isinstance(message, str):
                 messages.append(
                     ChatCompletionUserMessageParam(role="user", content=message)
                 )
+            elif isinstance(message, PromptMessage):
+                messages.append(
+                    OpenAIConverter.convert_prompt_message_to_openai(message)
+                )
             elif isinstance(message, list):
-                messages.extend(message)
+                for m in message:
+                    if isinstance(m, PromptMessage):
+                        messages.append(
+                            OpenAIConverter.convert_prompt_message_to_openai(m)
+                        )
+                    elif isinstance(m, str):
+                        messages.append(
+                            ChatCompletionUserMessageParam(role="user", content=m)
+                        )
+                    else:
+                        messages.append(m)
             else:
                 messages.append(message)
 
