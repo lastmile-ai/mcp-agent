@@ -12,6 +12,8 @@ import typer
 
 from mcp_agent_cloud.auth import load_api_key_credentials
 from mcp_agent_cloud.config import settings
+from mcp_agent_cloud.core.api_client import UnauthenticatedError
+from mcp_agent_cloud.mcp_app.api_client import MCPAppClient
 from mcp_agent_cloud.secrets.processor import process_config_secrets
 from mcp_agent_cloud.secrets.mock_client import MockSecretsClient
 from mcp_agent_cloud.ux import (
@@ -103,6 +105,7 @@ def deploy_config(
     2. Deploys the agent with the main configuration and transformed secrets
 
     Args:
+        app_name: Name of the MCP App to deploy
         config_file: Path to the main configuration file
         secrets_file: Path to the secrets file to process
         secrets_output_file: Path to write the transformed secrets file
@@ -113,15 +116,12 @@ def deploy_config(
         api_key: API key for authentication
 
     Returns:
-        Path to the main configuration file
+        Newly-deployed MCP App ID
     """
     # Display stylized deployment header
     from mcp_agent_cloud.ux import print_deployment_header
 
     print_deployment_header(config_file, secrets_file, dry_run)
-
-    # Track the path to the configuration to use for deployment
-    deployment_config_path = str(config_file)
 
     try:
         # Validate API-related environment variables or parameters
@@ -146,6 +146,7 @@ def deploy_config(
                 )
                 raise typer.Exit(1)
             print_info(f"Using API at {effective_api_url}")
+
         else:
             # For dry run, we'll use mock values if not provided
             effective_api_url = (
@@ -153,6 +154,34 @@ def deploy_config(
             )
             effective_api_key = effective_api_key or "mock-key-for-dry-run"
             print_info(f"Using mock API at {effective_api_url} (dry run)")
+
+        mcp_app_client = MCPAppClient(
+            api_url=effective_api_url, api_key=effective_api_key
+        )
+
+        # Look for an existing app ID for this app name
+        print_info(f"Checking for existing app ID for '{app_name}'...")
+        try:
+            app_id = _run_async(mcp_app_client.get_app_id_by_name(app_name))
+            if not app_id:
+                print_info(
+                    f"No existing app found with name '{app_name}'. Creating a new app..."
+                )
+                app = _run_async(mcp_app_client.create_app(name=app_name))
+                app_id = app.app_id
+                print_success(f"Created new app with ID: {app_id}")
+            else:
+                print_success(
+                    f"Found existing app with ID: {app_id} for name '{app_name}'"
+                )
+        except UnauthenticatedError as e:
+            print_error(
+                "Invalid API key for deployment. Run 'mcp-agent login --force' or set MCP_API_KEY environment variable with new API key."
+            )
+            raise typer.Exit(1) from e
+        except Exception as e:
+            print_error(f"Error checking or creating app: {str(e)}")
+            raise typer.Exit(1)
 
         # Process secrets file
         if not no_secrets:
@@ -173,7 +202,7 @@ def deploy_config(
 
                 # Process with the mock client
                 try:
-                    secrets_context = _run_async(
+                    _run_async(
                         process_config_secrets(
                             config_path=secrets_file,
                             output_path=secrets_transformed_path,
@@ -187,8 +216,8 @@ def deploy_config(
                     )
                     raise
             else:
-                # Use the real API client
-                secrets_context = _run_async(
+                # Use the real secrets API client
+                _run_async(
                     process_config_secrets(
                         config_path=secrets_file,
                         output_path=secrets_transformed_path,
@@ -222,13 +251,39 @@ def deploy_config(
                 )
             )
 
-            wrangler_deploy(app_name=app_name, api_key=effective_api_key)
+            source_uri = wrangler_deploy(
+                app_id=app_id, api_key=effective_api_key
+            )
+
+            # Deploy the app using the MCP App API
+            print_info("Deploying MCP App bundle...")
+            try:
+                app = _run_async(
+                    mcp_app_client.deploy_app(
+                        app_id=app_id,
+                        source_uri=source_uri,
+                    )
+                )
+                print_success("✅ MCP App deployed successfully!")
+                print_info(f"App ID: {app.app_id}")
+
+                if app.app_server_info:
+                    status = (
+                        "ONLINE"
+                        if app.app_server_info.status == 1
+                        else "OFFLINE"
+                    )
+                    print_info(f"App URL: {app.app_server_info.server_url}")
+                    print_info(f"App Status: {status}")
+                return app.app_id
+            except Exception as e:
+                print_error(f"❌ Deployment failed: {str(e)}")
+                raise typer.Exit(1)
+
         else:
             print_info("Dry run - skipping actual deployment.")
-
-        # Final success message
-        print_success("Deployment preparation completed successfully!")
-        return deployment_config_path
+            print_success("Deployment preparation completed successfully!")
+            return ""
 
     except Exception as e:
         print_error(f"{str(e)}")

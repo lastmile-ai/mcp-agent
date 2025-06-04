@@ -1,0 +1,90 @@
+"""API client implementation for the MCP Agent Cloud API."""
+
+from typing import Optional, Dict, Any
+
+import httpx
+
+
+class UnauthenticatedError(Exception):
+    """Raised when the API client is unauthenticated (e.g., redirected to login)."""
+
+    pass
+
+
+def _raise_for_unauthenticated(response: httpx.Response):
+    """Check if the response indicates an unauthenticated request.
+    Raises:
+        UnauthenticatedError: If the response status code is 401 or 403.
+    """
+    if response.status_code == 401 or (
+        response.status_code == 307
+        and "/api/auth/signin" in response.headers.get("location", "")
+    ):
+        raise UnauthenticatedError(
+            "Unauthenticated request. Please check your API key or login status."
+        )
+
+
+class APIClient:
+    """Client for interacting with the API service over HTTP."""
+
+    def __init__(self, api_url: str, api_key: str):
+        """Initialize the API client.
+
+        Args:
+            api_url: The base URL of the API (e.g., http://localhost:3000/api)
+            api_key: The API authentication key
+        """
+        self.api_url = api_url.rstrip(
+            "/"
+        )  # Remove trailing slash for consistent URL building
+        self.api_key = api_key
+
+    def _get_headers(self) -> Dict[str, str]:
+        return {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+
+    async def post(
+        self, path: str, payload: Dict[str, Any], timeout: float = 30.0
+    ) -> httpx.Response:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{self.api_url}/{path.lstrip('/')}",
+                json=payload,
+                headers=self._get_headers(),
+                timeout=timeout,
+            )
+            _raise_for_unauthenticated(response)
+            response.raise_for_status()
+            return response
+
+    async def get(self, path: str, timeout: float = 30.0) -> httpx.Response:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.api_url}/{path.lstrip('/')}",
+                headers=self._get_headers(),
+                timeout=timeout,
+            )
+            _raise_for_unauthenticated(response)
+            response.raise_for_status()
+            return response
+
+    async def delete(
+        self,
+        path: str,
+        payload: Optional[Dict[str, Any]] = None,
+        timeout: float = 30.0,
+    ) -> httpx.Response:
+        async with httpx.AsyncClient() as client:
+            response = await client.delete(
+                f"{self.api_url}/{path.lstrip('/')}",
+                json=payload,
+                headers=self._get_headers(),
+                timeout=timeout,
+            )
+            _raise_for_unauthenticated(response)
+            response.raise_for_status()
+            return response

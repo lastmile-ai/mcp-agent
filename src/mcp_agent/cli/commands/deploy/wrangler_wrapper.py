@@ -16,8 +16,8 @@ from .constants import (
 )
 
 
-def wrangler_deploy(app_name: str, api_key: str):
-    """Deploy the MCP Agent using Wrangler."""
+def wrangler_deploy(app_id: str, api_key: str) -> str:
+    """Bundle the MCP Agent using Wrangler."""
 
     # Copy existing env to avoid overwriting
     env = os.environ.copy()
@@ -40,7 +40,7 @@ def wrangler_deploy(app_name: str, api_key: str):
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
     ) as progress:
-        task = progress.add_task("Deploying MCP Agent...", total=None)
+        task = progress.add_task("Bundling MCP Agent...", total=None)
 
         try:
             result = subprocess.run(
@@ -49,7 +49,7 @@ def wrangler_deploy(app_name: str, api_key: str):
                     "wrangler",
                     "deploy",
                     "--name",
-                    app_name,
+                    app_id,
                     "--assets=.",
                 ],
                 check=True,
@@ -57,10 +57,13 @@ def wrangler_deploy(app_name: str, api_key: str):
                 capture_output=True,
                 text=True,
             )
-            progress.update(task, description="✅ Deployed successfully")
+            progress.update(task, description="✅ Bundled successfully")
             print_info(result.stdout)
+
+            # TODO: Return the source URI
+            return result.stdout.strip()
         except subprocess.CalledProcessError as e:
-            progress.update(task, description="❌ Deployment failed")
+            progress.update(task, description="❌ Bundling failed")
             print_error("Error output:")
             print_error(e.stderr or "No error output.")
             raise

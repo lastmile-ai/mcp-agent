@@ -1,0 +1,272 @@
+"""MCP App API client implementation for the MCP Agent Cloud API."""
+
+from datetime import datetime
+from typing import Literal, Optional, Dict, Any, List
+
+from pydantic import BaseModel
+
+from ..core.api_client import APIClient
+
+
+class AppServerInfo(BaseModel):
+    serverId: str
+    serverUrl: str
+    status: Literal[0, 1, 2]  # Enums: 0=UNSPECIFIED, 1=ONLINE, 2=OFFLINE
+
+
+# A developer-deployed MCP App which others can configure and use.
+class MCPApp(BaseModel):
+    appId: str
+    name: str
+    creatorId: str
+    description: Optional[str] = None
+    createdAt: datetime
+    updatedAt: datetime
+    appServerInfo: Optional[AppServerInfo] = None
+
+
+# A user-configured MCP App 'instance', created by configuring a deployed MCP App.
+class MCPAppConfiguration(BaseModel):
+    appConfigurationId: str
+    app: Optional[MCPApp] = None
+    creatorId: str
+    createdAt: Optional[datetime] = None
+    appServerInfo: Optional[AppServerInfo] = None
+
+
+class ListAppsResponse(BaseModel):
+    apps: Optional[List[MCPApp]] = (
+        []
+    )  # Proto treats empty list and 0 and undefined so must be optional!
+    nextPageToken: Optional[str] = None
+    totalCount: Optional[int] = 0
+
+
+class MCPAppClient(APIClient):
+    """Client for interacting with the MCP App API service over HTTP."""
+
+    async def create_app(
+        self, name: str, description: Optional[str] = None
+    ) -> MCPApp:
+        """Create a new MCP App via the API.
+
+        Args:
+            name: The name of the MCP App
+            description: Optional description for the app
+
+        Returns:
+            MCPApp: The created MCP App
+
+        Raises:
+            ValueError: If the name is empty or invalid
+            httpx.HTTPError: If the API request fails
+        """
+        if not name or not isinstance(name, str):
+            raise ValueError("App name must be a non-empty string")
+
+        payload: Dict[str, Any] = {
+            "name": name,
+            "description": description or "",
+        }
+
+        response = await self.post("/mcp_app/create_app", payload)
+
+        return MCPApp(**response.json())
+
+    async def get_app(self, app_id: str) -> MCPApp:
+        """Get an MCP App by its ID via the API.
+
+        Args:
+            app_id: The UUID of the app to retrieve
+
+        Returns:
+            MCPApp: The retrieved MCP App
+
+        Raises:
+            ValueError: If the app_id is invalid
+            httpx.HTTPStatusError: If the API returns an error (e.g., 404, 403)
+            httpx.HTTPError: If the request fails
+        """
+        if not app_id or not isinstance(app_id, str):
+            raise ValueError(f"Invalid app ID format: {app_id}")
+
+        response = await self.post("/mcp_app/get_app", {"appId": app_id})
+        return MCPApp(**response.json())
+
+    async def get_app_id_by_name(self, name: str) -> Optional[str]:
+        """Get the app ID for a given app name via the API.
+
+        Args:
+            name: The name of the MCP App
+
+        Returns:
+            Optional[str]: The UUID of the MCP App, or None if not found
+
+        Raises:
+            ValueError: If the name is empty or invalid
+            httpx.HTTPStatusError: If the API returns an error
+            httpx.HTTPError: If the request fails
+        """
+        if not name or not isinstance(name, str):
+            raise ValueError(f"Invalid app name format: {name}")
+
+        apps = await self.list_apps(name_filter=name, max_results=10)
+        if not apps.apps:
+            return None
+
+        # Return the app with exact name match
+        return next((app.appId for app in apps.apps if app.name == name), None)
+
+    async def deploy_app(
+        self,
+        app_id: str,
+        source_uri: str,
+    ) -> MCPApp:
+        """Deploy an MCP App via the API.
+
+        Args:
+            app_id: The UUID of the app to deploy
+            source_uri: The source URI for the app deployment
+
+        Returns:
+            MCPApp: The deployed MCP App
+
+        Raises:
+            ValueError: If the app_id or source_uri is invalid
+            httpx.HTTPStatusError: If the API returns an error
+            httpx.HTTPError: If the request fails
+        """
+        if not app_id or not isinstance(app_id, str):
+            raise ValueError(f"Invalid app ID format: {app_id}")
+
+        if not source_uri or not isinstance(source_uri, str):
+            raise ValueError(f"Invalid source URI format: {source_uri}")
+
+        payload = {
+            "appId": app_id,
+            "sourceUri": source_uri,
+        }
+
+        response = await self.post("/mcp_app/deploy_app", payload)
+        return MCPApp(**response.json())
+
+    async def configure_app(
+        self,
+        app_id: str,
+        config_params: Dict[str, Any],
+    ) -> MCPAppConfiguration:
+        """Configure a deployed MCP App via the API.
+
+        Args:
+            app_id: The UUID of the app to configure
+            config_params: Dictionary of configuration parameters (e.g. user secrets)
+
+        Returns:
+            MCPAppConfiguration: The configured MCP App
+
+        Raises:
+            ValueError: If the app_id or config_params is invalid
+            httpx.HTTPStatusError: If the API returns an error
+            httpx.HTTPError: If the request fails
+        """
+        if not app_id or not isinstance(app_id, str):
+            raise ValueError(f"Invalid app ID format: {app_id}")
+
+        if not config_params or not isinstance(config_params, dict):
+            raise ValueError(
+                "Configuration parameters must be a non-empty dictionary"
+            )
+
+        payload = {
+            "appId": app_id,
+            "params": config_params,
+        }
+
+        response = await self.post("/mcp_app/configure_app", payload)
+        return MCPAppConfiguration(**response.json())
+
+    async def list_config_params(self, app_id: str) -> List[str]:
+        """List required configuration parameters (e.g. user secrets) for an MCP App via the API.
+
+        Args:
+            app_id: The UUID of the app to retrieve config params for
+
+        Returns:
+            List[str]: List of configuration parameter names
+
+        Raises:
+            ValueError: If the app_id is invalid
+            httpx.HTTPStatusError: If the API returns an error
+            httpx.HTTPError: If the request fails
+        """
+        if not app_id or not isinstance(app_id, str):
+            raise ValueError(f"Invalid app ID format: {app_id}")
+
+        response = await self.post(
+            "/mcp_app/list_config_params", {"appId": app_id}
+        )
+        return response.json().get("configParams", [])
+
+    async def list_apps(
+        self,
+        name_filter: Optional[str] = None,
+        max_results: int = 100,
+        page_token: Optional[str] = None,
+    ) -> ListAppsResponse:
+        """List MCP Apps via the API.
+        Args:
+            name_filter: Optional filter for app names
+            max_results: Maximum number of results to return (default 100)
+            page_token: Optional token for pagination
+        Returns:
+            ListAppsResponse: List of MCP Apps with pagination info
+        Raises:
+            httpx.HTTPStatusError: If the API returns an error
+            httpx.HTTPError: If the request fails
+        """
+        # Prepare request payload
+        payload: Dict[str, Any] = {
+            "maxResults": max_results,
+        }
+
+        if page_token:
+            payload["pageToken"] = page_token
+
+        if name_filter:
+            payload["nameFilter"] = name_filter
+
+        response = await self.post("/mcp_app/list_apps", payload)
+        return ListAppsResponse(**response.json())
+
+    async def delete_app(self, app_id: str) -> str:
+        """Delete an MCP App via the API.
+
+        Args:
+            app_id: The UUID of the app to delete
+
+        Returns:
+            str: The ID of the deleted app
+
+        Raises:
+            ValueError: If the app_id is invalid
+            httpx.HTTPStatusError: If the API returns an error (e.g., 404, 403)
+            httpx.HTTPError: If the request fails
+        """
+        if not app_id or not isinstance(app_id, str):
+            raise ValueError(f"Invalid app ID format: {app_id}")
+
+        # Prepare request payload
+        payload = {
+            "appId": app_id,
+        }
+
+        response = await self.delete("/mcp_app/delete_app", payload)
+
+        # Parse the response to get the deleted app ID
+        data = response.json()
+        deleted_id = data.get("appId")
+
+        if not deleted_id:
+            raise ValueError("API didn't return the ID of the deleted app")
+
+        return deleted_id
