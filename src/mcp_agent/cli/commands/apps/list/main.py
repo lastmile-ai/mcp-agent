@@ -1,3 +1,4 @@
+import asyncio
 from typing import List, Optional
 
 import typer
@@ -6,8 +7,13 @@ from mcp_agent_cloud.config import settings
 from mcp_agent_cloud.core.api_client import UnauthenticatedError
 from mcp_agent_cloud.core.constants import ENV_API_BASE_URL, ENV_API_KEY
 from mcp_agent_cloud.core.utils import run_async
-from mcp_agent_cloud.mcp_app.api_client import MCPApp, MCPAppClient
+from mcp_agent_cloud.mcp_app.api_client import (
+    MCPApp,
+    MCPAppClient,
+    MCPAppConfiguration,
+)
 from mcp_agent_cloud.ux import console, print_error, print_info
+from rich.padding import Padding
 from rich.panel import Panel
 from rich.table import Table
 
@@ -39,9 +45,18 @@ def list_apps(
     client = MCPAppClient(api_url=api_url, api_key=effective_api_key)
 
     try:
-        list_apps_res = run_async(
-            client.list_apps(name_filter=name_filter, max_results=max_results)
-        )
+
+        async def parallel_requests():
+            return await asyncio.gather(
+                client.list_apps(
+                    name_filter=name_filter, max_results=max_results
+                ),
+                client.list_app_configurations(
+                    name_filter=name_filter, max_results=max_results
+                ),
+            )
+
+        list_apps_res, list_app_configs_res = run_async(parallel_requests())
 
         print_info_header()
 
@@ -52,9 +67,14 @@ def list_apps(
         else:
             print_info("No deployed apps found.")
 
-        print_info(
-            "No configured apps found."
-        )  # TODO: Implement configured apps listing
+        if list_app_configs_res.appConfigurations:
+            num_configs = list_app_configs_res.totalCount or len(
+                list_app_configs_res.appConfigurations
+            )
+            print_info(f"Found {num_configs} configured app(s):")
+            print_app_configs(list_app_configs_res.appConfigurations)
+        else:
+            print_info("No configured apps found.")
 
     except UnauthenticatedError as e:
         print_error(
@@ -62,7 +82,7 @@ def list_apps(
         )
         raise typer.Exit(1) from e
     except Exception as e:
-        print_error(f"Error checking or creating app: {str(e)}")
+        print_error(f"Error listing apps: {str(e)}")
         raise typer.Exit(1)
 
 
@@ -81,7 +101,12 @@ def print_info_header() -> None:
 
 def print_apps(apps: List[MCPApp]) -> None:
     """Print a summary table of the app information."""
-    table = Table(title="Deployed MCP Apps", expand=False, border_style="blue")
+    table = Table(
+        title="Deployed MCP Apps",
+        expand=False,
+        border_style="blue",
+        padding=(0, 1),
+    )
 
     table.add_column("Name", style="cyan")
     table.add_column("ID", style="bright_blue")
@@ -90,23 +115,62 @@ def print_apps(apps: List[MCPApp]) -> None:
     table.add_column("Status", style="bright_blue", no_wrap=True)
     table.add_column("Created", style="cyan")
 
-    for app in apps:
-        server_url = ""
-        server_status = "Unknown"
-
-        if app.appServerInfo:
-            server_url = app.appServerInfo.serverUrl
-            server_status = (
-                "🟢 Online" if app.appServerInfo.status == 1 else "🔴 Offline"
-            )
-
+    for idx, app in enumerate(apps):
+        is_last_row = idx == len(apps) - 1
         table.add_row(
             app.name,
             app.appId,
             app.description,
-            server_url,
-            server_status,
+            app.appServerInfo.serverUrl if app.appServerInfo else "",
+            _server_status_text(
+                app.appServerInfo.status if app.appServerInfo else 0,
+                is_last_row,
+            ),
             app.createdAt.strftime("%Y-%m-%d %H:%M:%S"),
         )
 
     console.print(table)
+
+
+def print_app_configs(app_configs: List[MCPAppConfiguration]) -> None:
+    """Print a summary table of the app configuration information."""
+    table = Table(
+        title="Configured MCP Apps", expand=False, border_style="blue"
+    )
+
+    table.add_column("Name", style="cyan")
+    table.add_column("ID", style="bright_blue")
+    table.add_column("App ID", style="bright_blue")
+    table.add_column("Description", style="cyan")
+    table.add_column("Server URL", style="bright_blue", no_wrap=True)
+    table.add_column("Status", style="bright_blue", no_wrap=True)
+    table.add_column("Created", style="cyan")
+
+    for idx, config in enumerate(app_configs):
+        is_last_row = idx == len(app_configs) - 1
+        table.add_row(
+            config.app.name,
+            config.appConfigurationId,
+            config.app.appId,
+            config.app.description,
+            config.appServerInfo.serverUrl if config.appServerInfo else "",
+            _server_status_text(
+                config.appServerInfo.status if config.appServerInfo else 0,
+                is_last_row=is_last_row,
+            ),
+            config.createdAt.strftime("%Y-%m-%d %H:%M:%S"),
+        )
+
+    console.print(table)
+
+
+def _server_status_text(status: int, is_last_row: bool = False) -> str:
+    """Convert server status code to emoji."""
+    if status == 1:
+        return "🟢 Online"
+    elif status == 0:
+        return Padding(
+            "🔴 Offline", (0, 0, 0 if is_last_row else 1, 0), style="red"
+        )
+    else:
+        return "❓ Unknown"

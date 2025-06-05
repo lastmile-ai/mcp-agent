@@ -34,6 +34,12 @@ def deploy_config(
     app_name: str = typer.Argument(
         help="Name of the MCP App to deploy.",
     ),
+    app_description: Optional[str] = typer.Option(
+        None,
+        "--app-description",
+        "-d",
+        help="Description of the MCP App being deployed.",
+    ),
     secrets_file: Path = typer.Option(
         Path("mcp-agent.secrets.yaml"),
         "--secrets-file",
@@ -157,8 +163,12 @@ def deploy_config(
                 print_info(
                     f"No existing app found with name '{app_name}'. Creating a new app..."
                 )
-                app = run_async(mcp_app_client.create_app(name=app_name))
-                app_id = app.app_id
+                app = run_async(
+                    mcp_app_client.create_app(
+                        name=app_name, description=app_description
+                    )
+                )
+                app_id = app.appId
                 print_success(f"Created new app with ID: {app_id}")
             else:
                 print_success(

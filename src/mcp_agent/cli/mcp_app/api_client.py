@@ -42,6 +42,14 @@ class ListAppsResponse(BaseModel):
     totalCount: Optional[int] = 0
 
 
+class ListAppConfigurationsResponse(BaseModel):
+    appConfigurations: Optional[List[MCPAppConfiguration]] = (
+        []
+    )  # Proto treats empty list and 0 and undefined so must be optional!
+    nextPageToken: Optional[str] = None
+    totalCount: Optional[int] = 0
+
+
 class MCPAppClient(APIClient):
     """Client for interacting with the MCP App API service over HTTP."""
 
@@ -66,12 +74,20 @@ class MCPAppClient(APIClient):
 
         payload: Dict[str, Any] = {
             "name": name,
-            "description": description or "",
         }
+
+        if description:
+            payload["description"] = description
 
         response = await self.post("/mcp_app/create_app", payload)
 
-        return MCPApp(**response.json())
+        res = response.json()
+        if not res or "app" not in res:
+            raise ValueError(
+                "API response did not contain the created app data"
+            )
+
+        return MCPApp(**res["app"])
 
     async def get_app(self, app_id: str) -> MCPApp:
         """Get an MCP App by its ID via the API.
@@ -227,6 +243,7 @@ class MCPAppClient(APIClient):
         # Prepare request payload
         payload: Dict[str, Any] = {
             "maxResults": max_results,
+            "isCreator": True,  # Only list apps created by the user
         }
 
         if page_token:
@@ -237,6 +254,41 @@ class MCPAppClient(APIClient):
 
         response = await self.post("/mcp_app/list_apps", payload)
         return ListAppsResponse(**response.json())
+
+    async def list_app_configurations(
+        self,
+        name_filter: Optional[str] = None,
+        max_results: int = 100,
+        page_token: Optional[str] = None,
+    ) -> ListAppConfigurationsResponse:
+        """List MCP App configurations via the API.
+
+        Args:
+            name_filter: Optional filter for app names
+            max_results: Maximum number of results to return (default 100)
+            page_token: Optional token for pagination
+
+        Returns:
+            ListAppsResponse: List of MCP App configurations with pagination info
+
+        Raises:
+            httpx.HTTPStatusError: If the API returns an error
+            httpx.HTTPError: If the request fails
+        """
+        # Prepare request payload
+        payload: Dict[str, Any] = {
+            "maxResults": max_results,
+            "isCreator": True,  # Only list configurations created by the user
+        }
+
+        if page_token:
+            payload["pageToken"] = page_token
+
+        if name_filter:
+            payload["nameFilter"] = name_filter
+
+        response = await self.post("/mcp_app/list_app_configurations", payload)
+        return ListAppConfigurationsResponse(**response.json())
 
     async def delete_app(self, app_id: str) -> str:
         """Delete an MCP App via the API.
