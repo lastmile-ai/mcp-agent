@@ -4,7 +4,6 @@ This module provides the deploy_config function which processes configuration fi
 with secret tags and transforms them into deployment-ready configurations with secret handles.
 """
 
-import asyncio
 from pathlib import Path
 from typing import Optional
 
@@ -13,8 +12,15 @@ import typer
 from mcp_agent_cloud.auth import load_api_key_credentials
 from mcp_agent_cloud.config import settings
 from mcp_agent_cloud.core.api_client import UnauthenticatedError
+from mcp_agent_cloud.core.constants import (
+    ENV_API_BASE_URL,
+    ENV_API_KEY,
+)
+from mcp_agent_cloud.core.utils import run_async
 from mcp_agent_cloud.mcp_app.api_client import MCPAppClient
-from mcp_agent_cloud.secrets.processor import process_config_secrets
+from mcp_agent_cloud.secrets.processor import (
+    process_config_secrets,
+)
 from mcp_agent_cloud.secrets.mock_client import MockSecretsClient
 from mcp_agent_cloud.ux import (
     print_info,
@@ -22,24 +28,6 @@ from mcp_agent_cloud.ux import (
     print_error,
 )
 from .wrangler_wrapper import wrangler_deploy
-
-
-def _run_async(coro):
-    """
-    Simple helper to run an async coroutine from synchronous code.
-
-    This properly handles the event loop setup in all contexts:
-    - Normal application usage
-    - Within tests that use pytest-asyncio
-    """
-    try:
-        return asyncio.run(coro)
-    except RuntimeError as e:
-        # If we're already in an event loop (like in pytest-asyncio tests)
-        if "cannot be called from a running event loop" in str(e):
-            loop = asyncio.get_event_loop()
-            return loop.run_until_complete(coro)
-        raise
 
 
 def deploy_config(
@@ -88,14 +76,16 @@ def deploy_config(
         help="Validate the deployment but don't actually deploy.",
     ),
     api_url: Optional[str] = typer.Option(
-        None,
+        settings.API_BASE_URL,
         "--api-url",
-        help="API base URL. Overrides MCP_API_BASE_URL environment variable.",
+        help="API base URL. Defaults to MCP_API_BASE_URL environment variable.",
+        envvar=ENV_API_BASE_URL,
     ),
     api_key: Optional[str] = typer.Option(
-        None,
+        settings.API_KEY,
         "--api-key",
-        help="API key for authentication. Overrides MCP_API_KEY environment variable.",
+        help="API key for authentication. Defaults to MCP_API_KEY environment variable.",
+        envvar=ENV_API_KEY,
     ),
 ) -> str:
     """Deploy an MCP agent using the specified configuration and secrets files.
@@ -162,12 +152,12 @@ def deploy_config(
         # Look for an existing app ID for this app name
         print_info(f"Checking for existing app ID for '{app_name}'...")
         try:
-            app_id = _run_async(mcp_app_client.get_app_id_by_name(app_name))
+            app_id = run_async(mcp_app_client.get_app_id_by_name(app_name))
             if not app_id:
                 print_info(
                     f"No existing app found with name '{app_name}'. Creating a new app..."
                 )
-                app = _run_async(mcp_app_client.create_app(name=app_name))
+                app = run_async(mcp_app_client.create_app(name=app_name))
                 app_id = app.app_id
                 print_success(f"Created new app with ID: {app_id}")
             else:
@@ -202,7 +192,7 @@ def deploy_config(
 
                 # Process with the mock client
                 try:
-                    _run_async(
+                    run_async(
                         process_config_secrets(
                             config_path=secrets_file,
                             output_path=secrets_transformed_path,
@@ -217,7 +207,7 @@ def deploy_config(
                     raise
             else:
                 # Use the real secrets API client
-                _run_async(
+                run_async(
                     process_config_secrets(
                         config_path=secrets_file,
                         output_path=secrets_transformed_path,
@@ -258,7 +248,7 @@ def deploy_config(
             # Deploy the app using the MCP App API
             print_info("Deploying MCP App bundle...")
             try:
-                app = _run_async(
+                app = run_async(
                     mcp_app_client.deploy_app(
                         app_id=app_id,
                         source_uri=source_uri,

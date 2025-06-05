@@ -8,12 +8,19 @@ from ..commands import (
     deploy_config,
     login,
 )
+from ..commands.apps import list_apps
 
+# Root typer for `mcp-agent` CLI commands
 app = typer.Typer(help="MCP Agent Cloud CLI for deployment and management")
 
 # Simply wrap the function with typer to preserve its signature
 app.command(name="deploy")(deploy_config)
 app.command(name="login")(login)
+
+# Sub-typer for `mcp-agent apps` commands
+app_cmd_apps = typer.Typer(help="Management commands for multiple MCP Apps")
+app_cmd_apps.command(name="list")(list_apps)
+app.add_typer(app_cmd_apps, name="apps", help="Manage MCP Apps")
 
 
 @app.callback()
