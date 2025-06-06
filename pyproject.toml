@@ -56,6 +56,9 @@ google = [
 cohere = [
     "cohere>=5.13.4",
 ]
+fastmcp = [
+    "fastmcp>=2.5.2"
+]
 
 [build-system]
 requires = ["hatchling"]

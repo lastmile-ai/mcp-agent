@@ -196,6 +196,8 @@ class Agent(BaseModel):
                 value = getattr(self.llm, attr, None)
                 if value is not None:
                     span.set_attribute(f"llm.{attr}", value)
+
+            self.context.active_llm = self.llm
             return self.llm
 
     async def initialize(self, force: bool = False):

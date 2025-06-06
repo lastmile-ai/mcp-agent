@@ -73,6 +73,9 @@ class Context(BaseModel):
     # Use this flag to conditionally serialize expensive data for tracing
     tracing_enabled: bool = False
 
+    # Store the currently active LLM instance for MCP sampling callbacks
+    active_llm: Optional[Any] = None  # AugmentedLLM instance
+
     model_config = ConfigDict(
         extra="allow",
         arbitrary_types_allowed=True,  # Tell Pydantic to defer type evaluation

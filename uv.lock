@@ -1,4 +1,5 @@
 version = 1
+revision = 1
 requires-python = ">=3.10"
 
 [[package]]
@@ -676,6 +677,25 @@ wheels = [
 ]
 
 [[package]]
+name = "fastmcp"
+version = "2.5.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "exceptiongroup" },
+    { name = "httpx" },
+    { name = "mcp" },
+    { name = "openapi-pydantic" },
+    { name = "python-dotenv" },
+    { name = "rich" },
+    { name = "typer" },
+    { name = "websockets" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/20/cc/d2c0e63d2b34681bef4e077611dae662ea722add13a83dc4ae08b6e0fd23/fastmcp-2.5.2.tar.gz", hash = "sha256:761c92fb54f561136f631d7d98b4920152978f6f0a66a4cef689a7983fd05c8b", size = 1039189 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3e/ac/caa94ff747e2136829ac2fea33b9583e086ca5431451751bcb2f773e087f/fastmcp-2.5.2-py3-none-any.whl", hash = "sha256:4ea46ef35c1308b369eff7c8a10e4c9639bed046fd646449c1227ac7c3856d83", size = 107502 },
+]
+
+[[package]]
 name = "filelock"
 version = "3.18.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1198,6 +1218,9 @@ bedrock = [
 cohere = [
     { name = "cohere" },
 ]
+fastmcp = [
+    { name = "fastmcp" },
+]
 google = [
     { name = "google-genai" },
 ]
@@ -1232,6 +1255,7 @@ requires-dist = [
     { name = "boto3", marker = "extra == 'bedrock'", specifier = ">=1.37.23" },
     { name = "cohere", marker = "extra == 'cohere'", specifier = ">=5.13.4" },
     { name = "fastapi", specifier = ">=0.115.6" },
+    { name = "fastmcp", marker = "extra == 'fastmcp'", specifier = ">=2.5.2" },
     { name = "google-genai", marker = "extra == 'google'", specifier = ">=1.10.0" },
     { name = "instructor", specifier = ">=1.7.9" },
     { name = "mcp", specifier = ">=1.9.0" },
@@ -1251,6 +1275,7 @@ requires-dist = [
     { name = "typer", specifier = ">=0.15.1" },
     { name = "websockets", specifier = ">=12.0" },
 ]
+provides-extras = ["temporal", "anthropic", "bedrock", "openai", "azure", "google", "cohere", "fastmcp"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1499,6 +1524,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/3f/19/6b09bb3132f7e1a7a2291fd46fb33659bbccca041f863abd682e14ba86d7/openai-1.82.0.tar.gz", hash = "sha256:b0a009b9a58662d598d07e91e4219ab4b1e3d8ba2db3f173896a92b9b874d1a7", size = 461092 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/51/4b/a59464ee5f77822a81ee069b4021163a0174940a92685efc3cf8b4c443a3/openai-1.82.0-py3-none-any.whl", hash = "sha256:8c40647fea1816516cb3de5189775b30b5f4812777e40b8768f361f232b61b30", size = 720412 },
+]
+
+[[package]]
+name = "openapi-pydantic"
+version = "0.5.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/02/2e/58d83848dd1a79cb92ed8e63f6ba901ca282c5f09d04af9423ec26c56fd7/openapi_pydantic-0.5.1.tar.gz", hash = "sha256:ff6835af6bde7a459fb93eb93bb92b8749b754fc6e51b2f1590a19dc3005ee0d", size = 60892 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/12/cf/03675d8bd8ecbf4445504d8071adab19f5f993676795708e36402ab38263/openapi_pydantic-0.5.1-py3-none-any.whl", hash = "sha256:a3a09ef4586f5bd760a8df7f43028b60cafb6d9f61de2acba9574766255ab146", size = 96381 },
 ]
 
 [[package]]

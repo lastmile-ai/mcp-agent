@@ -11,6 +11,8 @@ from mcp_agent.config import (
 )
 from mcp_agent.agents.agent import Agent
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
+from mcp_agent.human_input.handler import console_input_callback
+
 
 settings = Settings(
     execution_engine="asyncio",
@@ -30,7 +32,9 @@ settings = Settings(
 
 # Settings can either be specified programmatically,
 # or loaded from mcp_agent.config.yaml/mcp_agent.secrets.yaml
-app = MCPApp(name="mcp_basic_agent")  # settings=settings)
+app = MCPApp(
+    name="mcp_basic_agent", human_input_callback=console_input_callback
+)  # settings=settings)
 
 
 async def example_usage():
@@ -64,19 +68,14 @@ async def example_usage():
 
             # Get both resource and prompt in a single call
             combined_messages = await agent.create_prompt(
-                prompt_name="echo",
-                arguments={"message": "My name is John Doe."},
-                resource_uris="demo://docs/readme",
+                prompt_name="get_haiku_prompt",
+                arguments={"topic": "Mt. Fuji"},
+                resource_uris="demo://data/friends",
                 server_name="demo_server",
             )
 
             llm = await agent.attach_llm(OpenAIAugmentedLLM)
-            res = await llm.generate_str(
-                [
-                    "Summarise what are my prompts and resources?",
-                    *combined_messages,
-                ]
-            )
+            res = await llm.generate_str(combined_messages)
             logger.info(f"Summary: {res}")
 
 
