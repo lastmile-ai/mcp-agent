@@ -274,6 +274,26 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         self.model_selector = self.context.model_selector
         self.type_converter = type_converter
 
+    def share_memory_from(self, other: "AugmentedLLM"):
+        """
+        Share memory from another AugmentedLLM instance.
+
+        This creates a reference to the other instance's history, meaning both
+        instances will share the same memory object and any changes to history
+        in either instance will be reflected in both.
+
+        Args:
+        other: The AugmentedLLM instance to share memory from
+
+        Raises:
+        ValueError: If other is None or not an AugmentedLLM instance
+        """
+        if other is None:
+            raise ValueError("Cannot share memory from None")
+        if not isinstance(other, AugmentedLLM):
+            raise ValueError("Can only share memory from another AugmentedLLM instance")
+        self.history = other.history
+
     @abstractmethod
     async def generate(
         self,
