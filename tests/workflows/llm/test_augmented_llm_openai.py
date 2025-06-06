@@ -11,10 +11,7 @@ from openai.types.chat import (
 )
 from pydantic import BaseModel
 
-from mcp.types import (
-    TextContent,
-    SamplingMessage,
-)
+from mcp.types import TextContent, SamplingMessage, PromptMessage
 
 from mcp_agent.config import OpenAISettings
 from mcp_agent.workflows.llm.augmented_llm_openai import (
@@ -462,3 +459,185 @@ class TestOpenAIAugmentedLLM:
         assert openai_param["role"] == "user"
         assert isinstance(openai_param["content"], list)
         assert openai_param["content"][0]["text"] == "Test MCP content"
+
+    # Test: Generate with String Input
+    @pytest.mark.asyncio
+    async def test_generate_with_string_input(self, mock_llm, default_usage):
+        """
+        Tests generate() method with string input (Message type from Union).
+        """
+        # Setup mock executor
+        mock_llm.executor.execute = AsyncMock(
+            return_value=self.create_text_response(
+                "String input response", usage=default_usage
+            )
+        )
+
+        # Call LLM with string message
+        responses = await mock_llm.generate("This is a simple string message")
+
+        # Assertions
+        assert len(responses) == 1
+        assert responses[0].content == "String input response"
+
+        # Check the arguments passed to execute
+        first_call_args = mock_llm.executor.execute.call_args_list[0][0]
+        request_obj = first_call_args[1]
+        assert request_obj.payload["messages"][0]["role"] == "user"
+        assert (
+            request_obj.payload["messages"][0]["content"]
+            == "This is a simple string message"
+        )
+
+    # Test: Generate with MessageParamT Input
+    @pytest.mark.asyncio
+    async def test_generate_with_message_param_input(self, mock_llm, default_usage):
+        """
+        Tests generate() method with MessageParamT input (OpenAI message dict).
+        """
+        # Setup mock executor
+        mock_llm.executor.execute = AsyncMock(
+            return_value=self.create_text_response(
+                "MessageParamT input response", usage=default_usage
+            )
+        )
+
+        # Create MessageParamT (OpenAI message dict)
+        message_param = {"role": "user", "content": "This is a MessageParamT message"}
+
+        # Call LLM with MessageParamT
+        responses = await mock_llm.generate(message_param)
+
+        # Assertions
+        assert len(responses) == 1
+        assert responses[0].content == "MessageParamT input response"
+
+        # Check the arguments passed to execute
+        first_call_args = mock_llm.executor.execute.call_args_list[0][0]
+        request_obj = first_call_args[1]
+        assert request_obj.payload["messages"][0]["role"] == "user"
+        assert (
+            request_obj.payload["messages"][0]["content"]
+            == "This is a MessageParamT message"
+        )
+
+    # Test: Generate with PromptMessage Input
+    @pytest.mark.asyncio
+    async def test_generate_with_prompt_message_input(self, mock_llm, default_usage):
+        """
+        Tests generate() method with PromptMessage input (MCP PromptMessage).
+        """
+        # Setup mock executor
+        mock_llm.executor.execute = AsyncMock(
+            return_value=self.create_text_response(
+                "PromptMessage input response", usage=default_usage
+            )
+        )
+
+        # Create PromptMessage
+        prompt_message = PromptMessage(
+            role="user",
+            content=TextContent(type="text", text="This is a PromptMessage"),
+        )
+
+        # Call LLM with PromptMessage
+        responses = await mock_llm.generate(prompt_message)
+
+        # Assertions
+        assert len(responses) == 1
+        assert responses[0].content == "PromptMessage input response"
+
+    # Test: Generate with Mixed Message Types List
+    @pytest.mark.asyncio
+    async def test_generate_with_mixed_message_types(self, mock_llm, default_usage):
+        """
+        Tests generate() method with a list containing mixed message types.
+        """
+        # Setup mock executor
+        mock_llm.executor.execute = AsyncMock(
+            return_value=self.create_text_response(
+                "Mixed message types response", usage=default_usage
+            )
+        )
+
+        # Create list with mixed message types
+        messages = [
+            "String message",  # str
+            {"role": "assistant", "content": "MessageParamT response"},  # MessageParamT
+            PromptMessage(
+                role="user",
+                content=TextContent(type="text", text="PromptMessage content"),
+            ),
+        ]
+
+        # Call LLM with mixed message types
+        responses = await mock_llm.generate(messages)
+
+        # Assertions
+        assert len(responses) == 1
+        assert responses[0].content == "Mixed message types response"
+
+    # Test: Generate String with Mixed Message Types List
+    @pytest.mark.asyncio
+    async def test_generate_str_with_mixed_message_types(self, mock_llm, default_usage):
+        """
+        Tests generate_str() method with mixed message types.
+        """
+        # Setup mock executor
+        mock_llm.executor.execute = AsyncMock(
+            return_value=self.create_text_response(
+                "Mixed types string response", usage=default_usage
+            )
+        )
+
+        # Create list with mixed message types
+        messages = [
+            "String message",
+            {"role": "assistant", "content": "MessageParamT response"},
+            PromptMessage(
+                role="user",
+                content=TextContent(type="text", text="PromptMessage content"),
+            ),
+        ]
+
+        # Call generate_str with mixed message types
+        response_text = await mock_llm.generate_str(messages)
+
+        # Assertions
+        assert response_text == "Mixed types string response"
+
+    # Test: Generate Structured with Mixed Message Types List
+    @pytest.mark.asyncio
+    async def test_generate_structured_with_mixed_message_types(self, mock_llm):
+        """
+        Tests generate_structured() method with mixed message types.
+        """
+
+        # Define a simple response model
+        class TestResponseModel(BaseModel):
+            name: str
+            value: int
+
+        # Create list with mixed message types
+        messages = [
+            "String message",
+            {"role": "assistant", "content": "MessageParamT response"},
+            PromptMessage(
+                role="user",
+                content=TextContent(type="text", text="PromptMessage content"),
+            ),
+        ]
+
+        mock_llm.generate_str = AsyncMock(return_value="name: MixedTypes, value: 123")
+        # Patch executor.execute to return the expected TestResponseModel instance
+        mock_llm.executor.execute = AsyncMock(
+            return_value=TestResponseModel(name="MixedTypes", value=123)
+        )
+
+        # Call generate_structured with mixed message types
+        result = await mock_llm.generate_structured(messages, TestResponseModel)
+
+        # Assertions
+        assert isinstance(result, TestResponseModel)
+        assert result.name == "MixedTypes"
+        assert result.value == 123

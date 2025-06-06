@@ -1084,3 +1084,149 @@ class TestAzureAugmentedLLM:
         assert param_message.tool_calls is not None
         assert len(param_message.tool_calls) == 1
         assert param_message.tool_calls[0].function.name == "test_tool"
+
+    # Test: Generate with String Input
+    @pytest.mark.asyncio
+    async def test_generate_with_string_input(self, mock_llm, default_usage):
+        """
+        Tests generate() method with string input.
+        """
+        mock_llm.executor.execute = AsyncMock(
+            return_value=self.create_text_response(
+                "String input response", usage=default_usage
+            )
+        )
+        responses = await mock_llm.generate("This is a simple string message")
+        assert len(responses) == 1
+        assert responses[0].content == "String input response"
+        req = mock_llm.executor.execute.call_args[0][1]
+        assert isinstance(req.payload["messages"][0], UserMessage)
+        assert req.payload["messages"][0].content == "This is a simple string message"
+
+    # Test: Generate with MessageParamT Input
+    @pytest.mark.asyncio
+    async def test_generate_with_message_param_input(self, mock_llm, default_usage):
+        """
+        Tests generate() method with MessageParamT input (Azure message dict).
+        """
+        mock_llm.executor.execute = AsyncMock(
+            return_value=self.create_text_response(
+                "MessageParamT input response", usage=default_usage
+            )
+        )
+        # Create MessageParamT (Azure message dict)
+        message_param = UserMessage(content="This is a MessageParamT message")
+        responses = await mock_llm.generate(message_param)
+        assert len(responses) == 1
+        assert responses[0].content == "MessageParamT input response"
+        req = mock_llm.executor.execute.call_args[0][1]
+        assert isinstance(req.payload["messages"][0], UserMessage)
+        assert req.payload["messages"][0].content == "This is a MessageParamT message"
+
+    # Test: Generate with PromptMessage Input
+    @pytest.mark.asyncio
+    async def test_generate_with_prompt_message_input(self, mock_llm, default_usage):
+        """
+        Tests generate() method with PromptMessage input (MCP PromptMessage).
+        """
+        from mcp.types import PromptMessage, TextContent
+
+        mock_llm.executor.execute = AsyncMock(
+            return_value=self.create_text_response(
+                "PromptMessage input response", usage=default_usage
+            )
+        )
+        prompt_message = PromptMessage(
+            role="user",
+            content=TextContent(type="text", text="This is a PromptMessage"),
+        )
+        responses = await mock_llm.generate(prompt_message)
+        assert len(responses) == 1
+        assert responses[0].content == "PromptMessage input response"
+        req = mock_llm.executor.execute.call_args[0][1]
+        # Should be converted to UserMessage
+        assert isinstance(req.payload["messages"][0], UserMessage)
+        assert req.payload["messages"][0].content[0].text == "This is a PromptMessage"
+
+    # Test: Generate with Mixed Message Types List
+    @pytest.mark.asyncio
+    async def test_generate_with_mixed_message_types(self, mock_llm, default_usage):
+        """
+        Tests generate() method with a list containing mixed message types.
+        """
+        from mcp.types import PromptMessage, TextContent
+
+        mock_llm.executor.execute = AsyncMock(
+            return_value=self.create_text_response(
+                "Mixed message types response", usage=default_usage
+            )
+        )
+        messages = [
+            "String message",
+            UserMessage(content="MessageParamT response"),
+            PromptMessage(
+                role="user",
+                content=TextContent(type="text", text="PromptMessage content"),
+            ),
+        ]
+        responses = await mock_llm.generate(messages)
+        assert len(responses) == 1
+        assert responses[0].content == "Mixed message types response"
+
+    # Test: Generate String with Mixed Message Types List
+    @pytest.mark.asyncio
+    async def test_generate_str_with_mixed_message_types(self, mock_llm, default_usage):
+        """
+        Tests generate_str() method with mixed message types.
+        """
+        from mcp.types import PromptMessage, TextContent
+
+        mock_llm.executor.execute = AsyncMock(
+            return_value=self.create_text_response(
+                "Mixed types string response", usage=default_usage
+            )
+        )
+        messages = [
+            "String message",
+            UserMessage(content="MessageParamT response"),
+            PromptMessage(
+                role="user",
+                content=TextContent(type="text", text="PromptMessage content"),
+            ),
+        ]
+        response_text = await mock_llm.generate_str(messages)
+        assert response_text == "Mixed types string response"
+
+    # Test: Generate Structured with Mixed Message Types
+    @pytest.mark.asyncio
+    async def test_generate_structured_with_mixed_message_types(
+        self, mock_llm, default_usage
+    ):
+        """
+        Tests generate_structured() method with mixed message types.
+        """
+        from pydantic import BaseModel
+        from mcp.types import PromptMessage, TextContent
+
+        class TestResponseModel(BaseModel):
+            name: str
+            value: int
+
+        messages = [
+            "String message",
+            UserMessage(content="MessageParamT response"),
+            PromptMessage(
+                role="user",
+                content=TextContent(type="text", text="PromptMessage content"),
+            ),
+        ]
+
+        mock_llm.executor.execute = AsyncMock(
+            return_value=self.create_text_response(
+                '{"name": "MixedTypes", "value": 123}', usage=default_usage
+            )
+        )
+        result = await mock_llm.generate_structured(messages, TestResponseModel)
+        assert isinstance(result, TestResponseModel)
+        assert result.name == "MixedTypes"
+        assert result.value == 123

@@ -56,6 +56,7 @@ from mcp_agent.workflows.llm.augmented_llm import (
     CallToolResult,
 )
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.workflows.llm.multipart_converter_anthropic import AnthropicConverter
 
 MessageParamContent = Union[
     str,
@@ -154,13 +155,9 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
 
             if params.use_history:
                 messages.extend(self.history.get())
-
-            if isinstance(message, str):
-                messages.append({"role": "user", "content": message})
-            elif isinstance(message, list):
-                messages.extend(message)
-            else:
-                messages.append(message)
+            messages.extend(
+                AnthropicConverter.convert_mixed_messages_to_anthropic(message)
+            )
 
             response = await self.agent.list_tools()
             available_tools: List[ToolParam] = [

@@ -1,7 +1,7 @@
 import asyncio
 from typing import List, Literal, Dict, Optional, TypeVar, TYPE_CHECKING
 
-from mcp import ServerCapabilities
+from mcp import ListResourcesResult, ReadResourceResult, ServerCapabilities
 from opentelemetry import trace
 from pydantic import BaseModel
 from mcp.client.session import ClientSession
@@ -15,6 +15,7 @@ from mcp.types import (
     Prompt,
     Tool,
     TextContent,
+    Resource,
 )
 
 from mcp_agent.logging.event_progress import ProgressAction
@@ -60,6 +61,16 @@ class NamespacedPrompt(BaseModel):
     prompt: Prompt
     server_name: str
     namespaced_prompt_name: str
+
+
+class NamespacedResource(BaseModel):
+    """
+    A resource that is namespaced by server name.
+    """
+
+    resource: Resource
+    server_name: str
+    namespaced_resource_name: str
 
 
 class MCPAggregator(ContextDependent):
@@ -123,6 +134,12 @@ class MCPAggregator(ContextDependent):
         # Cache for prompt objects, maps server_name -> list of prompt objects
         self._server_to_prompt_map: Dict[str, List[NamespacedPrompt]] = {}
         self._prompt_map_lock = asyncio.Lock()
+
+        # Maps namespaced_resource_name -> namespaced resource info
+        self._namespaced_resource_map: Dict[str, NamespacedResource] = {}
+        # Cache for resource objects, maps server_name -> list of resource objects
+        self._server_to_resource_map: Dict[str, List[NamespacedResource]] = {}
+        self._resource_map_lock = asyncio.Lock()
 
     async def initialize(self, force: bool = False):
         """Initialize the application."""
@@ -314,7 +331,7 @@ class MCPAggregator(ContextDependent):
             if server_name not in self.server_names:
                 raise ValueError(f"Server '{server_name}' not found in server list")
 
-            _, tools, prompts = await self._fetch_capabilities(server_name)
+            _, tools, prompts, resources = await self._fetch_capabilities(server_name)
 
             # Process tools
             async with self._tool_map_lock:
@@ -346,11 +363,30 @@ class MCPAggregator(ContextDependent):
                     )
                     self._server_to_prompt_map[server_name].append(namespaced_prompt)
 
+            # Process resources
+            async with self._resource_map_lock:
+                self._server_to_resource_map[server_name] = []
+                for resource in resources:
+                    namespaced_resource_name = f"{server_name}{SEP}{resource.name}"
+                    namespaced_resource = NamespacedResource(
+                        resource=resource,
+                        server_name=server_name,
+                        namespaced_resource_name=namespaced_resource_name,
+                    )
+
+                    self._namespaced_resource_map[namespaced_resource_name] = (
+                        namespaced_resource
+                    )
+                    self._server_to_resource_map[server_name].append(
+                        namespaced_resource
+                    )
+
             event_metadata = {
                 "server_name": server_name,
                 "agent_name": self.agent_name,
                 "tool_count": len(tools),
                 "prompt_count": len(prompts),
+                "resource_count": len(resources),
             }
 
             logger.debug(
@@ -373,7 +409,13 @@ class MCPAggregator(ContextDependent):
                         f"prompt.{prompt.name}", prompt.description or "No description"
                     )
 
-            return tools, prompts
+                for resource in resources:
+                    span.set_attribute(
+                        f"resource.{resource.name}",
+                        resource.description or "No description",
+                    )
+
+            return tools, prompts, resources
 
     async def load_servers(self, force: bool = False):
         """
@@ -401,6 +443,10 @@ class MCPAggregator(ContextDependent):
                 self._namespaced_prompt_map.clear()
                 self._server_to_prompt_map.clear()
 
+            async with self._resource_map_lock:
+                self._namespaced_resource_map.clear()
+                self._server_to_resource_map.clear()
+
             # TODO: saqadri (FA1) - Verify that this can be removed
             # if self.connection_persistence:
             #     # Start all the servers
@@ -409,7 +455,7 @@ class MCPAggregator(ContextDependent):
             #         return_exceptions=True,
             #     )
 
-            # Load tools and prompts from all servers concurrently
+            # Load tools, prompts and resources from all servers concurrently
             results = await asyncio.gather(
                 *(self.load_server(server_name) for server_name in self.server_names),
                 return_exceptions=True,
@@ -599,6 +645,151 @@ class MCPAggregator(ContextDependent):
                     )
 
             return result
+
+    async def list_resources(self, server_name: str | None = None):
+        """
+        :return: Resources from all servers aggregated, and renamed to be dot-namespaced by server name.
+        """
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.list_resources"
+        ) as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent_name)
+            span.set_attribute("initialized", self.initialized)
+            if not self.initialized:
+                await self.load_servers()
+
+            if server_name:
+                span.set_attribute("server_name", server_name)
+                result = ListResourcesResult(
+                    resources=[
+                        namespaced_resource.resource.model_copy(
+                            update={
+                                "name": namespaced_resource.namespaced_resource_name
+                            }
+                        )
+                        for namespaced_resource in self._server_to_resource_map.get(
+                            server_name, []
+                        )
+                    ]
+                )
+
+            else:
+                result = ListResourcesResult(
+                    resources=[
+                        namespaced_resource.resource.model_copy(
+                            update={"name": namespaced_resource_name}
+                        )
+                        for namespaced_resource_name, namespaced_resource in self._namespaced_resource_map.items()
+                    ]
+                )
+
+            if self.context.tracing_enabled:
+                span.set_attribute("resource_count", len(result.resources))
+                for resource in result.resources:
+                    span.set_attribute(
+                        f"resource.{resource.name}",
+                        resource.description or "No description",
+                    )
+
+            return result
+
+    async def read_resource(self, uri: str, server_name: str | None = None):
+        """
+        Read a resource from a server by its URI.
+
+        Args:
+            uri: The URI of the resource to read.
+            server_name: Optionally restrict search to a specific server.
+
+        Returns:
+            Resource object, or None if not found
+        """
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.read_resource"
+        ) as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent_name)
+            span.set_attribute("initialized", self.initialized)
+            if not self.initialized:
+                await self.load_servers()
+
+            span.set_attribute("uri", uri)
+
+            # If server_name is provided, use that server
+            if server_name:
+                span.set_attribute("server_name", server_name)
+            else:
+                # Use the URI to find the server name
+                server_name = self._find_server_name_from_uri(uri)
+                span.set_attribute("parsed_server_name", server_name)
+
+            if server_name is None:
+                logger.error(f"Resource with uri '{uri}' not found in any server")
+                span.set_status(trace.Status(trace.StatusCode.ERROR))
+                span.record_exception(
+                    ValueError(f"Resource with uri '{uri}' not found in any server")
+                )
+                return ReadResourceResult(contents=[])
+
+            async def try_read_resource(client: ClientSession):
+                try:
+                    res = await client.read_resource(uri=uri)
+                    return res
+                except Exception as e:
+                    logger.error(
+                        f"Error reading resource with uri '{uri}'"
+                        + (f" from server '{server_name}'" if server_name else "")
+                        + f": {e}"
+                    )
+                    span.set_status(trace.Status(trace.StatusCode.ERROR))
+                    span.record_exception(e)
+                    return ReadResourceResult(contents=[])
+
+            if self.connection_persistence:
+                server_conn = await self._persistent_connection_manager.get_server(
+                    server_name, client_session_factory=MCPAgentClientSession
+                )
+                res = await try_read_resource(server_conn.session)
+                # TODO: jerron - annotate span for result
+                return res
+            else:
+                logger.debug(
+                    f"Creating temporary connection to server: {server_name}",
+                    data={
+                        "progress_action": ProgressAction.STARTING,
+                        "server_name": server_name,
+                        "agent_name": self.agent_name,
+                    },
+                )
+                span.add_event(
+                    "temporary_connection_created",
+                    {
+                        "server_name": server_name,
+                        GEN_AI_AGENT_NAME: self.agent_name,
+                    },
+                )
+                async with gen_client(
+                    server_name, server_registry=self.context.server_registry
+                ) as client:
+                    result = await try_read_resource(client)
+                    logger.debug(
+                        f"Closing temporary connection to server: {server_name}",
+                        data={
+                            "progress_action": ProgressAction.SHUTDOWN,
+                            "server_name": server_name,
+                            "agent_name": self.agent_name,
+                        },
+                    )
+                    span.add_event(
+                        "temporary_connection_closed",
+                        {
+                            "server_name": server_name,
+                            GEN_AI_AGENT_NAME: self.agent_name,
+                        },
+                    )
+                    # TODO: jerron - annotate span for result
+                    return result
 
     async def call_tool(
         self, name: str, arguments: dict | None = None, server_name: str | None = None
@@ -999,6 +1190,29 @@ class MCPAggregator(ContextDependent):
         # No match found
         return None, None
 
+    def _find_server_name_from_uri(self, uri: str) -> str:
+        """
+        Find the server name from a resource URI.
+
+        Args:
+            uri: The URI of the resource.
+
+        Returns:
+            Server name if found, None otherwise
+        """
+        capability_map = self._server_to_resource_map
+
+        def getter(item: NamespacedResource):
+            return str(item.resource.uri)
+
+        for server_name, resources in capability_map.items():
+            for resource in resources:
+                if uri == getter(resource):
+                    return server_name
+
+        # No match found
+        return None
+
     async def _start_server(self, server_name: str):
         if self.connection_persistence:
             logger.info(
@@ -1091,9 +1305,42 @@ class MCPAggregator(ContextDependent):
             logger.error(f"Error loading prompts from server '{server_name}': {e}")
             return prompts
 
+    async def _fetch_resources(
+        self, client: ClientSession, server_name: str
+    ) -> list[Resource]:
+        # Only fetch resources if the server supports them
+        capabilities = await self.get_capabilities(server_name)
+        if not capabilities or not getattr(capabilities, "resources", None):
+            logger.debug(f"Server '{server_name}' does not support resources")
+            return []
+
+        resources: List[Resource] = []
+
+        try:
+            result = await client.list_resources()
+            if not result:
+                return resources
+
+            cursor = getattr(result, "nextCursor", None)
+            resources.extend(getattr(result, "resources", []) or [])
+
+            while cursor:
+                result = await client.list_resources(cursor=cursor)
+                if not result:
+                    return resources
+
+                cursor = getattr(result, "nextCursor", None)
+                resources.extend(getattr(result, "resources", []) or [])
+
+            return resources
+        except Exception as e:
+            logger.error(f"Error loading resources from server '{server_name}': {e}")
+            return resources
+
     async def _fetch_capabilities(self, server_name: str):
         tools: List[Tool] = []
         prompts: List[Prompt] = []
+        resources: List[Resource] = []
 
         if self.connection_persistence:
             server_connection = await self._persistent_connection_manager.get_server(
@@ -1101,14 +1348,18 @@ class MCPAggregator(ContextDependent):
             )
             tools = await self._fetch_tools(server_connection.session, server_name)
             prompts = await self._fetch_prompts(server_connection.session, server_name)
+            resources = await self._fetch_resources(
+                server_connection.session, server_name
+            )
         else:
             async with gen_client(
                 server_name, server_registry=self.context.server_registry
             ) as client:
                 tools = await self._fetch_tools(client, server_name)
                 prompts = await self._fetch_prompts(client, server_name)
+                resources = await self._fetch_resources(client, server_name)
 
-        return server_name, tools, prompts
+        return server_name, tools, prompts, resources
 
 
 class MCPCompoundServer(Server):
@@ -1120,12 +1371,13 @@ class MCPCompoundServer(Server):
         super().__init__(name)
         self.aggregator = MCPAggregator(server_names)
 
-        # Register handlers for tools, prompts
-        # TODO: saqadri - once we support resources, add handlers for those as well
+        # Register handlers for tools, prompts, and resources
         self.list_tools()(self._list_tools)
         self.call_tool()(self._call_tool)
         self.list_prompts()(self._list_prompts)
         self.get_prompt()(self._get_prompt)
+        self.list_resources()(self._list_resources)
+        self.read_resource()(self._read_resource)
 
     async def _list_tools(self) -> List[Tool]:
         """List all tools aggregated from connected MCP servers."""
@@ -1169,6 +1421,22 @@ class MCPCompoundServer(Server):
             return GetPromptResult(
                 isError=True, description=f"Error getting prompt: {e}", messages=[]
             )
+
+    async def _list_resources(self):
+        """List available resources from the connected MCP servers."""
+        resources = await self.aggregator.list_resources()
+        return resources
+
+    async def _read_resource(self, uri: str, server_name: str | None = None):
+        """
+        Get a resource from the aggregated servers by URI.
+
+        Args:
+            uri: The URI of the resource to get.
+            server_name: Optional server name
+        """
+        resource = await self.aggregator.read_resource(uri=uri, server_name=server_name)
+        return resource
 
     async def run_stdio_async(self) -> None:
         """Run the server using stdio transport."""

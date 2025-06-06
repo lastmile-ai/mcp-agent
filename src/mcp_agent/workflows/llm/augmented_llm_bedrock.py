@@ -26,6 +26,7 @@ from mcp_agent.workflows.llm.augmented_llm import (
     RequestParams,
 )
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.workflows.llm.multipart_converter_bedrock import BedrockConverter
 
 if TYPE_CHECKING:
     from mypy_boto3_bedrock_runtime.type_defs import (
@@ -100,12 +101,7 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
         if params.use_history:
             messages.extend(self.history.get())
 
-        if isinstance(message, str):
-            messages.append({"role": "user", "content": [{"text": message}]})
-        elif isinstance(message, list):
-            messages.extend(message)
-        else:
-            messages.append(message)
+        messages.extend(BedrockConverter.convert_mixed_messages_to_bedrock(message))
 
         response = await self.agent.list_tools()
 

@@ -51,6 +51,7 @@ from mcp_agent.utils.common import ensure_serializable, typed_dict_extras
 from mcp_agent.utils.pydantic_type_serializer import serialize_model, deserialize_model
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
+    MessageTypes,
     ModelT,
     MCPMessageParam,
     MCPMessageResult,
@@ -58,6 +59,7 @@ from mcp_agent.workflows.llm.augmented_llm import (
     RequestParams,
 )
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.workflows.llm.multipart_converter_openai import OpenAIConverter
 
 
 class RequestCompletionRequest(BaseModel):
@@ -143,7 +145,11 @@ class OpenAIAugmentedLLM(
 
         return ChatCompletionAssistantMessageParam(**assistant_message_params)
 
-    async def generate(self, message, request_params: RequestParams | None = None):
+    async def generate(
+        self,
+        message,
+        request_params: RequestParams | None = None,
+    ):
         """
         Process a query using an LLM and available tools.
         The default implementation uses OpenAI's ChatCompletion as the LLM.
@@ -173,15 +179,7 @@ class OpenAIAugmentedLLM(
                         role="system", content=system_prompt
                     )
                 )
-
-            if isinstance(message, str):
-                messages.append(
-                    ChatCompletionUserMessageParam(role="user", content=message)
-                )
-            elif isinstance(message, list):
-                messages.extend(message)
-            else:
-                messages.append(message)
+            messages.extend((OpenAIConverter.convert_mixed_messages_to_openai(message)))
 
             response: ListToolsResult = await self.agent.list_tools()
             available_tools: List[ChatCompletionToolParam] = [
@@ -562,7 +560,7 @@ class OpenAIAugmentedLLM(
     def _annotate_span_for_generation_message(
         self,
         span: trace.Span,
-        message: ChatCompletionMessageParam | str | List[ChatCompletionMessageParam],
+        message: MessageTypes,
     ) -> None:
         """Annotate the span with the message content."""
         if not self.context.tracing_enabled:

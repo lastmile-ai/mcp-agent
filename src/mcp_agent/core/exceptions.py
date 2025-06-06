@@ -5,7 +5,7 @@ Enables user-friendly error handling for common issues.
 
 
 class MCPAgentError(Exception):
-    """Base exception class for FastAgent errors"""
+    """Base exception class for mcp-agent errors"""
 
     def __init__(self, message: str, details: str = ""):
         self.message = message

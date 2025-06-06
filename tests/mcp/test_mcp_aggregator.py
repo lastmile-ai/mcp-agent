@@ -628,47 +628,59 @@ async def test_mcp_aggregator_load_server_and_load_servers(monkeypatch):
     )
     aggregator.initialized = False
 
-    # Patch _fetch_capabilities to return different tools/prompts for each server
-    from mcp.types import Tool, Prompt
+    # Patch _fetch_capabilities to return different tools/prompts/resources for each server
+    from mcp.types import Tool, Prompt, Resource
 
     tool1 = Tool(name="toolA", description="desc", inputSchema={})
     prompt1 = Prompt(name="promptA", description="desc")
+    resource1 = Resource(
+        uri="file://srv1/resourceA", name="resourceA", description="desc"
+    )
     tool2 = Tool(name="toolB", description="desc", inputSchema={})
     prompt2 = Prompt(name="promptB", description="desc")
+    resource2 = Resource(
+        uri="file://srv2/resourceB", name="resourceB", description="desc"
+    )
 
     async def fake_fetch_capabilities(server_name):
         if server_name == "srv1":
-            return ("srv1", [tool1], [prompt1])
+            return ("srv1", [tool1], [prompt1], [resource1])
         elif server_name == "srv2":
-            return ("srv2", [tool2], [prompt2])
+            return ("srv2", [tool2], [prompt2], [resource2])
         else:
             raise ValueError("Unknown server")
 
     monkeypatch.setattr(aggregator, "_fetch_capabilities", fake_fetch_capabilities)
 
     # Test load_server for srv1
-    tools, prompts = await aggregator.load_server("srv1")
+    tools, prompts, resources = await aggregator.load_server("srv1")
     assert len(tools) == 1 and tools[0].name == "toolA"
     assert len(prompts) == 1 and prompts[0].name == "promptA"
+    assert len(resources) == 1 and resources[0].name == "resourceA"
     assert "srv1_toolA" in aggregator._namespaced_tool_map
     assert "srv1_promptA" in aggregator._namespaced_prompt_map
+    assert "srv1_resourceA" in aggregator._namespaced_resource_map
 
     # Test load_servers (should call for both servers)
     aggregator._namespaced_tool_map.clear()
     aggregator._server_to_tool_map.clear()
     aggregator._namespaced_prompt_map.clear()
     aggregator._server_to_prompt_map.clear()
+    aggregator._namespaced_resource_map.clear()
+    aggregator._server_to_resource_map.clear()
     aggregator.initialized = False
     await aggregator.load_servers()
     assert "srv1_toolA" in aggregator._namespaced_tool_map
     assert "srv2_toolB" in aggregator._namespaced_tool_map
+    assert "srv1_resourceA" in aggregator._namespaced_resource_map
+    assert "srv2_resourceB" in aggregator._namespaced_resource_map
     assert "srv1_promptA" in aggregator._namespaced_prompt_map
     assert "srv2_promptB" in aggregator._namespaced_prompt_map
 
     # Error handling: _fetch_capabilities raises for one server
     async def fetch_capabilities_with_error(server_name):
         if server_name == "srv1":
-            return ("srv1", [tool1], [prompt1])
+            return ("srv1", [tool1], [prompt1], [resource1])
         else:
             raise RuntimeError("Simulated error")
 

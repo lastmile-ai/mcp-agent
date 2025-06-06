@@ -57,6 +57,7 @@ from mcp_agent.workflows.llm.augmented_llm import (
     RequestParams,
 )
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.workflows.llm.multipart_converter_azure import AzureConverter
 
 MessageParam = Union[
     SystemMessage, UserMessage, AssistantMessage, ToolMessage, DeveloperMessage
@@ -152,12 +153,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
                 messages.append(SystemMessage(content=system_prompt))
                 span.set_attribute("system_prompt", system_prompt)
 
-            if isinstance(message, str):
-                messages.append(UserMessage(content=message))
-            elif isinstance(message, list):
-                messages.extend(message)
-            else:
-                messages.append(message)
+            messages.extend(AzureConverter.convert_mixed_messages_to_azure(message))
 
             response = await self.agent.list_tools()
 

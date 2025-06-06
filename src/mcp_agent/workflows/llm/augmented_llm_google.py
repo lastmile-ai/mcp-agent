@@ -29,6 +29,7 @@ from mcp_agent.workflows.llm.augmented_llm import (
     RequestParams,
     CallToolResult,
 )
+from mcp_agent.workflows.llm.multipart_converter_google import GoogleConverter
 
 
 class GoogleAugmentedLLM(
@@ -84,14 +85,7 @@ class GoogleAugmentedLLM(
         if params.use_history:
             messages.extend(self.history.get())
 
-        if isinstance(message, str):
-            messages.append(
-                types.Content(role="user", parts=[types.Part.from_text(text=message)])
-            )
-        elif isinstance(message, list):
-            messages.extend(message)
-        else:
-            messages.append(message)
+        messages.extend(GoogleConverter.convert_mixed_messages_to_google(message))
 
         response = await self.agent.list_tools()
 

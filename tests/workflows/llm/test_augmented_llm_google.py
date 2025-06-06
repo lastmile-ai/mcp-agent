@@ -628,3 +628,168 @@ class TestGoogleAugmentedLLM:
         assert "optionalField" in transformed["properties"]
         assert transformed["properties"]["optionalField"]["type"] == "string"
         assert transformed["properties"]["optionalField"]["nullable"] is True
+
+    # Test: Generate with String Input
+    @pytest.mark.asyncio
+    async def test_generate_with_string_input(self, mock_llm):
+        """
+        Tests generate() method with string input.
+        """
+
+        mock_llm.executor.execute = AsyncMock(
+            return_value=self.create_text_response("String input response")
+        )
+        responses = await mock_llm.generate("This is a simple string message")
+        assert len(responses) == 1
+        assert responses[0].parts[0].text == "String input response"
+        req = mock_llm.executor.execute.call_args[0][1]
+        assert req.payload["contents"][0].role == "user"
+        assert (
+            req.payload["contents"][0].parts[0].text
+            == "This is a simple string message"
+        )
+
+    # Test: Generate with MessageParamT Input
+    @pytest.mark.asyncio
+    async def test_generate_with_message_param_input(self, mock_llm):
+        """
+        Tests generate() method with MessageParamT input (Google Content).
+        """
+        from google.genai import types
+
+        mock_llm.executor.execute = AsyncMock(
+            return_value=self.create_text_response("MessageParamT input response")
+        )
+        # Create MessageParamT (Google Content)
+        message_param = types.Content(
+            role="user",
+            parts=[types.Part.from_text(text="This is a MessageParamT message")],
+        )
+        responses = await mock_llm.generate(message_param)
+        assert len(responses) == 1
+        assert responses[0].parts[0].text == "MessageParamT input response"
+        req = mock_llm.executor.execute.call_args[0][1]
+        assert req.payload["contents"][0].role == "user"
+        assert (
+            req.payload["contents"][0].parts[0].text
+            == "This is a MessageParamT message"
+        )
+
+    # Test: Generate with PromptMessage Input
+    @pytest.mark.asyncio
+    async def test_generate_with_prompt_message_input(self, mock_llm):
+        """
+        Tests generate() method with PromptMessage input (MCP PromptMessage).
+        """
+        from mcp.types import PromptMessage, TextContent
+
+        mock_llm.executor.execute = AsyncMock(
+            return_value=self.create_text_response("PromptMessage input response")
+        )
+        prompt_message = PromptMessage(
+            role="user",
+            content=TextContent(type="text", text="This is a PromptMessage"),
+        )
+        responses = await mock_llm.generate(prompt_message)
+        assert len(responses) == 1
+        assert responses[0].parts[0].text == "PromptMessage input response"
+        req = mock_llm.executor.execute.call_args[0][1]
+        assert req.payload["contents"][0].role == "user"
+        assert req.payload["contents"][0].parts[0].text == "This is a PromptMessage"
+
+    # Test: Generate with Mixed Message Types List
+    @pytest.mark.asyncio
+    async def test_generate_with_mixed_message_types(self, mock_llm):
+        """
+        Tests generate() method with a list containing mixed message types.
+        """
+        from mcp.types import PromptMessage, TextContent
+        from google.genai import types
+
+        mock_llm.executor.execute = AsyncMock(
+            return_value=self.create_text_response("Mixed message types response")
+        )
+        messages = [
+            "String message",
+            types.Content(
+                role="user", parts=[types.Part.from_text(text="MessageParamT response")]
+            ),
+            PromptMessage(
+                role="user",
+                content=TextContent(type="text", text="PromptMessage content"),
+            ),
+        ]
+        responses = await mock_llm.generate(messages)
+        assert len(responses) == 1
+        assert responses[0].parts[0].text == "Mixed message types response"
+
+    # Test: Generate String with Mixed Message Types List
+    @pytest.mark.asyncio
+    async def test_generate_str_with_mixed_message_types(self, mock_llm):
+        """
+        Tests generate_str() method with mixed message types.
+        """
+        from mcp.types import PromptMessage, TextContent
+        from google.genai import types
+
+        mock_llm.executor.execute = AsyncMock(
+            return_value=self.create_text_response("Mixed types string response")
+        )
+        messages = [
+            "String message",
+            types.Content(
+                role="user", parts=[types.Part.from_text(text="MessageParamT response")]
+            ),
+            PromptMessage(
+                role="user",
+                content=TextContent(type="text", text="PromptMessage content"),
+            ),
+        ]
+        response_text = await mock_llm.generate_str(messages)
+        assert response_text == "Mixed types string response"
+
+    # Test: Generate Structured with Mixed Message Types
+    @pytest.mark.asyncio
+    async def test_generate_structured_with_mixed_message_types(self, mock_llm):
+        """
+        Tests generate_structured() method with mixed message types.
+        """
+        from pydantic import BaseModel
+        from mcp.types import PromptMessage, TextContent
+        from google.genai import types
+
+        class TestResponseModel(BaseModel):
+            name: str
+            value: int
+
+        messages = [
+            "String message",
+            types.Content(
+                role="user", parts=[types.Part.from_text(text="MessageParamT response")]
+            ),
+            PromptMessage(
+                role="user",
+                content=TextContent(type="text", text="PromptMessage content"),
+            ),
+        ]
+
+        # Mock the generate_str method
+        mock_llm.generate_str = AsyncMock(return_value="name: MixedTypes, value: 123")
+
+        # Patch instructor.from_genai to return the expected model
+        with patch("instructor.from_genai") as mock_instructor:
+            mock_client = MagicMock()
+            mock_client.chat.completions.create.return_value = TestResponseModel(
+                name="MixedTypes", value=123
+            )
+            mock_instructor.return_value = mock_client
+
+            # Patch executor.execute to be an async mock returning the expected value
+            mock_llm.executor.execute = AsyncMock(
+                return_value=TestResponseModel(name="MixedTypes", value=123)
+            )
+
+            result = await mock_llm.generate_structured(messages, TestResponseModel)
+            assert isinstance(result, TestResponseModel)
+            assert result.name == "MixedTypes"
+            assert result.value == 123

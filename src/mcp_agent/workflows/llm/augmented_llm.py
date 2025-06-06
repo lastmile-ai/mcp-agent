@@ -22,6 +22,7 @@ from mcp.types import (
     CreateMessageResult,
     SamplingMessage,
     TextContent,
+    PromptMessage,
 )
 
 from mcp_agent.core.context_dependent import ContextDependent
@@ -59,6 +60,10 @@ ModelT = TypeVar("ModelT")
 # TODO: saqadri - SamplingMessage is fairly limiting - consider extending
 MCPMessageParam = SamplingMessage
 MCPMessageResult = CreateMessageResult
+
+# Accepted message types for the AugmentedLLM generation methods.
+Message = Union[str, MessageParamT, PromptMessage]
+MessageTypes = Union[Message, List[Message]]
 
 
 class Memory(BaseModel, Generic[MessageParamT]):
@@ -158,21 +163,21 @@ class AugmentedLLMProtocol(Protocol, Generic[MessageParamT, MessageT]):
 
     async def generate(
         self,
-        message: str | MessageParamT | List[MessageParamT],
+        message: MessageTypes,
         request_params: RequestParams | None = None,
     ) -> List[MessageT]:
         """Request an LLM generation, which may run multiple iterations, and return the result"""
 
     async def generate_str(
         self,
-        message: str | MessageParamT | List[MessageParamT],
+        message: MessageTypes,
         request_params: RequestParams | None = None,
     ) -> str:
         """Request an LLM generation and return the string representation of the result"""
 
     async def generate_structured(
         self,
-        message: str | MessageParamT | List[MessageParamT],
+        message: MessageTypes,
         response_model: Type[ModelT],
         request_params: RequestParams | None = None,
     ) -> ModelT:
@@ -277,7 +282,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
     @abstractmethod
     async def generate(
         self,
-        message: str | MessageParamT | List[MessageParamT],
+        message: MessageTypes,
         request_params: RequestParams | None = None,
     ) -> List[MessageT]:
         """Request an LLM generation, which may run multiple iterations, and return the result"""
@@ -285,7 +290,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
     @abstractmethod
     async def generate_str(
         self,
-        message: str | MessageParamT | List[MessageParamT],
+        message: MessageTypes,
         request_params: RequestParams | None = None,
     ) -> str:
         """Request an LLM generation and return the string representation of the result"""
@@ -293,7 +298,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
     @abstractmethod
     async def generate_structured(
         self,
-        message: str | MessageParamT | List[MessageParamT],
+        message: MessageTypes,
         response_model: Type[ModelT],
         request_params: RequestParams | None = None,
     ) -> ModelT:
@@ -584,15 +589,12 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
             span.set_attribute("message.content", message)
         elif isinstance(message, list):
             for i, msg in enumerate(message):
-                attributes = self._extract_message_param_attributes_for_tracing(
-                    msg, prefix=f"message.{i}"
-                )
-                span.set_attributes(attributes)
+                if isinstance(msg, str):
+                    span.set_attribute(f"message.{i}", msg)
+                else:
+                    span.set_attribute(f"message.{i}.content", str(msg))
         else:
-            attributes = self._extract_message_param_attributes_for_tracing(
-                message, prefix="message"
-            )
-            span.set_attributes(attributes)
+            span.set_attribute("message", str(message))
 
     def _extract_message_param_attributes_for_tracing(
         self, message_param: MessageParamT, prefix: str = "message"
