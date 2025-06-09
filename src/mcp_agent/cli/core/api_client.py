@@ -1,5 +1,7 @@
 """API client implementation for the MCP Agent Cloud API."""
 
+import json
+
 from typing import Optional, Dict, Any
 
 import httpx
@@ -79,9 +81,10 @@ class APIClient:
         timeout: float = 30.0,
     ) -> httpx.Response:
         async with httpx.AsyncClient() as client:
-            response = await client.delete(
+            response = await client.request(
+                "DELETE",
                 f"{self.api_url}/{path.lstrip('/')}",
-                json=payload,
+                content=json.dumps(payload) if payload else None,
                 headers=self._get_headers(),
                 timeout=timeout,
             )

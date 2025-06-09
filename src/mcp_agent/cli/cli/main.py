@@ -8,6 +8,7 @@ from ..commands import (
     deploy_config,
     login,
 )
+from ..commands.app import delete_app
 from ..commands.apps import list_apps
 
 # Root typer for `mcp-agent` CLI commands
@@ -21,6 +22,11 @@ app.command(name="login")(login)
 app_cmd_apps = typer.Typer(help="Management commands for multiple MCP Apps")
 app_cmd_apps.command(name="list")(list_apps)
 app.add_typer(app_cmd_apps, name="apps", help="Manage MCP Apps")
+
+# Sub-typer for `mcp-agent app` commands
+app_cmd_app = typer.Typer(help="Management commands for an MCP App")
+app_cmd_app.command(name="delete")(delete_app)
+app.add_typer(app_cmd_app, name="app", help="Manage an MCP App")
 
 
 @app.callback()

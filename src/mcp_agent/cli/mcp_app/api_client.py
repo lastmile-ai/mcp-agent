@@ -322,3 +322,42 @@ class MCPAppClient(APIClient):
             raise ValueError("API didn't return the ID of the deleted app")
 
         return deleted_id
+
+    async def delete_app_configuration(self, app_config_id: str) -> str:
+        """Delete an MCP App Configuration via the API.
+
+        Args:
+            app_config_id: The UUID of the app configuration to delete
+
+        Returns:
+            str: The ID of the deleted app configuration
+
+        Raises:
+            ValueError: If the app_configuration_id is invalid
+            httpx.HTTPStatusError: If the API returns an error (e.g., 404, 403)
+            httpx.HTTPError: If the request fails
+        """
+        if not app_config_id or not isinstance(app_config_id, str):
+            raise ValueError(
+                f"Invalid app configuration ID format: {app_config_id}"
+            )
+
+        # Prepare request payload
+        payload = {
+            "appConfigId": app_config_id,
+        }
+
+        response = await self.delete(
+            "/mcp_app/delete_app_configuration", payload
+        )
+
+        # Parse the response to get the deleted app config ID
+        data = response.json()
+        deleted_id = data.get("appConfigId")
+
+        if not deleted_id:
+            raise ValueError(
+                "API didn't return the ID of the deleted app configuration"
+            )
+
+        return deleted_id

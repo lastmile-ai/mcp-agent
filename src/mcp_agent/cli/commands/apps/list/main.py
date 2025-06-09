@@ -108,12 +108,12 @@ def print_apps(apps: List[MCPApp]) -> None:
         padding=(0, 1),
     )
 
-    table.add_column("Name", style="cyan")
-    table.add_column("ID", style="bright_blue")
-    table.add_column("Description", style="cyan")
+    table.add_column("Name", style="cyan", overflow="fold")
+    table.add_column("ID", style="bright_blue", no_wrap=True)
+    table.add_column("Description", style="cyan", overflow="wrap")
     table.add_column("Server URL", style="bright_blue", no_wrap=True)
     table.add_column("Status", style="bright_blue", no_wrap=True)
-    table.add_column("Created", style="cyan")
+    table.add_column("Created", style="cyan", overflow="fold")
 
     for idx, app in enumerate(apps):
         is_last_row = idx == len(apps) - 1
@@ -138,13 +138,13 @@ def print_app_configs(app_configs: List[MCPAppConfiguration]) -> None:
         title="Configured MCP Apps", expand=False, border_style="blue"
     )
 
-    table.add_column("Name", style="cyan")
-    table.add_column("ID", style="bright_blue")
-    table.add_column("App ID", style="bright_blue")
-    table.add_column("Description", style="cyan")
+    table.add_column("Name", style="cyan", overflow="fold")
+    table.add_column("ID", style="bright_blue", no_wrap=True)
+    table.add_column("App ID", style="bright_blue", overflow="fold")
+    table.add_column("Description", style="cyan", overflow="wrap")
     table.add_column("Server URL", style="bright_blue", no_wrap=True)
     table.add_column("Status", style="bright_blue", no_wrap=True)
-    table.add_column("Created", style="cyan")
+    table.add_column("Created", style="cyan", overflow="fold")
 
     for idx, config in enumerate(app_configs):
         is_last_row = idx == len(app_configs) - 1
