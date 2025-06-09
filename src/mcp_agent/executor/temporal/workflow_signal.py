@@ -1,7 +1,8 @@
+import asyncio
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Any, Callable, Dict, Generic, Optional, TYPE_CHECKING
+from typing import Any, Callable, Dict, Generic, List, Optional, TYPE_CHECKING
 
 from temporalio import exceptions, workflow
 
@@ -177,6 +178,68 @@ class TemporalSignalHandler(BaseSignalHandler[SignalValueT]):
         except exceptions.TimeoutError as e:
             raise TimeoutError(f"Timeout waiting for signal {signal.name}") from e
 
+    async def wait_for_any_signal(
+        self,
+        signal_names: List[str],
+        workflow_id: str,
+        run_id: str | None = None,
+        timeout_seconds: int | None = None
+    ) -> Signal[SignalValueT]:
+        """
+        Waits for any of the specified signals using Temporal-safe primitives.
+        """
+        if not workflow._Runtime.current():
+            raise RuntimeError("wait_for_any_signal must be called from within a Temporal workflow")
+
+        # Get the mailbox safely from ContextVar
+        mailbox = self._mailbox_ref.get()
+        if mailbox is None:
+            raise RuntimeError(
+                "Signal mailbox not initialized for this workflow. Please call attach_to_workflow first."
+            )
+
+        # Get current versions for all signals
+        current_versions = {name: mailbox.version(name) for name in signal_names}
+        
+        logger.debug(
+            f"SignalMailbox.wait_for_any_signal: signal_names={signal_names}, current_versions={current_versions}"
+        )
+
+        # Wait for any signal to have a new version
+        def any_signal_updated():
+            for name in signal_names:
+                if mailbox.version(name) > current_versions[name]:
+                    return True
+            return False
+
+        try:
+            await workflow.wait_condition(
+                any_signal_updated,
+                timeout=timedelta(seconds=timeout_seconds) if timeout_seconds else None,
+            )
+
+            # Find which signal was updated
+            for name in signal_names:
+                if mailbox.version(name) > current_versions[name]:
+                    # Just get the value directly like wait_for_signal does
+                    payload = mailbox.value(name)
+                    
+                    logger.debug(
+                        f"SignalMailbox.wait_for_any_signal returned: name={name}, val={payload}"
+                    )
+                    return Signal(
+                        name=name,
+                        payload=payload,
+                        workflow_id=workflow_id,
+                        run_id=run_id or workflow.info().run_id
+                    )
+            
+            # Should not reach here
+            raise RuntimeError("wait_condition returned but no signal was found")
+            
+        except exceptions.TimeoutError as e:
+            raise asyncio.TimeoutError(f"Timeout waiting for signals: {signal_names}") from e
+
     def on_signal(self, signal_name: str):
         """
         Decorator that registers a callback for a signal.
@@ -228,7 +291,7 @@ class TemporalSignalHandler(BaseSignalHandler[SignalValueT]):
     def validate_signal(self, signal):
         super().validate_signal(signal)
         # Add TemporalSignalHandler-specific validation
-        if signal.workflow_id is None or signal.run_id is None:
+        if not signal.workflow_id:
             raise ValueError(
-                "No workflow_id or run_id provided on Signal. That is required for Temporal signals"
+                "A workflow_id must be provided on a Signal for Temporal signals"
             )
