@@ -212,6 +212,31 @@ class Executor(ABC, ContextDependent):
         )
         return await self.signal_bus.wait_for_signal(signal)
 
+    async def wait_for_any_signal(
+        self,
+        signal_names: List[str],
+        workflow_id: str,
+        run_id: str | None = None,
+        timeout_seconds: int | None = None,
+    ) -> Signal:
+        """
+        Waits for any of a list of signals. This is a convenience wrapper
+        around the signal bus implementation.
+        """
+        if not self.signal_bus:
+            raise RuntimeError("Signal bus is not initialized for this executor.")
+
+        # Check if the method exists on the signal bus
+        if not hasattr(self.signal_bus, 'wait_for_any_signal'):
+             raise NotImplementedError(f"The configured signal handler ({type(self.signal_bus).__name__}) does not support wait_for_any_signal.")
+
+        return await self.signal_bus.wait_for_any_signal(
+            signal_names=signal_names,
+            workflow_id=workflow_id,
+            run_id=run_id,
+            timeout_seconds=timeout_seconds,
+        )
+
     def uuid(self) -> uuid.UUID:
         """
         Generate a UUID. Some executors enforce deterministic UUIDs, so this is an
