@@ -50,6 +50,45 @@ class ListAppConfigurationsResponse(BaseModel):
     totalCount: Optional[int] = 0
 
 
+class CanDoActionCheck(BaseModel):
+    action: str
+    canDoAction: Optional[bool] = False
+
+
+class CanDoActionsResponse(BaseModel):
+    canDoActions: Optional[List[CanDoActionCheck]] = []
+
+
+APP_ID_PREFIX = "app_"
+APP_CONFIG_ID_PREFIX = "apcnf_"
+
+
+def is_valid_app_id_format(app_id: str) -> bool:
+    """Check if the given app ID has a valid format.
+
+    Args:
+        app_id: The app ID to validate
+
+    Returns:
+        bool: True if the app ID is a valid format, False otherwise
+    """
+    return isinstance(app_id, str) and app_id.startswith(APP_ID_PREFIX)
+
+
+def is_valid_app_config_id_format(app_config_id: str) -> bool:
+    """Check if the given app configuration ID has a valid format.
+
+    Args:
+        app_config_id: The app configuration ID to validate
+
+    Returns:
+        bool: True if the app configuration ID is a valid format, False otherwise
+    """
+    return isinstance(app_config_id, str) and app_config_id.startswith(
+        APP_CONFIG_ID_PREFIX
+    )
+
+
 class MCPAppClient(APIClient):
     """Client for interacting with the MCP App API service over HTTP."""
 
@@ -103,7 +142,7 @@ class MCPAppClient(APIClient):
             httpx.HTTPStatusError: If the API returns an error (e.g., 404, 403)
             httpx.HTTPError: If the request fails
         """
-        if not app_id or not isinstance(app_id, str):
+        if not app_id or not is_valid_app_id_format(app_id):
             raise ValueError(f"Invalid app ID format: {app_id}")
 
         response = await self.post("/mcp_app/get_app", {"appId": app_id})
@@ -152,7 +191,7 @@ class MCPAppClient(APIClient):
             httpx.HTTPStatusError: If the API returns an error
             httpx.HTTPError: If the request fails
         """
-        if not app_id or not isinstance(app_id, str):
+        if not app_id or not is_valid_app_id_format(app_id):
             raise ValueError(f"Invalid app ID format: {app_id}")
 
         if not source_uri or not isinstance(source_uri, str):
@@ -185,7 +224,7 @@ class MCPAppClient(APIClient):
             httpx.HTTPStatusError: If the API returns an error
             httpx.HTTPError: If the request fails
         """
-        if not app_id or not isinstance(app_id, str):
+        if not app_id or not is_valid_app_id_format(app_id):
             raise ValueError(f"Invalid app ID format: {app_id}")
 
         if not config_params or not isinstance(config_params, dict):
@@ -215,7 +254,7 @@ class MCPAppClient(APIClient):
             httpx.HTTPStatusError: If the API returns an error
             httpx.HTTPError: If the request fails
         """
-        if not app_id or not isinstance(app_id, str):
+        if not app_id or not is_valid_app_id_format(app_id):
             raise ValueError(f"Invalid app ID format: {app_id}")
 
         response = await self.post(
@@ -304,7 +343,7 @@ class MCPAppClient(APIClient):
             httpx.HTTPStatusError: If the API returns an error (e.g., 404, 403)
             httpx.HTTPError: If the request fails
         """
-        if not app_id or not isinstance(app_id, str):
+        if not app_id or not is_valid_app_id_format(app_id):
             raise ValueError(f"Invalid app ID format: {app_id}")
 
         # Prepare request payload
@@ -337,7 +376,9 @@ class MCPAppClient(APIClient):
             httpx.HTTPStatusError: If the API returns an error (e.g., 404, 403)
             httpx.HTTPError: If the request fails
         """
-        if not app_config_id or not isinstance(app_config_id, str):
+        if not app_config_id or not is_valid_app_config_id_format(
+            app_config_id
+        ):
             raise ValueError(
                 f"Invalid app configuration ID format: {app_config_id}"
             )
@@ -361,3 +402,87 @@ class MCPAppClient(APIClient):
             )
 
         return deleted_id
+
+    async def _can_do_action(self, resource_name: str, action: str) -> bool:
+        """Check if the viewer can perform a specific action on a resource via the API.
+        Args:
+            resource_name: The resource name to check permissions for (e.g., "MCP_APP:{app_id}")
+            action: The action to check (e.g., "MANAGE:MCP_APP")
+        Returns:
+            bool: True if the viewer can perform the action, False otherwise
+        Raises:
+            ValueError: If the resource_name or action is invalid
+            httpx.HTTPStatusError: If the API returns an error (e.g., 404, 403)
+            httpx.HTTPError: If the request fails
+        """
+        if not resource_name or not isinstance(resource_name, str):
+            raise ValueError(f"Invalid resource name format: {resource_name}")
+
+        if not action or not isinstance(action, str):
+            raise ValueError(f"Invalid action format: {action}")
+
+        # Prepare request payload
+        payload = {
+            "resourceName": resource_name,
+            "actions": [action],
+        }
+
+        response = await self.post(
+            "/resource_permission/can_viewer_do", payload
+        )
+
+        # Parse the response to check permission
+        checks = CanDoActionsResponse(**response.json())
+
+        return any(
+            check.action == action and check.canDoAction
+            for check in checks.canDoActions or []
+        )
+
+    async def can_delete_app(self, app_id: str) -> bool:
+        """Check if the viewer can delete an MCP App via the API.
+
+        Args:
+            app_id: The UUID of the app to check delete permissions for
+
+        Returns:
+            bool: True if the viewer can delete the app, False otherwise
+
+        Raises:
+            ValueError: If the app_id is invalid
+            httpx.HTTPStatusError: If the API returns an error (e.g., 404, 403)
+            httpx.HTTPError: If the request fails
+        """
+        if not app_id or not is_valid_app_id_format(app_id):
+            raise ValueError(f"Invalid app ID format: {app_id}")
+
+        return await self._can_do_action(
+            resource_name=f"MCP_APP:{app_id}",
+            action="MANAGE:MCP_APP",
+        )
+
+    async def can_delete_app_configuration(self, app_config_id: str) -> bool:
+        """Check if the viewer can delete an MCP App Configuration via the API.
+
+        Args:
+            app_config_id: The UUID of the app configuration to check delete permissions for
+
+        Returns:
+            bool: True if the viewer can delete the app configuration, False otherwise
+
+        Raises:
+            ValueError: If the app_configuration_id is invalid
+            httpx.HTTPStatusError: If the API returns an error (e.g., 404, 403)
+            httpx.HTTPError: If the request fails
+        """
+        if not app_config_id or not is_valid_app_config_id_format(
+            app_config_id
+        ):
+            raise ValueError(
+                f"Invalid app configuration ID format: {app_config_id}"
+            )
+
+        return await self._can_do_action(
+            resource_name=f"MCP_APP_CONFIG:{app_config_id}",
+            action="MANAGE:MCP_APP_CONFIG",
+        )

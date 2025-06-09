@@ -6,11 +6,12 @@ from mcp_agent_cloud.config import settings
 from mcp_agent_cloud.core.api_client import UnauthenticatedError
 from mcp_agent_cloud.core.constants import ENV_API_BASE_URL, ENV_API_KEY
 from mcp_agent_cloud.core.utils import run_async
-from mcp_agent_cloud.mcp_app.api_client import MCPAppClient
+from mcp_agent_cloud.mcp_app.api_client import (
+    APP_CONFIG_ID_PREFIX,
+    APP_ID_PREFIX,
+    MCPAppClient,
+)
 from mcp_agent_cloud.ux import print_error, print_info, print_success
-
-APP_ID_PREFIX = "app_"
-APP_CONFIG_ID_PREFIX = "apcnf_"
 
 
 def delete_app(
@@ -25,6 +26,11 @@ def delete_app(
         "--force",
         "-f",
         help="Force delete the app or app configuration without confirmation.",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Validate the deployment but don't actually deploy.",
     ),
     api_url: Optional[str] = typer.Option(
         settings.API_BASE_URL,
@@ -70,8 +76,28 @@ def delete_app(
             print_info("Deletion cancelled.")
             raise typer.Exit(0)
 
-    try:
+    if dry_run:
+        try:
+            # Just check that the viewer can delete the app/config without actually doing it
+            can_delete = run_async(
+                client.can_delete_app(app_id)
+                if id_type == "app"
+                else client.can_delete_app_configuration(app_id)
+            )
+            if can_delete:
+                print_success(
+                    f"[Dry Run] Would delete {id_type} with ID '{app_id}' if run without --dry-run flag."
+                )
+            else:
+                print_error(
+                    f"[Dry Run] Cannot delete {id_type} with ID '{app_id}'. Check permissions or if it exists."
+                )
+            return
+        except Exception as e:
+            print_error(f"Error during dry run: {str(e)}")
+            raise typer.Exit(1)
 
+    try:
         run_async(
             client.delete_app(app_id)
             if id_type == "app"
@@ -88,5 +114,5 @@ def delete_app(
         )
         raise typer.Exit(1) from e
     except Exception as e:
-        print_error(f"Error deleting app: {str(e)}")
+        print_error(f"Error deleting {id_type}: {str(e)}")
         raise typer.Exit(1)
