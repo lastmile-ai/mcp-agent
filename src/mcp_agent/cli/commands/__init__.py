@@ -4,7 +4,8 @@ This package contains the core functionality of the MCP Agent Cloud commands.
 Each command is exported as a single function with a signature that matches the CLI interface.
 """
 
+from .configure.main import configure_app
 from .deploy.main import deploy_config
 from .login import login
 
-__all__ = ["deploy_config", "login"]
+__all__ = ["configure_app", "deploy_config", "login"]

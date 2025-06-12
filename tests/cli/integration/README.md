@@ -25,7 +25,6 @@ pytest -m "integration and mock" -v
 These tests need a running web app:
 
 1. Ensure the proto files are properly generated
-   - Current issue: Missing `@mcpac/proto/mcpac/api/secrets/v1/secrets_api_service_pb`
    - Make sure the proto generation steps have been completed
 
 2. Start the web app: `cd www && pnpm run webdev`

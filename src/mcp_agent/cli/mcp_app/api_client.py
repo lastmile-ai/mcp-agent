@@ -11,7 +11,11 @@ from ..core.api_client import APIClient
 class AppServerInfo(BaseModel):
     serverId: str
     serverUrl: str
-    status: Literal[0, 1, 2]  # Enums: 0=UNSPECIFIED, 1=ONLINE, 2=OFFLINE
+    status: Literal[
+        "APP_SERVER_STATUS_UNSPECIFIED",
+        "APP_SERVER_STATUS_ONLINE",
+        "APP_SERVER_STATUS_OFFLINE",
+    ]  # Enums: 0=UNSPECIFIED, 1=ONLINE, 2=OFFLINE
 
 
 # A developer-deployed MCP App which others can configure and use.
@@ -146,7 +150,12 @@ class MCPAppClient(APIClient):
             raise ValueError(f"Invalid app ID format: {app_id}")
 
         response = await self.post("/mcp_app/get_app", {"appId": app_id})
-        return MCPApp(**response.json())
+
+        res = response.json()
+        if not res or "app" not in res:
+            raise ValueError("API response did not contain the app data")
+
+        return MCPApp(**res["app"])
 
     async def get_app_id_by_name(self, name: str) -> Optional[str]:
         """Get the app ID for a given app name via the API.
@@ -203,7 +212,12 @@ class MCPAppClient(APIClient):
         }
 
         response = await self.post("/mcp_app/deploy_app", payload)
-        return MCPApp(**response.json())
+
+        res = response.json()
+        if not res or "app" not in res:
+            raise ValueError("API response did not contain the app data")
+
+        return MCPApp(**res["app"])
 
     async def configure_app(
         self,
@@ -237,8 +251,15 @@ class MCPAppClient(APIClient):
             "params": config_params,
         }
 
-        response = await self.post("/mcp_app/configure_app", payload)
-        return MCPAppConfiguration(**response.json())
+        response = await self.put("/mcp_app/configure_app", payload)
+
+        res = response.json()
+        if not res or "appConfiguration" not in res:
+            raise ValueError(
+                "API response did not contain the configured app data"
+            )
+
+        return MCPAppConfiguration(**res["appConfiguration"])
 
     async def list_config_params(self, app_id: str) -> List[str]:
         """List required configuration parameters (e.g. user secrets) for an MCP App via the API.
@@ -260,7 +281,7 @@ class MCPAppClient(APIClient):
         response = await self.post(
             "/mcp_app/list_config_params", {"appId": app_id}
         )
-        return response.json().get("configParams", [])
+        return response.json().get("paramKeys", [])
 
     async def list_apps(
         self,

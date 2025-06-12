@@ -11,32 +11,6 @@ The MCP Agent Cloud SDK provides a command-line tool and Python library for depl
 - Enhanced UX with rich formatting and intuitive prompts
 - Detailed logging with minimal console output
 
-## Project Structure
-
-```
-mcp-agent-cloud/py/sdk-cloud/
-├── README.md
-├── pyproject.toml
-├── src/
-│   └── mcp_agent_cloud/      # Core package
-│       ├── __init__.py
-│       ├── cli/              # CLI implementation
-│       │   ├── __init__.py
-│       │   └── main.py       # Entry point that uses commands
-│       ├── commands/         # Reusable command functions
-│       │   ├── __init__.py
-│       │   └── deploy.py     # Deploy command implementation
-│       ├── config/           # Configuration handling
-│       │   ├── __init__.py
-│       │   └── settings.py
-│       ├── secrets/          # Secrets handling
-│       │   ├── __init__.py
-│       │   ├── constants.py
-│       │   ├── api_client.py # API-based secrets client
-│       │   └── processor.py
-│       └── ux.py
-└── tests/                    # Test suite
-```
 
 ## Installation
 
@@ -97,39 +71,44 @@ server:
 ```yaml
 # mcp_agent.secrets.yaml (separate secrets file)
 api:
-  key: !developer_secret ${oc.env:API_KEY} # Developer provides this value
+  key: !developer_secret API_KEY # Developer provides value through API_KEY environment variable
 
 database:
-  password: !user_secret # User will provide this later
+  # User will provide this later - no environment variable specified
+  password: !user_secret
 ```
 
 When processed during deployment, the secrets file is transformed into:
 
 ```yaml
-# mcp_agent.secrets.yaml.transformed.yaml
+# mcp_agent.deployed.secrets.yaml
 api:
-  key: 123e4567-e89b-12d3-a456-426614174000
+  key: mcpac_sc_123e4567-e89b-12d3-a456-426614174000  # Developer secret transformed to UUID
 
 database:
-  password: !user_secret
+  password: !user_secret  # User secret with no env var name remains as a tag
 ```
+
+Then, during app configuration, the user configuring the app will specify values for each of the required secrets.
 
 ## Usage
 
 ### Command Line Interface
 
+#### Deploying an App
+
 ```bash
 # Basic usage (requires both config and secrets files)
-mcp-agent deploy mcp_agent.config.yaml --secrets-file mcp_agent.secrets.yaml
+mcp-agent deploy <app_name> --secrets-file mcp_agent.secrets.yaml
 
 # With custom output path for transformed secrets
-mcp-agent deploy mcp_agent.config.yaml --secrets-file mcp_agent.secrets.yaml --secrets-output-file secrets.deployed.yaml
+mcp-agent deploy <app_name> --secrets-file mcp_agent.secrets.yaml --secrets-output-file mcp_agent.deployed.secrets.yaml
 
 # With explicit API URL and key
-mcp-agent deploy mcp_agent.config.yaml --secrets-file mcp_agent.secrets.yaml --api-url=https://mcp-api.example.com --api-key=your-api-key
+mcp-agent deploy <app_name> --secrets-file mcp_agent.secrets.yaml --api-url=https://mcp-api.example.com --api-key=your-api-key
 
 # Dry run mode (for testing)
-mcp-agent deploy mcp_agent.config.yaml --secrets-file mcp_agent.secrets.yaml --dry-run
+mcp-agent deploy <app_name> --secrets-file mcp_agent.secrets.yaml --dry-run
 
 # Demo the enhanced UX
 ./demo_secrets_ux.sh
@@ -137,6 +116,25 @@ mcp-agent deploy mcp_agent.config.yaml --secrets-file mcp_agent.secrets.yaml --d
 # Help information
 mcp-agent --help
 mcp-agent deploy --help
+```
+
+#### Configuring an App
+
+```bash
+# Basic usage
+mcp-agent configure <app_id or app_server_url>
+
+# With existing processed secrets file
+mcp-agent configure <app_id or app_server_url> -s mcp_agent.configured.secrets.yaml
+
+# With custom processed secrets output file
+mcp-agent configure <app_id or app_server_url> -o my_mcp_agent.configured.secrets.yaml
+
+# With explicit API URL and key
+mcp-agent configure <app_id or app_server_url> --api-url=https://mcp-api.example.com --api-key=your-api-key
+
+# Dry run mode (for testing)
+mcp-agent configure <app_id or app_server_url> --dry-run
 ```
 
 ### Environment Variables
@@ -275,26 +273,3 @@ The integration tests verify:
    - Processing user secrets (placeholders)
    - Validation for developer secrets (must have values)
    - Handling error cases like missing credentials
-
-## Secret Management Workflow
-
-The complete secrets workflow consists of three phases:
-
-1. **Deploy** (implemented):
-
-   - Process the dedicated secrets file
-   - Transform all secret tags to Prisma IDs
-   - Store developer secrets in the backend
-   - Create placeholders for user secrets
-
-2. **Configure** (future):
-
-   - Load the transformed secrets file (containing IDs)
-   - Prompt for values for user secrets
-   - Store those values in the backend
-   - The secrets file remains unchanged (IDs only)
-
-3. **Run** (future):
-   - Load the transformed secrets file
-   - Fetch all secret values from the backend
-   - Inject them into the application environment

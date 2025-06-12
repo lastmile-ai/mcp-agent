@@ -42,6 +42,13 @@ def list_apps(
     effective_api_key = (
         api_key or settings.API_KEY or load_api_key_credentials()
     )
+
+    if not effective_api_key:
+        print_error(
+            "Must be logged in to list apps. Run 'mcp-agent login', set MCP_API_KEY environment variable or specify --api-key option."
+        )
+        raise typer.Exit(1)
+
     client = MCPAppClient(api_url=api_url, api_key=effective_api_key)
 
     try:
@@ -123,7 +130,11 @@ def print_apps(apps: List[MCPApp]) -> None:
             app.description,
             app.appServerInfo.serverUrl if app.appServerInfo else "",
             _server_status_text(
-                app.appServerInfo.status if app.appServerInfo else 0,
+                (
+                    app.appServerInfo.status
+                    if app.appServerInfo
+                    else "APP_SERVER_STATUS_OFFLINE"
+                ),
                 is_last_row,
             ),
             app.createdAt.strftime("%Y-%m-%d %H:%M:%S"),
@@ -155,7 +166,11 @@ def print_app_configs(app_configs: List[MCPAppConfiguration]) -> None:
             config.app.description,
             config.appServerInfo.serverUrl if config.appServerInfo else "",
             _server_status_text(
-                config.appServerInfo.status if config.appServerInfo else 0,
+                (
+                    config.appServerInfo.status
+                    if config.appServerInfo
+                    else "APP_SERVER_STATUS_OFFLINE"
+                ),
                 is_last_row=is_last_row,
             ),
             config.createdAt.strftime("%Y-%m-%d %H:%M:%S"),
@@ -164,11 +179,11 @@ def print_app_configs(app_configs: List[MCPAppConfiguration]) -> None:
     console.print(table)
 
 
-def _server_status_text(status: int, is_last_row: bool = False) -> str:
+def _server_status_text(status: str, is_last_row: bool = False) -> str:
     """Convert server status code to emoji."""
-    if status == 1:
+    if status == "APP_SERVER_STATUS_ONLINE":
         return "🟢 Online"
-    elif status == 0:
+    elif status == "APP_SERVER_STATUS_OFFLINE":
         return Padding(
             "🔴 Offline", (0, 0, 0 if is_last_row else 1, 0), style="red"
         )

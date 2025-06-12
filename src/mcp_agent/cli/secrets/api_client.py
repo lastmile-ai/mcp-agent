@@ -5,7 +5,7 @@ from typing import Optional, Dict, Any, List
 from ..core.api_client import APIClient
 from ..core.constants import (
     SecretType,
-    HANDLE_PATTERN,
+    SECRET_ID_PATTERN,
 )
 
 
@@ -62,7 +62,7 @@ class SecretsClient(APIClient):
 
         # The API should already be returning prefixed UUIDs
         # Only return the handle if it matches our expected pattern
-        if not HANDLE_PATTERN.match(handle):
+        if not SECRET_ID_PATTERN.match(handle):
             raise ValueError(
                 f"API returned an invalid secret handle format: {handle}. Expected the mcpac_sc_ prefix."
             )
@@ -205,4 +205,4 @@ class SecretsClient(APIClient):
             return False
 
         # Validate against the pattern (prefixed UUID format)
-        return bool(HANDLE_PATTERN.match(handle))
+        return bool(SECRET_ID_PATTERN.match(handle))

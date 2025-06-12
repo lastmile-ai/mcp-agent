@@ -49,6 +49,13 @@ def delete_app(
     effective_api_key = (
         api_key or settings.API_KEY or load_api_key_credentials()
     )
+
+    if not effective_api_key:
+        print_error(
+            "Must be logged in to delete. Run 'mcp-agent login', set MCP_API_KEY environment variable or specify --api-key option."
+        )
+        raise typer.Exit(1)
+
     client = MCPAppClient(api_url=api_url, api_key=effective_api_key)
 
     if not app_id:

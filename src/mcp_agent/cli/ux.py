@@ -4,7 +4,7 @@ import logging
 import os
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from rich.console import Console
 from rich.panel import Panel
@@ -220,4 +220,23 @@ def print_deployment_header(
     )
     logger.info(f"Starting deployment with configuration: {config_file}")
     logger.info(f"Using secrets file: {secrets_file}")
+    logger.info(f"Dry Run: {dry_run}")
+
+
+def print_configuration_header(
+    secrets_file: Optional[Path], output_file: Optional[Path], dry_run: bool
+) -> None:
+    """Print a styled header for the configuration process."""
+    console.print(
+        Panel(
+            f"Secrets file: [cyan]{secrets_file or 'Not specified'}[/cyan]\n"
+            f"Output file: [cyan]{output_file or 'Not specified'}[/cyan]\n"
+            f"Mode: [{'yellow' if dry_run else 'green'}]{'DRY RUN' if dry_run else 'CONFIGURE'}[/{'yellow' if dry_run else 'green'}]",
+            title="MCP APP Configuration",
+            border_style="blue",
+            expand=False,
+        )
+    )
+    logger.info(f"Starting configuration with secrets file: {secrets_file}")
+    logger.info(f"Output file: {output_file}")
     logger.info(f"Dry Run: {dry_run}")

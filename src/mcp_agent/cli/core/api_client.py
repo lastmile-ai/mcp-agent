@@ -27,6 +27,30 @@ def _raise_for_unauthenticated(response: httpx.Response):
         )
 
 
+def _raise_for_status_with_details(response: httpx.Response) -> None:
+    try:
+        response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        content_type = response.headers.get("content-type", "")
+        if "application/json" in content_type:
+            try:
+                error_info = response.json()
+                message = (
+                    error_info.get("error")
+                    or error_info.get("message")
+                    or str(error_info)
+                )
+            except Exception:
+                message = response.text
+        else:
+            message = response.text
+        raise httpx.HTTPStatusError(
+            f"{exc.response.status_code} Error for {exc.request.url}: {message}",
+            request=exc.request,
+            response=exc.response,
+        ) from exc
+
+
 class APIClient:
     """Client for interacting with the API service over HTTP."""
 
@@ -60,7 +84,21 @@ class APIClient:
                 timeout=timeout,
             )
             _raise_for_unauthenticated(response)
-            response.raise_for_status()
+            _raise_for_status_with_details(response)
+            return response
+
+    async def put(
+        self, path: str, payload: Dict[str, Any], timeout: float = 30.0
+    ) -> httpx.Response:
+        async with httpx.AsyncClient() as client:
+            response = await client.put(
+                f"{self.api_url}/{path.lstrip('/')}",
+                json=payload,
+                headers=self._get_headers(),
+                timeout=timeout,
+            )
+            _raise_for_unauthenticated(response)
+            _raise_for_status_with_details(response)
             return response
 
     async def get(self, path: str, timeout: float = 30.0) -> httpx.Response:
@@ -71,7 +109,7 @@ class APIClient:
                 timeout=timeout,
             )
             _raise_for_unauthenticated(response)
-            response.raise_for_status()
+            _raise_for_status_with_details(response)
             return response
 
     async def delete(
@@ -89,5 +127,5 @@ class APIClient:
                 timeout=timeout,
             )
             _raise_for_unauthenticated(response)
-            response.raise_for_status()
+            _raise_for_status_with_details(response)
             return response

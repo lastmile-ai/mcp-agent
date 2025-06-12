@@ -5,6 +5,7 @@ from typing import Optional
 
 from .. import __version__
 from ..commands import (
+    configure_app,
     deploy_config,
     login,
 )
@@ -15,6 +16,7 @@ from ..commands.apps import list_apps
 app = typer.Typer(help="MCP Agent Cloud CLI for deployment and management")
 
 # Simply wrap the function with typer to preserve its signature
+app.command(name="configure")(configure_app)
 app.command(name="deploy")(deploy_config)
 app.command(name="login")(login)
 

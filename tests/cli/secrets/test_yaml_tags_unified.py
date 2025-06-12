@@ -3,19 +3,15 @@
 This file consolidates tests for YAML tag handling and validation.
 """
 
-import yaml
-import re
-import pytest
 from unittest import TestCase
 
 from mcp_agent_cloud.secrets.yaml_tags import (
     DeveloperSecret,
     UserSecret,
-    SecretYamlDumper,
     load_yaml_with_secrets,
     dump_yaml_with_secrets,
 )
-from mcp_agent_cloud.core.constants import UUID_PREFIX, HANDLE_PATTERN
+from mcp_agent_cloud.core.constants import UUID_PREFIX, SECRET_ID_PATTERN
 
 
 class TestYamlSecretTags(TestCase):
@@ -27,62 +23,62 @@ class TestYamlSecretTags(TestCase):
         test_cases = [
             # Basic secrets
             {
-                'server': {
-                    'api_key': DeveloperSecret('dev-api-key'),
-                    'user_token': UserSecret('user-token'),
+                "server": {
+                    "api_key": DeveloperSecret("dev-api-key"),
+                    "user_token": UserSecret("user-token"),
                 }
             },
             # Empty values
             {
-                'server': {
-                    'api_key': DeveloperSecret(),
-                    'user_token': UserSecret(),
+                "server": {
+                    "api_key": DeveloperSecret(),
+                    "user_token": UserSecret(),
                 }
             },
             # Nested structure
             {
-                'server': {
-                    'providers': {
-                        'bedrock': {
-                            'api_key': DeveloperSecret('bedrock-key'),
-                            'region': 'us-west-2',
+                "server": {
+                    "providers": {
+                        "bedrock": {
+                            "api_key": DeveloperSecret("bedrock-key"),
+                            "region": "us-west-2",
                         },
-                        'openai': {
-                            'api_key': UserSecret('openai-key'),
-                            'org_id': 'org-123',
-                        }
+                        "openai": {
+                            "api_key": UserSecret("openai-key"),
+                            "org_id": "org-123",
+                        },
                     },
-                    'database': {
-                        'password': DeveloperSecret('db-password'),
-                        'user_password': UserSecret('user-db-password'),
-                    }
+                    "database": {
+                        "password": DeveloperSecret("db-password"),
+                        "user_password": UserSecret("user-db-password"),
+                    },
                 }
             },
             # Mixed with non-secret values
             {
-                'server': {
-                    'api_key': DeveloperSecret('dev-api-key'),
-                    'port': 8080,
-                    'debug': True,
-                    'tags': ['prod', 'us-west'],
-                    'metadata': {
-                        'created_at': '2023-01-01',
-                        'created_by': UserSecret('user-123'),
-                    }
+                "server": {
+                    "api_key": DeveloperSecret("dev-api-key"),
+                    "port": 8080,
+                    "debug": True,
+                    "tags": ["prod", "us-west"],
+                    "metadata": {
+                        "created_at": "2023-01-01",
+                        "created_by": UserSecret("user-123"),
+                    },
                 }
-            }
+            },
         ]
-        
+
         for config in test_cases:
             # Dump to YAML
             yaml_str = dump_yaml_with_secrets(config)
-            
+
             # Load back
             loaded = load_yaml_with_secrets(yaml_str)
-            
+
             # Verify structure is preserved
             self._verify_config_structure(config, loaded)
-    
+
     def _verify_config_structure(self, original, loaded):
         """Helper to verify config structure is preserved."""
         if isinstance(original, dict):
@@ -103,7 +99,7 @@ class TestYamlSecretTags(TestCase):
             assert loaded.value == original.value
         else:
             assert loaded == original
-    
+
     def test_empty_tags_handling(self):
         """Test handling of empty tags."""
         # Create YAML with empty tags
@@ -112,21 +108,23 @@ class TestYamlSecretTags(TestCase):
           empty_dev_secret: !developer_secret
           empty_user_secret: !user_secret
         """
-        
+
         # Load and verify
         loaded = load_yaml_with_secrets(yaml_str)
-        assert isinstance(loaded['server']['empty_dev_secret'], DeveloperSecret)
-        assert loaded['server']['empty_dev_secret'].value is None
-        assert isinstance(loaded['server']['empty_user_secret'], UserSecret)
-        assert loaded['server']['empty_user_secret'].value is None
-        
+        assert isinstance(
+            loaded["server"]["empty_dev_secret"], DeveloperSecret
+        )
+        assert loaded["server"]["empty_dev_secret"].value is None
+        assert isinstance(loaded["server"]["empty_user_secret"], UserSecret)
+        assert loaded["server"]["empty_user_secret"].value is None
+
         # Round-trip and verify no empty quotes
         dumped = dump_yaml_with_secrets(loaded)
         assert '!developer_secret ""' not in dumped
         assert '!user_secret ""' not in dumped
         assert "empty_dev_secret: !developer_secret" in dumped
         assert "empty_user_secret: !user_secret" in dumped
-    
+
     def test_uuid_handle_handling(self):
         """Test handling of UUID handles."""
         # Create YAML with UUID handles and secret tags
@@ -141,33 +139,56 @@ class TestYamlSecretTags(TestCase):
           # Another deployed secret with UUID handle
           password: "{UUID_PREFIX}87654321-dcba-4321-b321-987654321cba"
         """
-        
+
         # Load and verify
         loaded = load_yaml_with_secrets(yaml_str)
-        
+
         # Verify UUID handles are preserved as strings
-        assert isinstance(loaded['server']['bedrock']['api_key'], str)
-        assert loaded['server']['bedrock']['api_key'].startswith(UUID_PREFIX)
-        assert loaded['server']['bedrock']['api_key'] == f"{UUID_PREFIX}12345678-abcd-1234-a123-123456789abc"
-        
+        assert isinstance(loaded["server"]["bedrock"]["api_key"], str)
+        assert loaded["server"]["bedrock"]["api_key"].startswith(UUID_PREFIX)
+        assert (
+            loaded["server"]["bedrock"]["api_key"]
+            == f"{UUID_PREFIX}12345678-abcd-1234-a123-123456789abc"
+        )
+
         # Verify UUID handle pattern matches
-        assert HANDLE_PATTERN.match(loaded['server']['bedrock']['api_key']) is not None
-        assert HANDLE_PATTERN.match(loaded['database']['password']) is not None
-        
+        assert (
+            SECRET_ID_PATTERN.match(loaded["server"]["bedrock"]["api_key"])
+            is not None
+        )
+        assert (
+            SECRET_ID_PATTERN.match(loaded["database"]["password"]) is not None
+        )
+
         # User secret tag should still be recognized
-        assert isinstance(loaded['server']['bedrock']['user_access_key'], UserSecret)
-        assert loaded['server']['bedrock']['user_access_key'].value == 'USER_KEY'
-        
+        assert isinstance(
+            loaded["server"]["bedrock"]["user_access_key"], UserSecret
+        )
+        assert (
+            loaded["server"]["bedrock"]["user_access_key"].value == "USER_KEY"
+        )
+
         # Round-trip test - dump and reload
         dumped = dump_yaml_with_secrets(loaded)
         reloaded = load_yaml_with_secrets(dumped)
-        
+
         # Verify all values are preserved exactly
-        assert reloaded['server']['bedrock']['api_key'] == f"{UUID_PREFIX}12345678-abcd-1234-a123-123456789abc"
-        assert reloaded['database']['password'] == f"{UUID_PREFIX}87654321-dcba-4321-b321-987654321cba"
-        assert isinstance(reloaded['server']['bedrock']['user_access_key'], UserSecret)
-        assert reloaded['server']['bedrock']['user_access_key'].value == 'USER_KEY'
-    
+        assert (
+            reloaded["server"]["bedrock"]["api_key"]
+            == f"{UUID_PREFIX}12345678-abcd-1234-a123-123456789abc"
+        )
+        assert (
+            reloaded["database"]["password"]
+            == f"{UUID_PREFIX}87654321-dcba-4321-b321-987654321cba"
+        )
+        assert isinstance(
+            reloaded["server"]["bedrock"]["user_access_key"], UserSecret
+        )
+        assert (
+            reloaded["server"]["bedrock"]["user_access_key"].value
+            == "USER_KEY"
+        )
+
     def test_uuid_pattern_validation(self):
         """Test UUID pattern validation for handles."""
         # Valid handles
@@ -176,7 +197,7 @@ class TestYamlSecretTags(TestCase):
             f"{UUID_PREFIX}00000000-0000-0000-0000-000000000000",
             f"{UUID_PREFIX}ffffffff-ffff-ffff-ffff-ffffffffffff",
         ]
-        
+
         # Invalid handles
         invalid_handles = [
             # Missing prefix
@@ -191,19 +212,23 @@ class TestYamlSecretTags(TestCase):
             # Empty string
             "",
         ]
-        
+
         # Test all valid handles
         for handle in valid_handles:
-            assert HANDLE_PATTERN.match(handle) is not None, f"Valid handle {handle} didn't match pattern"
-        
+            assert (
+                SECRET_ID_PATTERN.match(handle) is not None
+            ), f"Valid handle {handle} didn't match pattern"
+
         # Test all invalid handles
         for handle in invalid_handles:
-            assert HANDLE_PATTERN.match(handle) is None, f"Invalid handle {handle} matched pattern"
+            assert (
+                SECRET_ID_PATTERN.match(handle) is None
+            ), f"Invalid handle {handle} matched pattern"
 
 
 def test_realistic_yaml_examples():
     """Test handling of realistic YAML examples."""
-    
+
     # Example with various tag combinations
     yaml_str = """
     # Example deployment configuration with secrets
@@ -222,41 +247,47 @@ def test_realistic_yaml_examples():
       host: "localhost"
       port: 5432
     """
-    
-    # Load and verify 
+
+    # Load and verify
     loaded = load_yaml_with_secrets(yaml_str)
-    
+
     # Verify structure and tags
-    assert isinstance(loaded['server']['bedrock']['api_key'], DeveloperSecret)
-    assert loaded['server']['bedrock']['api_key'].value == 'BEDROCK_KEY'
-    assert isinstance(loaded['server']['bedrock']['user_access_key'], UserSecret)
-    assert loaded['server']['bedrock']['user_access_key'].value == 'USER_KEY'
-    assert isinstance(loaded['server']['openai']['api_key'], DeveloperSecret)
-    assert loaded['server']['openai']['api_key'].value is None
-    assert loaded['server']['openai']['org_id'] == 'org-123456'
-    assert isinstance(loaded['database']['password'], DeveloperSecret)
-    assert loaded['database']['password'].value is None
-    assert loaded['database']['host'] == 'localhost'
-    assert loaded['database']['port'] == 5432
-    
+    assert isinstance(loaded["server"]["bedrock"]["api_key"], DeveloperSecret)
+    assert loaded["server"]["bedrock"]["api_key"].value == "BEDROCK_KEY"
+    assert isinstance(
+        loaded["server"]["bedrock"]["user_access_key"], UserSecret
+    )
+    assert loaded["server"]["bedrock"]["user_access_key"].value == "USER_KEY"
+    assert isinstance(loaded["server"]["openai"]["api_key"], DeveloperSecret)
+    assert loaded["server"]["openai"]["api_key"].value is None
+    assert loaded["server"]["openai"]["org_id"] == "org-123456"
+    assert isinstance(loaded["database"]["password"], DeveloperSecret)
+    assert loaded["database"]["password"].value is None
+    assert loaded["database"]["host"] == "localhost"
+    assert loaded["database"]["port"] == 5432
+
     # Test round-trip
     dumped = dump_yaml_with_secrets(loaded)
     reloaded = load_yaml_with_secrets(dumped)
-    
+
     # Verify same structure is preserved in round-trip
-    assert isinstance(reloaded['server']['bedrock']['api_key'], DeveloperSecret)
-    assert reloaded['server']['bedrock']['api_key'].value == 'BEDROCK_KEY'
-    assert isinstance(reloaded['server']['bedrock']['user_access_key'], UserSecret)
-    assert reloaded['server']['bedrock']['user_access_key'].value == 'USER_KEY'
-    assert isinstance(reloaded['server']['openai']['api_key'], DeveloperSecret)
-    assert reloaded['server']['openai']['api_key'].value is None
-    assert isinstance(reloaded['database']['password'], DeveloperSecret)
-    assert reloaded['database']['password'].value is None
+    assert isinstance(
+        reloaded["server"]["bedrock"]["api_key"], DeveloperSecret
+    )
+    assert reloaded["server"]["bedrock"]["api_key"].value == "BEDROCK_KEY"
+    assert isinstance(
+        reloaded["server"]["bedrock"]["user_access_key"], UserSecret
+    )
+    assert reloaded["server"]["bedrock"]["user_access_key"].value == "USER_KEY"
+    assert isinstance(reloaded["server"]["openai"]["api_key"], DeveloperSecret)
+    assert reloaded["server"]["openai"]["api_key"].value is None
+    assert isinstance(reloaded["database"]["password"], DeveloperSecret)
+    assert reloaded["database"]["password"].value is None
 
 
 def test_deployed_secrets_example():
     """Test handling of post-deployment YAML with UUID handles."""
-    
+
     yaml_str = f"""
     # Post-deployment configuration
     server:
@@ -269,21 +300,32 @@ def test_deployed_secrets_example():
     database:
       password: "{UUID_PREFIX}87654321-dcba-4321-b321-987654321cba"
     """
-    
+
     # Load and verify
     loaded = load_yaml_with_secrets(yaml_str)
-    
+
     # Verify UUID handles and remaining user secret
-    assert loaded['server']['bedrock']['api_key'] == f"{UUID_PREFIX}12345678-abcd-1234-a123-123456789abc"
-    assert isinstance(loaded['server']['bedrock']['user_access_key'], UserSecret)
-    assert loaded['server']['bedrock']['user_access_key'].value == 'USER_KEY'
-    assert loaded['server']['openai']['api_key'] == f"{UUID_PREFIX}23456789-bcde-2345-b234-234567890bcd"
-    assert loaded['database']['password'] == f"{UUID_PREFIX}87654321-dcba-4321-b321-987654321cba"
+    assert (
+        loaded["server"]["bedrock"]["api_key"]
+        == f"{UUID_PREFIX}12345678-abcd-1234-a123-123456789abc"
+    )
+    assert isinstance(
+        loaded["server"]["bedrock"]["user_access_key"], UserSecret
+    )
+    assert loaded["server"]["bedrock"]["user_access_key"].value == "USER_KEY"
+    assert (
+        loaded["server"]["openai"]["api_key"]
+        == f"{UUID_PREFIX}23456789-bcde-2345-b234-234567890bcd"
+    )
+    assert (
+        loaded["database"]["password"]
+        == f"{UUID_PREFIX}87654321-dcba-4321-b321-987654321cba"
+    )
 
 
 def test_fully_configured_secrets_example():
     """Test handling of fully configured secrets with all UUIDs."""
-    
+
     yaml_str = f"""
     # Fully configured with all secrets as UUID handles
     server:
@@ -296,21 +338,37 @@ def test_fully_configured_secrets_example():
     database:
       password: "{UUID_PREFIX}87654321-dcba-4321-b321-987654321cba"
     """
-    
+
     # Load and verify
     loaded = load_yaml_with_secrets(yaml_str)
-    
+
     # All values should be string UUIDs with correct prefix
-    assert loaded['server']['bedrock']['api_key'] == f"{UUID_PREFIX}12345678-abcd-1234-a123-123456789abc"
-    assert loaded['server']['bedrock']['user_access_key'] == f"{UUID_PREFIX}98765432-edcb-5432-c432-567890123def"
-    assert loaded['server']['openai']['api_key'] == f"{UUID_PREFIX}23456789-bcde-2345-b234-234567890bcd"
-    assert loaded['database']['password'] == f"{UUID_PREFIX}87654321-dcba-4321-b321-987654321cba"
-    
+    assert (
+        loaded["server"]["bedrock"]["api_key"]
+        == f"{UUID_PREFIX}12345678-abcd-1234-a123-123456789abc"
+    )
+    assert (
+        loaded["server"]["bedrock"]["user_access_key"]
+        == f"{UUID_PREFIX}98765432-edcb-5432-c432-567890123def"
+    )
+    assert (
+        loaded["server"]["openai"]["api_key"]
+        == f"{UUID_PREFIX}23456789-bcde-2345-b234-234567890bcd"
+    )
+    assert (
+        loaded["database"]["password"]
+        == f"{UUID_PREFIX}87654321-dcba-4321-b321-987654321cba"
+    )
+
     # Check that all handles match UUID pattern
-    for path in ['server.bedrock.api_key', 'server.bedrock.user_access_key', 
-                'server.openai.api_key', 'database.password']:
-        parts = path.split('.')
+    for path in [
+        "server.bedrock.api_key",
+        "server.bedrock.user_access_key",
+        "server.openai.api_key",
+        "database.password",
+    ]:
+        parts = path.split(".")
         value = loaded
         for part in parts:
             value = value[part]
-        assert HANDLE_PATTERN.match(value) is not None
+        assert SECRET_ID_PATTERN.match(value) is not None

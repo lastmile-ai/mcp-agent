@@ -63,7 +63,7 @@ def deploy_config(
     secrets_output_file: Optional[Path] = typer.Option(
         None,
         "--secrets-output-file",
-        help="Path to write the transformed secrets file.",
+        help="Path to write the transformed secrets file. Defaults to mcp-agent.deployed.secrets.yaml",
         resolve_path=True,
     ),
     no_secrets: bool = typer.Option(
@@ -187,9 +187,16 @@ def deploy_config(
         if not no_secrets:
             # Process secrets file
             print_info("Processing secrets file...")
-            secrets_transformed_path = (
-                secrets_output_file or f"{secrets_file}.transformed.yaml"
-            )
+            if secrets_output_file:
+                secrets_transformed_path = secrets_output_file
+            else:
+                # Use a more consistent naming convention with .deployed.secrets.yaml suffix
+                secrets_transformed_path = Path(
+                    f"{secrets_file.stem.split('.')[0]}.deployed.secrets.yaml"
+                )
+                print_info(
+                    f"Using default output path: {secrets_transformed_path}"
+                )
 
             if dry_run:
                 # Use the mock client in dry run mode

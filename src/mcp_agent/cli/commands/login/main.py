@@ -85,7 +85,9 @@ def login(
     attempts = 3
     while attempts > 0:
         attempts -= 1
-        input_api_key = Prompt.ask("Please enter your API key :key:")
+        input_api_key = Prompt.ask(
+            "Please enter your API key :key:", password=True
+        )
 
         if not input_api_key:
             print_warning("No API key provided.")
