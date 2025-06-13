@@ -18,6 +18,7 @@ from mcp_agent_cloud.core.constants import (
 )
 from mcp_agent_cloud.core.utils import run_async
 from mcp_agent_cloud.mcp_app.api_client import MCPAppClient
+from mcp_agent_cloud.mcp_app.mock_client import MockMCPAppClient
 from mcp_agent_cloud.secrets.processor import (
     process_config_secrets,
 )
@@ -151,9 +152,18 @@ def deploy_config(
             effective_api_key = effective_api_key or "mock-key-for-dry-run"
             print_info(f"Using mock API at {effective_api_url} (dry run)")
 
-        mcp_app_client = MCPAppClient(
-            api_url=effective_api_url, api_key=effective_api_key
-        )
+        if dry_run:
+            # Use the mock api client in dry run mode
+            print_info("Using MOCK APP API client for dry run")
+
+            # Create the mock client
+            mcp_app_client = MockMCPAppClient(
+                api_url=effective_api_url, api_key=effective_api_key
+            )
+        else:
+            mcp_app_client = MCPAppClient(
+                api_url=effective_api_url, api_key=effective_api_key
+            )
 
         # Look for an existing app ID for this app name
         print_info(f"Checking for existing app ID for '{app_name}'...")
@@ -272,17 +282,17 @@ def deploy_config(
                     )
                 )
                 print_success("✅ MCP App deployed successfully!")
-                print_info(f"App ID: {app.app_id}")
+                print_info(f"App ID: {app_id}")
 
-                if app.app_server_info:
+                if app.appServerInfo:
                     status = (
                         "ONLINE"
-                        if app.app_server_info.status == 1
+                        if app.appServerInfo.status == 1
                         else "OFFLINE"
                     )
-                    print_info(f"App URL: {app.app_server_info.server_url}")
+                    print_info(f"App URL: {app.appServerInfo.serverUrl}")
                     print_info(f"App Status: {status}")
-                return app.app_id
+                return app_id
             except Exception as e:
                 print_error(f"❌ Deployment failed: {str(e)}")
                 raise typer.Exit(1)
@@ -290,7 +300,7 @@ def deploy_config(
         else:
             print_info("Dry run - skipping actual deployment.")
             print_success("Deployment preparation completed successfully!")
-            return ""
+            return app_id
 
     except Exception as e:
         print_error(f"{str(e)}")
