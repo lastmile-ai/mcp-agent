@@ -35,14 +35,19 @@ class Logger:
         self.namespace = namespace
         self.session_id = session_id
         self.event_bus = AsyncEventBus.get()
+        self._thread_local = threading.local()
 
     def _ensure_event_loop(self):
         """Ensure we have an event loop we can use."""
         try:
             return asyncio.get_running_loop()
         except RuntimeError:
-            # If no loop is running, create a new one
+            # No running loop: either we're in a thread, or nothing's been started yet
+            if hasattr(self._thread_local, "loop"):
+                return self._thread_local.loop
+
             loop = asyncio.new_event_loop()
+            self._thread_local.loop = loop
             asyncio.set_event_loop(loop)
             return loop
 
@@ -57,8 +62,10 @@ class Logger:
             is_running = False
 
         if is_running:
-            # If we're in a thread with a running loop, schedule the coroutine
-            asyncio.create_task(self.event_bus.emit(event))
+            # Schedule the emit coroutine safely on the event loop from another thread
+            loop.call_soon_threadsafe(
+                lambda: asyncio.create_task(self.event_bus.emit(event))
+            )
         else:
             # If no loop is running, run it until the emit completes
             try:

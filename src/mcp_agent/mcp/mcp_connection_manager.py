@@ -12,7 +12,8 @@ from typing import (
 )
 
 import anyio
-from anyio import Event, create_task_group, Lock
+import asyncio
+from anyio import create_task_group, Lock
 from anyio.abc import TaskGroup
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 
@@ -76,10 +77,14 @@ class ServerConnection:
         self._init_hook = init_hook
         self._transport_context_factory = transport_context_factory
         # Signal that session is fully up and initialized
-        self._initialized_event = Event()
+        self._is_initialized = False
 
         # Signal we want to shut down
-        self._shutdown_event = Event()
+        self._shutdown_requested = False
+
+        # Use threading lock to protect flag updates (thread-safe, not event-loop bound)
+        import threading
+        self._flag_lock = threading.Lock()
 
         # Track error state
         self._error: bool = False
@@ -94,17 +99,38 @@ class ServerConnection:
         self._error = False
         self._error_message = None
 
+    def _set_initialized(self):
+        """Mark the connection as initialized."""
+        with self._flag_lock:
+            self._is_initialized = True
+
+    def _set_shutdown_requested(self):
+        """Mark shutdown as requested."""
+        with self._flag_lock:
+            self._shutdown_requested = True
+
+    def _is_initialized_flag(self) -> bool:
+        """Check if initialization is complete."""
+        with self._flag_lock:
+            return self._is_initialized
+
+    def _is_shutdown_requested_flag(self) -> bool:
+        """Check if shutdown has been requested."""
+        with self._flag_lock:
+            return self._shutdown_requested
+
     def request_shutdown(self) -> None:
         """
         Request the server to shut down. Signals the server lifecycle task to exit.
         """
-        self._shutdown_event.set()
+        self._set_shutdown_requested()
 
     async def wait_for_shutdown_request(self) -> None:
         """
-        Wait until the shutdown event is set.
+        Wait until shutdown is requested.
         """
-        await self._shutdown_event.wait()
+        while not self._is_shutdown_requested_flag():
+            await asyncio.sleep(0.01)  # Poll every 10ms
 
     async def initialize_session(self) -> None:
         """
@@ -121,13 +147,23 @@ class ServerConnection:
             self._init_hook(self.session, self.server_config.auth)
 
         # Now the session is ready for use
-        self._initialized_event.set()
+        self._set_initialized()
 
     async def wait_for_initialized(self) -> None:
         """
         Wait until the session is fully initialized.
         """
-        await self._initialized_event.wait()
+        timeout = 30  # 30 second timeout
+        elapsed = 0
+        while not self._is_initialized_flag() and not self._error:
+            await asyncio.sleep(0.01)  # Poll every 10ms
+            elapsed += 0.01
+            if elapsed > timeout:
+                raise TimeoutError(f"Timeout waiting for server '{self.server_name}' to initialize")
+        
+        # Check if initialization failed
+        if self._error:
+            raise RuntimeError(f"Server '{self.server_name}' failed to initialize: {self._error_message}")
 
     def create_session(
         self,
@@ -208,9 +244,9 @@ async def _server_lifecycle_task(server_conn: ServerConnection) -> None:
 
         server_conn._error = True
         server_conn._error_message = str(exc)
-        # If there's an error, we should also set the event so that
+        # If there's an error, we should also set the flag so that
         # 'get_server' won't hang
-        server_conn._initialized_event.set()
+        server_conn._set_initialized()
         # No raise - allow graceful exit
 
 
