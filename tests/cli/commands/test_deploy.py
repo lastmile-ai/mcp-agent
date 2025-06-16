@@ -67,6 +67,6 @@ def test_deploy_config_with_secrets(
         ), "Output file should have been created"
 
         # Read the file to verify it was written with transformed content
-        with open(secrets_output_path, "r") as f:
+        with open(secrets_output_path, "r", encoding="utf-8") as f:
             content = f.read()
             assert content, "Output file should not be empty"

@@ -21,6 +21,7 @@ from mcp_agent_cloud.mcp_app.api_client import (
     MCPAppClient,
     is_valid_app_id_format,
 )
+from mcp_agent_cloud.mcp_app.mock_client import MockMCPAppClient
 from mcp_agent_cloud.secrets.mock_client import MockSecretsClient
 from mcp_agent_cloud.secrets.processor import (
     configure_user_secrets,
@@ -127,7 +128,12 @@ def configure_app(
         )
         raise typer.Exit(1)
 
-    client = MCPAppClient(api_url=api_url, api_key=effective_api_key)
+    if dry_run:
+        # Use the mock api client in dry run mode
+        print_info("Using MOCK API client for dry run")
+        client = MockMCPAppClient(api_url=api_url, api_key=effective_api_key)
+    else:
+        client = MCPAppClient(api_url=api_url, api_key=effective_api_key)
 
     required_params = []
     try:
