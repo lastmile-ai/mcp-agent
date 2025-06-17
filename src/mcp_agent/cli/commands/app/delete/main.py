@@ -30,7 +30,7 @@ def delete_app(
     dry_run: bool = typer.Option(
         False,
         "--dry-run",
-        help="Validate the deployment but don't actually deploy.",
+        help="Validate the deletion but don't actually delete.",
     ),
     api_url: Optional[str] = typer.Option(
         settings.API_BASE_URL,

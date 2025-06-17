@@ -10,6 +10,7 @@ from ..commands import (
     login,
 )
 from ..commands.app import delete_app
+from ..commands.app import get_app_status
 from ..commands.apps import list_apps
 
 # Root typer for `mcp-agent` CLI commands
@@ -28,6 +29,7 @@ app.add_typer(app_cmd_apps, name="apps", help="Manage MCP Apps")
 # Sub-typer for `mcp-agent app` commands
 app_cmd_app = typer.Typer(help="Management commands for an MCP App")
 app_cmd_app.command(name="delete")(delete_app)
+app_cmd_app.command(name="status")(get_app_status)
 app.add_typer(app_cmd_app, name="app", help="Manage an MCP App")
 
 
