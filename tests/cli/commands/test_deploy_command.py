@@ -5,12 +5,16 @@ import tempfile
 from pathlib import Path
 import pytest
 import typer
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch
 
 from typer.testing import CliRunner
 
 from mcp_agent_cloud.cli.main import app
-from mcp_agent_cloud.core.constants import SecretType
+from mcp_agent_cloud.core.constants import (
+    MCP_CONFIG_FILENAME,
+    MCP_DEPLOYED_SECRETS_FILENAME,
+    MCP_SECRETS_FILENAME,
+)
 from mcp_agent_cloud.mcp_app.mock_client import MOCK_APP_ID, MOCK_APP_NAME
 from mcp_agent_cloud.secrets.api_client import SecretsClient
 
@@ -19,22 +23,6 @@ from mcp_agent_cloud.secrets.api_client import SecretsClient
 def runner():
     """Create a Typer CLI test runner."""
     return CliRunner()
-
-
-@pytest.fixture
-def mock_secrets_client():
-    """Create a mock SecretsClient that returns predictable handles."""
-    client = AsyncMock(spec=SecretsClient)
-
-    # Configure create_secret to return deterministic handles based on secret name
-    async def mock_create_secret(name, secret_type, value=None):
-        # Generate a handle based on the path and type
-        prefix = "dev" if secret_type == SecretType.DEVELOPER else "usr"
-        secret_id = f"test-{prefix}-{name.replace('.', '-')}"
-        return secret_id
-
-    client.create_secret.side_effect = mock_create_secret
-    return client
 
 
 @pytest.fixture
@@ -49,7 +37,7 @@ server:
 database:
   username: admin
 """
-        config_path = Path(temp_dir) / "mcp_agent.config.yaml"
+        config_path = Path(temp_dir) / MCP_CONFIG_FILENAME
         with open(config_path, "w", encoding="utf-8") as f:
             f.write(config_content)
 
@@ -58,14 +46,13 @@ database:
 server:
   api_key: !developer_secret SERVER_API_KEY
 database:
-  # password: !developer_secret  # Removed this as it would cause prompting
   user_token: !user_secret USER_TOKEN
 """
-        secrets_path = Path(temp_dir) / "mcp_agent.secrets.yaml"
-        with open(secrets_path, "w") as f:
+        secrets_path = Path(temp_dir) / MCP_SECRETS_FILENAME
+        with open(secrets_path, "w", encoding="utf-8") as f:
             f.write(secrets_content)
 
-        yield temp_dir
+        yield Path(temp_dir)
 
 
 def test_deploy_command_help(runner):
@@ -76,9 +63,7 @@ def test_deploy_command_help(runner):
     assert result.exit_code == 0
 
     # Expected options from the updated CLAUDE.md spec
-    assert "--secrets-file" in result.stdout or "-s" in result.stdout
-    assert "--config-file" in result.stdout or "-c" in result.stdout
-    assert "--secrets-output-file" in result.stdout or "-o" in result.stdout
+    assert "--config-dir" in result.stdout or "-c" in result.stdout
     assert "--api-url" in result.stdout
     assert "--api-key" in result.stdout
     assert "--non-interactive" in result.stdout
@@ -86,12 +71,10 @@ def test_deploy_command_help(runner):
     assert "--no-secrets" in result.stdout
 
 
-def test_deploy_command_basic(runner, temp_config_dir, mock_secrets_client):
+def test_deploy_command_basic(runner, temp_config_dir):
     """Test the basic deploy command with mocked secrets client."""
     # Set up paths
-    config_path = Path(temp_config_dir) / "mcp_agent.config.yaml"
-    secrets_path = Path(temp_config_dir) / "mcp_agent.secrets.yaml"
-    output_path = Path(temp_config_dir) / "mcp_agent.deployed.secrets.yaml"
+    output_path = temp_config_dir / MCP_DEPLOYED_SECRETS_FILENAME
 
     # Mock the environment variables
     with patch.dict(
@@ -117,12 +100,8 @@ def test_deploy_command_basic(runner, temp_config_dir, mock_secrets_client):
                 [
                     "deploy",
                     MOCK_APP_NAME,
-                    "--secrets-file",
-                    str(secrets_path),
-                    "--config-file",
-                    str(config_path),
-                    "--secrets-output-file",
-                    str(output_path),
+                    "--config-dir",
+                    temp_config_dir,
                     "--api-url",
                     "http://test-api.com",
                     "--api-key",
@@ -144,12 +123,7 @@ def test_deploy_command_basic(runner, temp_config_dir, mock_secrets_client):
 
 
 def test_deploy_command_no_secrets(runner, temp_config_dir):
-    """Test deploy command with --no-secrets flag."""
-    # Set up paths
-    config_path = Path(temp_config_dir) / "mcp_agent.config.yaml"
-    secrets_path = Path(temp_config_dir) / "mcp_agent.secrets.yaml"
-    output_path = Path(temp_config_dir) / "mcp_agent.deployed.secrets.yaml"
-
+    """Test deploy command with --no-secrets flag when a secrets file DOES NOT exist."""
     # Run with --no-secrets flag and --dry-run to avoid real deployment
     with patch(
         "mcp_agent_cloud.commands.deploy.main.wrangler_deploy"
@@ -157,17 +131,18 @@ def test_deploy_command_no_secrets(runner, temp_config_dir):
         # Mock the wrangler deployment
         mock_deploy.return_value = None
 
+        secrets_file = Path(temp_config_dir) / MCP_SECRETS_FILENAME
+        # Ensure the secrets file does not exist
+        if secrets_file.exists():
+            secrets_file.unlink()
+
         result = runner.invoke(
             app,
             [
                 "deploy",
                 MOCK_APP_NAME,
-                "--secrets-file",
-                str(secrets_path),
-                "--config-file",
-                str(config_path),
-                "--secrets-output-file",
-                str(output_path),
+                "--config-dir",
+                temp_config_dir,
                 "--no-secrets",
                 "--dry-run",  # Add dry-run mode
             ],
@@ -180,8 +155,41 @@ def test_deploy_command_no_secrets(runner, temp_config_dir):
     assert "skipping secrets processing" in result.stdout.lower()
 
 
-def test_deploy_with_separate_secrets_file():
-    """Test the deploy command with a separate secrets file."""
+def test_deploy_command_no_secrets_with_existing_secrets(
+    runner, temp_config_dir
+):
+    """Test deploy command with --no-secrets flag when a secrets file DOES exist."""
+    # Run with --no-secrets flag and --dry-run to avoid real deployment
+    with patch(
+        "mcp_agent_cloud.commands.deploy.main.wrangler_deploy"
+    ) as mock_deploy:
+        # Mock the wrangler deployment
+        mock_deploy.return_value = None
+
+        result = runner.invoke(
+            app,
+            [
+                "deploy",
+                MOCK_APP_NAME,
+                "--config-dir",
+                temp_config_dir,
+                "--no-secrets",
+                "--dry-run",  # Add dry-run mode
+            ],
+        )
+
+    # Command should fail
+    assert result.exit_code == 1
+
+    # Check output mentions existing secrets file found
+    assert (
+        "secrets file 'mcp_agent.secrets.yaml' found in"
+        in result.stdout.lower()
+    )
+
+
+def test_deploy_with_secrets_file():
+    """Test the deploy command with a secrets file."""
     # Create a temporary directory for test files
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
@@ -192,7 +200,7 @@ server:
   host: example.com
   port: 443
 """
-        config_path = temp_path / "config.yaml"
+        config_path = temp_path / MCP_CONFIG_FILENAME
         with open(config_path, "w", encoding="utf-8") as f:
             f.write(config_content)
 
@@ -202,12 +210,9 @@ server:
   api_key: !developer_secret API_KEY
   user_token: !user_secret USER_TOKEN
 """
-        secrets_path = temp_path / "secrets.yaml"
+        secrets_path = temp_path / MCP_SECRETS_FILENAME
         with open(secrets_path, "w", encoding="utf-8") as f:
             f.write(secrets_content)
-
-        # Create output path
-        secrets_output = temp_path / "deployed.secrets.yaml"
 
         # Call deploy_config with wrangler_deploy mocked
         with patch(
@@ -225,9 +230,7 @@ server:
                 result = deploy_config(
                     app_name=MOCK_APP_NAME,
                     app_description="A test MCP Agent app",
-                    config_file=config_path,
-                    secrets_file=secrets_path,
-                    secrets_output_file=secrets_output,
+                    config_dir=temp_path,
                     no_secrets=False,
                     api_url="http://test.api/",
                     api_key="test-token",
@@ -236,7 +239,15 @@ server:
                 )
 
             # Verify deploy was successful
+            secrets_output = temp_path / MCP_DEPLOYED_SECRETS_FILENAME
             assert os.path.exists(secrets_output), "Output file should exist"
+
+            # Verify secrets file is unchanged
+            with open(secrets_path, "r", encoding="utf-8") as f:
+                content = f.read()
+                assert (
+                    content == secrets_content
+                ), "Output file content should match original secrets"
 
             # Verify the function deployed the correct mock app
             assert result == MOCK_APP_ID
@@ -249,17 +260,14 @@ def test_deploy_with_missing_env_vars():
         temp_path = Path(temp_dir)
 
         # Create a config file
-        config_path = temp_path / "config.yaml"
+        config_path = temp_path / MCP_CONFIG_FILENAME
         with open(config_path, "w", encoding="utf-8") as f:
             f.write("server:\n  host: example.com\n")
 
         # Create a secrets file with developer secret that needs prompting
-        secrets_path = temp_path / "secrets.yaml"
+        secrets_path = temp_path / MCP_SECRETS_FILENAME
         with open(secrets_path, "w", encoding="utf-8") as f:
             f.write("server:\n  api_key: !developer_secret MISSING_ENV_VAR\n")
-
-        # Create output path
-        secrets_output = temp_path / "deployed.secrets.yaml"
 
         # Call the deploy_config function directly with missing env var
         from mcp_agent_cloud.commands.deploy import deploy_config
@@ -269,9 +277,7 @@ def test_deploy_with_missing_env_vars():
             deploy_config(
                 app_name=MOCK_APP_NAME,
                 app_description="A test MCP Agent app",
-                config_file=config_path,
-                secrets_file=secrets_path,
-                secrets_output_file=secrets_output,
+                config_dir=temp_path,
                 no_secrets=False,
                 api_url="http://test.api/",
                 api_key="test-token",
@@ -280,51 +286,39 @@ def test_deploy_with_missing_env_vars():
             )
 
 
-def test_deploy_with_mock_client():
-    """Test deploy using MockSecretsClient with --dry-run flag."""
-    # Create a temporary directory for test files
-    with tempfile.TemporaryDirectory() as temp_dir:
-        temp_path = Path(temp_dir)
+def test_rollback_secrets_file(temp_config_dir):
+    """Test the secrets file is unchanged if wrangler deployment fails."""
+    secrets_path = temp_config_dir / MCP_SECRETS_FILENAME
+    with open(secrets_path, "r", encoding="utf-8") as f:
+        pre_deploy_secrets_content = f.read()
 
-        # Create minimal config and secrets files
-        config_path = temp_path / "config.yaml"
-        with open(config_path, "w", encoding="utf-8") as f:
-            f.write("server:\n  host: example.com\n")
+    # Call deploy_config with wrangler_deploy mocked
+    with patch(
+        "mcp_agent_cloud.commands.deploy.main.wrangler_deploy"
+    ) as mock_deploy:
+        # Mock wrangler_deploy to prevent actual deployment
+        mock_deploy.side_effect = Exception("Deployment failed")
 
-        secrets_path = temp_path / "secrets.yaml"
-        with open(secrets_path, "w", encoding="utf-8") as f:
-            f.write("server:\n  api_key: !developer_secret TEST_KEY\n")
+        # Set a test env var
+        with patch.dict(os.environ, {"SERVER_API_KEY": "test-key"}):
+            # Use the real deploy_config function
+            from mcp_agent_cloud.commands.deploy import deploy_config
 
-        # Create output path
-        secrets_output = temp_path / "deployed.secrets.yaml"
+            # Run the deploy command
+            deploy_config(
+                app_name=MOCK_APP_NAME,
+                app_description="A test MCP Agent app",
+                config_dir=temp_config_dir,
+                no_secrets=False,
+                api_url="http://test.api/",
+                api_key="test-token",
+                dry_run=True,
+                non_interactive=True,  # Set to True to avoid prompting
+            )
 
-        # Mock environment variables
-        with patch.dict(os.environ, {"TEST_KEY": "test-value"}):
-            # Mock the wrangler deployment
-            with patch(
-                "mcp_agent_cloud.commands.deploy.main.wrangler_deploy"
-            ) as mock_deploy:
-                # Prevent actual deployment
-                mock_deploy.return_value = None
-
-                # Call the command directly
-                from mcp_agent_cloud.commands.deploy import deploy_config
-
-                result = deploy_config(
-                    app_name=MOCK_APP_NAME,
-                    app_description="A test MCP Agent app",
-                    secrets_file=secrets_path,
-                    config_file=config_path,
-                    secrets_output_file=str(secrets_output),
-                    api_url="http://test.api/",
-                    api_key="test-token",
-                    dry_run=True,
-                    non_interactive=False,
-                    no_secrets=False,
-                )
-
-                # Verify the deploy was successful for the mock app
-                assert result == MOCK_APP_ID
-
-                # Verify the output file exists
-                assert os.path.exists(secrets_output)
+        # Verify secrets file is unchanged
+        with open(secrets_path, "r", encoding="utf-8") as f:
+            content = f.read()
+            assert (
+                content == pre_deploy_secrets_content
+            ), "Output file content should match original secrets"

@@ -11,21 +11,23 @@ from pathlib import Path
 import typer
 import yaml
 
-from ..core.constants import (
+from mcp_agent_cloud.auth import load_api_key_credentials
+from mcp_agent_cloud.config import settings
+from mcp_agent_cloud.core.constants import (
+    DEFAULT_API_BASE_URL,
     SecretType,
     ENV_API_BASE_URL,
     ENV_API_KEY,
-    DEFAULT_API_BASE_URL,
     SECRET_ID_PATTERN,
 )
-from .yaml_tags import (
+from mcp_agent_cloud.secrets.yaml_tags import (
     DeveloperSecret,
     UserSecret,
     load_yaml_with_secrets,
     dump_yaml_with_secrets,
 )
-from .api_client import SecretsClient
-from ..ux import (
+from mcp_agent_cloud.secrets.api_client import SecretsClient
+from mcp_agent_cloud.ux import (
     console,
     print_info,
     print_warning,
@@ -35,8 +37,8 @@ from ..ux import (
 
 
 async def process_config_secrets(
-    config_path: Union[str, Path],
-    output_path: Optional[Union[str, Path]] = None,
+    input_path: Union[str, Path],
+    output_path: Union[str, Path],
     client: Optional[SecretsClient] = None,
     api_url: Optional[str] = None,
     api_key: Optional[str] = None,
@@ -46,11 +48,15 @@ async def process_config_secrets(
 
     This function:
     1. Loads a YAML configuration file with custom tag handlers
-    2. Transforms the configuration recursively, replacing developer secrets with UUID handles
-    3. Writes the transformed configuration to an output file
+    2. Loads existing transformed configuration if output_path exists
+    3. Transforms the configuration recursively, replacing developer secrets with UUID handles
+       - Reuses existing transformed secrets from output_path where possible
+       - Transforms new developer secrets not found in output_path
+       - Removes old transformed secrets that are no longer in the input
+    4. Writes the transformed configuration to an output file
 
     Args:
-        config_path: Path to the input configuration file
+        input_path: Path to the input configuration file
         output_path: Path to write the transformed configuration
         client: SecretsClient instance (optional, will create one if not provided)
         api_url: API URL for creating a new client (ignored if client is provided)
@@ -61,27 +67,25 @@ async def process_config_secrets(
         Dict with statistics about processed secrets
     """
     # Convert path arguments to strings if they're Path objects
-    if isinstance(config_path, Path):
-        config_path = str(config_path)
+    if isinstance(input_path, Path):
+        input_path = str(input_path)
 
-    if output_path is not None and isinstance(output_path, Path):
+    if isinstance(output_path, Path):
         output_path = str(output_path)
 
-    # Read the config file
     try:
-        with open(config_path, "r") as f:
-            config_content = f.read()
+        with open(input_path, "r", encoding="utf-8") as f:
+            input_secrets_content = f.read()
     except Exception as e:
-        print_error(f"Failed to read config file: {str(e)}")
+        print_error(f"Failed to read secrets file: {str(e)}")
         raise
 
     # Create client if not provided
     if client is None:
-        # Get API URL and key from parameters or environment variables
-        effective_api_url = api_url or os.environ.get(
-            ENV_API_BASE_URL, DEFAULT_API_BASE_URL
+        effective_api_url = api_url or settings.API_BASE_URL
+        effective_api_key = (
+            api_key or settings.API_KEY or load_api_key_credentials()
         )
-        effective_api_key = api_key or os.environ.get(ENV_API_KEY, "")
 
         if not effective_api_key:
             print_warning("No API key provided. Using empty key.")
@@ -91,19 +95,37 @@ async def process_config_secrets(
             api_url=effective_api_url, api_key=effective_api_key
         )
 
+    # Load existing transformed config if available to reuse processed secrets
+    existing_secrets_content = None
+    if output_path and os.path.exists(output_path):
+        print_info(
+            f"Found existing transformed secrets to use where applicable: {output_path}"
+        )
+        try:
+            with open(output_path, "r", encoding="utf-8") as f:
+                existing_secrets_content = f.read()
+        except Exception as e:
+            print_warning(
+                f"Failed to load existing secrets for reuse: {str(e)}"
+            )
+
     # Process the content
     try:
-        processed_content = await process_secrets_in_config(
-            config_content, client, non_interactive=non_interactive
+        transformed_config = await process_secrets_in_config_str(
+            input_secrets_content=input_secrets_content,
+            existing_secrets_content=existing_secrets_content,
+            client=client,
+            non_interactive=non_interactive,
         )
+
+        processed_content = dump_yaml_with_secrets(transformed_config)
     except Exception as e:
         print_error(f"Failed to process secrets: {str(e)}")
         raise
 
-    # Write the output file if specified
     if output_path:
         try:
-            with open(output_path, "w") as f:
+            with open(output_path, "w", encoding="utf-8") as f:
                 f.write(processed_content)
             print_info(f"Transformed config written to {output_path}")
         except Exception as e:
@@ -120,6 +142,7 @@ async def process_config_secrets(
             "user_secrets": [],
             "env_loaded": [],
             "prompted": [],
+            "reused_secrets": [],
         }
 
     # Show a summary of the processed secrets
@@ -128,25 +151,28 @@ async def process_config_secrets(
     return secrets_context
 
 
-async def process_secrets_in_config(
-    config_content: str,
+async def process_secrets_in_config_str(
+    input_secrets_content: str,
+    existing_secrets_content: Optional[str],
     client: SecretsClient,
     non_interactive: bool = False,
-) -> str:
+) -> Any:
     """Process secrets in a configuration string.
 
     This function:
     1. Parses a YAML string with custom tag handlers
-    2. Transforms the parsed object recursively
-    3. Returns the transformed object as a YAML string
+    2. If existing_secrets_content is provided, parses it to reuse secrets
+    3. Transforms the parsed object recursively, reusing existing secrets where possible
+    4. Returns the transformed object (not a string)
 
     Args:
-        config_content: YAML string with secret tags
+        input_secrets_content: YAML string with secret tags
+        existing_secrets_content: Optional YAML string with existing transformed secrets
         client: SecretsClient instance for creating secrets
         non_interactive: Never prompt for missing values (fail instead)
 
     Returns:
-        Transformed YAML string with developer secrets replaced by handles
+        Transformed configuration object with developer secrets replaced by handles
     """
     # Initialize secrets context for tracking statistics
     secrets_context = {
@@ -154,36 +180,41 @@ async def process_secrets_in_config(
         "user_secrets": [],
         "env_loaded": [],
         "prompted": [],
+        "reused_secrets": [],
     }
 
     # Make the context available to the client for later retrieval
     if hasattr(client, "__setattr__"):
         client.secrets_context = secrets_context
 
-    # Parse the YAML with custom tag handling
+    # Parse the input YAML with custom tag handling
     try:
-        config = load_yaml_with_secrets(config_content)
+        input_config = load_yaml_with_secrets(input_secrets_content)
     except Exception as e:
-        print_error(f"Failed to parse YAML: {str(e)}")
+        print_error(f"Failed to parse input YAML: {str(e)}")
         raise
 
-    # Transform the config recursively
+    # Parse the existing secrets YAML if provided
+    existing_config = None
+    if existing_secrets_content:
+        try:
+            existing_config = load_yaml_with_secrets(existing_secrets_content)
+            print_info("Loaded existing secrets configuration for reuse")
+        except Exception as e:
+            print_warning(f"Failed to parse existing secrets YAML: {str(e)}")
+            existing_config = None
+
+    # Transform the config recursively, passing existing config for reuse
     transformed_config = await transform_config_recursive(
-        config,
+        input_config,
         client,
         "",  # Start with empty path
         non_interactive,
         secrets_context,
+        existing_config,
     )
 
-    # Dump back to YAML string with proper formatting
-    try:
-        result_yaml = dump_yaml_with_secrets(transformed_config)
-    except Exception as e:
-        print_error(f"Failed to dump transformed YAML: {str(e)}")
-        raise
-
-    return result_yaml
+    return transformed_config
 
 
 async def transform_config_recursive(
@@ -192,11 +223,15 @@ async def transform_config_recursive(
     path: str = "",
     non_interactive: bool = False,
     secrets_context: Optional[Dict[str, Any]] = None,
+    existing_config: Optional[Dict[str, Any]] = None,
 ) -> Any:
     """Recursively transform a config dictionary, replacing developer secrets with handles.
 
     For deploy-phase, only developer secrets are processed and replaced with secret handles.
     User secrets are left as-is to be processed during the configure phase.
+
+    If existing_config is provided, the function will attempt to reuse existing secret handles
+    for developer secrets that are already transformed in the existing configuration.
 
     Args:
         config: The configuration dictionary/value to transform
@@ -204,6 +239,7 @@ async def transform_config_recursive(
         path: The current path in the config (for naming secrets)
         non_interactive: Never prompt for missing values (fail instead)
         secrets_context: Dictionary to track secret processing information
+        existing_config: Optional existing transformed configuration to reuse secret handles from
 
     Returns:
         The transformed configuration
@@ -215,6 +251,7 @@ async def transform_config_recursive(
             "user_secrets": [],
             "env_loaded": [],
             "prompted": [],
+            "reused_secrets": [],
         }
 
     # For debugging, check if the config is a string with a tag prefix
@@ -227,8 +264,69 @@ async def transform_config_recursive(
         )
         # This indicates a YAML parsing issue - tags should be objects, not strings
 
+    # Helper function to get value at a specific path in the existing config
+    def get_at_path(config_dict, path_str):
+        if not config_dict or not path_str:
+            return None
+
+        parts = path_str.split(".")
+        curr = config_dict
+
+        for part in parts:
+            if isinstance(curr, dict) and part in curr:
+                curr = curr[part]
+            else:
+                # Handle array indices in path like "path[0]"
+                if "[" in part and "]" in part:
+                    base_part = part.split("[")[0]
+                    idx_str = part.split("[")[1].split("]")[0]
+                    try:
+                        idx = int(idx_str)
+                        if (
+                            base_part in curr
+                            and isinstance(curr[base_part], list)
+                            and idx < len(curr[base_part])
+                        ):
+                            curr = curr[base_part][idx]
+                        else:
+                            return None
+                    except (ValueError, IndexError):
+                        return None
+                else:
+                    return None
+
+        return curr
+
     if isinstance(config, DeveloperSecret):
-        # Process developer secret - the meat of the transformation
+        # Check if this developer secret already exists in the transformed config
+        existing_handle = None
+        if existing_config is not None:
+            existing_handle = get_at_path(existing_config, path)
+
+            # Verify that the existing handle looks like a valid secret handle
+            if isinstance(existing_handle, str) and SECRET_ID_PATTERN.match(
+                existing_handle
+            ):
+                # Reuse the existing handle instead of creating a new secret
+                print_info(
+                    f"Reusing existing developer secret handle at '{path}': {existing_handle}",
+                    console_output=True,
+                )
+
+                # Add to the secrets context
+                if "reused_secrets" not in secrets_context:
+                    secrets_context["reused_secrets"] = []
+
+                secrets_context["reused_secrets"].append(
+                    {
+                        "path": path,
+                        "handle": existing_handle,
+                    }
+                )
+
+                return existing_handle
+
+        # Process developer secret - create a new one if no existing handle found
         value = config.value
         from_env = False
         was_prompted = False
@@ -361,7 +459,12 @@ async def transform_config_recursive(
         for key, value in config.items():
             new_path = f"{path}.{key}" if path else key
             result[key] = await transform_config_recursive(
-                value, client, new_path, non_interactive, secrets_context
+                value,
+                client,
+                new_path,
+                non_interactive,
+                secrets_context,
+                existing_config,
             )
         return result
 
@@ -372,14 +475,25 @@ async def transform_config_recursive(
             new_path = f"{path}[{i}]" if path else f"[{i}]"
             result.append(
                 await transform_config_recursive(
-                    value, client, new_path, non_interactive, secrets_context
+                    value,
+                    client,
+                    new_path,
+                    non_interactive,
+                    secrets_context,
+                    existing_config,
                 )
             )
         return result
 
     else:
-        # Return primitive values as-is
-        return config
+        # We only want to support explicit developer and user secrets tags. Raw string values should not be processed.
+        # However, allow $schema since that defines the structure of the config.
+        if path == "$schema":
+            return config
+
+        raise ValueError(
+            f"Unsupported value at path '{path}'. Secrets must be tagged with !developer_secret or !user_secret."
+        )
 
 
 async def configure_user_secrets(

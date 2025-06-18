@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import subprocess
 
 from mcp_agent_cloud.config import settings
@@ -16,7 +17,7 @@ from .constants import (
 )
 
 
-def wrangler_deploy(app_id: str, api_key: str) -> str:
+def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> str:
     """Bundle the MCP Agent using Wrangler."""
 
     # Copy existing env to avoid overwriting
@@ -50,7 +51,7 @@ def wrangler_deploy(app_id: str, api_key: str) -> str:
                     "deploy",
                     "--name",
                     app_id,
-                    "--assets=.",
+                    f"--assets={str(project_dir)}",
                 ],
                 check=True,
                 env=env,

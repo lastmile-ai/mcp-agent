@@ -15,6 +15,9 @@ from mcp_agent_cloud.core.api_client import UnauthenticatedError
 from mcp_agent_cloud.core.constants import (
     ENV_API_BASE_URL,
     ENV_API_KEY,
+    MCP_CONFIG_FILENAME,
+    MCP_DEPLOYED_SECRETS_FILENAME,
+    MCP_SECRETS_FILENAME,
 )
 from mcp_agent_cloud.core.utils import run_async
 from mcp_agent_cloud.mcp_app.api_client import MCPAppClient
@@ -24,10 +27,13 @@ from mcp_agent_cloud.secrets.processor import (
 )
 from mcp_agent_cloud.secrets.mock_client import MockSecretsClient
 from mcp_agent_cloud.ux import (
+    console,
+    print_deployment_header,
+    print_error,
     print_info,
     print_success,
-    print_error,
 )
+from rich.panel import Panel
 from .wrangler_wrapper import wrangler_deploy
 
 
@@ -41,30 +47,15 @@ def deploy_config(
         "-d",
         help="Description of the MCP App being deployed.",
     ),
-    secrets_file: Path = typer.Option(
-        Path("mcp-agent.secrets.yaml"),
-        "--secrets-file",
-        "-s",
-        help="Path to the input secrets YAML file.",
-        exists=True,
-        readable=True,
-        dir_okay=False,
-        resolve_path=True,
-    ),
-    config_file: Path = typer.Option(
-        Path("mcp-agent.config.yaml"),
-        "--config-file",
+    config_dir: Path = typer.Option(
+        Path("."),
+        "--config-dir",
         "-c",
-        help="Path to the main config YAML file.",
+        help="Path to the directory containing the app config and app files.",
         exists=True,
         readable=True,
-        dir_okay=False,
-        resolve_path=True,
-    ),
-    secrets_output_file: Optional[Path] = typer.Option(
-        None,
-        "--secrets-output-file",
-        help="Path to write the transformed secrets file. Defaults to mcp-agent.deployed.secrets.yaml",
+        dir_okay=True,
+        file_okay=False,
         resolve_path=True,
     ),
     no_secrets: bool = typer.Option(
@@ -95,17 +86,18 @@ def deploy_config(
         envvar=ENV_API_KEY,
     ),
 ) -> str:
-    """Deploy an MCP agent using the specified configuration and secrets files.
+    """Deploy an MCP agent using the specified configuration.
 
-    This function:
-    1. Processes the secrets file, transforming secret tags to secret IDs
-    2. Deploys the agent with the main configuration and transformed secrets
+    An MCP App is deployed from bundling the code at the specified config directory.
+    This directory must contain an 'mcp_agent.config.yaml' at its root. If secrets are required
+    (i.e. `no_secrets` is not set), a secrets file named 'mcp_agent.secrets.yaml' must also be present.
+    The secrets file is processed to replace secret tags with secret handles before deployment and that transformed
+    file is included in the deployment bundle in place of the original secrets file.
 
     Args:
         app_name: Name of the MCP App to deploy
-        config_file: Path to the main configuration file
-        secrets_file: Path to the secrets file to process
-        secrets_output_file: Path to write the transformed secrets file
+        app_description: Description of the MCP App being deployed
+        config_dir: Path to the directory containing the app configuration files
         no_secrets: Skip secrets processing
         no_prompt: Never prompt for missing values (fail instead)
         dry_run: Validate the deployment but don't actually deploy
@@ -115,23 +107,31 @@ def deploy_config(
     Returns:
         Newly-deployed MCP App ID
     """
-    # Display stylized deployment header
-    from mcp_agent_cloud.ux import print_deployment_header
-
+    # Validate config directory and required files
+    config_file, secrets_file = get_config_files(config_dir, no_secrets)
     print_deployment_header(config_file, secrets_file, dry_run)
 
     try:
-        # Validate API-related environment variables or parameters
-        # Use the provided api_key
         provided_key = api_key
-
         effective_api_url = api_url or settings.API_BASE_URL
         effective_api_key = (
             provided_key or settings.API_KEY or load_api_key_credentials()
         )
 
-        # Check for required API credentials - but only for real deployment
-        if not dry_run:
+        if dry_run:
+            # For dry run, we'll use mock values if not provided
+            effective_api_url = (
+                effective_api_url
+                or "https://mcp-agent-cloud-internal.lastmileai.dev/api"
+            )
+            effective_api_key = effective_api_key or "mock-key-for-dry-run"
+
+            print_info("Using MOCK APP API client for dry run")
+            mcp_app_client = MockMCPAppClient(
+                api_url=effective_api_url, api_key=effective_api_key
+            )
+
+        else:
             if not effective_api_url:
                 print_error(
                     "MCP_API_BASE_URL environment variable or --api-url option must be set."
@@ -144,29 +144,10 @@ def deploy_config(
                 raise typer.Exit(1)
             print_info(f"Using API at {effective_api_url}")
 
-        else:
-            # For dry run, we'll use mock values if not provided
-            effective_api_url = (
-                effective_api_url
-                or "https://mcp-agent-cloud-internal.lastmileai.dev/api"
-            )
-            effective_api_key = effective_api_key or "mock-key-for-dry-run"
-            print_info(f"Using mock API at {effective_api_url} (dry run)")
-
-        if dry_run:
-            # Use the mock api client in dry run mode
-            print_info("Using MOCK APP API client for dry run")
-
-            # Create the mock client
-            mcp_app_client = MockMCPAppClient(
-                api_url=effective_api_url, api_key=effective_api_key
-            )
-        else:
             mcp_app_client = MCPAppClient(
                 api_url=effective_api_url, api_key=effective_api_key
             )
 
-        # Look for an existing app ID for this app name
         print_info(f"Checking for existing app ID for '{app_name}'...")
         try:
             app_id = run_async(mcp_app_client.get_app_id_by_name(app_name))
@@ -194,35 +175,22 @@ def deploy_config(
             print_error(f"Error checking or creating app: {str(e)}")
             raise typer.Exit(1)
 
-        # Process secrets file
-        if not no_secrets:
-            # Process secrets file
+        if secrets_file:
             print_info("Processing secrets file...")
-            if secrets_output_file:
-                secrets_transformed_path = secrets_output_file
-            else:
-                # Use a more consistent naming convention with .deployed.secrets.yaml suffix
-                secrets_transformed_path = Path(
-                    f"{secrets_file.stem.split('.')[0]}.deployed.secrets.yaml"
-                )
-                print_info(
-                    f"Using default output path: {secrets_transformed_path}"
-                )
+            secrets_transformed_path = Path(
+                f"{config_dir}/{MCP_DEPLOYED_SECRETS_FILENAME}"
+            )
 
             if dry_run:
-                # Use the mock client in dry run mode
                 print_info("Using MOCK Secrets API client for dry run")
-
-                # Create the mock client
                 mock_client = MockSecretsClient(
                     api_url=effective_api_url, api_key=effective_api_key
                 )
 
-                # Process with the mock client
                 try:
                     run_async(
                         process_config_secrets(
-                            config_path=secrets_file,
+                            input_path=secrets_file,
                             output_path=secrets_transformed_path,
                             client=mock_client,
                             non_interactive=non_interactive,
@@ -237,7 +205,7 @@ def deploy_config(
                 # Use the real secrets API client
                 run_async(
                     process_config_secrets(
-                        config_path=secrets_file,
+                        input_path=secrets_file,
                         output_path=secrets_transformed_path,
                         api_url=effective_api_url,
                         api_key=effective_api_key,
@@ -250,58 +218,59 @@ def deploy_config(
                 f"Transformed secrets file written to {secrets_transformed_path}"
             )
 
-            # The secrets summary has already been shown by compare_configs,
-            # so we don't need to show stats again
-
         else:
             print_info("Skipping secrets processing...")
 
-        # Deploy agent
-        if not dry_run:
-            from rich.panel import Panel
-            from mcp_agent_cloud.ux import console
-
-            console.print(
-                Panel(
-                    "Ready to deploy MCP Agent with processed configuration",
-                    title="Deployment Ready",
-                    border_style="green",
-                )
-            )
-
-            source_uri = wrangler_deploy(
-                app_id=app_id, api_key=effective_api_key
-            )
-
-            # Deploy the app using the MCP App API
-            print_info("Deploying MCP App bundle...")
-            try:
-                app = run_async(
-                    mcp_app_client.deploy_app(
-                        app_id=app_id,
-                        source_uri=source_uri,
-                    )
-                )
-                print_success("✅ MCP App deployed successfully!")
-                print_info(f"App ID: {app_id}")
-
-                if app.appServerInfo:
-                    status = (
-                        "ONLINE"
-                        if app.appServerInfo.status == 1
-                        else "OFFLINE"
-                    )
-                    print_info(f"App URL: {app.appServerInfo.serverUrl}")
-                    print_info(f"App Status: {status}")
-                return app_id
-            except Exception as e:
-                print_error(f"❌ Deployment failed: {str(e)}")
-                raise typer.Exit(1)
-
-        else:
+        if dry_run:
             print_info("Dry run - skipping actual deployment.")
             print_success("Deployment preparation completed successfully!")
             return app_id
+
+        console.print(
+            Panel(
+                "Ready to deploy MCP Agent with processed configuration",
+                title="Deployment Ready",
+                border_style="green",
+            )
+        )
+
+        # When bundling, we temporarily move the raw secrets file so it is not bundled, then add it back after bundling
+        try:
+            if secrets_file:
+                temp_secrets_path = config_dir / f".{secrets_file.name}.bak"
+                secrets_file.rename(temp_secrets_path)
+
+            source_uri = wrangler_deploy(
+                app_id=app_id,
+                api_key=effective_api_key,
+                project_dir=config_dir,
+            )
+        finally:
+            # Bring back the secrets file
+            if secrets_file:
+                temp_secrets_path.rename(secrets_file)
+
+        print_info("Deploying MCP App bundle...")
+        try:
+            app = run_async(
+                mcp_app_client.deploy_app(
+                    app_id=app_id,
+                    source_uri=source_uri,
+                )
+            )
+            print_success("✅ MCP App deployed successfully!")
+            print_info(f"App ID: {app_id}")
+
+            if app.appServerInfo:
+                status = (
+                    "ONLINE" if app.appServerInfo.status == 1 else "OFFLINE"
+                )
+                print_info(f"App URL: {app.appServerInfo.serverUrl}")
+                print_info(f"App Status: {status}")
+            return app_id
+        except Exception as e:
+            print_error(f"❌ Deployment failed: {str(e)}")
+            raise typer.Exit(1)
 
     except Exception as e:
         print_error(f"{str(e)}")
@@ -310,3 +279,41 @@ def deploy_config(
 
             typer.echo(traceback.format_exc())
         raise typer.Exit(1)
+
+
+def get_config_files(
+    config_dir: Path, no_secrets: bool
+) -> tuple[Path, Optional[Path]]:
+    """Get the configuration and secrets files from the configuration directory.
+
+    Args:
+        config_dir: Directory containing the configuration files
+        no_secrets: Whether to skip secrets processing
+
+    Returns:
+        Tuple of (config_file_path, secrets_file_path or None)
+    """
+
+    config_file = config_dir / MCP_CONFIG_FILENAME
+    if not config_file.exists():
+        print_error(
+            f"Configuration file '{MCP_CONFIG_FILENAME}' not found in {config_dir}"
+        )
+        raise typer.Exit(1)
+
+    secrets_file = config_dir / MCP_SECRETS_FILENAME
+
+    if no_secrets:
+        if secrets_file.exists():
+            print_error(
+                f"Secrets file '{MCP_SECRETS_FILENAME}' found in {config_dir} but --no-secrets is specified. Remove the secrets file or omit --no-secrets."
+            )
+            raise typer.Exit(1)
+        secrets_file = None
+    elif not secrets_file.exists():
+        print_error(
+            f"Secrets file '{MCP_SECRETS_FILENAME}' not found in {config_dir}. Required unless --no-secrets is specified."
+        )
+        raise typer.Exit(1)
+
+    return config_file, secrets_file

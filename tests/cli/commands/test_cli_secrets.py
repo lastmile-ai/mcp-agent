@@ -10,6 +10,7 @@ import uuid
 import tempfile
 import subprocess
 import pytest
+from unittest.mock import patch
 
 from mcp_agent_cloud.core.constants import UUID_PREFIX, UUID_PATTERN
 
@@ -48,24 +49,24 @@ def test_cli_deploy_with_secrets(mock_api_credentials, setup_test_env_vars):
     # Set up env var for test-api-key to avoid interactive prompts
     os.environ["test-api-key"] = "dummy-api-key-value"
 
-    # Create a temporary config file (without secrets)
-    with tempfile.NamedTemporaryFile(
-        suffix=".yaml", mode="w+", delete=False
-    ) as config_file:
-        # Generate a unique test name
-        test_name = f"test-cli-{uuid.uuid4().hex[:8]}"
+    # Create a temporary directory for the test
+    test_dir = tempfile.mkdtemp()
 
-        # Create a test config without secrets
-        main_config = {
-            "name": test_name,
-            "server": {"host": "localhost", "port": 8080},
-        }
+    # Generate a unique test name
+    test_name = f"test-cli-{uuid.uuid4().hex[:8]}"
 
-        # Write the config to the temp file
+    # Create a test config without secrets
+    main_config = {
+        "name": test_name,
+        "server": {"host": "localhost", "port": 8080},
+    }
+
+    # Write the config to the temp directory with the expected name
+    config_path = os.path.join(test_dir, "mcp_agent.config.yaml")
+    with open(config_path, "w", encoding="utf-8") as config_file:
         import yaml
 
         yaml.dump(main_config, config_file)
-        config_path = config_file.name
 
     # Create a temporary secrets file with YAML string for proper tag handling
     secrets_file_content = """api:
@@ -73,14 +74,11 @@ def test_cli_deploy_with_secrets(mock_api_credentials, setup_test_env_vars):
 database:
   password: !user_secret
 """
-    secrets_path = tempfile.mktemp(suffix=".yaml")
-    with open(secrets_path, "w") as secrets_file:
+    secrets_path = os.path.join(test_dir, "mcp_agent.secrets.yaml")
+    with open(secrets_path, "w", encoding="utf-8") as secrets_file:
         secrets_file.write(secrets_file_content)
 
     try:
-        # Create a temp file for the transformed secrets output
-        secrets_output_path = f"{secrets_path}.transformed.yaml"
-
         # Run the CLI deploy command
         cmd = [
             "python",
@@ -88,12 +86,8 @@ database:
             "mcp_agent_cloud.cli.main",
             "deploy",
             "Test App",
-            "--secrets-file",
-            secrets_path,  # Now an option
-            "--config-file",
-            config_path,  # Now an option, not positional
-            "--secrets-output-file",
-            secrets_output_path,
+            "--config-dir",
+            test_dir,
             "--api-url",
             API_URL,
             "--api-key",
@@ -113,12 +107,15 @@ database:
         assert "Deployment preparation completed successfully" in result.stdout
 
         # Verify the transformed secrets file exists
+        secrets_output_path = os.path.join(
+            test_dir, "mcp_agent.deployed.secrets.yaml"
+        )
         assert os.path.exists(
             secrets_output_path
         ), "Transformed secrets file was not created"
 
         # Read the transformed secrets file as text
-        with open(secrets_output_path, "r") as f:
+        with open(secrets_output_path, "r", encoding="utf-8") as f:
             transformed_yaml_text = f.read()
 
         print("\nTransformed YAML Content:")
@@ -158,13 +155,14 @@ database:
         ), f"User secret tag pattern not found in file"
 
     finally:
-        # Clean up temp files
-        for path in [config_path, secrets_path, secrets_output_path]:
-            try:
-                if os.path.exists(path):
-                    os.unlink(path)
-            except:
-                pass
+        # Clean up temp directory and all contents
+        try:
+            import shutil
+
+            if os.path.exists(test_dir):
+                shutil.rmtree(test_dir)
+        except:
+            pass
 
 
 def test_cli_deploy_with_env_var_secret(
@@ -178,31 +176,33 @@ def test_cli_deploy_with_env_var_secret(
     secret_value = f"secret-value-{uuid.uuid4().hex[:8]}"
     os.environ[env_var_name] = secret_value
 
-    # Create a temporary main config file (without secrets)
-    with tempfile.NamedTemporaryFile(
-        suffix=".yaml", mode="w+", delete=False
-    ) as config_file:
-        # Create a basic config file
-        main_config = {"app": {"name": "env-var-test", "port": 9000}}
+    # Create a temporary directory for the test
+    test_dir = tempfile.mkdtemp()
 
-        # Write the config to the temp file
+    # Create a basic config file
+    main_config = {"app": {"name": "env-var-test", "port": 9000}}
+
+    # Write the config to the temp directory with the expected name
+    config_path = os.path.join(test_dir, "mcp_agent.config.yaml")
+    with open(config_path, "w", encoding="utf-8") as config_file:
         import yaml
 
         yaml.dump(main_config, config_file)
-        config_path = config_file.name
 
     # Create a temporary secrets file with environment variable reference
     # Use direct YAML string to ensure proper tag handling
     secrets_file_content = f"""api:
   key: !developer_secret {env_var_name}
 """
-    secrets_path = tempfile.mktemp(suffix=".yaml")
-    with open(secrets_path, "w") as secrets_file:
+    secrets_path = os.path.join(test_dir, "mcp_agent.secrets.yaml")
+    with open(secrets_path, "w", encoding="utf-8") as secrets_file:
         secrets_file.write(secrets_file_content)
 
     try:
-        # Create a temp file for the transformed secrets output
-        secrets_output_path = f"{secrets_path}.transformed.yaml"
+        # The expected path for the transformed secrets output
+        secrets_output_path = os.path.join(
+            test_dir, "mcp_agent.deployed.secrets.yaml"
+        )
 
         # Run the CLI deploy command
         cmd = [
@@ -211,12 +211,8 @@ def test_cli_deploy_with_env_var_secret(
             "mcp_agent_cloud.cli.main",
             "deploy",
             "Test App",
-            "--secrets-file",
-            secrets_path,  # Now an option
-            "--config-file",
-            config_path,  # Now an option, not positional
-            "--secrets-output-file",
-            secrets_output_path,
+            "--config-dir",
+            test_dir,
             "--api-url",
             API_URL,
             "--api-key",
@@ -244,7 +240,7 @@ def test_cli_deploy_with_env_var_secret(
         ), "Transformed secrets file was not created"
 
         # Read the transformed secrets config
-        with open(secrets_output_path, "r") as f:
+        with open(secrets_output_path, "r", encoding="utf-8") as f:
             transformed_yaml_text = f.read()
 
         # Verify the environment variable secret was transformed to a production-format UUID
@@ -257,13 +253,14 @@ def test_cli_deploy_with_env_var_secret(
         ), "Expected production UUID format for transformed secret"
 
     finally:
-        # Clean up temp files
-        for path in [config_path, secrets_path, secrets_output_path]:
-            try:
-                if os.path.exists(path):
-                    os.unlink(path)
-            except:
-                pass
+        # Clean up temp directory and all contents
+        try:
+            import shutil
+
+            if os.path.exists(test_dir):
+                shutil.rmtree(test_dir)
+        except:
+            pass
 
         # Remove test environment variable
         if env_var_name in os.environ:
@@ -284,6 +281,9 @@ def test_cli_deploy_with_realistic_configs(
     """
     API_URL, API_TOKEN = mock_api_credentials
 
+    # Create a temporary directory for the test
+    test_dir = tempfile.mkdtemp()
+
     # Create a temporary config file for this test
     config_content = """
 name: test-realistic-config
@@ -294,8 +294,8 @@ models:
   anthropic:
     provider: anthropic
 """
-    config_path = tempfile.mktemp(suffix=".yaml")
-    with open(config_path, "w") as config_file:
+    config_path = os.path.join(test_dir, "mcp_agent.config.yaml")
+    with open(config_path, "w", encoding="utf-8") as config_file:
         config_file.write(config_content)
 
     # Create a temporary secrets file with multiple secrets
@@ -307,8 +307,8 @@ models:
   anthropic:
     api_key: !developer_secret ANTHROPIC_API_KEY
 """
-    secrets_path = tempfile.mktemp(suffix=".yaml")
-    with open(secrets_path, "w") as secrets_file:
+    secrets_path = os.path.join(test_dir, "mcp_agent.secrets.yaml")
+    with open(secrets_path, "w", encoding="utf-8") as secrets_file:
         secrets_file.write(secrets_content)
 
     try:
@@ -320,8 +320,10 @@ models:
             }
         )
 
-        # Create a temp file for the transformed secrets output
-        secrets_output_path = f"{secrets_path}.transformed.yaml"
+        # The expected path for the transformed secrets output
+        secrets_output_path = os.path.join(
+            test_dir, "mcp_agent.deployed.secrets.yaml"
+        )
 
         # Run the CLI deploy command
         cmd = [
@@ -330,12 +332,8 @@ models:
             "mcp_agent_cloud.cli.main",
             "deploy",
             "Test App",
-            "--secrets-file",
-            secrets_path,  # Now an option
-            "--config-file",
-            config_path,  # Now an option, not positional
-            "--secrets-output-file",
-            secrets_output_path,
+            "--config-dir",
+            test_dir,
             "--api-url",
             API_URL,
             "--api-key",
@@ -360,7 +358,7 @@ models:
         ), "Transformed secrets file was not created"
 
         # Read the transformed file
-        with open(secrets_output_path, "r") as f:
+        with open(secrets_output_path, "r", encoding="utf-8") as f:
             transformed_yaml = f.read()
 
         # Check developer secrets were transformed to production-format UUIDs
@@ -390,13 +388,14 @@ models:
         ), "User secret was incorrectly transformed"
 
     finally:
-        # Clean up temp files
-        for path in [config_path, secrets_path, secrets_output_path]:
-            try:
-                if os.path.exists(path):
-                    os.unlink(path)
-            except:
-                pass
+        # Clean up temp directory and all contents
+        try:
+            import shutil
+
+            if os.path.exists(test_dir):
+                shutil.rmtree(test_dir)
+        except:
+            pass
 
         # Clean up environment variables
         for var in ["OPENAI_API_KEY", "ANTHROPIC_API_KEY"]:
@@ -408,34 +407,35 @@ def test_cli_error_handling(mock_api_credentials):
     """Test the CLI error handling for invalid configs or missing credentials."""
     API_URL, API_TOKEN = mock_api_credentials
 
-    # Create both config and secrets files
-    with tempfile.NamedTemporaryFile(
-        suffix=".yaml", mode="w+", delete=False
-    ) as config_file:
+    # Create a temporary directory that doesn't exist
+    nonexistent_dir = (
+        tempfile.mktemp()
+    )  # This is just a path that doesn't exist
+
+    # Create a temporary directory for valid files
+    test_dir = tempfile.mkdtemp()
+
+    # Create valid config and secrets files
+    config_path = os.path.join(test_dir, "mcp_agent.config.yaml")
+    with open(config_path, "w", encoding="utf-8") as config_file:
         import yaml
 
         yaml.dump({"test": "config"}, config_file)
-        config_path = config_file.name
 
-    with tempfile.NamedTemporaryFile(
-        suffix=".yaml", mode="w+", delete=False
-    ) as secrets_file:
-        yaml.dump({"test": "secrets"}, secrets_file)
-        secrets_path = secrets_file.name
+    secrets_path = os.path.join(test_dir, "mcp_agent.secrets.yaml")
+    with open(secrets_path, "w", encoding="utf-8") as secrets_file:
+        yaml.dump({"test": "no_tag"}, secrets_file)
 
     try:
-        # Test with missing secrets file
-        non_existent_path = "/tmp/file-that-does-not-exist-192873465.yaml"
+        # Test with nonexistent directory
         cmd = [
             "python",
             "-m",
             "mcp_agent_cloud.cli.main",
             "deploy",
             "Test App",
-            "--secrets-file",
-            non_existent_path,  # Now an option, not positional
-            "--config-file",
-            config_path,  # Now an option, not positional
+            "--config-dir",
+            nonexistent_dir,
             "--api-url",
             API_URL,
             "--api-key",
@@ -456,52 +456,55 @@ def test_cli_error_handling(mock_api_credentials):
             or "no such file" in combined_output.lower()
         )
 
-        # Test with missing API token (but we'll still use dry-run to avoid real deployment issues)
+        # Test with the secret value not having a tag
         cmd = [
             "python",
             "-m",
             "mcp_agent_cloud.cli.main",
             "deploy",
             "Test App",
-            "--secrets-file",
-            secrets_path,  # Now an option, not positional
-            "--config-file",
-            config_path,  # Config file is an option
+            "--config-dir",
+            test_dir,  # Use the valid directory
             "--api-url",
             API_URL,
             "--api-key",
-            "",  # Empty token
+            API_TOKEN,
             "--dry-run",  # Avoid actual deployment issues
         ]
 
         # Run the command and capture output
         result = subprocess.run(cmd, capture_output=True, text=True)
 
-        # In dry-run mode with empty API key, the command should succeed
-        # as we no longer require API credentials for dry-run mode
-        assert result.returncode == 0
+        assert result.returncode == 1
 
-        # It should mention using the dry run mode
+        # It should mention using the tags
         combined_output = result.stderr + result.stdout
-        assert "dry run" in combined_output.lower()
+        assert (
+            "secrets must be tagged with !developer_secret or !user_secret"
+            in combined_output.lower()
+        )
 
     finally:
-        # Clean up temp files
-        for path in [config_path, secrets_path]:
-            try:
-                if os.path.exists(path):
-                    os.unlink(path)
-            except:
-                pass
+        # Clean up temp directory and all contents
+        try:
+            import shutil
+
+            if os.path.exists(test_dir):
+                shutil.rmtree(test_dir)
+        except:
+            pass
 
 
 def test_developer_secret_validation(mock_api_credentials):
     """Test validation that developer secrets must have values."""
     API_URL, API_TOKEN = mock_api_credentials
 
+    # Create a temporary directory for the test
+    test_dir = tempfile.mkdtemp()
+
     # Create a minimal config file
     config_content = "name: validation-test"
-    config_path = tempfile.mktemp(suffix=".yaml")
+    config_path = os.path.join(test_dir, "mcp_agent.config.yaml")
     with open(config_path, "w", encoding="utf-8") as f:
         f.write(config_content)
 
@@ -511,7 +514,7 @@ def test_developer_secret_validation(mock_api_credentials):
 api:
   key: !developer_secret
 """
-    secrets_path = tempfile.mktemp(suffix=".yaml")
+    secrets_path = os.path.join(test_dir, "mcp_agent.secrets.yaml")
     with open(secrets_path, "w", encoding="utf-8") as f:
         f.write(empty_secret_content)
 
@@ -523,10 +526,8 @@ api:
             "mcp_agent_cloud.cli.main",
             "deploy",
             "Test App",
-            "--secrets-file",
-            secrets_path,  # Now an option, not positional
-            "--config-file",
-            config_path,  # Config file is an option
+            "--config-dir",
+            test_dir,
             "--api-url",
             API_URL,
             "--api-key",
@@ -545,21 +546,30 @@ api:
         assert "Developer secret" in combined_output
         assert "has no value" in combined_output
 
-        # Create another secrets file with a developer secret that has a valid env var
+        # Create a new temporary directory for the test with valid env var
+        valid_test_dir = tempfile.mkdtemp()
+
+        # Create config file
+        valid_config_path = os.path.join(
+            valid_test_dir, "mcp_agent.config.yaml"
+        )
+        with open(valid_config_path, "w", encoding="utf-8") as f:
+            f.write("name: valid-test")
+
+        # Create a secrets file with a developer secret that has a valid env var
         valid_env_var_content = """
 # This has a developer secret with a valid env var
 api:
   key: !developer_secret TEST_API_KEY
 """
-        valid_env_var_path = tempfile.mktemp(suffix=".yaml")
-        with open(valid_env_var_path, "w") as f:
+        valid_secrets_path = os.path.join(
+            valid_test_dir, "mcp_agent.secrets.yaml"
+        )
+        with open(valid_secrets_path, "w", encoding="utf-8") as f:
             f.write(valid_env_var_content)
 
         # Set the environment variable
         os.environ["TEST_API_KEY"] = "test-api-key-value"
-
-        # Create output path
-        output_path = tempfile.mktemp(suffix=".yaml")
 
         try:
             # Test with developer secret pointing to a valid env var
@@ -569,12 +579,8 @@ api:
                 "mcp_agent_cloud.cli.main",
                 "deploy",
                 "Test App",
-                "--secrets-file",
-                valid_env_var_path,  # Now an option, not positional
-                "--config-file",
-                config_path,  # Config file is an option
-                "--secrets-output-file",
-                output_path,
+                "--config-dir",
+                valid_test_dir,
                 "--api-url",
                 API_URL,
                 "--api-key",
@@ -593,9 +599,15 @@ api:
                 in result.stdout
             )
 
+            # The output file should be in the valid_test_dir with the .deployed.yaml suffix
+            deployed_path = os.path.join(
+                valid_test_dir, "mcp_agent.deployed.secrets.yaml"
+            )
             # Verify output file exists and contains a UUID
-            assert os.path.exists(output_path)
-            with open(output_path, "r") as f:
+            assert os.path.exists(
+                deployed_path
+            ), f"Expected deployed file not found at {deployed_path}"
+            with open(deployed_path, "r") as f:
                 transformed = f.read()
 
             # Should have production-format UUID in the output
@@ -609,15 +621,23 @@ api:
 
         finally:
             # Clean up
-            if os.path.exists(valid_env_var_path):
-                os.unlink(valid_env_var_path)
-            if os.path.exists(output_path):
-                os.unlink(output_path)
+            try:
+                import shutil
+
+                if os.path.exists(valid_test_dir):
+                    shutil.rmtree(valid_test_dir)
+            except:
+                pass
+
             if "TEST_API_KEY" in os.environ:
                 del os.environ["TEST_API_KEY"]
 
     finally:
-        # Clean up temp files
-        for path in [config_path, secrets_path]:
-            if os.path.exists(path):
-                os.unlink(path)
+        # Clean up temp directory
+        try:
+            import shutil
+
+            if os.path.exists(test_dir):
+                shutil.rmtree(test_dir)
+        except:
+            pass

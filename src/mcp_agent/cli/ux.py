@@ -139,9 +139,10 @@ def print_secret_summary(secrets_context: Dict[str, Any]) -> None:
     user_secrets = secrets_context.get("user_secrets", [])
     env_loaded = secrets_context.get("env_loaded", [])
     prompted = secrets_context.get("prompted", [])
+    reused_secrets = secrets_context.get("reused_secrets", [])
 
     return print_secrets_summary(
-        dev_secrets, user_secrets, env_loaded, prompted
+        dev_secrets, user_secrets, env_loaded, prompted, reused_secrets
     )
 
 
@@ -150,6 +151,7 @@ def print_secrets_summary(
     user_secrets: List[str],
     env_loaded: List[str],
     prompted: List[str],
+    reused_secrets: Optional[List[Dict[str, str]]] = None,
 ) -> None:
     """Print a summary table of processed secrets."""
     # Create the table
@@ -165,10 +167,22 @@ def print_secrets_summary(
     table.add_column("Handle/Status", style="green", no_wrap=True)
     table.add_column("Source", style="yellow", justify="center")
 
+    # Initialize reused_secrets if not provided
+    if reused_secrets is None:
+        reused_secrets = []
+
+    # Create a set of reused secret paths for fast lookup
+    reused_paths = {secret["path"] for secret in reused_secrets}
+
     # Add developer secrets
     for secret in dev_secrets:
         path = secret["path"]
         handle = secret["handle"]
+
+        # Skip if already handled as a reused secret
+        if path in reused_paths:
+            continue
+
         if path in env_loaded:
             source = "✓ Environment"
         elif path in prompted:
@@ -183,6 +197,18 @@ def print_secrets_summary(
 
         table.add_row("Developer", path, short_handle, source)
 
+    # Add reused secrets
+    for secret in reused_secrets:
+        path = secret["path"]
+        handle = secret["handle"]
+
+        # Shorten the handle for display
+        short_handle = handle
+        if len(handle) > 20:
+            short_handle = handle[:8] + "..." + handle[-8:]
+
+        table.add_row("Developer", path, short_handle, "♻️ Reused")
+
     # Add user secrets
     for path in user_secrets:
         table.add_row("User", path, "▶️ Runtime Collection", "End User")
@@ -193,8 +219,16 @@ def print_secrets_summary(
     console.print()
 
     # Log the summary (without sensitive details)
+    reused_count = len(reused_secrets)
+    new_dev_count = len(dev_secrets)
+
     logger.info(
-        f"Processed {len(dev_secrets)} developer secrets and identified {len(user_secrets)} user secrets"
+        f"Processed {new_dev_count} new developer secrets, reused {reused_count} existing secrets, "
+        f"and identified {len(user_secrets)} user secrets"
+    )
+
+    console.print(
+        f"[info]Summary:[/info] {new_dev_count} new secrets created, {reused_count} existing secrets reused"
     )
 
     if prompted:
@@ -204,13 +238,15 @@ def print_secrets_summary(
 
 
 def print_deployment_header(
-    config_file: Path, secrets_file: Path, dry_run: bool
+    config_file: Path,
+    secrets_file: Optional[Path] = None,
+    dry_run: bool = False,
 ) -> None:
     """Print a styled header for the deployment process."""
     console.print(
         Panel(
             f"Configuration: [cyan]{config_file}[/cyan]\n"
-            f"Secrets file: [cyan]{secrets_file}[/cyan]\n"
+            f"Secrets file: [cyan]{secrets_file or 'N/A'}[/cyan]\n"
             f"Mode: [{'yellow' if dry_run else 'green'}]{'DRY RUN' if dry_run else 'DEPLOY'}[/{'yellow' if dry_run else 'green'}]",
             title="MCP Agent Deployment",
             subtitle="LastMile AI",
@@ -219,7 +255,7 @@ def print_deployment_header(
         )
     )
     logger.info(f"Starting deployment with configuration: {config_file}")
-    logger.info(f"Using secrets file: {secrets_file}")
+    logger.info(f"Using secrets file: {secrets_file or 'N/A'}")
     logger.info(f"Dry Run: {dry_run}")
 
 

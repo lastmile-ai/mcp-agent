@@ -11,6 +11,8 @@ from enum import Enum
 # File names and patterns
 MCP_CONFIG_FILENAME = "mcp_agent.config.yaml"
 MCP_CONFIGURED_SECRETS_FILENAME = "mcp_agent.configured.secrets.yaml"
+MCP_DEPLOYED_SECRETS_FILENAME = "mcp_agent.deployed.secrets.yaml"
+MCP_SECRETS_FILENAME = "mcp_agent.secrets.yaml"
 
 # Cache and deployment settings
 DEFAULT_CACHE_DIR = (

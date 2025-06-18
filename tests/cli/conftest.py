@@ -2,7 +2,11 @@
 
 import os
 import pytest
-from typing import Any, Dict, Generator
+from typing import Any, Dict
+from mcp_agent_cloud.core.constants import (
+    MCP_CONFIG_FILENAME,
+    MCP_SECRETS_FILENAME,
+)
 
 
 # Set environment variables needed for tests
@@ -42,26 +46,30 @@ def sample_secrets_config() -> Dict[str, Any]:
 
 
 @pytest.fixture
-def sample_config_yaml(sample_config: Dict[str, Any], tmp_path) -> str:
-    """Create a sample config YAML file."""
+def sample_config_dir(sample_config: Dict[str, Any]) -> str:
+    """Create a sample config YAML file in a temp directory."""
     import yaml
+    from pathlib import Path
+    import tempfile
 
-    config_path = tmp_path / "test_config.yaml"
-    with open(config_path, "w") as f:
+    test_dir = Path(tempfile.mkdtemp())
+
+    config_path = test_dir / MCP_CONFIG_FILENAME
+    with open(config_path, "w", encoding="utf-8") as f:
         yaml.dump(sample_config, f)
 
-    return str(config_path)
+    return test_dir
 
 
 @pytest.fixture
-def sample_secrets_yaml(
-    sample_secrets_config: Dict[str, Any], tmp_path
+def sample_secrets_config_dir(
+    sample_config_dir: str, sample_secrets_config: Dict[str, Any]
 ) -> str:
-    """Create a sample secrets YAML file."""
+    """Create a sample secrets YAML file in the config directory."""
     import yaml
 
-    secrets_path = tmp_path / "test_secrets.yaml"
-    with open(secrets_path, "w") as f:
+    secrets_path = sample_config_dir / MCP_SECRETS_FILENAME
+    with open(secrets_path, "w", encoding="utf-8") as f:
         yaml.dump(sample_secrets_config, f)
 
-    return str(secrets_path)
+    return sample_config_dir
