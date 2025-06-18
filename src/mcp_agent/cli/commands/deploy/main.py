@@ -147,7 +147,8 @@ def deploy_config(
         else:
             # For dry run, we'll use mock values if not provided
             effective_api_url = (
-                effective_api_url or "http://localhost:3000/api"
+                effective_api_url
+                or "https://mcp-agent-cloud-internal.lastmileai.dev/api"
             )
             effective_api_key = effective_api_key or "mock-key-for-dry-run"
             print_info(f"Using mock API at {effective_api_url} (dry run)")
