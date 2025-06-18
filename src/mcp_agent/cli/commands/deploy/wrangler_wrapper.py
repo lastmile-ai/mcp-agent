@@ -4,7 +4,6 @@ import subprocess
 
 from mcp_agent_cloud.config import settings
 from mcp_agent_cloud.ux import print_error, print_info
-
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from .constants import (
@@ -38,25 +37,28 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> str:
     )
 
     with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
     ) as progress:
         task = progress.add_task("Bundling MCP Agent...", total=None)
 
+        # TODO: do we require a main.py as the entrypoint?
+        main_py = "main.py"
         try:
             result = subprocess.run(
                 [
                     "npx",
                     "wrangler",
                     "deploy",
+                    main_py,
                     "--name",
                     app_id,
-                    f"--assets={str(project_dir)}",
                 ],
                 check=True,
                 env=env,
                 capture_output=True,
                 text=True,
+                cwd=str(project_dir),
             )
             progress.update(task, description="✅ Bundled successfully")
             print_info(result.stdout)
