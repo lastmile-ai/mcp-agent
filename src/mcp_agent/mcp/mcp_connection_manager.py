@@ -10,9 +10,10 @@ from typing import (
     Optional,
     TYPE_CHECKING,
 )
+import threading
 
 import anyio
-from anyio import Event, create_task_group, Lock
+from anyio import create_task_group, move_on_after, Event
 from anyio.abc import TaskGroup
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 
@@ -75,10 +76,14 @@ class ServerConnection:
         self._client_session_factory = client_session_factory
         self._init_hook = init_hook
         self._transport_context_factory = transport_context_factory
-        # Signal that session is fully up and initialized
-        self._initialized_event = Event()
 
-        # Signal we want to shut down
+        # Thread-safe flags
+        self._is_initialized = False
+        self._shutdown_requested = False
+        self._flag_lock = threading.Lock()
+
+        # Async events
+        self._initialized_event = Event()
         self._shutdown_event = Event()
 
         # Track error state
@@ -94,15 +99,36 @@ class ServerConnection:
         self._error = False
         self._error_message = None
 
+    def _is_initialized_flag(self) -> bool:
+        """Thread-safe check if initialized."""
+        with self._flag_lock:
+            return self._is_initialized
+
+    def _set_initialized_flag(self, value: bool) -> None:
+        """Thread-safe set initialized flag."""
+        with self._flag_lock:
+            self._is_initialized = value
+
+    def _is_shutdown_requested_flag(self) -> bool:
+        """Thread-safe check if shutdown requested."""
+        with self._flag_lock:
+            return self._shutdown_requested
+
+    def _set_shutdown_requested_flag(self, value: bool) -> None:
+        """Thread-safe set shutdown requested flag."""
+        with self._flag_lock:
+            self._shutdown_requested = value
+
     def request_shutdown(self) -> None:
         """
         Request the server to shut down. Signals the server lifecycle task to exit.
         """
+        self._set_shutdown_requested_flag(True)
         self._shutdown_event.set()
 
     async def wait_for_shutdown_request(self) -> None:
         """
-        Wait until the shutdown event is set.
+        Wait until shutdown is requested using an async event.
         """
         await self._shutdown_event.wait()
 
@@ -111,23 +137,28 @@ class ServerConnection:
         Initializes the server connection and session.
         Must be called within an async context.
         """
-
         result = await self.session.initialize()
-
         self.server_capabilities = result.capabilities
+
         # If there's an init hook, run it
         if self._init_hook:
             logger.info(f"{self.server_name}: Executing init hook.")
             self._init_hook(self.session, self.server_config.auth)
 
         # Now the session is ready for use
+        self._set_initialized_flag(True)
         self._initialized_event.set()
 
     async def wait_for_initialized(self) -> None:
         """
-        Wait until the session is fully initialized.
+        Wait until the session is fully initialized using an async event with timeout.
         """
-        await self._initialized_event.wait()
+        with move_on_after(30):
+            await self._initialized_event.wait()
+        if not self._is_initialized_flag() and not self._error:
+            raise TimeoutError(
+                f"Timeout waiting for server '{self.server_name}' to initialize"
+            )
 
     def create_session(
         self,
@@ -137,21 +168,15 @@ class ServerConnection:
         """
         Create a new session instance for this server connection.
         """
-
         read_timeout = (
             timedelta(seconds=self.server_config.read_timeout_seconds)
             if self.server_config.read_timeout_seconds
             else None
         )
-
         session = self._client_session_factory(read_stream, send_stream, read_timeout)
-
-        # Make the server config available to the session for initialization
         if hasattr(session, "server_config"):
             session.server_config = self.server_config
-
         self.session = session
-
         return session
 
 
@@ -165,8 +190,7 @@ async def _server_lifecycle_task(server_conn: ServerConnection) -> None:
         transport_context = server_conn._transport_context_factory()
 
         async with transport_context as (read_stream, write_stream, *extras):
-            # If the transport provides a session ID callback (streamable_http does),
-            # store it in the server connection
+            # If the transport provides a session ID callback...
             if (
                 len(extras) > 0
                 and callable(extras[0])
@@ -186,9 +210,7 @@ async def _server_lifecycle_task(server_conn: ServerConnection) -> None:
     except Exception as exc:
         import traceback
 
-        if hasattr(
-            exc, "exceptions"
-        ):  # ExceptionGroup or BaseExceptionGroup in Python 3.11+
+        if hasattr(exc, "exceptions"):
             for i, subexc in enumerate(exc.exceptions):
                 tb_lines = traceback.format_exception(
                     type(subexc), subexc, subexc.__traceback__
@@ -208,10 +230,9 @@ async def _server_lifecycle_task(server_conn: ServerConnection) -> None:
 
         server_conn._error = True
         server_conn._error_message = str(exc)
-        # If there's an error, we should also set the event so that
-        # 'get_server' won't hang
+        # Signal initialization complete to unblock waiters
+        server_conn._set_initialized_flag(True)
         server_conn._initialized_event.set()
-        # No raise - allow graceful exit
 
 
 class MCPConnectionManager(ContextDependent):
@@ -225,10 +246,11 @@ class MCPConnectionManager(ContextDependent):
         super().__init__(context)
         self.server_registry = server_registry
         self.running_servers: Dict[str, ServerConnection] = {}
-        self._lock = Lock()
+        self._lock = anyio.Lock()
         # Manage our own task group - independent of task context
         self._tg: TaskGroup | None = None
         self._tg_active = False
+        self._thread_id = threading.get_ident()  # Track the thread this was created in
 
     async def __aenter__(self):
         # We create a task group to manage all server lifecycle tasks
@@ -242,25 +264,46 @@ class MCPConnectionManager(ContextDependent):
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Ensure clean shutdown of all connections before exiting."""
         try:
+            # Check if we've already been cleaned up
+            if not self._tg_active:
+                logger.debug(
+                    "MCPConnectionManager: Already cleaned up, skipping __aexit__"
+                )
+                return
+
             # First request all servers to shutdown
             logger.debug("MCPConnectionManager: shutting down all server tasks...")
             await self.disconnect_all()
 
-            # TODO: saqadri (FA1) - Is this needed?
             # Add a small delay to allow for clean shutdown
             await anyio.sleep(0.5)
 
-            # Then close the task group if it's active
-            if self._tg_active:
-                try:
-                    await self._tg.__aexit__(exc_type, exc_val, exc_tb)
-                except Exception as e:
+            # Then close the task group if it's active and we're in the same thread
+            if self._tg_active and self._tg:
+                current_thread = threading.get_ident()
+                if current_thread == self._thread_id:
+                    # We're in the same thread, safe to cleanup task group
+                    try:
+                        await self._tg.__aexit__(exc_type, exc_val, exc_tb)
+                        logger.debug(
+                            "MCPConnectionManager: Task group cleaned up successfully"
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            f"MCPConnectionManager: Error during task group cleanup: {e}"
+                        )
+                else:
+                    # Different thread - cannot safely cleanup anyio TaskGroup
+                    # Just mark as inactive and let the original thread handle cleanup
                     logger.warning(
-                        f"MCPConnectionManager: Error during task group cleanup: {e}"
+                        f"MCPConnectionManager: Task group cleanup called from different thread "
+                        f"(created in {self._thread_id}, called from {current_thread}). "
+                        f"Skipping task group cleanup to avoid cross-thread issues."
                     )
-                finally:
-                    self._tg_active = False
-                    self._tg = None
+
+                # Always mark as inactive
+                self._tg_active = False
+                self._tg = None
         except AttributeError:  # Handle missing `_exceptions`
             pass
         except Exception as e:
@@ -478,5 +521,10 @@ class MCPConnectionManager(ContextDependent):
         for name, conn in servers_to_shutdown:
             logger.info(f"{name}: Requesting shutdown...")
             conn.request_shutdown()
+
+        # Give subprocess transports time to properly shut down
+        if servers_to_shutdown:
+            logger.debug("Allowing time for subprocess transports to clean up...")
+            await anyio.sleep(0.2)
 
         logger.info("All persistent server connections signaled to disconnect.")

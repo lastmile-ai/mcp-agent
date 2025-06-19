@@ -244,14 +244,22 @@ class MCPAggregator(ContextDependent):
                                         "Timeout during disconnect_all(), forcing shutdown"
                                     )
 
-                                # Ensure the exit method is called regardless
+                                # Mark the connection manager as inactive instead of calling __aexit__ directly
+                                # This avoids cross-context TaskGroup cleanup issues
                                 try:
-                                    await self._persistent_connection_manager.__aexit__(
-                                        None, None, None
-                                    )
+                                    # Just mark the task group as inactive to prevent cleanup issues
+                                    if hasattr(
+                                        self._persistent_connection_manager,
+                                        "_tg_active",
+                                    ):
+                                        self._persistent_connection_manager._tg_active = False
+                                        self._persistent_connection_manager._tg = None
+                                        logger.debug(
+                                            "Connection manager marked as inactive, skipping direct __aexit__ call"
+                                        )
                                 except Exception as e:
                                     logger.warning(
-                                        f"Error during connection manager cleanup: {e}"
+                                        f"Error during connection manager state cleanup: {e}"
                                     )
 
                                 # Clean up the connection manager from the context

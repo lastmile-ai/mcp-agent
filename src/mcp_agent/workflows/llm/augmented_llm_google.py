@@ -338,7 +338,7 @@ class GoogleCompletionTasks:
             google_client = Client(api_key=request.config.api_key)
 
         payload = request.payload
-        response = google_client.models.generate_content(**payload)
+        response = await google_client.aio.models.generate_content(**payload)
         return response
 
     @staticmethod
@@ -370,10 +370,10 @@ class GoogleCompletionTasks:
             google_client = Client(api_key=request.config.api_key)
 
         client = instructor.from_genai(
-            google_client, mode=instructor.Mode.GENAI_STRUCTURED_OUTPUTS
+            google_client, mode=instructor.Mode.GENAI_STRUCTURED_OUTPUTS, use_async=True
         )
 
-        structured_response = client.chat.completions.create(
+        structured_response = await client.chat.completions.create(
             model=request.model,
             response_model=response_model,
             system="Convert the provided text into the required response model. Do not change the text or add any additional text. Just convert it into the required response model.",

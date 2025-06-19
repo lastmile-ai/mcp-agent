@@ -68,7 +68,7 @@ class TestMCPApp:
         return TestWorkflow
 
     @pytest.fixture
-    def test_task(self):
+    def test_task(self, request):
         """Create a test task function."""
 
         async def task_function(param1: str, param2: int = 0):
@@ -82,6 +82,10 @@ class TestMCPApp:
                 Task result
             """
             return f"Task executed with {param1} and {param2}"
+
+        # Make the function unique by setting a unique name based on the test
+        task_function.__name__ = f"task_function_{request.node.name}"
+        task_function.__qualname__ = f"task_function_{request.node.name}"
 
         return task_function
 
