@@ -7,6 +7,23 @@ from mcp_agent.app import MCPApp
 from mcp_agent.core.context import Context
 from mcp_agent.config import Settings
 from mcp_agent.human_input.types import HumanInputResponse
+from mcp_agent.executor.workflow_task import GlobalWorkflowTaskRegistry
+
+
+@pytest.fixture(autouse=True)
+def _clear_global_task_registry():
+    """
+    Clears the global workflow task registry after each test.
+    This prevents 'Function already contains activity definition' errors
+    when multiple tests initialize an MCPApp.
+    """
+    yield
+    GlobalWorkflowTaskRegistry().clear()
+
+
+async def _module_level_run_fn():
+    """Helper function for testing workflow_run decorator."""
+    return "test"
 
 
 class TestMCPApp:
@@ -454,6 +471,9 @@ class TestMCPApp:
         self, basic_app, test_workflow, mock_context
     ):
         """Test workflow decorator default behavior."""
+        # Set engine to asyncio to test the default decorator path
+        basic_app.config.execution_engine = "asyncio"
+        
         # Set the context directly instead of patching the property
         basic_app._context = mock_context
         basic_app._initialized = True
@@ -482,6 +502,9 @@ class TestMCPApp:
         self, basic_app, test_workflow, mock_context
     ):
         """Test workflow decorator with custom ID."""
+        # Set engine to asyncio to test the default decorator path
+        basic_app.config.execution_engine = "asyncio"
+        
         # Set the context directly instead of patching the property
         basic_app._context = mock_context
         basic_app._initialized = True
@@ -546,12 +569,8 @@ class TestMCPApp:
                 None
             )
 
-            # Test function
-            async def test_fn():
-                return "test"
-
             # Default behavior is a no-op wrapper
-            decorated = basic_app.workflow_run(test_fn)
+            decorated = basic_app.workflow_run(_module_level_run_fn)
 
             assert asyncio.iscoroutinefunction(decorated)
 

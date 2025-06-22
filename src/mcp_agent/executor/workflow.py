@@ -371,10 +371,32 @@ class Workflow(ABC, Generic[T], ContextDependent):
             self._logger.debug(f"Dynamic signal received: name={name}, args={args}")
 
             # Extract payload and update mailbox
-            payload = args[0] if args else None
+            raw_payload = args[0] if args else None
+            
+            # Deserialize the RawValue to get the actual content
+            actual_payload = raw_payload
+            if raw_payload and hasattr(raw_payload, 'payload'):
+                try:
+                    from temporalio.converter import default_converter
+                    # Use Temporal's converter to deserialize the payload
+                    actual_payload = default_converter.from_payloads([raw_payload.payload])[0]
+                except Exception as e:
+                    self._logger.error(f"Failed to deserialize signal payload: {e}")
+                    # Fallback: try to extract JSON data directly
+                    try:
+                        import json
+                        if hasattr(raw_payload.payload, 'data'):
+                            # Decode the raw bytes and parse as JSON
+                            json_str = raw_payload.payload.data.decode('utf-8')
+                            actual_payload = json.loads(json_str)
+                        else:
+                            actual_payload = str(raw_payload)
+                    except Exception as e2:
+                        self._logger.error(f"Fallback deserialization also failed: {e2}")
+                        actual_payload = raw_payload
 
             if hasattr(self, "_signal_mailbox"):
-                self._signal_mailbox.push(name, payload)
+                self._signal_mailbox.push(name, actual_payload)
                 self._logger.debug(f"Updated mailbox for signal {name}")
             else:
                 self._logger.warning("No _signal_mailbox found on workflow instance")

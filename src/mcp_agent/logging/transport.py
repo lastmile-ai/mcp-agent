@@ -389,8 +389,9 @@ class AsyncEventBus:
         except Exception as e:
             print(f"Error in transport.send_event: {e}")
 
-        # Then queue for listeners
-        await self._queue.put(event)
+        # Then queue for listeners only if the event bus has been started
+        if hasattr(self, '_queue') and self._queue is not None:
+            await self._queue.put(event)
 
     def add_listener(self, name: str, listener: EventListener):
         """Add a listener to the event bus."""

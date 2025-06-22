@@ -19,6 +19,20 @@ from workflows.conversation_workflow import ConversationWorkflow
 from models.conversation_models import ConversationState
 from utils.test_runner import create_test_runner
 from utils.progress_reporter import ProgressReporter, set_progress_reporter
+from mcp_agent.executor.workflow import WorkflowResult
+from typing import Dict, Any
+
+
+# Define TestConversationWorkflow at module level to avoid "local class" error
+# This will be registered dynamically with specific apps in tests
+class TestConversationWorkflowTemplate(ConversationWorkflow):
+    """Test workflow template - can be dynamically registered"""
+
+    def __init__(self, app):
+        super().__init__(app)
+
+    async def run(self, args: Dict[str, Any]) -> WorkflowResult[Dict[str, Any]]:
+        return await super().run(args)
 
 
 def patch_llm_interactions():
@@ -91,12 +105,11 @@ async def test_rcm_with_real_calls():
         # Create app using canonical mcp-agent pattern (loads config files automatically)
         app = MCPApp(name="rcm_test")
 
-        # Register workflow
-        @app.workflow
-        class TestConversationWorkflow(ConversationWorkflow):
-            """Test workflow registered with app"""
-
-            pass
+        # Set execution engine to asyncio to avoid Temporal decoration requirements
+        app.config.execution_engine = "asyncio"
+        
+        # Register the workflow using the simple decorator approach for AsyncIO
+        TestConversationWorkflow = app.workflow(TestConversationWorkflowTemplate)
 
         try:
             async with app.run() as test_app:

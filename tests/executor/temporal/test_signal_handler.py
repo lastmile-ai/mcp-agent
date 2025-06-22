@@ -12,7 +12,8 @@ def mailbox():
     return SignalMailbox()
 
 
-def test_push_and_version(mailbox):
+@patch('mcp_agent.executor.temporal.workflow_signal.logger')
+def test_push_and_version(mock_logger, mailbox):
     mailbox.push("signal1", "value1")
     assert mailbox.version("signal1") == 1
     assert mailbox.value("signal1") == "value1"

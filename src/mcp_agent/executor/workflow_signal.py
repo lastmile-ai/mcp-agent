@@ -74,6 +74,34 @@ class SignalHandler(Protocol, Generic[SignalValueT]):
     ) -> SignalValueT:
         """Wait for a signal to be emitted."""
 
+    @abstractmethod
+    async def wait_for_any_signal(
+        self,
+        signal_names: List[str],
+        workflow_id: str,
+        run_id: str | None = None,
+        timeout_seconds: int | None = None,
+    ) -> Signal[SignalValueT]:
+        """
+        Waits for any of a list of signals and returns the one that fired.
+        
+        This method is essential for workflows that need to react to multiple
+        different events concurrently.
+        
+        Args:
+            signal_names: A list of signal names to wait for.
+            workflow_id: The ID of the workflow instance to listen on.
+            run_id: Optional specific run ID of the workflow.
+            timeout_seconds: Optional timeout for waiting.
+            
+        Returns:
+            A Signal object containing the name and payload of the first signal received.
+            
+        Raises:
+            asyncio.TimeoutError: If the timeout is reached.
+        """
+        ...
+
     def on_signal(self, signal_name: str) -> Callable:
         """
         Decorator to register a handler for a signal.
@@ -201,6 +229,45 @@ class ConsoleSignalHandler(SignalHandler[str]):
 
         return decorator
 
+    async def wait_for_any_signal(
+        self,
+        signal_names: List[str],
+        workflow_id: str,
+        run_id: str | None = None,
+        timeout_seconds: int | None = None
+    ) -> Signal[SignalValueT]:
+        """
+        Wait for any of the specified signals using console input.
+        Note: This is a simplified implementation for console-based workflows.
+        """
+        # For console handler, we'll just wait for the first signal name entered
+        loop = asyncio.get_event_loop()
+        if timeout_seconds is not None:
+            try:
+                signal_name = await asyncio.wait_for(
+                    loop.run_in_executor(None, input, f"Enter signal name ({', '.join(signal_names)}): "), 
+                    timeout_seconds
+                )
+            except asyncio.TimeoutError:
+                print("\nTimeout waiting for input")
+                raise
+        else:
+            signal_name = await loop.run_in_executor(None, input, f"Enter signal name ({', '.join(signal_names)}): ")
+        
+        # Validate the signal name
+        if signal_name not in signal_names:
+            raise ValueError(f"Invalid signal name: {signal_name}. Expected one of: {signal_names}")
+        
+        # Get the payload
+        payload = await loop.run_in_executor(None, input, f"Enter payload for {signal_name}: ")
+        
+        return Signal(
+            name=signal_name,
+            payload=payload,
+            workflow_id=workflow_id,
+            run_id=run_id
+        )
+
     async def signal(self, signal):
         print(f"[SIGNAL SENT: {signal.name}] Value: {signal.payload}")
 
@@ -278,6 +345,83 @@ class AsyncioSignalHandler(BaseSignalHandler[SignalValueT]):
             return wrapped
 
         return decorator
+
+    async def wait_for_any_signal(
+        self,
+        signal_names: List[str],
+        workflow_id: str,
+        run_id: str | None = None,
+        timeout_seconds: int | None = None
+    ) -> Signal[SignalValueT]:
+        """
+        Waits for any of a list of signals using asyncio primitives.
+        """
+        # Create an event and a registration for each signal
+        pending_signals: List[PendingSignal] = []
+        waiter_tasks: List[asyncio.Task] = []
+        
+        async with self._lock:
+            for name in signal_names:
+                event = asyncio.Event()
+                unique_name = f"{name}_{uuid.uuid4()}"
+                registration = SignalRegistration(
+                    signal_name=name,
+                    unique_name=unique_name,
+                    workflow_id=workflow_id,
+                    run_id=run_id,
+                )
+                pending = PendingSignal(registration=registration, event=event)
+                pending_signals.append(pending)
+                self._pending_signals.setdefault(name, []).append(pending)
+                waiter_tasks.append(asyncio.create_task(event.wait()))
+
+        try:
+            # Wait for any of the events to be set
+            done, pending = await asyncio.wait(
+                waiter_tasks,
+                return_when=asyncio.FIRST_COMPLETED,
+                timeout=timeout_seconds,
+            )
+
+            if not done:
+                raise asyncio.TimeoutError(f"Timeout waiting for signals: {signal_names}")
+
+            # Find which pending signal corresponds to the completed task
+            completed_task = done.pop()
+            triggered_pending_signal = None
+            for i, task in enumerate(waiter_tasks):
+                if task is completed_task:
+                    triggered_pending_signal = pending_signals[i]
+                    break
+            
+            if not triggered_pending_signal:
+                # Should not happen
+                raise RuntimeError("Could not identify which signal was triggered.")
+
+            return Signal(
+                name=triggered_pending_signal.registration.signal_name,
+                payload=triggered_pending_signal.value,
+                workflow_id=workflow_id,
+                run_id=run_id
+            )
+
+        finally:
+            # Cleanup all waiters for this call
+            for task in waiter_tasks:
+                if not task.done():
+                    task.cancel()
+            
+            async with self._lock:
+                for pending_signal in pending_signals:
+                    name = pending_signal.registration.signal_name
+                    unique_name = pending_signal.registration.unique_name
+                    if name in self._pending_signals:
+                        self._pending_signals[name] = [
+                            p for p in self._pending_signals[name]
+                            if p.registration.unique_name != unique_name
+                        ]
+                        if not self._pending_signals[name]:
+                            del self._pending_signals[name]
 
     async def signal(self, signal):
         async with self._lock:
