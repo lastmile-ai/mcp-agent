@@ -9,7 +9,6 @@ from ..core.api_client import APIClient
 
 
 class AppServerInfo(BaseModel):
-    serverId: str
     serverUrl: str
     status: Literal[
         "APP_SERVER_STATUS_UNSPECIFIED",
