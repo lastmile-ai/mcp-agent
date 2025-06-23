@@ -7,19 +7,18 @@ from mcp_agent_cloud.core.api_client import UnauthenticatedError
 from mcp_agent_cloud.core.constants import ENV_API_BASE_URL, ENV_API_KEY
 from mcp_agent_cloud.core.utils import run_async
 from mcp_agent_cloud.mcp_app.api_client import (
-    APP_CONFIG_ID_PREFIX,
-    APP_ID_PREFIX,
     MCPAppClient,
+    MCPAppConfiguration,
 )
 from mcp_agent_cloud.ux import print_error, print_info, print_success
 
 
 def delete_app(
-    app_id: str = typer.Option(
+    app_id_or_url: str = typer.Option(
         None,
         "--id",
         "-i",
-        help="ID of the app or app configuration to delete.",
+        help="ID or server URL of the app or app configuration to delete.",
     ),
     force: bool = typer.Option(
         False,
@@ -58,25 +57,34 @@ def delete_app(
 
     client = MCPAppClient(api_url=api_url, api_key=effective_api_key)
 
-    if not app_id:
-        print_error("You must provide an app ID or app config ID to delete.")
+    if not app_id_or_url:
+        print_error(
+            "You must provide an app ID, app config ID, or server URL to delete."
+        )
         raise typer.Exit(1)
 
     # The ID could be either an app ID or an app configuration ID. Use the prefix to parse it.
     id_type = "app"
-    if app_id.startswith(APP_ID_PREFIX):
-        id_type = "app"
-    elif app_id.startswith(APP_CONFIG_ID_PREFIX):
-        id_type = "app configuration"
-    else:
+    id_to_delete = None
+    try:
+        app_or_config = run_async(client.get_app_or_config(app_id_or_url))
+
+        if isinstance(app_or_config, MCPAppConfiguration):
+            id_to_delete = app_or_config.appConfigurationId
+            id_type = "app configuration"
+        else:
+            id_to_delete = app_or_config.appId
+            id_type = "app"
+
+    except Exception as e:
         print_error(
-            f"Invalid ID format. ID must start with '{APP_ID_PREFIX}' for apps or '{APP_CONFIG_ID_PREFIX}' for app configurations."
+            f"Error retrieving app or config with ID or URL {app_id_or_url}: {str(e)}"
         )
         raise typer.Exit(1)
 
     if not force:
         confirmation = typer.confirm(
-            f"Are you sure you want to delete the {id_type} with ID '{app_id}'? This action cannot be undone.",
+            f"Are you sure you want to delete the {id_type} with ID '{id_to_delete}'? This action cannot be undone.",
             default=False,
         )
         if not confirmation:
@@ -87,17 +95,17 @@ def delete_app(
         try:
             # Just check that the viewer can delete the app/config without actually doing it
             can_delete = run_async(
-                client.can_delete_app(app_id)
+                client.can_delete_app(id_to_delete)
                 if id_type == "app"
-                else client.can_delete_app_configuration(app_id)
+                else client.can_delete_app_configuration(id_to_delete)
             )
             if can_delete:
                 print_success(
-                    f"[Dry Run] Would delete {id_type} with ID '{app_id}' if run without --dry-run flag."
+                    f"[Dry Run] Would delete {id_type} with ID '{id_to_delete}' if run without --dry-run flag."
                 )
             else:
                 print_error(
-                    f"[Dry Run] Cannot delete {id_type} with ID '{app_id}'. Check permissions or if it exists."
+                    f"[Dry Run] Cannot delete {id_type} with ID '{id_to_delete}'. Check permissions or if it exists."
                 )
             return
         except Exception as e:
@@ -106,13 +114,13 @@ def delete_app(
 
     try:
         run_async(
-            client.delete_app(app_id)
+            client.delete_app(id_to_delete)
             if id_type == "app"
-            else client.delete_app_configuration(app_id)
+            else client.delete_app_configuration(id_to_delete)
         )
 
         print_success(
-            f"Successfully deleted the {id_type} with ID '{app_id}'."
+            f"Successfully deleted the {id_type} with ID '{id_to_delete}'."
         )
 
     except UnauthenticatedError as e:
