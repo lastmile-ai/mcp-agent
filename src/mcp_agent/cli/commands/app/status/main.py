@@ -28,11 +28,11 @@ from rich.console import Group
 
 
 def get_app_status(
-    app_id: str = typer.Option(
+    app_id_or_url: str = typer.Option(
         None,
         "--id",
         "-i",
-        help="ID of the app or app configuration to get details for.",
+        help="ID or server URL of the app or app configuration to get details for.",
     ),
     api_url: Optional[str] = typer.Option(
         settings.API_BASE_URL,
@@ -60,26 +60,30 @@ def get_app_status(
 
     client = MCPAppClient(api_url=api_url, api_key=effective_api_key)
 
-    if not app_id:
-        print_error("You must provide an app ID to get its status.")
+    if not app_id_or_url:
+        print_error(
+            "You must provide an app ID or server URL to get its status."
+        )
         raise typer.Exit(1)
 
     try:
-        app = run_async(client.get_app(app_id))
+        app_or_config = run_async(client.get_app_or_config(app_id_or_url))
 
-        if not app:
-            print_error(f"App with ID '{app_id}' not found.")
-            raise typer.Exit(1)
-
-        if not app.appServerInfo:
+        if not app_or_config:
             print_error(
-                f"App with ID '{app_id}' has no server info available."
+                f"App or config with ID or URL '{app_id_or_url}' not found."
             )
             raise typer.Exit(1)
 
-        print_server_info(app.appServerInfo)
+        if not app_or_config.appServerInfo:
+            print_error(
+                f"App or config with ID or URL '{app_id_or_url}' has no server info available."
+            )
+            raise typer.Exit(1)
 
-        server_url = app.appServerInfo.serverUrl
+        print_server_info(app_or_config.appServerInfo)
+
+        server_url = app_or_config.appServerInfo.serverUrl
         if server_url:
             run_async(
                 print_mcp_server_details(
@@ -95,7 +99,9 @@ def get_app_status(
         )
         raise typer.Exit(1) from e
     except Exception as e:
-        print_error(f"Error getting status for app ID {app_id}: {str(e)}")
+        print_error(
+            f"Error getting status for app or config with ID or URL {app_id_or_url}: {str(e)}"
+        )
         raise typer.Exit(1)
 
 

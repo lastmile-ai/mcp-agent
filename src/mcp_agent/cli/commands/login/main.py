@@ -67,7 +67,9 @@ def login(
                     "Invalid stored API key credentials. Use --force to re-authenticate."
                 )
                 raise typer.Exit(1)
-            print_info("Using stored API key for authentication.")
+            print_info(
+                "Using stored API key for authentication. Run with --force to re-authenticate."
+            )
             print_success("API key set.")
             return
 
