@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from typing import Literal, Optional, Dict, Any, List, Union
+from urllib.parse import urlparse
 
 from pydantic import BaseModel
 
@@ -75,7 +76,7 @@ def is_valid_app_id_format(app_id: str) -> bool:
     Returns:
         bool: True if the app ID is a valid format, False otherwise
     """
-    return isinstance(app_id, str) and app_id.startswith(APP_ID_PREFIX)
+    return app_id.startswith(APP_ID_PREFIX)
 
 
 def is_valid_app_config_id_format(app_config_id: str) -> bool:
@@ -87,9 +88,7 @@ def is_valid_app_config_id_format(app_config_id: str) -> bool:
     Returns:
         bool: True if the app configuration ID is a valid format, False otherwise
     """
-    return isinstance(app_config_id, str) and app_config_id.startswith(
-        APP_CONFIG_ID_PREFIX
-    )
+    return app_config_id.startswith(APP_CONFIG_ID_PREFIX)
 
 
 def is_valid_server_url_format(server_url: str) -> bool:
@@ -101,7 +100,8 @@ def is_valid_server_url_format(server_url: str) -> bool:
     Returns:
         bool: True if the server URL is a valid format, False otherwise
     """
-    return isinstance(server_url, str) and server_url.startswith("http")
+    parsed = urlparse(server_url)
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
 class MCPAppClient(APIClient):
@@ -143,30 +143,36 @@ class MCPAppClient(APIClient):
 
         return MCPApp(**res["app"])
 
-    async def get_app(self, app_id_or_url: str) -> MCPApp:
+    async def get_app(
+        self, app_id: Optional[str] = None, server_url: Optional[str] = None
+    ) -> MCPApp:
         """Get an MCP App by its ID or server URL via the API.
 
         Args:
-            app_id_or_url: The UUID or server URL of the app to retrieve
+            app_id: The UUID of the app to retrieve
+            server_url: The server URL of the app to retrieve
 
         Returns:
             MCPApp: The retrieved MCP App
 
         Raises:
-            ValueError: If the app_id_or_url is invalid
+            ValueError: If the app_id or server_url is invalid
             httpx.HTTPStatusError: If the API returns an error (e.g., 404, 403)
             httpx.HTTPError: If the request fails
         """
-        if not is_valid_app_id_format(
-            app_id_or_url
-        ) and not is_valid_server_url_format(app_id_or_url):
-            raise ValueError(f"Invalid app ID or URL format: {app_id_or_url}")
+        if (app_id and server_url) or (not app_id and not server_url):
+            raise ValueError("One of app_id or server_url must be provided")
 
-        request_data = (
-            {"appId": app_id_or_url}
-            if is_valid_app_id_format(app_id_or_url)
-            else {"appServerUrl": app_id_or_url}
-        )
+        request_data = {}
+
+        if app_id:
+            if not is_valid_app_id_format(app_id):
+                raise ValueError(f"Invalid app ID format: {app_id}")
+            request_data["appId"] = app_id
+        else:
+            if not is_valid_server_url_format(server_url):
+                raise ValueError(f"Invalid server URL format: {server_url}")
+            request_data["appServerUrl"] = server_url
 
         response = await self.post("/mcp_app/get_app", request_data)
 
@@ -177,33 +183,43 @@ class MCPAppClient(APIClient):
         return MCPApp(**res["app"])
 
     async def get_app_configuration(
-        self, app_config_id_or_url: str
+        self,
+        app_config_id: Optional[str] = None,
+        server_url: Optional[str] = None,
     ) -> MCPAppConfiguration:
         """Get an MCP App Configuration by its ID or server URL via the API.
 
         Args:
-            app_config_id: The UUID or server URL of the app configuration to retrieve
+            app_config_id: The UUID of the app configuration to retrieve
+            server_url: The server URL of the app configuration to retrieve
 
         Returns:
             MCPAppConfiguration: The retrieved MCP App Configuration
 
         Raises:
-            ValueError: If the app_config_id_or_url is invalid
+            ValueError: If the app_config_id or server_url is invalid
             httpx.HTTPStatusError: If the API returns an error (e.g., 404, 403)
             httpx.HTTPError: If the request fails
         """
-        if not is_valid_app_config_id_format(
-            app_config_id_or_url
-        ) and not is_valid_server_url_format(app_config_id_or_url):
+        if (app_config_id and server_url) or (
+            not app_config_id and not server_url
+        ):
             raise ValueError(
-                f"Invalid app configuration ID or URL format: {app_config_id_or_url}"
+                "One of app_config_id or server_url must be provided"
             )
 
-        request_data = (
-            {"appConfigurationId": app_config_id_or_url}
-            if is_valid_app_config_id_format(app_config_id_or_url)
-            else {"appConfigServerUrl": app_config_id_or_url}
-        )
+        request_data = {}
+
+        if app_config_id:
+            if not is_valid_app_config_id_format(app_config_id):
+                raise ValueError(
+                    f"Invalid app configuration ID format: {app_config_id}"
+                )
+            request_data["appConfigurationId"] = app_config_id
+        else:
+            if not is_valid_server_url_format(server_url):
+                raise ValueError(f"Invalid server URL format: {server_url}")
+            request_data["appConfigServerUrl"] = server_url
 
         response = await self.post(
             "/mcp_app/get_app_configuration", request_data
@@ -238,18 +254,22 @@ class MCPAppClient(APIClient):
         """
 
         if is_valid_app_id_format(app_id_or_url):
-            return await self.get_app(app_id_or_url)
+            return await self.get_app(app_id=app_id_or_url)
         elif is_valid_app_config_id_format(app_id_or_url):
-            return await self.get_app_configuration(app_id_or_url)
+            return await self.get_app_configuration(
+                app_config_id=app_id_or_url
+            )
         else:
             try:
                 # Try to get as an app first
-                return await self.get_app(app_id_or_url)
+                return await self.get_app(server_url=app_id_or_url)
             except Exception:
                 pass
             try:
                 # If that fails, try to get as a configuration
-                return await self.get_app_configuration(app_id_or_url)
+                return await self.get_app_configuration(
+                    server_url=app_id_or_url
+                )
             except Exception as e:
                 raise ValueError(
                     f"Failed to retrieve app or configuration for ID or server URL: {app_id_or_url}"
@@ -282,13 +302,11 @@ class MCPAppClient(APIClient):
     async def deploy_app(
         self,
         app_id: str,
-        source_uri: str,
     ) -> MCPApp:
         """Deploy an MCP App via the API.
 
         Args:
             app_id: The UUID of the app to deploy
-            source_uri: The source URI for the app deployment
 
         Returns:
             MCPApp: The deployed MCP App
@@ -301,12 +319,8 @@ class MCPAppClient(APIClient):
         if not app_id or not is_valid_app_id_format(app_id):
             raise ValueError(f"Invalid app ID format: {app_id}")
 
-        if not source_uri or not isinstance(source_uri, str):
-            raise ValueError(f"Invalid source URI format: {source_uri}")
-
         payload = {
             "appId": app_id,
-            "sourceUri": source_uri,
         }
 
         response = await self.post("/mcp_app/deploy_app", payload)

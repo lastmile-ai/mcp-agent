@@ -1,3 +1,4 @@
+import asyncio
 import json
 from typing import Optional
 
@@ -129,45 +130,57 @@ def _server_status_text(status: str) -> str:
 async def print_mcp_server_details(server_url: str, api_key: str) -> None:
     """Prints the MCP server details."""
     try:
-        # Try to connect with streamable_http first
-        mcp_client = MCPClient(
-            server_url=server_url,
-            api_key=api_key,
-            transport_type=TransportType.STREAMABLE_HTTP,
-        )
-        async with mcp_client.client_session() as session:
-            with console.status(
-                "[cyan]Connecting to server with streamable_http...",
-                spinner="dots",
-            ):
-                await session.send_ping()
-            print_success(
-                f"Connected to MCP server at {server_url} using streamable_http."
+        with console.status(
+            "[cyan]Connecting to MCP server with streamable_http...",
+            spinner="dots",
+        ):
+            async with asyncio.timeout(10):
+                # Try to connect with streamable_http first
+                mcp_client = MCPClient(
+                    server_url=server_url,
+                    api_key=api_key,
+                    transport_type=TransportType.STREAMABLE_HTTP,
+                )
+                async with mcp_client.client_session() as session:
+                    await session.send_ping()
+                    print_success(
+                        f"Connected to MCP server at {server_url} using streamable_http."
+                    )
+    except Exception as ex:
+        if isinstance(ex, asyncio.TimeoutError):
+            print_warning(
+                f"Connection to MCP server at {server_url} timed out using streamable_http. Trying SSE..."
             )
-    except Exception:
-        print_warning(
-            f"Could not connect to MCP server at {server_url} using streamable_http. Trying SSE..."
-        )
+        else:
+            print_warning(
+                f"Could not connect to MCP server at {server_url} using streamable_http. Trying SSE..."
+            )
         try:
             # Fallback to SSE if streamable_http fails
-            mcp_client = MCPClient(
-                server_url=server_url,
-                api_key=api_key,
-                transport_type=TransportType.SSE,
-            )
-            async with mcp_client.client_session() as session:
-                with console.status(
-                    "[cyan]Connecting to server with sse...",
-                    spinner="dots",
-                ):
-                    await session.send_ping()
-                print_success(
-                    f"Connected to MCP server at {server_url} using sse."
-                )
+            with console.status(
+                "[cyan]Connecting to MCP server with sse...",
+                spinner="dots",
+            ):
+                async with asyncio.timeout(10):
+                    mcp_client = MCPClient(
+                        server_url=server_url,
+                        api_key=api_key,
+                        transport_type=TransportType.SSE,
+                    )
+                    async with mcp_client.client_session() as session:
+                        await session.send_ping()
+                        print_success(
+                            f"Connected to MCP server at {server_url} using sse."
+                        )
         except Exception as e:
-            print_error(
-                f"Error connecting to MCP server using SSE at {server_url}: {str(e)}"
-            )
+            if isinstance(e, asyncio.TimeoutError):
+                print_error(
+                    f"Connection to MCP server at {server_url} timed out using SSE. Please check the server URL and your network connection."
+                )
+            else:
+                print_error(
+                    f"Error connecting to MCP server using SSE at {server_url}: {str(e)}"
+                )
             raise typer.Exit(1)
 
     choices = {

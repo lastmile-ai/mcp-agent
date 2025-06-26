@@ -240,7 +240,7 @@ def deploy_config(
                 temp_secrets_path = config_dir / f".{secrets_file.name}.bak"
                 secrets_file.rename(temp_secrets_path)
 
-            source_uri = wrangler_deploy(
+            wrangler_deploy(
                 app_id=app_id,
                 api_key=effective_api_key,
                 project_dir=config_dir,
@@ -255,7 +255,6 @@ def deploy_config(
             app = run_async(
                 mcp_app_client.deploy_app(
                     app_id=app_id,
-                    source_uri=source_uri,
                 )
             )
             print_success("✅ MCP App deployed successfully!")
