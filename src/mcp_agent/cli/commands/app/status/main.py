@@ -1,4 +1,3 @@
-import asyncio
 import json
 from typing import Optional
 
@@ -10,15 +9,12 @@ from mcp_agent_cloud.core.constants import ENV_API_BASE_URL, ENV_API_KEY
 from mcp_agent_cloud.core.utils import run_async
 from mcp_agent_cloud.mcp_app.api_client import AppServerInfo, MCPAppClient
 from mcp_agent_cloud.mcp_app.mcp_client import (
-    MCPClient,
     MCPClientSession,
-    TransportType,
+    mcp_connection_session,
 )
 from mcp_agent_cloud.ux import (
     console,
     print_error,
-    print_success,
-    print_warning,
 )
 from rich.panel import Panel
 from rich.prompt import Prompt
@@ -130,89 +126,37 @@ def _server_status_text(status: str) -> str:
 async def print_mcp_server_details(server_url: str, api_key: str) -> None:
     """Prints the MCP server details."""
     try:
-        with console.status(
-            "[cyan]Connecting to MCP server with streamable_http...",
-            spinner="dots",
-        ):
-            async with asyncio.timeout(10):
-                # Try to connect with streamable_http first
-                mcp_client = MCPClient(
-                    server_url=server_url,
-                    api_key=api_key,
-                    transport_type=TransportType.STREAMABLE_HTTP,
-                )
-                async with mcp_client.client_session() as session:
-                    await session.send_ping()
-                    print_success(
-                        f"Connected to MCP server at {server_url} using streamable_http."
-                    )
-    except Exception as ex:
-        if isinstance(ex, asyncio.TimeoutError):
-            print_warning(
-                f"Connection to MCP server at {server_url} timed out using streamable_http. Trying SSE..."
+        async with mcp_connection_session(
+            server_url, api_key
+        ) as mcp_client_session:
+            choices = {
+                "1": "Show Server Tools",
+                "2": "Show Server Prompts",
+                "3": "Show Server Resources",
+                "4": "Show Server Workflows",
+                "0": "Show All",
+            }
+
+            # Print the numbered options
+            console.print("\n[bold]What would you like to display?[/bold]")
+            for key, description in choices.items():
+                console.print(f"[cyan]{key}[/cyan]: {description}")
+
+            choice = Prompt.ask(
+                "\nWhat would you like to display?",
+                choices=list(choices.keys()),
+                default="0",
+                show_choices=False,
             )
-        else:
-            print_warning(
-                f"Could not connect to MCP server at {server_url} using streamable_http. Trying SSE..."
-            )
-        try:
-            # Fallback to SSE if streamable_http fails
-            with console.status(
-                "[cyan]Connecting to MCP server with sse...",
-                spinner="dots",
-            ):
-                async with asyncio.timeout(10):
-                    mcp_client = MCPClient(
-                        server_url=server_url,
-                        api_key=api_key,
-                        transport_type=TransportType.SSE,
-                    )
-                    async with mcp_client.client_session() as session:
-                        await session.send_ping()
-                        print_success(
-                            f"Connected to MCP server at {server_url} using sse."
-                        )
-        except Exception as e:
-            if isinstance(e, asyncio.TimeoutError):
-                print_error(
-                    f"Connection to MCP server at {server_url} timed out using SSE. Please check the server URL and your network connection."
-                )
-            else:
-                print_error(
-                    f"Error connecting to MCP server using SSE at {server_url}: {str(e)}"
-                )
-            raise typer.Exit(1)
 
-    choices = {
-        "1": "Show Server Tools",
-        "2": "Show Server Prompts",
-        "3": "Show Server Resources",
-        "4": "Show Server Workflows",
-        "0": "Show All",
-    }
-
-    # Print the numbered options
-    console.print("\n[bold]What would you like to display?[/bold]")
-    for key, description in choices.items():
-        console.print(f"[cyan]{key}[/cyan]: {description}")
-
-    choice = Prompt.ask(
-        "\nWhat would you like to display?",
-        choices=list(choices.keys()),
-        default="0",
-        show_choices=False,
-    )
-
-    try:
-        async with mcp_client.client_session() as session:
             if choice in ["0", "1"]:
-                await print_server_tools(session)
+                await print_server_tools(mcp_client_session)
             if choice in ["0", "2"]:
-                await print_server_prompts(session)
+                await print_server_prompts(mcp_client_session)
             if choice in ["0", "3"]:
-                await print_server_resources(session)
+                await print_server_resources(mcp_client_session)
             if choice in ["0", "4"]:
-                await print_server_workflows(session)
+                await print_server_workflows(mcp_client_session)
 
     except Exception as e:
         print_error(
