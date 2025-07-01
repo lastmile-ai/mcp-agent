@@ -3,6 +3,8 @@
 import re
 from typing import Dict, Any, Optional
 from .api_client import SecretsClient
+from ..core.api_client import UnauthenticatedError
+from ..core.constants import SECRET_ID_PATTERN
 
 
 class SecretsResolver:
@@ -15,7 +17,7 @@ class SecretsResolver:
             client: SecretsClient instance for API communication
         """
         self.client = client
-        self.handle_pattern = re.compile(r'^mcpac_sc_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+        self.handle_pattern = SECRET_ID_PATTERN
         
     def _is_secret_handle(self, value: Any) -> bool:
         """Check if a value is a secret handle."""
@@ -93,9 +95,6 @@ class SecretsResolver:
             else:
                 # Return other types as-is
                 return value
-        
-        # Import the exception type we need
-        from ..core.api_client import UnauthenticatedError
         
         logger.info("Starting secrets resolution...")
         try:
