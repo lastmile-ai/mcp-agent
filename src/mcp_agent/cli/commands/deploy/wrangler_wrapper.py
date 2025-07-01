@@ -1,10 +1,17 @@
 import os
-from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import textwrap
+from pathlib import Path
 
 from mcp_agent_cloud.config import settings
+from mcp_agent_cloud.core.constants import (
+    MCP_CONFIG_FILENAME,
+    MCP_DEPLOYED_SECRETS_FILENAME,
+    MCP_SECRETS_FILENAME,
+    REQUIREMENTS_TXT_FILENAME,
+)
 from mcp_agent_cloud.ux import print_error, print_info
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
@@ -16,6 +23,15 @@ from .constants import (
     WRANGLER_SEND_METRICS,
     CLOUDFLARE_API_BASE_URL,
 )
+
+_WELL_KNOWN_CONFIG_FILES = [
+    MCP_CONFIG_FILENAME,
+    MCP_DEPLOYED_SECRETS_FILENAME,
+    "uv.lock",
+    "poetry.lock",
+    "pyproject.toml",
+    REQUIREMENTS_TXT_FILENAME,
+]
 
 
 def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> str:
@@ -63,8 +79,8 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> str:
     wrangler_toml_path = project_dir / "wrangler.toml"
 
     # Rename requirements.txt if it exists
-    original_reqs = project_dir / "requirements.txt"
-    temp_reqs = project_dir / "requirements-mcp-agent.txt"
+    original_reqs = project_dir / REQUIREMENTS_TXT_FILENAME
+    temp_reqs = project_dir / ".requirements.txt.bak"
     renamed_reqs = False
 
     # Temporarily move .venv if it exists
@@ -81,16 +97,27 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> str:
     """
     ).strip()
 
-    try:
-        if original_reqs.exists():
-            original_reqs.rename(temp_reqs)
-            renamed_reqs = True
+    copied_py_files = []  # Track all files we copy with .py extension
 
+    try:
         if original_venv.exists():
             temp_dir = tempfile.TemporaryDirectory(prefix="mcp-venv-temp-")
             temp_venv_path = Path(temp_dir.name) / ".venv"
             original_venv.rename(temp_venv_path)
             temp_venv = temp_dir  # keep ref to cleanup later
+
+        # Copy well-known config files with a .mcpac.py extension whenever they exist
+        for filename in _WELL_KNOWN_CONFIG_FILES:
+            file_path = project_dir / filename
+            if file_path.exists():
+                py_path = project_dir / f"{filename}.mcpac.py"
+                shutil.copy(file_path, py_path)
+                copied_py_files.append(py_path)
+
+                # In the special case of requirements.txt, we still have to hide the original file
+                if filename == REQUIREMENTS_TXT_FILENAME:
+                    file_path.rename(temp_reqs)
+                    renamed_reqs = True
 
         wrangler_toml_path.write_text(wrangler_toml_content)
 
@@ -135,6 +162,11 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> str:
         if temp_venv is not None:
             temp_venv_path.rename(original_venv)
             temp_venv.cleanup()
+
+        # Remove all copied .py files
+        for py_file in copied_py_files:
+            if py_file.exists():
+                os.remove(py_file)
 
         if wrangler_toml_path.exists():
             wrangler_toml_path.unlink()
