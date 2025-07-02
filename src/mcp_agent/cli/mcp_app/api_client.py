@@ -323,7 +323,9 @@ class MCPAppClient(APIClient):
             "appId": app_id,
         }
 
-        response = await self.post("/mcp_app/deploy_app", payload)
+        # Use a longer timeout for deployments
+        deploy_timeout = 120.0
+        response = await self.post("/mcp_app/deploy_app", payload, timeout=deploy_timeout)
 
         res = response.json()
         if not res or "app" not in res:
