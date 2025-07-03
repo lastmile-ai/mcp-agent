@@ -15,6 +15,7 @@ from ..commands.app import (
     list_app_workflows,
 )
 from ..commands.apps import list_apps
+from ..commands.workflow import get_workflow_status
 
 # Root typer for `mcp-agent` CLI commands
 app = typer.Typer(help="MCP Agent Cloud CLI for deployment and management")
@@ -35,6 +36,11 @@ app_cmd_app.command(name="delete")(delete_app)
 app_cmd_app.command(name="status")(get_app_status)
 app_cmd_app.command(name="workflows")(list_app_workflows)
 app.add_typer(app_cmd_app, name="app", help="Manage an MCP App")
+
+# Sub-typer for `mcp-agent workflow` commands
+app_cmd_workflow = typer.Typer(help="Management commands for MCP Workflows")
+app_cmd_workflow.command(name="status")(get_workflow_status)
+app.add_typer(app_cmd_workflow, name="workflow", help="Manage MCP Workflows")
 
 
 @app.callback()
