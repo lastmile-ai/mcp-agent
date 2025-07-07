@@ -47,7 +47,7 @@ def list_app_workflows(
         envvar=ENV_API_KEY,
     ),
 ) -> None:
-"""List workflow details (available workflows and recent workflow runs) for an MCP App."""
+    """List workflow details (available workflows and recent workflow runs) for an MCP App."""
     effective_api_key = (
         api_key or settings.API_KEY or load_api_key_credentials()
     )
