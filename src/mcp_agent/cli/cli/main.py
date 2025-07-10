@@ -1,21 +1,37 @@
 """MCP Agent Cloud CLI entry point."""
 
-import typer
+import logging
+import os
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 from typing import Optional
 
+import typer
+
 from .. import __version__
-from ..commands import (
-    configure_app,
-    deploy_config,
-    login,
-)
-from ..commands.app import (
-    delete_app,
-    get_app_status,
-    list_app_workflows,
-)
+from ..commands import configure_app, deploy_config, login
+from ..commands.app import delete_app, get_app_status, list_app_workflows
 from ..commands.apps import list_apps
 from ..commands.workflow import get_workflow_status
+
+# Setup file logging
+LOG_DIR = Path.home() / ".mcp-agent" / "logs"
+os.makedirs(LOG_DIR, exist_ok=True)
+LOG_FILE = LOG_DIR / "mcp-agent.log"
+
+# Configure separate file logging without console output
+file_handler = RotatingFileHandler(
+    LOG_FILE,
+    maxBytes=10 * 1024 * 1024,  # 10MB
+    backupCount=5,
+    encoding="utf-8",
+)
+file_handler.setFormatter(
+    logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+)
+
+# Configure logging - only sending to file, not to console
+logging.basicConfig(level=logging.INFO, handlers=[file_handler])
 
 # Root typer for `mcp-agent` CLI commands
 app = typer.Typer(help="MCP Agent Cloud CLI for deployment and management")

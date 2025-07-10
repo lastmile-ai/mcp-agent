@@ -1,8 +1,6 @@
 """User experience utilities for MCP Agent Cloud."""
 
 import logging
-import os
-from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -27,25 +25,6 @@ CUSTOM_THEME = Theme(
 
 # Create console for terminal output
 console = Console(theme=CUSTOM_THEME)
-
-# Setup file logging
-LOG_DIR = Path.home() / ".mcp-agent" / "logs"
-os.makedirs(LOG_DIR, exist_ok=True)
-LOG_FILE = LOG_DIR / "mcp-agent.log"
-
-# Configure separate file logging without console output
-file_handler = RotatingFileHandler(
-    LOG_FILE,
-    maxBytes=10 * 1024 * 1024,  # 10MB
-    backupCount=5,
-    encoding="utf-8",
-)
-file_handler.setFormatter(
-    logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-)
-
-# Configure logging - only sending to file, not to console
-logging.basicConfig(level=logging.INFO, handlers=[file_handler])
 
 logger = logging.getLogger("mcp-agent")
 
