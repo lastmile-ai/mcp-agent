@@ -18,13 +18,13 @@ tests:
 
 .PHONY: coverage
 coverage:
-	uv run coverage run -m pytest
+	uv run coverage run -m pytest tests
 	uv run coverage xml -o coverage.xml
 	uv run coverage report -m --fail-under=80
 
 .PHONY: coverage-report
 coverage-report:
-	uv run coverage run -m pytest
+	uv run coverage run -m pytest tests
 	uv run coverage html
 
 .PHONY: schema
