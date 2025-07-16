@@ -44,7 +44,9 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> str:
     - We must add a temporary `wrangler.toml` to the project directory to set python_workers
       compatibility flag (CLI arg is not sufficient).
     - Python workers with a `requirements.txt` file cannot be published by Wrangler, so we must
-      rename any `requirements.txt` file to `requirements-mcp-agent.txt` before bundling.
+      rename any `requirements.txt` file to `requirements.txt.mcpac.py` before bundling
+    - Non-python files (e.g. `uv.lock`, `poetry.lock`, `pyproject.toml`) would be excluded by default
+    due to no py extension, so they are also copied with a `.mcpac.py` extension.
     - Similarly, having a `.venv` in the python project directory will result in the same error as
       `requirements.txt`, so we temporarily move it out of the project directory if it exists.
 
