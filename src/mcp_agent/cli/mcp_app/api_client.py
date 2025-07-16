@@ -324,7 +324,7 @@ class MCPAppClient(APIClient):
         }
 
         # Use a longer timeout for deployments
-        deploy_timeout = 120.0
+        deploy_timeout = 300.0
         response = await self.post("/mcp_app/deploy_app", payload, timeout=deploy_timeout)
 
         res = response.json()
