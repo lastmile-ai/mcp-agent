@@ -1,0 +1,75 @@
+{
+  "description": "The `Human Interaction Layer` is a critical subsystem designed to facilitate seamless human-in-the-loop workflows within the AI agent framework. Its primary purpose is to enable agents to request information, receive feedback, and process responses from human users, thereby integrating human intelligence and decision-making into automated processes. This layer adheres to the project's architectural biases by promoting modularity, clear separation of concerns, and an asynchronous design, ensuring that human interactions do not block core agent operations.",
+  "components": [
+    {
+      "name": "Human Input Handler",
+      "description": "This is the central orchestrator for managing human input. It's responsible for presenting prompts to the user, capturing their input (distinguishing between simple text and structured commands), and then parsing that input to determine the appropriate action for the agent. It also coordinates with the display mechanism to manage the visual state during input.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "Human Input Handler",
+          "reference_file": "mcp_agent/human_input/handler.py",
+          "reference_start_line": 1,
+          "reference_end_line": 1
+        }
+      ]
+    },
+    {
+      "name": "Human Input Data Models",
+      "description": "This component defines the standardized data structures (e.g., `HumanInputRequest`) for all human-related input and output within the system. It ensures type safety, consistency, and a clear contract for information exchange between the agent framework and the human interaction components.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "Human Input Data Models",
+          "reference_file": "mcp_agent/human_input/types.py",
+          "reference_start_line": 1,
+          "reference_end_line": 1
+        }
+      ]
+    },
+    {
+      "name": "Progress Display",
+      "description": "This component, specifically `RichProgressDisplay`, is responsible for providing visual feedback to the user during agent operations. It manages the display of progress indicators, status messages, and other interactive elements, crucially pausing them when human input is pending and resuming them afterward to maintain a coherent user experience.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "Progress Display",
+          "reference_file": "mcp_agent/logging/rich_progress.py",
+          "reference_start_line": 1,
+          "reference_end_line": 1
+        }
+      ]
+    },
+    {
+      "name": "Console Interface",
+      "description": "This foundational component provides the low-level interface for interacting with the console. It handles the actual reading of input from `stdin` and writing output to `stdout`/`stderr`. While not exclusively part of the `human_input` package, it serves as the underlying I/O mechanism for any console-based human interaction.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "Console Interface",
+          "reference_file": "mcp_agent/console.py",
+          "reference_start_line": 1,
+          "reference_end_line": 1
+        }
+      ]
+    }
+  ],
+  "components_relations": [
+    {
+      "relation": "uses",
+      "src_name": "Human Input Handler",
+      "dst_name": "Human Input Data Models"
+    },
+    {
+      "relation": "uses",
+      "src_name": "Human Input Handler",
+      "dst_name": "Console Interface"
+    },
+    {
+      "relation": "uses",
+      "src_name": "Human Input Handler",
+      "dst_name": "Progress Display"
+    },
+    {
+      "relation": "uses",
+      "src_name": "Progress Display",
+      "dst_name": "Console Interface"
+    }
+  ]
+}
