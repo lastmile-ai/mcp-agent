@@ -1,7 +1,7 @@
 from typing import List, Optional, TYPE_CHECKING
 
 from numpy import array, float32, stack
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 from mcp_agent.tracing.semconv import (
     GEN_AI_OPERATION_NAME,
@@ -23,13 +23,24 @@ class OpenAIEmbeddingModel(EmbeddingModel):
         self, model: str = "text-embedding-3-small", context: Optional["Context"] = None
     ):
         super().__init__(context=context)
-        self.client = OpenAI(api_key=self.context.config.openai.api_key)
+        self.async_client = AsyncOpenAI(api_key=self.context.config.openai.api_key)
         self.model = model
         # Cache the dimension since it's fixed per model
         self._embedding_dim = {
             "text-embedding-3-small": 1536,
             "text-embedding-3-large": 3072,
         }[model]
+
+    async def close(self):
+        """Close the OpenAI client and clean up resources."""
+        if hasattr(self, "async_client") and self.async_client:
+            await self.async_client.close()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        await self.close()
 
     async def embed(self, data: List[str]) -> FloatArray:
         tracer = get_tracer(self.context)
@@ -39,7 +50,7 @@ class OpenAIEmbeddingModel(EmbeddingModel):
             span.set_attribute("data", data)
             span.set_attribute("embedding_dim", self.embedding_dim)
 
-            response = self.client.embeddings.create(
+            response = await self.async_client.embeddings.create(
                 model=self.model, input=data, encoding_format="float"
             )
 

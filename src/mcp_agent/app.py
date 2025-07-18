@@ -9,15 +9,17 @@ from contextlib import asynccontextmanager
 from mcp import ServerSession
 from mcp_agent.core.context import Context, initialize_context, cleanup_context
 from mcp_agent.config import Settings, get_settings
-from mcp_agent.executor.signal_registry import SignalRegistry
+from mcp_agent.executor.signal_registry import (
+    get_global_signal_registry,
+)
 from mcp_agent.logging.event_progress import ProgressAction
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.executor.decorator_registry import (
-    DecoratorRegistry,
+    get_global_decorator_registry,
     register_asyncio_decorators,
     register_temporal_decorators,
 )
-from mcp_agent.executor.task_registry import ActivityRegistry
+from mcp_agent.executor.task_registry import get_global_activity_registry
 from mcp_agent.executor.workflow_signal import SignalWaitCallback
 from mcp_agent.executor.workflow_task import GlobalWorkflowTaskRegistry
 from mcp_agent.human_input.types import HumanInputCallback
@@ -91,9 +93,9 @@ class MCPApp:
         # We initialize the task and decorator registries at construction time
         # (prior to initializing the context) to ensure that they are available
         # for any decorators that are applied to the workflow or task methods.
-        self._task_registry = ActivityRegistry()
-        self._decorator_registry = DecoratorRegistry()
-        self._signal_registry = SignalRegistry()
+        self._task_registry = get_global_activity_registry()
+        self._decorator_registry = get_global_decorator_registry()
+        self._signal_registry = get_global_signal_registry()
         register_asyncio_decorators(self._decorator_registry)
         register_temporal_decorators(self._decorator_registry)
         self._registered_global_workflow_tasks = set()
