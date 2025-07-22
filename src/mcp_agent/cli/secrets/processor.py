@@ -6,7 +6,7 @@ into deployment-ready configurations with secret handles.
 
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 import typer
 import yaml
@@ -87,6 +87,7 @@ async def process_config_secrets(
 
         if not effective_api_key:
             print_warning("No API key provided. Using empty key.")
+            effective_api_key = ""
 
         # Create a new client
         client = SecretsClient(api_url=effective_api_url, api_key=effective_api_key)
@@ -169,7 +170,7 @@ async def process_secrets_in_config_str(
         Transformed configuration object with developer secrets replaced by handles
     """
     # Initialize secrets context for tracking statistics
-    secrets_context = {
+    secrets_context: Dict[str, Sequence] = {
         "developer_secrets": [],
         "user_secrets": [],
         "env_loaded": [],
@@ -178,8 +179,7 @@ async def process_secrets_in_config_str(
     }
 
     # Make the context available to the client for later retrieval
-    if hasattr(client, "__setattr__"):
-        client.secrets_context = secrets_context
+    setattr(client, "secrets_context", secrets_context)
 
     # Parse the input YAML with custom tag handling
     try:
@@ -457,10 +457,10 @@ async def transform_config_recursive(
 
     elif isinstance(config, list):
         # Process each item in the list
-        result = []
+        result_list = []
         for i, value in enumerate(config):
             new_path = f"{path}[{i}]" if path else f"[{i}]"
-            result.append(
+            result_list.append(
                 await transform_config_recursive(
                     value,
                     client,
@@ -470,7 +470,7 @@ async def transform_config_recursive(
                     existing_config,
                 )
             )
-        return result
+        return result_list
 
     else:
         # We only want to support explicit developer and user secrets tags. Raw string values should not be processed.
@@ -530,13 +530,16 @@ async def configure_user_secrets(
     # Create client if not provided
     if client is None:
         # Get API URL and key from parameters or environment variables
-        effective_api_url = api_url or os.environ.get(
-            ENV_API_BASE_URL, DEFAULT_API_BASE_URL
+        effective_api_url: str = (
+            api_url
+            or os.environ.get(ENV_API_BASE_URL, DEFAULT_API_BASE_URL)
+            or DEFAULT_API_BASE_URL
         )
         effective_api_key = api_key or os.environ.get(ENV_API_KEY, "")
 
         if not effective_api_key:
             print_warning("No API key provided. Using empty key.")
+            effective_api_key = ""
 
         # Create a new client
         client = SecretsClient(api_url=effective_api_url, api_key=effective_api_key)
@@ -564,7 +567,7 @@ async def configure_user_secrets(
 
 def nest_keys(flat_dict: dict[str, str]) -> dict:
     """Convert flat dict with dot-notation keys to nested dict."""
-    nested = {}
+    nested: Dict[str, Any] = {}
     for flat_key, value in flat_dict.items():
         parts = flat_key.split(".")
         d = nested

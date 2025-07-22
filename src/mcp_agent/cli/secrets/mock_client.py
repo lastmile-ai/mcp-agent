@@ -13,18 +13,12 @@ from ..core.constants import UUID_PREFIX, SecretType
 class MockSecretsClient:
     """Mock client that generates fake UUIDs for dry run mode."""
 
-    def __init__(
-        self,
-        api_url: str = "http://mock-api",
-        api_key: str = "mock-key",
-        api_token: str = None,
-    ):
+    def __init__(self, api_url: str = "http://mock-api", api_key: str = "mock-key"):
         """Initialize the mock client.
 
         Args:
             api_url: Mock API URL (ignored)
             api_key: Mock API key
-            api_token: Unused, kept for API compatibility
         """
         self.api_url = api_url
         self.api_key = api_key

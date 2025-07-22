@@ -151,11 +151,11 @@ class SecretsResolver:
                 return result
             elif isinstance(value, list):
                 # Process lists
-                result = []
+                result_list = []
                 for i, item in enumerate(value):
                     new_path = f"{path}[{i}]"
-                    result.append(await process_value(item, new_path))
-                return result
+                    result_list.append(await process_value(item, new_path))
+                return result_list
             else:
                 # Return other types as-is
                 return value
