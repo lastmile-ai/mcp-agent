@@ -9,6 +9,7 @@ from typing import Optional
 
 import typer
 from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from mcp_agent_cloud.auth import load_api_key_credentials
 from mcp_agent_cloud.config import settings
@@ -253,24 +254,30 @@ def deploy_config(
             if secrets_file and temp_secrets_path:
                 temp_secrets_path.rename(secrets_file)
 
-        print_info("Deploying MCP App bundle...")
-        try:
-            app = run_async(
-                mcp_app_client.deploy_app(
-                    app_id=app_id,
-                )
-            )
-            print_success("✅ MCP App deployed successfully!")
-            print_info(f"App ID: {app_id}")
+        with Progress(
+            SpinnerColumn(spinner_name="arrow3"),
+            TextColumn("[progress.description]{task.description}"),
+        ) as progress:
+            task = progress.add_task("Deploying MCP App bundle...", total=None)
 
-            if app.appServerInfo:
-                status = "ONLINE" if app.appServerInfo.status == 1 else "OFFLINE"
-                print_info(f"App URL: {app.appServerInfo.serverUrl}")
-                print_info(f"App Status: {status}")
-            return app_id
-        except Exception as e:
-            print_error(f"❌ Deployment failed: {str(e)}")
-            raise typer.Exit(1)
+            try:
+                app = run_async(
+                    mcp_app_client.deploy_app(
+                        app_id=app_id,
+                    )
+                )
+                progress.update(task, description="✅ MCP App deployed successfully!")
+                print_info(f"App ID: {app_id}")
+
+                if app.appServerInfo:
+                    status = "ONLINE" if app.appServerInfo.status == 1 else "OFFLINE"
+                    print_info(f"App URL: {app.appServerInfo.serverUrl}")
+                    print_info(f"App Status: {status}")
+                return app_id
+
+            except Exception as e:
+                progress.update(task, description=f"❌ Deployment failed: {str(e)}")
+                raise typer.Exit(1)
 
     except Exception as e:
         print_error(f"{str(e)}")

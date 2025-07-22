@@ -13,7 +13,7 @@ from mcp_agent_cloud.core.constants import (
     MCP_DEPLOYED_SECRETS_FILENAME,
     REQUIREMENTS_TXT_FILENAME,
 )
-from mcp_agent_cloud.ux import print_error, print_info
+from mcp_agent_cloud.ux import print_error
 
 from .constants import (
     CLOUDFLARE_ACCOUNT_ID,
@@ -35,7 +35,7 @@ _WELL_KNOWN_CONFIG_FILES = [
 ]
 
 
-def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> str:
+def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
     """Bundle the MCP Agent using Wrangler.
 
     A thin wrapper around the Wrangler CLI to bundle the MCP Agent application code
@@ -127,13 +127,13 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> str:
         wrangler_toml_path.write_text(wrangler_toml_content)
 
         with Progress(
-            SpinnerColumn(),
+            SpinnerColumn(spinner_name="aesthetic"),
             TextColumn("[progress.description]{task.description}"),
         ) as progress:
             task = progress.add_task("Bundling MCP Agent...", total=None)
 
             try:
-                result = subprocess.run(
+                subprocess.run(
                     [
                         "npx",
                         "--yes",
@@ -151,8 +151,7 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> str:
                     text=True,
                 )
                 progress.update(task, description="✅ Bundled successfully")
-                print_info(result.stdout)
-                return result.stdout.strip()
+                return
 
             except subprocess.CalledProcessError as e:
                 progress.update(task, description="❌ Bundling failed")
