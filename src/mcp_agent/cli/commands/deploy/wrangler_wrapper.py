@@ -11,7 +11,6 @@ from mcp_agent_cloud.config import settings
 from mcp_agent_cloud.core.constants import (
     MCP_CONFIG_FILENAME,
     MCP_DEPLOYED_SECRETS_FILENAME,
-    MCP_SECRETS_FILENAME,
     REQUIREMENTS_TXT_FILENAME,
 )
 from mcp_agent_cloud.ux import print_error, print_info
@@ -24,6 +23,7 @@ from .constants import (
     WRANGLER_AUTH_URL,
     WRANGLER_SEND_METRICS,
 )
+from .validation import validate_project
 
 _WELL_KNOWN_CONFIG_FILES = [
     MCP_CONFIG_FILENAME,
@@ -74,7 +74,9 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> str:
         }
     )
 
-    # TODO: do we require a main.py as the entrypoint?
+    validate_project(project_dir)
+
+    # We require main.py to be present as the entrypoint / app definition
     main_py = "main.py"
 
     # Set up a temporary wrangler configuration within the project
