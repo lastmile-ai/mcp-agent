@@ -2,6 +2,10 @@ import asyncio
 from typing import List, Optional
 
 import typer
+from rich.padding import Padding
+from rich.panel import Panel
+from rich.table import Table
+
 from mcp_agent_cloud.auth import load_api_key_credentials
 from mcp_agent_cloud.config import settings
 from mcp_agent_cloud.core.api_client import UnauthenticatedError
@@ -13,15 +17,10 @@ from mcp_agent_cloud.mcp_app.api_client import (
     MCPAppConfiguration,
 )
 from mcp_agent_cloud.ux import console, print_error, print_info
-from rich.padding import Padding
-from rich.panel import Panel
-from rich.table import Table
 
 
 def list_apps(
-    name_filter: str = typer.Option(
-        None, "--name", "-n", help="Filter apps by name"
-    ),
+    name_filter: str = typer.Option(None, "--name", "-n", help="Filter apps by name"),
     max_results: int = typer.Option(
         100, "--max-results", "-m", help="Maximum number of results to return"
     ),
@@ -39,9 +38,7 @@ def list_apps(
     ),
 ) -> None:
     """List MCP Apps with optional filtering by name."""
-    effective_api_key = (
-        api_key or settings.API_KEY or load_api_key_credentials()
-    )
+    effective_api_key = api_key or settings.API_KEY or load_api_key_credentials()
 
     if not effective_api_key:
         print_error(
@@ -55,9 +52,7 @@ def list_apps(
 
         async def parallel_requests():
             return await asyncio.gather(
-                client.list_apps(
-                    name_filter=name_filter, max_results=max_results
-                ),
+                client.list_apps(name_filter=name_filter, max_results=max_results),
                 client.list_app_configurations(
                     name_filter=name_filter, max_results=max_results
                 ),
@@ -145,9 +140,7 @@ def print_apps(apps: List[MCPApp]) -> None:
 
 def print_app_configs(app_configs: List[MCPAppConfiguration]) -> None:
     """Print a summary table of the app configuration information."""
-    table = Table(
-        title="Configured MCP Apps", expand=False, border_style="blue"
-    )
+    table = Table(title="Configured MCP Apps", expand=False, border_style="blue")
 
     table.add_column("Name", style="cyan", overflow="fold")
     table.add_column("ID", style="bright_blue", no_wrap=True)
@@ -184,8 +177,6 @@ def _server_status_text(status: str, is_last_row: bool = False) -> str:
     if status == "APP_SERVER_STATUS_ONLINE":
         return "🟢 Online"
     elif status == "APP_SERVER_STATUS_OFFLINE":
-        return Padding(
-            "🔴 Offline", (0, 0, 0 if is_last_row else 1, 0), style="red"
-        )
+        return Padding("🔴 Offline", (0, 0, 0 if is_last_row else 1, 0), style="red")
     else:
         return "❓ Unknown"

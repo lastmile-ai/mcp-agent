@@ -21,9 +21,9 @@ To run these tests successfully:
 """
 
 import uuid
-import pytest
 
-from mcp_agent_cloud.core.constants import SecretType, SECRET_ID_PATTERN
+import pytest
+from mcp_agent_cloud.core.constants import SECRET_ID_PATTERN, SecretType
 
 # Mark all tests in this module with the integration marker
 pytestmark = pytest.mark.integration
@@ -43,9 +43,9 @@ async def test_create_and_get_real_secret(real_secrets_client):
     )
 
     # Verify the handle is a standard UUID
-    assert SECRET_ID_PATTERN.match(
-        handle
-    ), f"Handle format '{handle}' doesn't match expected UUID pattern"
+    assert SECRET_ID_PATTERN.match(handle), (
+        f"Handle format '{handle}' doesn't match expected UUID pattern"
+    )
     print(f"Created secret with handle: {handle}")
 
     try:
@@ -53,17 +53,17 @@ async def test_create_and_get_real_secret(real_secrets_client):
         retrieved_value = await real_secrets_client.get_secret_value(handle)
 
         # Verify it matches what we stored
-        assert (
-            retrieved_value == secret_value
-        ), f"Retrieved value '{retrieved_value}' doesn't match '{secret_value}'"
+        assert retrieved_value == secret_value, (
+            f"Retrieved value '{retrieved_value}' doesn't match '{secret_value}'"
+        )
 
     finally:
         # Clean up
         try:
             deleted_id = await real_secrets_client.delete_secret(handle)
-            assert (
-                deleted_id == handle
-            ), f"Deleted secret ID {deleted_id} doesn't match handle {handle}"
+            assert deleted_id == handle, (
+                f"Deleted secret ID {deleted_id} doesn't match handle {handle}"
+            )
             print(f"Deleted test secret: {handle}")
         except Exception as e:
             print(f"Warning: Failed to delete test secret {handle}: {e}")
@@ -87,24 +87,22 @@ async def test_update_real_secret_value(real_secrets_client):
 
     try:
         # Update the secret value
-        success = await real_secrets_client.set_secret_value(
-            handle, updated_value
-        )
+        success = await real_secrets_client.set_secret_value(handle, updated_value)
         assert success is True, "set_secret_value operation failed"
 
         # Verify the value was updated
         retrieved_value = await real_secrets_client.get_secret_value(handle)
-        assert (
-            retrieved_value == updated_value
-        ), f"Retrieved value '{retrieved_value}' doesn't match updated value '{updated_value}'"
+        assert retrieved_value == updated_value, (
+            f"Retrieved value '{retrieved_value}' doesn't match updated value '{updated_value}'"
+        )
 
     finally:
         # Clean up
         try:
             deleted_id = await real_secrets_client.delete_secret(handle)
-            assert (
-                deleted_id == handle
-            ), f"Deleted secret ID {deleted_id} doesn't match handle {handle}"
+            assert deleted_id == handle, (
+                f"Deleted secret ID {deleted_id} doesn't match handle {handle}"
+            )
             print(f"Deleted test secret: {handle}")
         except Exception as e:
             print(f"Warning: Failed to delete test secret {handle}: {e}")
@@ -136,18 +134,18 @@ async def test_list_real_secrets(real_secrets_client):
         found_names = [s.get("name") for s in secrets]
         for i in range(2):
             expected_name = f"{prefix}.{i}"
-            assert (
-                expected_name in found_names
-            ), f"Expected to find secret {expected_name} in results"
+            assert expected_name in found_names, (
+                f"Expected to find secret {expected_name} in results"
+            )
 
     finally:
         # Clean up - delete the test secrets
         for handle in handles:
             try:
                 deleted_id = await real_secrets_client.delete_secret(handle)
-                assert (
-                    deleted_id == handle
-                ), f"Deleted secret ID {deleted_id} doesn't match handle {handle}"
+                assert deleted_id == handle, (
+                    f"Deleted secret ID {deleted_id} doesn't match handle {handle}"
+                )
                 print(f"Deleted test secret: {handle}")
             except Exception as e:
                 print(f"Warning: Failed to delete test secret {handle}: {e}")

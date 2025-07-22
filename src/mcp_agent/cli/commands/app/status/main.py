@@ -2,6 +2,13 @@ import json
 from typing import Optional
 
 import typer
+from rich.console import Group
+from rich.panel import Panel
+from rich.prompt import Prompt
+from rich.syntax import Syntax
+from rich.table import Table
+from rich.text import Text
+
 from mcp_agent_cloud.auth import load_api_key_credentials
 from mcp_agent_cloud.config import settings
 from mcp_agent_cloud.core.api_client import UnauthenticatedError
@@ -16,12 +23,6 @@ from mcp_agent_cloud.ux import (
     console,
     print_error,
 )
-from rich.panel import Panel
-from rich.prompt import Prompt
-from rich.table import Table
-from rich.text import Text
-from rich.syntax import Syntax
-from rich.console import Group
 
 
 def get_app_status(
@@ -45,9 +46,7 @@ def get_app_status(
     ),
 ) -> None:
     """Get server details -- such as available tools, prompts, resources, and workflows -- for an MCP App."""
-    effective_api_key = (
-        api_key or settings.API_KEY or load_api_key_credentials()
-    )
+    effective_api_key = api_key or settings.API_KEY or load_api_key_credentials()
 
     if not effective_api_key:
         print_error(
@@ -58,18 +57,14 @@ def get_app_status(
     client = MCPAppClient(api_url=api_url, api_key=effective_api_key)
 
     if not app_id_or_url:
-        print_error(
-            "You must provide an app ID or server URL to get its status."
-        )
+        print_error("You must provide an app ID or server URL to get its status.")
         raise typer.Exit(1)
 
     try:
         app_or_config = run_async(client.get_app_or_config(app_id_or_url))
 
         if not app_or_config:
-            print_error(
-                f"App or config with ID or URL '{app_id_or_url}' not found."
-            )
+            print_error(f"App or config with ID or URL '{app_id_or_url}' not found.")
             raise typer.Exit(1)
 
         if not app_or_config.appServerInfo:
@@ -126,9 +121,7 @@ def _server_status_text(status: str) -> str:
 async def print_mcp_server_details(server_url: str, api_key: str) -> None:
     """Prints the MCP server details."""
     try:
-        async with mcp_connection_session(
-            server_url, api_key
-        ) as mcp_client_session:
+        async with mcp_connection_session(server_url, api_key) as mcp_client_session:
             choices = {
                 "1": "Show Server Tools",
                 "2": "Show Server Prompts",
@@ -159,18 +152,14 @@ async def print_mcp_server_details(server_url: str, api_key: str) -> None:
                 await print_server_workflows(mcp_client_session)
 
     except Exception as e:
-        print_error(
-            f"Error connecting to MCP server at {server_url}: {str(e)}"
-        )
+        print_error(f"Error connecting to MCP server at {server_url}: {str(e)}")
         raise typer.Exit(1)
 
 
 async def print_server_tools(session: MCPClientSession) -> None:
     """Prints the available tools on the MCP server."""
     try:
-        with console.status(
-            "[bold green]Fetching server tools...", spinner="dots"
-        ):
+        with console.status("[bold green]Fetching server tools...", spinner="dots"):
             res = await session.list_tools()
 
         if not res.tools:
@@ -197,9 +186,7 @@ async def print_server_tools(session: MCPClientSession) -> None:
                 schema_syntax = Syntax(
                     schema_str, "json", theme="monokai", word_wrap=True
                 )
-                body_parts.append(
-                    Text("\nTool Parameters:", style="bold magenta")
-                )
+                body_parts.append(Text("\nTool Parameters:", style="bold magenta"))
                 body_parts.append(schema_syntax)
 
             body = Group(*body_parts)
@@ -213,9 +200,7 @@ async def print_server_tools(session: MCPClientSession) -> None:
                 )
             )
 
-        console.print(
-            Panel(Group(*panels), title="Server Tools", border_style="blue")
-        )
+        console.print(Panel(Group(*panels), title="Server Tools", border_style="blue"))
 
     except Exception as e:
         console.print(
@@ -230,9 +215,7 @@ async def print_server_tools(session: MCPClientSession) -> None:
 async def print_server_prompts(session: MCPClientSession) -> None:
     """Prints the available prompts on the MCP server."""
     try:
-        with console.status(
-            "[bold green]Fetching server prompts...", spinner="dots"
-        ):
+        with console.status("[bold green]Fetching server prompts...", spinner="dots"):
             res = await session.list_prompts()
         if not res.prompts or len(res.prompts) == 0:
             console.print(
@@ -252,9 +235,7 @@ async def print_server_prompts(session: MCPClientSession) -> None:
             if prompt.arguments:
                 for arg in prompt.arguments:
                     # name, description, required
-                    arg_required = (
-                        "(required)" if arg.required else "(optional)"
-                    )
+                    arg_required = "(required)" if arg.required else "(optional)"
                     arg_header = Text(
                         f"\nParameter: {arg.name} {arg_required}",
                         style="bold magenta",
@@ -287,9 +268,7 @@ async def print_server_prompts(session: MCPClientSession) -> None:
 async def print_server_resources(session: MCPClientSession) -> None:
     """Prints the available resources on the MCP server."""
     try:
-        with console.status(
-            "[bold green]Fetching server resources...", spinner="dots"
-        ):
+        with console.status("[bold green]Fetching server resources...", spinner="dots"):
             res = await session.list_resources()
 
         if not res.resources or len(res.resources) == 0:
@@ -316,9 +295,7 @@ async def print_server_resources(session: MCPClientSession) -> None:
                 resource.mimeType or "N/A",
                 resource.size and str(resource.size) or "N/A",
             )
-        console.print(
-            Panel(table, title="Server Resources", border_style="blue")
-        )
+        console.print(Panel(table, title="Server Resources", border_style="blue"))
     except Exception as e:
         console.print(
             Panel(
@@ -332,9 +309,7 @@ async def print_server_resources(session: MCPClientSession) -> None:
 async def print_server_workflows(session: MCPClientSession) -> None:
     """Prints the available workflows on the MCP server."""
     try:
-        with console.status(
-            "[bold green]Fetching server workflows...", spinner="dots"
-        ):
+        with console.status("[bold green]Fetching server workflows...", spinner="dots"):
             res = await session.list_workflows()
 
         if not res.workflows or len(res.workflows) == 0:
@@ -362,9 +337,7 @@ async def print_server_workflows(session: MCPClientSession) -> None:
                 )
             )
         console.print(
-            Panel(
-                Group(*panels), title="Server Workflows", border_style="blue"
-            )
+            Panel(Group(*panels), title="Server Workflows", border_style="blue")
         )
     except Exception as e:
         console.print(

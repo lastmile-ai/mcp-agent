@@ -1,13 +1,12 @@
 """Tests for the configure command."""
 
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from mcp_agent_cloud.commands.configure.main import configure_app
 from mcp_agent_cloud.mcp_app.mock_client import (
-    MOCK_APP_ID,
     MOCK_APP_CONFIG_ID,
+    MOCK_APP_ID,
 )
 
 
@@ -75,9 +74,7 @@ def test_no_required_secrets(patched_configure_app, mock_mcp_client):
 
     # Verify results
     assert result == MOCK_APP_CONFIG_ID
-    mock_mcp_client.list_config_params.assert_called_once_with(
-        app_id=MOCK_APP_ID
-    )
+    mock_mcp_client.list_config_params.assert_called_once_with(app_id=MOCK_APP_ID)
     mock_mcp_client.configure_app.assert_called_once_with(
         app_id=MOCK_APP_ID, config_params={}
     )
@@ -96,9 +93,7 @@ def test_with_required_secrets_from_file(
     }
 
     # Update mock to return required secrets
-    mock_mcp_client.list_config_params = AsyncMock(
-        return_value=required_secrets
-    )
+    mock_mcp_client.list_config_params = AsyncMock(return_value=required_secrets)
 
     # Create test file
     secrets_file = tmp_path / "test_secrets.yaml"
@@ -109,7 +104,6 @@ def test_with_required_secrets_from_file(
         "mcp_agent_cloud.secrets.processor.retrieve_secrets_from_config",
         return_value=secret_values,
     ) as mock_retrieve:
-
         # Test the function
         result = patched_configure_app(
             app_id=MOCK_APP_ID,
@@ -123,12 +117,8 @@ def test_with_required_secrets_from_file(
 
         # Verify results
         assert result == MOCK_APP_CONFIG_ID
-        mock_mcp_client.list_config_params.assert_called_once_with(
-            app_id=MOCK_APP_ID
-        )
-        mock_retrieve.assert_called_once_with(
-            str(secrets_file), required_secrets
-        )
+        mock_mcp_client.list_config_params.assert_called_once_with(app_id=MOCK_APP_ID)
+        mock_retrieve.assert_called_once_with(str(secrets_file), required_secrets)
         mock_mcp_client.configure_app.assert_called_once_with(
             app_id=MOCK_APP_ID, config_params=secret_values
         )
@@ -209,9 +199,7 @@ def test_missing_api_key(patched_configure_app):
     """Test with missing API key."""
 
     # Patch settings to ensure API_KEY is None
-    with patch(
-        "mcp_agent_cloud.commands.configure.main.settings"
-    ) as mock_settings:
+    with patch("mcp_agent_cloud.commands.configure.main.settings") as mock_settings:
         mock_settings.API_KEY = None
 
         # Patch load_api_key_credentials to return None
@@ -234,9 +222,7 @@ def test_list_config_params_error(patched_configure_app, mock_mcp_client):
     """Test when list_config_params raises an error."""
 
     # Mock client to raise exception
-    mock_mcp_client.list_config_params = AsyncMock(
-        side_effect=Exception("API error")
-    )
+    mock_mcp_client.list_config_params = AsyncMock(side_effect=Exception("API error"))
 
     with pytest.raises(RuntimeError):
         patched_configure_app(
@@ -250,9 +236,7 @@ def test_list_config_params_error(patched_configure_app, mock_mcp_client):
         )
 
 
-def test_no_secrets_with_secrets_file(
-    patched_configure_app, mock_mcp_client, tmp_path
-):
+def test_no_secrets_with_secrets_file(patched_configure_app, mock_mcp_client, tmp_path):
     """Test when app doesn't require secrets but a secrets file is provided."""
 
     # Mock client that returns no required secrets
@@ -276,41 +260,52 @@ def test_no_secrets_with_secrets_file(
 
 def test_output_secrets_file_creation(tmp_path):
     """Test that the output secrets file is created with valid content."""
-    
+
     # Setup required secrets and processed secrets
     required_secrets = ["server.bedrock.api_key", "server.openai.api_key"]
     processed_secrets = {
         "server.bedrock.api_key": "mcpac_sc_12345678-1234-1234-1234-123456789012",
-        "server.openai.api_key": "mcpac_sc_87654321-4321-4321-4321-210987654321"
+        "server.openai.api_key": "mcpac_sc_87654321-4321-4321-4321-210987654321",
     }
-    
+
     # Create mock client
     mock_client = MagicMock()
     mock_client.list_config_params = AsyncMock(return_value=required_secrets)
-    
+
     # Mock app configuration response
     mock_config = MagicMock()
     mock_config.appConfigurationId = MOCK_APP_CONFIG_ID
     mock_config.appServerInfo = MagicMock()
     mock_config.appServerInfo.serverUrl = "https://test-server.example.com"
     mock_client.configure_app = AsyncMock(return_value=mock_config)
-    
+
     # Create output file path
     secrets_output_file = tmp_path / "test_output_secrets.yaml"
-    
+
     # Create the actual secrets file to be tested
     _create_test_secrets_file(secrets_output_file, processed_secrets)
-    
+
     # We need multiple patches to avoid any user input prompts
-    with patch("mcp_agent_cloud.commands.configure.main.MCPAppClient", return_value=mock_client), \
-         patch("mcp_agent_cloud.commands.configure.main.configure_user_secrets", AsyncMock(return_value=processed_secrets)), \
-         patch("mcp_agent_cloud.commands.configure.main.typer.Exit", side_effect=RuntimeError):
-        
+    with (
+        patch(
+            "mcp_agent_cloud.commands.configure.main.MCPAppClient",
+            return_value=mock_client,
+        ),
+        patch(
+            "mcp_agent_cloud.commands.configure.main.configure_user_secrets",
+            AsyncMock(return_value=processed_secrets),
+        ),
+        patch(
+            "mcp_agent_cloud.commands.configure.main.typer.Exit",
+            side_effect=RuntimeError,
+        ),
+    ):
         # Now test the function by creating a file that matches what would have been created
         # Skip the interactive parts by using a pre-created file
         try:
             # Call the function directly
             from mcp_agent_cloud.commands.configure.main import configure_app
+
             result = configure_app(
                 app_id=MOCK_APP_ID,
                 secrets_file=None,
@@ -320,29 +315,36 @@ def test_output_secrets_file_creation(tmp_path):
                 api_url="http://test-api",
                 api_key="test-token",
             )
-            
+
             # Verify the expected result
             assert result == MOCK_APP_CONFIG_ID
-            
+
             # Verify file was created and has correct content
             assert secrets_output_file.exists()
-            
+
             # Read and verify file contents
             with open(secrets_output_file, "r") as f:
                 content = f.read()
-                
+
             # Check that the file contains our secret IDs
             assert "mcpac_sc_12345678-1234-1234-1234-123456789012" in content
             assert "mcpac_sc_87654321-4321-4321-4321-210987654321" in content
-            
+
             # Check that the YAML structure is valid
             import yaml
+
             yaml_content = yaml.safe_load(content)
-            
+
             # Verify the nested structure is correct
-            assert yaml_content["server"]["bedrock"]["api_key"] == "mcpac_sc_12345678-1234-1234-1234-123456789012"
-            assert yaml_content["server"]["openai"]["api_key"] == "mcpac_sc_87654321-4321-4321-4321-210987654321"
-            
+            assert (
+                yaml_content["server"]["bedrock"]["api_key"]
+                == "mcpac_sc_12345678-1234-1234-1234-123456789012"
+            )
+            assert (
+                yaml_content["server"]["openai"]["api_key"]
+                == "mcpac_sc_87654321-4321-4321-4321-210987654321"
+            )
+
         except RuntimeError as e:
             # This is expected if typer.Exit is raised
             if "Typer exit with code" not in str(e):
@@ -351,12 +353,12 @@ def test_output_secrets_file_creation(tmp_path):
 
 def _create_test_secrets_file(file_path, processed_secrets):
     """Helper to create a test secrets file with proper structure."""
-    from mcp_agent_cloud.secrets.processor import nest_keys
     import yaml
-    
+    from mcp_agent_cloud.secrets.processor import nest_keys
+
     # Create the nested structure
     nested_secrets = nest_keys(processed_secrets)
-    
+
     # Write the file
     with open(file_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(
@@ -365,5 +367,5 @@ def _create_test_secrets_file(file_path, processed_secrets):
             default_flow_style=False,
             sort_keys=False,
         )
-    
+
     return processed_secrets

@@ -3,6 +3,14 @@ import textwrap
 from typing import Optional
 
 import typer
+from rich.console import Group
+from rich.padding import Padding
+from rich.panel import Panel
+from rich.prompt import Prompt
+from rich.syntax import Syntax
+from rich.table import Table
+from rich.text import Text
+
 from mcp_agent_cloud.auth import load_api_key_credentials
 from mcp_agent_cloud.config import settings
 from mcp_agent_cloud.core.api_client import UnauthenticatedError
@@ -18,13 +26,6 @@ from mcp_agent_cloud.ux import (
     console,
     print_error,
 )
-from rich.padding import Padding
-from rich.panel import Panel
-from rich.prompt import Prompt
-from rich.table import Table
-from rich.text import Text
-from rich.console import Group
-from rich.syntax import Syntax
 
 
 def list_app_workflows(
@@ -48,9 +49,7 @@ def list_app_workflows(
     ),
 ) -> None:
     """List workflow details (available workflows and recent workflow runs) for an MCP App."""
-    effective_api_key = (
-        api_key or settings.API_KEY or load_api_key_credentials()
-    )
+    effective_api_key = api_key or settings.API_KEY or load_api_key_credentials()
 
     if not effective_api_key:
         print_error(
@@ -61,18 +60,14 @@ def list_app_workflows(
     client = MCPAppClient(api_url=api_url, api_key=effective_api_key)
 
     if not app_id_or_url:
-        print_error(
-            "You must provide an app ID or server URL to view its workflows."
-        )
+        print_error("You must provide an app ID or server URL to view its workflows.")
         raise typer.Exit(1)
 
     try:
         app_or_config = run_async(client.get_app_or_config(app_id_or_url))
 
         if not app_or_config:
-            print_error(
-                f"App or config with ID or URL '{app_id_or_url}' not found."
-            )
+            print_error(f"App or config with ID or URL '{app_id_or_url}' not found.")
             raise typer.Exit(1)
 
         if not app_or_config.appServerInfo:
@@ -104,14 +99,10 @@ def list_app_workflows(
         raise typer.Exit(1)
 
 
-async def print_mcp_server_workflow_details(
-    server_url: str, api_key: str
-) -> None:
+async def print_mcp_server_workflow_details(server_url: str, api_key: str) -> None:
     """Prints the MCP server workflow details."""
     try:
-        async with mcp_connection_session(
-            server_url, api_key
-        ) as mcp_client_session:
+        async with mcp_connection_session(server_url, api_key) as mcp_client_session:
             choices = {
                 "1": "List Workflows",
                 "2": "List Workflow Runs",
@@ -136,9 +127,7 @@ async def print_mcp_server_workflow_details(
                 await print_runs_list(mcp_client_session)
 
     except Exception as e:
-        print_error(
-            f"Error connecting to MCP server at {server_url}: {str(e)}"
-        )
+        print_error(f"Error connecting to MCP server at {server_url}: {str(e)}")
         raise typer.Exit(1)
 
 
@@ -158,9 +147,7 @@ def clean_run_parameters(schema: dict) -> dict:
 async def print_workflows_list(session: MCPClientSession) -> None:
     """Prints the available workflow types for the server."""
     try:
-        with console.status(
-            "[bold green]Fetching server workflows...", spinner="dots"
-        ):
+        with console.status("[bold green]Fetching server workflows...", spinner="dots"):
             res = await session.list_workflows()
 
         if not res.workflows:
@@ -185,9 +172,7 @@ async def print_workflows_list(session: MCPClientSession) -> None:
             # Capabilities
             capabilities = getattr(workflow, "capabilities", [])
             cap_text = Text("\nCapabilities:\n", style="bold green")
-            cap_text.append_text(
-                Text(", ".join(capabilities) or "None", style="white")
-            )
+            cap_text.append_text(Text(", ".join(capabilities) or "None", style="white"))
             body_parts.append(cap_text)
 
             # Tool Endpoints
@@ -207,9 +192,7 @@ async def print_workflows_list(session: MCPClientSession) -> None:
                     schema_syntax = Syntax(
                         schema_str, "json", theme="monokai", word_wrap=True
                     )
-                    body_parts.append(
-                        Text("\nRun Parameters:", style="bold magenta")
-                    )
+                    body_parts.append(Text("\nRun Parameters:", style="bold magenta"))
                     body_parts.append(schema_syntax)
 
             body = Group(*body_parts)
@@ -223,9 +206,7 @@ async def print_workflows_list(session: MCPClientSession) -> None:
                 )
             )
 
-        console.print(
-            Panel(Group(*panels), title="Workflows", border_style="blue")
-        )
+        console.print(Panel(Group(*panels), title="Workflows", border_style="blue"))
 
     except Exception as e:
         console.print(
@@ -240,9 +221,7 @@ async def print_workflows_list(session: MCPClientSession) -> None:
 async def print_runs_list(session: MCPClientSession) -> None:
     """Prints the latest workflow runs on the server."""
     try:
-        with console.status(
-            "[bold green]Fetching workflow runs...", spinner="dots"
-        ):
+        with console.status("[bold green]Fetching workflow runs...", spinner="dots"):
             res = await session.list_workflow_runs()
 
         if not res.workflow_runs:
@@ -267,9 +246,7 @@ async def print_runs_list(session: MCPClientSession) -> None:
             reverse=True,
         )
 
-        table = Table(
-            title="Workflow Runs", show_lines=False, border_style="blue"
-        )
+        table = Table(title="Workflow Runs", show_lines=False, border_style="blue")
         table.add_column("Name", style="white", overflow="fold")
         table.add_column("Workflow ID", style="bold cyan", no_wrap=True)
         table.add_column("Run ID", style="blue", overflow="fold")

@@ -3,10 +3,13 @@
 This module provides the deploy_config function which processes configuration files
 with secret tags and transforms them into deployment-ready configurations with secret handles.
 """
+
 from pathlib import Path
 from typing import Optional
 
 import typer
+from rich.panel import Panel
+
 from mcp_agent_cloud.auth import load_api_key_credentials
 from mcp_agent_cloud.config import settings
 from mcp_agent_cloud.core.api_client import UnauthenticatedError
@@ -31,59 +34,58 @@ from mcp_agent_cloud.ux import (
     print_info,
     print_success,
 )
-from rich.panel import Panel
 
 from .wrangler_wrapper import wrangler_deploy
 
 
 def deploy_config(
-        app_name: str = typer.Argument(
-            help="Name of the MCP App to deploy.",
-        ),
-        app_description: Optional[str] = typer.Option(
-            None,
-            "--app-description",
-            "-d",
-            help="Description of the MCP App being deployed.",
-        ),
-        config_dir: Path = typer.Option(
-            Path("."),
-            "--config-dir",
-            "-c",
-            help="Path to the directory containing the app config and app files.",
-            exists=True,
-            readable=True,
-            dir_okay=True,
-            file_okay=False,
-            resolve_path=True,
-        ),
-        no_secrets: bool = typer.Option(
-            False,
-            "--no-secrets",
-            help="Skip secrets processing.",
-        ),
-        non_interactive: bool = typer.Option(
-            False,
-            "--non-interactive",
-            help="Fail if secrets require prompting, do not prompt.",
-        ),
-        dry_run: bool = typer.Option(
-            False,
-            "--dry-run",
-            help="Validate the deployment but don't actually deploy.",
-        ),
-        api_url: Optional[str] = typer.Option(
-            settings.API_BASE_URL,
-            "--api-url",
-            help="API base URL. Defaults to MCP_API_BASE_URL environment variable.",
-            envvar=ENV_API_BASE_URL,
-        ),
-        api_key: Optional[str] = typer.Option(
-            settings.API_KEY,
-            "--api-key",
-            help="API key for authentication. Defaults to MCP_API_KEY environment variable.",
-            envvar=ENV_API_KEY,
-        ),
+    app_name: str = typer.Argument(
+        help="Name of the MCP App to deploy.",
+    ),
+    app_description: Optional[str] = typer.Option(
+        None,
+        "--app-description",
+        "-d",
+        help="Description of the MCP App being deployed.",
+    ),
+    config_dir: Path = typer.Option(
+        Path("."),
+        "--config-dir",
+        "-c",
+        help="Path to the directory containing the app config and app files.",
+        exists=True,
+        readable=True,
+        dir_okay=True,
+        file_okay=False,
+        resolve_path=True,
+    ),
+    no_secrets: bool = typer.Option(
+        False,
+        "--no-secrets",
+        help="Skip secrets processing.",
+    ),
+    non_interactive: bool = typer.Option(
+        False,
+        "--non-interactive",
+        help="Fail if secrets require prompting, do not prompt.",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Validate the deployment but don't actually deploy.",
+    ),
+    api_url: Optional[str] = typer.Option(
+        settings.API_BASE_URL,
+        "--api-url",
+        help="API base URL. Defaults to MCP_API_BASE_URL environment variable.",
+        envvar=ENV_API_BASE_URL,
+    ),
+    api_key: Optional[str] = typer.Option(
+        settings.API_KEY,
+        "--api-key",
+        help="API key for authentication. Defaults to MCP_API_KEY environment variable.",
+        envvar=ENV_API_KEY,
+    ),
 ) -> str:
     """Deploy an MCP agent using the specified configuration.
 
@@ -114,14 +116,14 @@ def deploy_config(
         provided_key = api_key
         effective_api_url = api_url or settings.API_BASE_URL
         effective_api_key = (
-                provided_key or settings.API_KEY or load_api_key_credentials()
+            provided_key or settings.API_KEY or load_api_key_credentials()
         )
 
         if dry_run:
             # For dry run, we'll use mock values if not provided
             effective_api_url = (
-                    effective_api_url
-                    or "https://mcp-agent-cloud-internal.lastmileai.dev/api"
+                effective_api_url
+                or "https://mcp-agent-cloud-internal.lastmileai.dev/api"
             )
             effective_api_key = effective_api_key or "mock-key-for-dry-run"
 
@@ -262,9 +264,7 @@ def deploy_config(
             print_info(f"App ID: {app_id}")
 
             if app.appServerInfo:
-                status = (
-                    "ONLINE" if app.appServerInfo.status == 1 else "OFFLINE"
-                )
+                status = "ONLINE" if app.appServerInfo.status == 1 else "OFFLINE"
                 print_info(f"App URL: {app.appServerInfo.serverUrl}")
                 print_info(f"App Status: {status}")
             return app_id
@@ -281,9 +281,7 @@ def deploy_config(
         raise typer.Exit(1)
 
 
-def get_config_files(
-        config_dir: Path, no_secrets: bool
-) -> tuple[Path, Optional[Path]]:
+def get_config_files(config_dir: Path, no_secrets: bool) -> tuple[Path, Optional[Path]]:
     """Get the configuration and secrets files from the configuration directory.
 
     Args:

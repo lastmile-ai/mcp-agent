@@ -3,12 +3,10 @@
 import os
 import tempfile
 from pathlib import Path
-import pytest
-import typer
 from unittest.mock import patch
 
-from typer.testing import CliRunner
-
+import pytest
+import typer
 from mcp_agent_cloud.cli.main import app
 from mcp_agent_cloud.core.constants import (
     MCP_CONFIG_FILENAME,
@@ -17,6 +15,7 @@ from mcp_agent_cloud.core.constants import (
 )
 from mcp_agent_cloud.mcp_app.mock_client import MOCK_APP_ID, MOCK_APP_NAME
 from mcp_agent_cloud.secrets.api_client import SecretsClient
+from typer.testing import CliRunner
 
 
 @pytest.fixture
@@ -125,9 +124,7 @@ def test_deploy_command_basic(runner, temp_config_dir):
 def test_deploy_command_no_secrets(runner, temp_config_dir):
     """Test deploy command with --no-secrets flag when a secrets file DOES NOT exist."""
     # Run with --no-secrets flag and --dry-run to avoid real deployment
-    with patch(
-        "mcp_agent_cloud.commands.deploy.main.wrangler_deploy"
-    ) as mock_deploy:
+    with patch("mcp_agent_cloud.commands.deploy.main.wrangler_deploy") as mock_deploy:
         # Mock the wrangler deployment
         mock_deploy.return_value = None
 
@@ -155,14 +152,10 @@ def test_deploy_command_no_secrets(runner, temp_config_dir):
     assert "skipping secrets processing" in result.stdout.lower()
 
 
-def test_deploy_command_no_secrets_with_existing_secrets(
-    runner, temp_config_dir
-):
+def test_deploy_command_no_secrets_with_existing_secrets(runner, temp_config_dir):
     """Test deploy command with --no-secrets flag when a secrets file DOES exist."""
     # Run with --no-secrets flag and --dry-run to avoid real deployment
-    with patch(
-        "mcp_agent_cloud.commands.deploy.main.wrangler_deploy"
-    ) as mock_deploy:
+    with patch("mcp_agent_cloud.commands.deploy.main.wrangler_deploy") as mock_deploy:
         # Mock the wrangler deployment
         mock_deploy.return_value = None
 
@@ -182,10 +175,7 @@ def test_deploy_command_no_secrets_with_existing_secrets(
     assert result.exit_code == 1
 
     # Check output mentions existing secrets file found
-    assert (
-        "secrets file 'mcp_agent.secrets.yaml' found in"
-        in result.stdout.lower()
-    )
+    assert "secrets file 'mcp_agent.secrets.yaml' found in" in result.stdout.lower()
 
 
 def test_deploy_with_secrets_file():
@@ -245,9 +235,9 @@ server:
             # Verify secrets file is unchanged
             with open(secrets_path, "r", encoding="utf-8") as f:
                 content = f.read()
-                assert (
-                    content == secrets_content
-                ), "Output file content should match original secrets"
+                assert content == secrets_content, (
+                    "Output file content should match original secrets"
+                )
 
             # Verify the function deployed the correct mock app
             assert result == MOCK_APP_ID
@@ -293,9 +283,7 @@ def test_rollback_secrets_file(temp_config_dir):
         pre_deploy_secrets_content = f.read()
 
     # Call deploy_config with wrangler_deploy mocked
-    with patch(
-        "mcp_agent_cloud.commands.deploy.main.wrangler_deploy"
-    ) as mock_deploy:
+    with patch("mcp_agent_cloud.commands.deploy.main.wrangler_deploy") as mock_deploy:
         # Mock wrangler_deploy to prevent actual deployment
         mock_deploy.side_effect = Exception("Deployment failed")
 
@@ -319,6 +307,6 @@ def test_rollback_secrets_file(temp_config_dir):
         # Verify secrets file is unchanged
         with open(secrets_path, "r", encoding="utf-8") as f:
             content = f.read()
-            assert (
-                content == pre_deploy_secrets_content
-            ), "Output file content should match original secrets"
+            assert content == pre_deploy_secrets_content, (
+                "Output file content should match original secrets"
+            )

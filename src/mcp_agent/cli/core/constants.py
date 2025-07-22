@@ -16,9 +16,7 @@ MCP_SECRETS_FILENAME = "mcp_agent.secrets.yaml"
 REQUIREMENTS_TXT_FILENAME = "requirements.txt"
 
 # Cache and deployment settings
-DEFAULT_CACHE_DIR = (
-    "~/.mcp_agent/cloud"  # Moved from commands/deploy/constants.py
-)
+DEFAULT_CACHE_DIR = "~/.mcp_agent/cloud"  # Moved from commands/deploy/constants.py
 
 # Environment variable names
 ENV_API_BASE_URL = "MCP_API_BASE_URL"  # Moved from secrets/constants.py
@@ -38,9 +36,7 @@ class SecretType(Enum):
     """Enum representing the type of secret."""
 
     DEVELOPER = SECRET_TYPE_DEVELOPER  # Secrets known at deploy time
-    USER = (
-        SECRET_TYPE_USER  # Secrets collected from end-users at configure time
-    )
+    USER = SECRET_TYPE_USER  # Secrets collected from end-users at configure time
 
 
 # UUID patterns for secret handles

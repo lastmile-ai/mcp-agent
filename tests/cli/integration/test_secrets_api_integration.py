@@ -11,10 +11,10 @@ To run these tests:
 
 import os
 import uuid
-import pytest
 
-from mcp_agent_cloud.secrets.api_client import SecretsClient
+import pytest
 from mcp_agent_cloud.core.constants import SecretType
+from mcp_agent_cloud.secrets.api_client import SecretsClient
 
 # Mark all tests in this module as requiring API integration
 pytestmark = pytest.mark.integration
@@ -24,8 +24,8 @@ pytestmark = pytest.mark.integration
 def api_client():
     """Create a SecretsClient connected to the web app."""
     # Decide whether to use a mock or real client based on markers
-    from tests.fixtures.test_jwt_generator import generate_test_token
     from tests.fixtures.mock_secrets_client import MockSecretsClient
+    from tests.fixtures.test_jwt_generator import generate_test_token
 
     # Default to using the mock for reliability
     use_mock = True
@@ -41,17 +41,13 @@ def api_client():
         )
     else:
         # Get API URL from environment or use default
-        api_url = os.environ.get(
-            "MCP_API_BASE_URL", "http://localhost:3000/api"
-        )
+        api_url = os.environ.get("MCP_API_BASE_URL", "http://localhost:3000/api")
 
         # Generate a correctly formatted test token
         api_key = os.environ.get("MCP_API_KEY") or generate_test_token()
 
         print(f"Using real SecretsClient for tests with API URL: {api_url}")
-        print(
-            f"API Key: {api_key[:15]}...{api_key[-6:] if api_key else 'None'}"
-        )
+        print(f"API Key: {api_key[:15]}...{api_key[-6:] if api_key else 'None'}")
 
         # Use the real client
         return SecretsClient(api_url=api_url, api_key=api_key)
@@ -74,9 +70,9 @@ async def test_create_and_get_secret(api_client):
     # We validate against the UUID pattern
     from mcp_agent_cloud.core.constants import SECRET_ID_PATTERN
 
-    assert SECRET_ID_PATTERN.match(
-        handle
-    ), f"Handle format '{handle}' doesn't match expected UUID pattern"
+    assert SECRET_ID_PATTERN.match(handle), (
+        f"Handle format '{handle}' doesn't match expected UUID pattern"
+    )
 
     try:
         # Get the secret value
@@ -88,9 +84,9 @@ async def test_create_and_get_secret(api_client):
         # Clean up
         try:
             deleted_id = await api_client.delete_secret(handle)
-            assert (
-                deleted_id == handle
-            ), f"Deleted secret ID {deleted_id} doesn't match handle {handle}"
+            assert deleted_id == handle, (
+                f"Deleted secret ID {deleted_id} doesn't match handle {handle}"
+            )
         except Exception as e:
             print(f"Error deleting secret: {e}")
             pass
@@ -118,9 +114,9 @@ async def test_update_secret_value(api_client):
         # We validate against the UUID pattern
         from mcp_agent_cloud.core.constants import SECRET_ID_PATTERN
 
-        assert SECRET_ID_PATTERN.match(
-            handle
-        ), f"Handle format '{handle}' doesn't match expected UUID pattern"
+        assert SECRET_ID_PATTERN.match(handle), (
+            f"Handle format '{handle}' doesn't match expected UUID pattern"
+        )
 
         # Update the secret value
         new_value = f"updated-value-{test_id}"
@@ -133,16 +129,16 @@ async def test_update_secret_value(api_client):
         retrieved_value = await api_client.get_secret_value(handle)
 
         # Verify the value matches the updated value
-        assert (
-            retrieved_value == new_value
-        ), f"Retrieved value '{retrieved_value}' doesn't match updated value '{new_value}'"
+        assert retrieved_value == new_value, (
+            f"Retrieved value '{retrieved_value}' doesn't match updated value '{new_value}'"
+        )
     finally:
         # Clean up
         try:
             deleted_id = await api_client.delete_secret(handle)
-            assert (
-                deleted_id == handle
-            ), f"Deleted secret ID {deleted_id} doesn't match handle {handle}"
+            assert deleted_id == handle, (
+                f"Deleted secret ID {deleted_id} doesn't match handle {handle}"
+            )
         except Exception as e:
             print(f"Error deleting secret: {e}")
             pass
@@ -172,14 +168,10 @@ async def test_list_secrets(api_client):
         # MockSecretsClient uses "id" key while real API might use "secretId"
         found_handles = [s.get("id") or s.get("secretId") for s in all_secrets]
         for handle in created_handles:
-            assert (
-                handle in found_handles
-            ), f"Handle {handle} not found in list results"
+            assert handle in found_handles, f"Handle {handle} not found in list results"
 
         # List with name filter matching our test prefix
-        filtered_secrets = await api_client.list_secrets(
-            name_filter=test_prefix
-        )
+        filtered_secrets = await api_client.list_secrets(name_filter=test_prefix)
 
         # Verify only our test secrets are returned
         assert len(filtered_secrets) >= len(created_handles)
@@ -198,9 +190,9 @@ async def test_list_secrets(api_client):
         for handle in created_handles:
             try:
                 deleted_id = await api_client.delete_secret(handle)
-                assert (
-                    deleted_id == handle
-                ), f"Deleted secret ID {deleted_id} doesn't match handle {handle}"
+                assert deleted_id == handle, (
+                    f"Deleted secret ID {deleted_id} doesn't match handle {handle}"
+                )
             except Exception as e:
                 print(f"Error deleting secret: {e}")
                 pass

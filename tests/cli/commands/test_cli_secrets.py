@@ -6,13 +6,13 @@ focusing on the deploy phase functionality.
 
 import os
 import re
-import uuid
-import tempfile
 import subprocess
-import pytest
+import tempfile
+import uuid
 from unittest.mock import patch
 
-from mcp_agent_cloud.core.constants import UUID_PREFIX, UUID_PATTERN
+import pytest
+from mcp_agent_cloud.core.constants import UUID_PATTERN, UUID_PREFIX
 
 
 @pytest.fixture(scope="module")
@@ -107,12 +107,10 @@ database:
         assert "Deployment preparation completed successfully" in result.stdout
 
         # Verify the transformed secrets file exists
-        secrets_output_path = os.path.join(
-            test_dir, "mcp_agent.deployed.secrets.yaml"
+        secrets_output_path = os.path.join(test_dir, "mcp_agent.deployed.secrets.yaml")
+        assert os.path.exists(secrets_output_path), (
+            "Transformed secrets file was not created"
         )
-        assert os.path.exists(
-            secrets_output_path
-        ), "Transformed secrets file was not created"
 
         # Read the transformed secrets file as text
         with open(secrets_output_path, "r", encoding="utf-8") as f:
@@ -124,16 +122,16 @@ database:
         # Extract the UUID using a precise pattern based on the production format
         dev_secret_pattern = r"key:\s+(" + UUID_PATTERN.strip("^$") + ")"
         dev_match = re.search(dev_secret_pattern, transformed_yaml_text)
-        assert (
-            dev_match is not None
-        ), f"Developer secret with production UUID pattern not found in file"
+        assert dev_match is not None, (
+            f"Developer secret with production UUID pattern not found in file"
+        )
 
         # Validate the UUID format
         dev_uuid_str = dev_match.group(1)
         # Verify it starts with the correct prefix
-        assert dev_uuid_str.startswith(
-            UUID_PREFIX
-        ), f"Expected {UUID_PREFIX} prefix, got: {dev_uuid_str}"
+        assert dev_uuid_str.startswith(UUID_PREFIX), (
+            f"Expected {UUID_PREFIX} prefix, got: {dev_uuid_str}"
+        )
 
         # Verify it matches our production UUID pattern exactly
         uuid_part = dev_uuid_str[len(UUID_PREFIX) :]
@@ -143,16 +141,12 @@ database:
             is_uuid = True
         except ValueError:
             is_uuid = False
-        assert (
-            is_uuid
-        ), f"Expected standard UUID format after prefix, got: {uuid_part}"
+        assert is_uuid, f"Expected standard UUID format after prefix, got: {uuid_part}"
 
         # Verify the user secret was NOT transformed and still has its tag
         user_secret_pattern = r"password:\s+!user_secret"
         user_match = re.search(user_secret_pattern, transformed_yaml_text)
-        assert (
-            user_match is not None
-        ), f"User secret tag pattern not found in file"
+        assert user_match is not None, f"User secret tag pattern not found in file"
 
     finally:
         # Clean up temp directory and all contents
@@ -165,9 +159,7 @@ database:
             pass
 
 
-def test_cli_deploy_with_env_var_secret(
-    mock_api_credentials, setup_test_env_vars
-):
+def test_cli_deploy_with_env_var_secret(mock_api_credentials, setup_test_env_vars):
     """Test the CLI deploy command with a secret from an environment variable."""
     API_URL, API_TOKEN = mock_api_credentials
 
@@ -200,9 +192,7 @@ def test_cli_deploy_with_env_var_secret(
 
     try:
         # The expected path for the transformed secrets output
-        secrets_output_path = os.path.join(
-            test_dir, "mcp_agent.deployed.secrets.yaml"
-        )
+        secrets_output_path = os.path.join(test_dir, "mcp_agent.deployed.secrets.yaml")
 
         # Run the CLI deploy command
         cmd = [
@@ -229,15 +219,14 @@ def test_cli_deploy_with_env_var_secret(
 
         # Check for expected success messages in output
         assert (
-            "Loaded secret value for api.key from environment variable"
-            in result.stdout
+            "Loaded secret value for api.key from environment variable" in result.stdout
         )
         assert "Secrets file processed successfully" in result.stdout
 
         # Verify the transformed secrets file exists
-        assert os.path.exists(
-            secrets_output_path
-        ), "Transformed secrets file was not created"
+        assert os.path.exists(secrets_output_path), (
+            "Transformed secrets file was not created"
+        )
 
         # Read the transformed secrets config
         with open(secrets_output_path, "r", encoding="utf-8") as f:
@@ -267,9 +256,7 @@ def test_cli_deploy_with_env_var_secret(
             del os.environ[env_var_name]
 
 
-def test_cli_deploy_with_realistic_configs(
-    mock_api_credentials, setup_test_env_vars
-):
+def test_cli_deploy_with_realistic_configs(mock_api_credentials, setup_test_env_vars):
     """Test secret processing with realistic agent configurations.
 
     Uses test fixtures with real-world configuration patterns and checks that:
@@ -321,9 +308,7 @@ models:
         )
 
         # The expected path for the transformed secrets output
-        secrets_output_path = os.path.join(
-            test_dir, "mcp_agent.deployed.secrets.yaml"
-        )
+        secrets_output_path = os.path.join(test_dir, "mcp_agent.deployed.secrets.yaml")
 
         # Run the CLI deploy command
         cmd = [
@@ -353,9 +338,9 @@ models:
         assert "Deployment preparation completed successfully" in result.stdout
 
         # Verify the transformed secrets file exists
-        assert os.path.exists(
-            secrets_output_path
-        ), "Transformed secrets file was not created"
+        assert os.path.exists(secrets_output_path), (
+            "Transformed secrets file was not created"
+        )
 
         # Read the transformed file
         with open(secrets_output_path, "r", encoding="utf-8") as f:
@@ -375,16 +360,13 @@ models:
 
         # Count how many correctly formatted UUIDs are in the file (should match number of developer secrets)
         uuid_matches = re.findall(prod_pattern, transformed_yaml)
-        assert (
-            len(uuid_matches) == 2
-        ), f"Expected 2 UUIDs, found {len(uuid_matches)}"
+        assert len(uuid_matches) == 2, f"Expected 2 UUIDs, found {len(uuid_matches)}"
 
         # User secrets should remain as tags
         # Could have quotes around the value or not, depending on the YAML library's output
         assert (
             "organization_id: !user_secret OPENAI_ORG_ID" in transformed_yaml
-            or "organization_id: !user_secret 'OPENAI_ORG_ID'"
-            in transformed_yaml
+            or "organization_id: !user_secret 'OPENAI_ORG_ID'" in transformed_yaml
         ), "User secret was incorrectly transformed"
 
     finally:
@@ -408,9 +390,7 @@ def test_cli_error_handling(mock_api_credentials):
     API_URL, API_TOKEN = mock_api_credentials
 
     # Create a temporary directory that doesn't exist
-    nonexistent_dir = (
-        tempfile.mktemp()
-    )  # This is just a path that doesn't exist
+    nonexistent_dir = tempfile.mktemp()  # This is just a path that doesn't exist
 
     # Create a temporary directory for valid files
     test_dir = tempfile.mkdtemp()
@@ -550,9 +530,7 @@ api:
         valid_test_dir = tempfile.mkdtemp()
 
         # Create config file
-        valid_config_path = os.path.join(
-            valid_test_dir, "mcp_agent.config.yaml"
-        )
+        valid_config_path = os.path.join(valid_test_dir, "mcp_agent.config.yaml")
         with open(valid_config_path, "w", encoding="utf-8") as f:
             f.write("name: valid-test")
 
@@ -562,9 +540,7 @@ api:
 api:
   key: !developer_secret TEST_API_KEY
 """
-        valid_secrets_path = os.path.join(
-            valid_test_dir, "mcp_agent.secrets.yaml"
-        )
+        valid_secrets_path = os.path.join(valid_test_dir, "mcp_agent.secrets.yaml")
         with open(valid_secrets_path, "w", encoding="utf-8") as f:
             f.write(valid_env_var_content)
 
@@ -604,9 +580,9 @@ api:
                 valid_test_dir, "mcp_agent.deployed.secrets.yaml"
             )
             # Verify output file exists and contains a UUID
-            assert os.path.exists(
-                deployed_path
-            ), f"Expected deployed file not found at {deployed_path}"
+            assert os.path.exists(deployed_path), (
+                f"Expected deployed file not found at {deployed_path}"
+            )
             with open(deployed_path, "r") as f:
                 transformed = f.read()
 
@@ -615,8 +591,7 @@ api:
                 "^$"
             )  # Remove regex anchors for use in larger pattern
             assert (
-                re.search(r"key:\s+(" + prod_pattern + ")", transformed)
-                is not None
+                re.search(r"key:\s+(" + prod_pattern + ")", transformed) is not None
             ), "Developer secret not transformed to production UUID format"
 
         finally:

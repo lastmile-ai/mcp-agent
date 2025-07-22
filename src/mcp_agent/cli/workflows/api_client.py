@@ -56,9 +56,7 @@ class WorkflowAPIClient(APIClient):
         if not is_valid_workflow_id_format(workflow_id):
             raise ValueError(f"Invalid workflow ID format: {workflow_id}")
 
-        response = await self.post(
-            "/workflow/get", {"workflowId": workflow_id}
-        )
+        response = await self.post("/workflow/get", {"workflowId": workflow_id})
 
         res = response.json()
         if not res or "workflow" not in res:

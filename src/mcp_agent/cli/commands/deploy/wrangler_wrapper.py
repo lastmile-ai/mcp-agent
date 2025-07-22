@@ -5,6 +5,8 @@ import tempfile
 import textwrap
 from pathlib import Path
 
+from rich.progress import Progress, SpinnerColumn, TextColumn
+
 from mcp_agent_cloud.config import settings
 from mcp_agent_cloud.core.constants import (
     MCP_CONFIG_FILENAME,
@@ -13,15 +15,14 @@ from mcp_agent_cloud.core.constants import (
     REQUIREMENTS_TXT_FILENAME,
 )
 from mcp_agent_cloud.ux import print_error, print_info
-from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from .constants import (
     CLOUDFLARE_ACCOUNT_ID,
+    CLOUDFLARE_API_BASE_URL,
     CLOUDFLARE_EMAIL,
     WRANGLER_AUTH_DOMAIN,
     WRANGLER_AUTH_URL,
     WRANGLER_SEND_METRICS,
-    CLOUDFLARE_API_BASE_URL,
 )
 
 _WELL_KNOWN_CONFIG_FILES = [

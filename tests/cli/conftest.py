@@ -1,8 +1,9 @@
 """pytest configuration for MCP Agent Cloud SDK tests."""
 
 import os
-import pytest
 from typing import Any, Dict
+
+import pytest
 from mcp_agent_cloud.core.constants import (
     MCP_CONFIG_FILENAME,
     MCP_SECRETS_FILENAME,
@@ -48,9 +49,10 @@ def sample_secrets_config() -> Dict[str, Any]:
 @pytest.fixture
 def sample_config_dir(sample_config: Dict[str, Any]) -> str:
     """Create a sample config YAML file in a temp directory."""
-    import yaml
-    from pathlib import Path
     import tempfile
+    from pathlib import Path
+
+    import yaml
 
     test_dir = Path(tempfile.mkdtemp())
 

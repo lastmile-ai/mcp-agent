@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 import typer
+from rich.panel import Panel
 
 from mcp_agent_cloud.auth import load_api_key_credentials
 from mcp_agent_cloud.config import settings
@@ -29,11 +30,10 @@ from mcp_agent_cloud.secrets.processor import (
 from mcp_agent_cloud.ux import (
     console,
     print_configuration_header,
+    print_error,
     print_info,
     print_success,
-    print_error,
 )
-from rich.panel import Panel
 
 
 def configure_app(
@@ -119,9 +119,7 @@ def configure_app(
         )
         raise typer.Exit(1)
 
-    effective_api_key = (
-        api_key or settings.API_KEY or load_api_key_credentials()
-    )
+    effective_api_key = api_key or settings.API_KEY or load_api_key_credentials()
     if not effective_api_key:
         print_error(
             "Must be logged in to configure. Run 'mcp-agent login', set MCP_API_KEY environment variable or specify --api-key option."
@@ -139,9 +137,7 @@ def configure_app(
     try:
         required_params = run_async(client.list_config_params(app_id=app_id))
     except Exception as e:
-        print_error(
-            f"Failed to retrieve required secrets for app {app_id}: {e}"
-        )
+        print_error(f"Failed to retrieve required secrets for app {app_id}: {e}")
         raise typer.Exit(1)
 
     requires_secrets = len(required_params) > 0
@@ -232,9 +228,7 @@ def configure_app(
     # Finally, configure the app for the user
     try:
         config = run_async(
-            client.configure_app(
-                app_id=app_id, config_params=configured_secrets
-            )
+            client.configure_app(app_id=app_id, config_params=configured_secrets)
         )
 
         console.print(

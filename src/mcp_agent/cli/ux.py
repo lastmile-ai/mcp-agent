@@ -58,9 +58,7 @@ def print_success(
 ) -> None:
     """Print a success message."""
     if console_output:
-        console.print(
-            f"[success]SUCCESS:[/success] {message}", *args, **kwargs
-        )
+        console.print(f"[success]SUCCESS:[/success] {message}", *args, **kwargs)
     if log:
         logger.info(f"SUCCESS: {message}")
 
@@ -74,9 +72,7 @@ def print_warning(
 ) -> None:
     """Print a warning message."""
     if console_output:
-        console.print(
-            f"[warning]WARNING:[/warning] {message}", *args, **kwargs
-        )
+        console.print(f"[warning]WARNING:[/warning] {message}", *args, **kwargs)
     if log:
         logger.warning(message)
 

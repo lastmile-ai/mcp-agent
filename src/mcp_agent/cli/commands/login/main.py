@@ -1,8 +1,12 @@
-import typer
-
 from typing import Optional
+
+import typer
 from rich.prompt import Prompt
 
+from mcp_agent_cloud.auth import (
+    load_api_key_credentials,
+    save_api_key_credentials,
+)
 from mcp_agent_cloud.config import settings
 from mcp_agent_cloud.ux import (
     print_error,
@@ -11,10 +15,6 @@ from mcp_agent_cloud.ux import (
     print_warning,
 )
 
-from mcp_agent_cloud.auth import (
-    load_api_key_credentials,
-    save_api_key_credentials,
-)
 from .constants import DEFAULT_API_AUTH_PATH
 
 
@@ -87,9 +87,7 @@ def login(
     attempts = 3
     while attempts > 0:
         attempts -= 1
-        input_api_key = Prompt.ask(
-            "Please enter your API key :key:", password=True
-        )
+        input_api_key = Prompt.ask("Please enter your API key :key:", password=True)
 
         if not input_api_key:
             print_warning("No API key provided.")

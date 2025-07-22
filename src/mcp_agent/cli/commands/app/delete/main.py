@@ -1,6 +1,7 @@
 from typing import Optional
 
 import typer
+
 from mcp_agent_cloud.auth import load_api_key_credentials
 from mcp_agent_cloud.config import settings
 from mcp_agent_cloud.core.api_client import UnauthenticatedError
@@ -45,9 +46,7 @@ def delete_app(
     ),
 ) -> None:
     """Delete an MCP App or App Configuration by ID."""
-    effective_api_key = (
-        api_key or settings.API_KEY or load_api_key_credentials()
-    )
+    effective_api_key = api_key or settings.API_KEY or load_api_key_credentials()
 
     if not effective_api_key:
         print_error(
@@ -119,9 +118,7 @@ def delete_app(
             else client.delete_app_configuration(id_to_delete)
         )
 
-        print_success(
-            f"Successfully deleted the {id_type} with ID '{id_to_delete}'."
-        )
+        print_success(f"Successfully deleted the {id_type} with ID '{id_to_delete}'.")
 
     except UnauthenticatedError as e:
         print_error(

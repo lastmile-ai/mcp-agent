@@ -83,17 +83,13 @@ async def process_config_secrets(
     # Create client if not provided
     if client is None:
         effective_api_url = api_url or settings.API_BASE_URL
-        effective_api_key = (
-            api_key or settings.API_KEY or load_api_key_credentials()
-        )
+        effective_api_key = api_key or settings.API_KEY or load_api_key_credentials()
 
         if not effective_api_key:
             print_warning("No API key provided. Using empty key.")
 
         # Create a new client
-        client = SecretsClient(
-            api_url=effective_api_url, api_key=effective_api_key
-        )
+        client = SecretsClient(api_url=effective_api_url, api_key=effective_api_key)
 
     # Load existing transformed config if available to reuse processed secrets
     existing_secrets_content = None
@@ -105,9 +101,7 @@ async def process_config_secrets(
             with open(output_path, "r", encoding="utf-8") as f:
                 existing_secrets_content = f.read()
         except Exception as e:
-            print_warning(
-                f"Failed to load existing secrets for reuse: {str(e)}"
-            )
+            print_warning(f"Failed to load existing secrets for reuse: {str(e)}")
 
     # Process the content
     try:
@@ -256,12 +250,9 @@ async def transform_config_recursive(
 
     # For debugging, check if the config is a string with a tag prefix
     if isinstance(config, str) and (
-        config.startswith("!developer_secret")
-        or config.startswith("!user_secret")
+        config.startswith("!developer_secret") or config.startswith("!user_secret")
     ):
-        print_warning(
-            f"Found raw string with tag prefix at path '{path}': {config}"
-        )
+        print_warning(f"Found raw string with tag prefix at path '{path}': {config}")
         # This indicates a YAML parsing issue - tags should be objects, not strings
 
     # Helper function to get value at a specific path in the existing config
@@ -388,9 +379,7 @@ async def transform_config_recursive(
                     max_attempts = 3
                     attempt = 1
 
-                    while (
-                        value is None or value == ""
-                    ) and attempt <= max_attempts:
+                    while (value is None or value == "") and attempt <= max_attempts:
                         if attempt > 1:
                             print_warning(
                                 f"Attempt {attempt}/{max_attempts}: Developer secret at {path} still has no value."
@@ -437,9 +426,7 @@ async def transform_config_recursive(
             return handle
 
         except Exception as e:
-            print_error(
-                f"Failed to create developer secret at {path}: {str(e)}"
-            )
+            print_error(f"Failed to create developer secret at {path}: {str(e)}")
             raise
 
     elif isinstance(config, UserSecret):
@@ -552,13 +539,9 @@ async def configure_user_secrets(
             print_warning("No API key provided. Using empty key.")
 
         # Create a new client
-        client = SecretsClient(
-            api_url=effective_api_url, api_key=effective_api_key
-        )
+        client = SecretsClient(api_url=effective_api_url, api_key=effective_api_key)
 
-    processed_secrets = await process_prompted_user_secrets(
-        required_secrets, client
-    )
+    processed_secrets = await process_prompted_user_secrets(required_secrets, client)
 
     # Write the output file if specified
     if output_path:
@@ -596,9 +579,7 @@ def get_nested_key_value(config: dict, dotted_key: str) -> Any:
     value = config
     for part in parts:
         if not isinstance(value, dict) or part not in value:
-            raise ValueError(
-                f"Required secret '{dotted_key}' not found in config."
-            )
+            raise ValueError(f"Required secret '{dotted_key}' not found in config.")
         value = value[part]
     return value
 
@@ -667,9 +648,7 @@ async def process_prompted_user_secrets(
                         f"User secret '{secret_key}' must have raw value set, not secret ID"
                     )
 
-                with console.status(
-                    f"[bold green]Creating secret '{secret_key}'..."
-                ):
+                with console.status(f"[bold green]Creating secret '{secret_key}'..."):
                     secret_id = await client.create_secret(
                         name=secret_key,
                         secret_type=SecretType.USER,

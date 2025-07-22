@@ -1,20 +1,21 @@
 import asyncio
+import json
 from contextlib import asynccontextmanager
 from enum import Enum
-import json
 from typing import Any, AsyncGenerator, Literal, Optional
 
 import mcp.types as types
 from mcp import ClientSession
 from mcp.client.sse import sse_client
 from mcp.client.streamable_http import streamablehttp_client
+from pydantic import AnyUrl, BaseModel
+
 from mcp_agent_cloud.ux import (
     console,
     print_error,
     print_success,
     print_warning,
 )
-from pydantic import AnyUrl, BaseModel
 
 DEFAULT_CLIENT_INFO = types.Implementation(name="mcp", version="0.1.0")
 
@@ -218,9 +219,7 @@ class MCPClient:
         kwargs = {
             "url": self.server_url,
             "headers": {
-                "Authorization": (
-                    f"Bearer {self._api_key}" if self._api_key else None
-                ),
+                "Authorization": (f"Bearer {self._api_key}" if self._api_key else None),
             },
         }
         if self.transport_type == TransportType.STREAMABLE_HTTP:
@@ -302,9 +301,7 @@ async def mcp_connection_session(server_url: str, api_key: str):
                 )
                 async with mcp_client.client_session() as session:
                     await session.send_ping()
-                    print_success(
-                        f"Connected to MCP server at {server_url} using sse."
-                    )
+                    print_success(f"Connected to MCP server at {server_url} using sse.")
                     status.stop()
                     yield session
 

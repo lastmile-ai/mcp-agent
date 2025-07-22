@@ -1,11 +1,11 @@
 """Secrets API client implementation for the MCP Agent Cloud API."""
 
-from typing import Optional, Dict, Any, List
+from typing import Any, Dict, List, Optional
 
 from ..core.api_client import APIClient
 from ..core.constants import (
-    SecretType,
     SECRET_ID_PATTERN,
+    SecretType,
 )
 
 
@@ -86,9 +86,7 @@ class SecretsClient(APIClient):
         if not self._is_valid_handle(handle):
             raise ValueError(f"Invalid handle format: {handle}")
 
-        response = await self.post(
-            "/secrets/get_secret_value", {"secretId": handle}
-        )
+        response = await self.post("/secrets/get_secret_value", {"secretId": handle})
 
         # Parse the response to get the value
         data = response.json()

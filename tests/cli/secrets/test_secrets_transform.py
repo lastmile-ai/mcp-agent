@@ -4,24 +4,24 @@ This file tests the core functionality of transforming configurations with secre
 into deployment-ready configurations with secret handles.
 """
 
-import pytest
 from unittest.mock import AsyncMock, patch
 
+import pytest
+from mcp_agent_cloud.core.constants import (
+    MCP_DEPLOYED_SECRETS_FILENAME,
+    MCP_SECRETS_FILENAME,
+    UUID_PREFIX,
+    SecretType,
+)
 from mcp_agent_cloud.secrets.processor import (
-    transform_config_recursive,
-    process_secrets_in_config_str,
     process_config_secrets,
+    process_secrets_in_config_str,
+    transform_config_recursive,
 )
 from mcp_agent_cloud.secrets.yaml_tags import (
     DeveloperSecret,
     UserSecret,
     load_yaml_with_secrets,
-)
-from mcp_agent_cloud.core.constants import (
-    MCP_DEPLOYED_SECRETS_FILENAME,
-    MCP_SECRETS_FILENAME,
-    SecretType,
-    UUID_PREFIX,
 )
 
 
@@ -63,9 +63,7 @@ class TestTransformConfigRecursive:
             patch("typer.prompt", return_value="test-value"),
             patch.dict("os.environ", {}, clear=True),
         ):
-            result = await transform_config_recursive(
-                config, mock_secrets_client
-            )
+            result = await transform_config_recursive(config, mock_secrets_client)
 
         # Verify the result
         assert "api" in result
@@ -100,9 +98,7 @@ class TestTransformConfigRecursive:
         mock_secrets_client.create_secret.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_mixed_secrets_and_nested_structures(
-        self, mock_secrets_client
-    ):
+    async def test_mixed_secrets_and_nested_structures(self, mock_secrets_client):
         """Test transforming a complex config with both types of secrets."""
         # Create a complex config with both types of secrets
         config = {
@@ -133,9 +129,7 @@ class TestTransformConfigRecursive:
             patch("typer.prompt", return_value="test-value"),
             patch.dict("os.environ", {}, clear=True),
         ):
-            result = await transform_config_recursive(
-                config, mock_secrets_client
-            )
+            result = await transform_config_recursive(config, mock_secrets_client)
 
         # Verify developer secrets are transformed
         assert isinstance(result["api"]["key"], str)
@@ -145,9 +139,7 @@ class TestTransformConfigRecursive:
         assert result["database"]["password"].startswith(UUID_PREFIX)
 
         assert isinstance(result["nested"]["level2"]["level3"]["api_key"], str)
-        assert result["nested"]["level2"]["level3"]["api_key"].startswith(
-            UUID_PREFIX
-        )
+        assert result["nested"]["level2"]["level3"]["api_key"].startswith(UUID_PREFIX)
 
         assert isinstance(result["nested"]["array"][0]["secret"], str)
         assert result["nested"]["array"][0]["secret"].startswith(UUID_PREFIX)
@@ -159,18 +151,13 @@ class TestTransformConfigRecursive:
         assert isinstance(result["database"]["user_password"], UserSecret)
         assert result["database"]["user_password"].value is None
 
-        assert isinstance(
-            result["nested"]["level2"]["level3"]["user_key"], UserSecret
-        )
+        assert isinstance(result["nested"]["level2"]["level3"]["user_key"], UserSecret)
         assert (
-            result["nested"]["level2"]["level3"]["user_key"].value
-            == "nested-user-key"
+            result["nested"]["level2"]["level3"]["user_key"].value == "nested-user-key"
         )
 
         assert isinstance(result["nested"]["array"][1]["secret"], UserSecret)
-        assert (
-            result["nested"]["array"][1]["secret"].value == "array-user-item"
-        )
+        assert result["nested"]["array"][1]["secret"].value == "array-user-item"
 
         # Verify create_secret was called the correct number of times (only for developer secrets)
         assert mock_secrets_client.create_secret.call_count == 4
@@ -186,7 +173,6 @@ class TestTransformConfigRecursive:
             patch.dict("os.environ", {"ENV_VAR_NAME": "env-value"}),
             patch("typer.prompt", return_value="should-not-be-used"),
         ):
-
             # Transform the secret
             result = await transform_config_recursive(
                 dev_secret,
@@ -205,9 +191,7 @@ class TestTransformConfigRecursive:
             assert kwargs["value"] == "env-value"
 
     @pytest.mark.asyncio
-    async def test_missing_env_var_with_non_interactive(
-        self, mock_secrets_client
-    ):
+    async def test_missing_env_var_with_non_interactive(self, mock_secrets_client):
         """Test that missing env vars raise an error in non-interactive mode."""
         # Create developer secret with env var reference
         dev_secret = DeveloperSecret("NON_EXISTENT_ENV_VAR")
@@ -258,9 +242,7 @@ class TestProcessSecretsInConfig:
 
         # Verify the output format
         assert result["server"]["bedrock"]["api_key"].startswith(UUID_PREFIX)
-        assert isinstance(
-            result["server"]["bedrock"]["user_api_key"], UserSecret
-        )
+        assert isinstance(result["server"]["bedrock"]["user_api_key"], UserSecret)
         assert result["server"]["bedrock"]["user_api_key"].value == "user-key"
         assert result["database"]["password"].startswith(UUID_PREFIX)
         assert isinstance(result["database"]["user_password"], UserSecret)
@@ -330,15 +312,11 @@ class TestProcessConfigSecrets:
           password: !developer_secret DB_PASSWORD
         """
 
-        existing_bedrock_api_key = (
-            f"{UUID_PREFIX}00000000-1234-1234-1234-123456789000"
-        )
+        existing_bedrock_api_key = f"{UUID_PREFIX}00000000-1234-1234-1234-123456789000"
         existing_anthropic_api_key = (
             f"{UUID_PREFIX}00000001-1234-1234-1234-123456789001"
         )
-        existing_key_to_exclude = (
-            f"{UUID_PREFIX}00000002-1234-1234-1234-123456789002"
-        )
+        existing_key_to_exclude = f"{UUID_PREFIX}00000002-1234-1234-1234-123456789002"
 
         # Existing output YAML with some transformed secrets
         existing_output_yaml = f"""
@@ -366,7 +344,6 @@ class TestProcessConfigSecrets:
             patch.dict("os.environ", {}, clear=True),
             patch("mcp_agent_cloud.secrets.processor.print_secret_summary"),
         ):
-
             # Process the config with existing output
             result = await process_config_secrets(
                 input_path=input_path,
@@ -396,12 +373,8 @@ class TestProcessConfigSecrets:
             assert "removed" not in deployed_secrets_yaml
 
             # Verify the new key was added and transformed
-            assert isinstance(
-                deployed_secrets_yaml["database"]["password"], str
-            )
-            assert deployed_secrets_yaml["database"]["password"].startswith(
-                UUID_PREFIX
-            )
+            assert isinstance(deployed_secrets_yaml["database"]["password"], str)
+            assert deployed_secrets_yaml["database"]["password"].startswith(UUID_PREFIX)
 
             # Verify user_api_key remains as UserSecret
             assert isinstance(
@@ -409,9 +382,7 @@ class TestProcessConfigSecrets:
                 UserSecret,
             )
             assert (
-                deployed_secrets_yaml["server"]["bedrock"][
-                    "user_api_key"
-                ].value
+                deployed_secrets_yaml["server"]["bedrock"]["user_api_key"].value
                 == "user-key"
             )
 
@@ -421,7 +392,5 @@ class TestProcessConfigSecrets:
             assert "reused_secrets" in result
             # Check if we have exactly 1 new secret and 2 reused secrets
             assert len(result["developer_secrets"]) == 1  # Only DB_PASSWORD
-            assert (
-                len(result["reused_secrets"]) == 2
-            )  # The bedrock and anthropic keys
+            assert len(result["reused_secrets"]) == 2  # The bedrock and anthropic keys
             assert len(result["user_secrets"]) == 1  # user_api_key

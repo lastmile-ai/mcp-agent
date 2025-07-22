@@ -1,7 +1,7 @@
 """MCP App API client implementation for the MCP Agent Cloud API."""
 
 from datetime import datetime
-from typing import Literal, Optional, Dict, Any, List, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 from urllib.parse import urlparse
 
 from pydantic import BaseModel
@@ -39,17 +39,17 @@ class MCPAppConfiguration(BaseModel):
 
 
 class ListAppsResponse(BaseModel):
-    apps: Optional[List[MCPApp]] = (
-        []
-    )  # Proto treats empty list and 0 and undefined so must be optional!
+    apps: Optional[
+        List[MCPApp]
+    ] = []  # Proto treats empty list and 0 and undefined so must be optional!
     nextPageToken: Optional[str] = None
     totalCount: Optional[int] = 0
 
 
 class ListAppConfigurationsResponse(BaseModel):
-    appConfigurations: Optional[List[MCPAppConfiguration]] = (
-        []
-    )  # Proto treats empty list and 0 and undefined so must be optional!
+    appConfigurations: Optional[
+        List[MCPAppConfiguration]
+    ] = []  # Proto treats empty list and 0 and undefined so must be optional!
     nextPageToken: Optional[str] = None
     totalCount: Optional[int] = 0
 
@@ -107,9 +107,7 @@ def is_valid_server_url_format(server_url: str) -> bool:
 class MCPAppClient(APIClient):
     """Client for interacting with the MCP App API service over HTTP."""
 
-    async def create_app(
-        self, name: str, description: Optional[str] = None
-    ) -> MCPApp:
+    async def create_app(self, name: str, description: Optional[str] = None) -> MCPApp:
         """Create a new MCP App via the API.
 
         Args:
@@ -137,9 +135,7 @@ class MCPAppClient(APIClient):
 
         res = response.json()
         if not res or "app" not in res:
-            raise ValueError(
-                "API response did not contain the created app data"
-            )
+            raise ValueError("API response did not contain the created app data")
 
         return MCPApp(**res["app"])
 
@@ -201,12 +197,8 @@ class MCPAppClient(APIClient):
             httpx.HTTPStatusError: If the API returns an error (e.g., 404, 403)
             httpx.HTTPError: If the request fails
         """
-        if (app_config_id and server_url) or (
-            not app_config_id and not server_url
-        ):
-            raise ValueError(
-                "One of app_config_id or server_url must be provided"
-            )
+        if (app_config_id and server_url) or (not app_config_id and not server_url):
+            raise ValueError("One of app_config_id or server_url must be provided")
 
         request_data = {}
 
@@ -221,15 +213,11 @@ class MCPAppClient(APIClient):
                 raise ValueError(f"Invalid server URL format: {server_url}")
             request_data["appConfigServerUrl"] = server_url
 
-        response = await self.post(
-            "/mcp_app/get_app_configuration", request_data
-        )
+        response = await self.post("/mcp_app/get_app_configuration", request_data)
 
         res = response.json()
         if not res or "appConfiguration" not in res:
-            raise ValueError(
-                "API response did not contain the configured app data"
-            )
+            raise ValueError("API response did not contain the configured app data")
 
         return MCPAppConfiguration(**res["appConfiguration"])
 
@@ -256,9 +244,7 @@ class MCPAppClient(APIClient):
         if is_valid_app_id_format(app_id_or_url):
             return await self.get_app(app_id=app_id_or_url)
         elif is_valid_app_config_id_format(app_id_or_url):
-            return await self.get_app_configuration(
-                app_config_id=app_id_or_url
-            )
+            return await self.get_app_configuration(app_config_id=app_id_or_url)
         else:
             try:
                 # Try to get as an app first
@@ -267,9 +253,7 @@ class MCPAppClient(APIClient):
                 pass
             try:
                 # If that fails, try to get as a configuration
-                return await self.get_app_configuration(
-                    server_url=app_id_or_url
-                )
+                return await self.get_app_configuration(server_url=app_id_or_url)
             except Exception as e:
                 raise ValueError(
                     f"Failed to retrieve app or configuration for ID or server URL: {app_id_or_url}"
@@ -325,7 +309,9 @@ class MCPAppClient(APIClient):
 
         # Use a longer timeout for deployments
         deploy_timeout = 300.0
-        response = await self.post("/mcp_app/deploy_app", payload, timeout=deploy_timeout)
+        response = await self.post(
+            "/mcp_app/deploy_app", payload, timeout=deploy_timeout
+        )
 
         res = response.json()
         if not res or "app" not in res:
@@ -356,9 +342,7 @@ class MCPAppClient(APIClient):
             raise ValueError(f"Invalid app ID format: {app_id}")
 
         if not config_params or not isinstance(config_params, dict):
-            raise ValueError(
-                "Configuration parameters must be a non-empty dictionary"
-            )
+            raise ValueError("Configuration parameters must be a non-empty dictionary")
 
         payload = {
             "appId": app_id,
@@ -369,9 +353,7 @@ class MCPAppClient(APIClient):
 
         res = response.json()
         if not res or "appConfiguration" not in res:
-            raise ValueError(
-                "API response did not contain the configured app data"
-            )
+            raise ValueError("API response did not contain the configured app data")
 
         return MCPAppConfiguration(**res["appConfiguration"])
 
@@ -392,9 +374,7 @@ class MCPAppClient(APIClient):
         if not app_id or not is_valid_app_id_format(app_id):
             raise ValueError(f"Invalid app ID format: {app_id}")
 
-        response = await self.post(
-            "/mcp_app/list_config_params", {"appId": app_id}
-        )
+        response = await self.post("/mcp_app/list_config_params", {"appId": app_id})
         return response.json().get("paramKeys", [])
 
     async def list_apps(
@@ -511,21 +491,15 @@ class MCPAppClient(APIClient):
             httpx.HTTPStatusError: If the API returns an error (e.g., 404, 403)
             httpx.HTTPError: If the request fails
         """
-        if not app_config_id or not is_valid_app_config_id_format(
-            app_config_id
-        ):
-            raise ValueError(
-                f"Invalid app configuration ID format: {app_config_id}"
-            )
+        if not app_config_id or not is_valid_app_config_id_format(app_config_id):
+            raise ValueError(f"Invalid app configuration ID format: {app_config_id}")
 
         # Prepare request payload
         payload = {
             "appConfigId": app_config_id,
         }
 
-        response = await self.delete(
-            "/mcp_app/delete_app_configuration", payload
-        )
+        response = await self.delete("/mcp_app/delete_app_configuration", payload)
 
         # Parse the response to get the deleted app config ID
         data = response.json()
@@ -562,9 +536,7 @@ class MCPAppClient(APIClient):
             "actions": [action],
         }
 
-        response = await self.post(
-            "/resource_permission/can_viewer_do", payload
-        )
+        response = await self.post("/resource_permission/can_viewer_do", payload)
 
         # Parse the response to check permission
         checks = CanDoActionsResponse(**response.json())
@@ -610,12 +582,8 @@ class MCPAppClient(APIClient):
             httpx.HTTPStatusError: If the API returns an error (e.g., 404, 403)
             httpx.HTTPError: If the request fails
         """
-        if not app_config_id or not is_valid_app_config_id_format(
-            app_config_id
-        ):
-            raise ValueError(
-                f"Invalid app configuration ID format: {app_config_id}"
-            )
+        if not app_config_id or not is_valid_app_config_id_format(app_config_id):
+            raise ValueError(f"Invalid app configuration ID format: {app_config_id}")
 
         return await self._can_do_action(
             resource_name=f"MCP_APP_CONFIG:{app_config_id}",

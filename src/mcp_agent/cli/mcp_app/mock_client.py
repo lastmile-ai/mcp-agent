@@ -12,7 +12,6 @@ from .api_client import (
     MCPAppConfiguration,
 )
 
-
 MOCK_APP_NAME = "Test App"
 MOCK_APP_ID = "app_aece3598-d229-46d8-83fb-8c61ca7cd435"
 MOCK_APP_CONFIG_ID = "apcnf_55b256a8-3077-431c-9211-b931633bf4c0"
@@ -21,9 +20,7 @@ MOCK_APP_CONFIG_ID = "apcnf_55b256a8-3077-431c-9211-b931633bf4c0"
 class MockMCPAppClient:
     """Mock client that generates fake app data for dry run mode."""
 
-    def __init__(
-        self, api_url: str = "http://mock-api", api_key: str = "mock-key"
-    ):
+    def __init__(self, api_url: str = "http://mock-api", api_key: str = "mock-key"):
         """Initialize the mock client.
 
         Args:
@@ -45,9 +42,7 @@ class MockMCPAppClient:
         """
         return MOCK_APP_ID if name == MOCK_APP_NAME else None
 
-    async def create_app(
-        self, name: str, description: Optional[str] = None
-    ) -> MCPApp:
+    async def create_app(self, name: str, description: Optional[str] = None) -> MCPApp:
         """Create a new mock MCP App.
 
         Args:
@@ -104,9 +99,7 @@ class MockMCPAppClient:
             raise ValueError(f"Invalid app ID format: {app_id}")
 
         if not config_params or not isinstance(config_params, dict):
-            raise ValueError(
-                "Configuration parameters must be a non-empty dictionary"
-            )
+            raise ValueError("Configuration parameters must be a non-empty dictionary")
 
         if app_id == MOCK_APP_ID:
             config_id = MOCK_APP_CONFIG_ID
