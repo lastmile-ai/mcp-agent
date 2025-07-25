@@ -1,43 +1,55 @@
 # Instagram Gift Advisor
 
-An MCP Agent that analyzes Instagram profiles to generate personalized gift recommendations with Amazon product links, organized by price ranges.
+An MCP Agent that analyzes Instagram profiles to generate personalized gift recommendations with real Amazon product links.
 
 ## Overview
 
-This agent scrapes Instagram profiles to understand a person's interests, hobbies, and lifestyle patterns, then generates thoughtful gift recommendations categorized by price points ($10-25, $25-50, $50-100, $100+).
+This agent uses Apify's Instagram scraper to analyze profiles and understand a person's interests, hobbies, and lifestyle patterns, then generates thoughtful gift recommendations with actual Amazon product links organized by interest categories.
 
 ## Features
 
-- **Profile Analysis**: Analyzes Instagram bio, posts, hashtags, and visual themes
+- **Profile Analysis**: Analyzes Instagram bio, posts, hashtags, and visual themes using Apify
 - **Interest Identification**: Identifies hobbies, lifestyle patterns, and preferences
 - **Gift Recommendations**: Generates specific, personalized gift ideas
-- **Amazon Integration**: Provides specific Amazon search terms for each recommendation
-- **Price Categorization**: Organizes gifts by budget ranges
+- **Real Amazon Links**: Provides actual working Amazon product URLs via Google Search
+- **Category Organization**: Organizes gifts by interest categories (Travel, Pet Care, etc.)
 - **Detailed Explanations**: Explains why each gift matches the person's interests
 
 ## Prerequisites
 
-- Node.js (for Puppeteer MCP server)
+- Node.js (for MCP servers)
 - Python 3.8+
 - OpenAI API key
+- Anthropic API key
+- Apify API token
+- Playwright browsers
 
 ## Installation
 
 1. Install dependencies:
+
 ```bash
 pip install -r requirements.txt
 ```
 
-2. Install Puppeteer MCP server:
+2. Install Playwright browsers (one-time setup):
+
 ```bash
-npx -y @modelcontextprotocol/server-puppeteer
+npx playwright install
 ```
 
 3. Set up secrets:
+
 ```bash
 cp mcp_agent.secrets.yaml.example mcp_agent.secrets.yaml
-# Edit mcp_agent.secrets.yaml with your OpenAI API key
+# Edit mcp_agent.secrets.yaml with your API keys
 ```
+
+Required API keys:
+
+- **OpenAI API Key**: Get from https://platform.openai.com/api-keys
+- **Anthropic API Key**: Get from https://console.anthropic.com/
+- **Apify API Token**: Get from https://apify.com → Settings → Integrations → API tokens (1,000 free runs/month)
 
 ## Usage
 
@@ -48,83 +60,112 @@ python main.py username_to_analyze
 ```
 
 Example:
+
 ```bash
-python main.py johndoe
+python main.py finnianthegoldie
 ```
 
 The agent will:
-1. Navigate to the Instagram profile
+
+1. Scrape the Instagram profile using Apify
 2. Analyze the content for interests and patterns
-3. Generate personalized gift recommendations
-4. Organize recommendations by price ranges
-5. Provide Amazon search terms for each gift
+3. Search for real Amazon products using Google Search
+4. Generate personalized gift recommendations with working links
+5. Organize recommendations by interest categories
 
 ## Output Format
 
 The agent provides:
 
 ### Profile Analysis
+
 - Bio information and interests
 - Visual themes from posts
 - Hashtag analysis
 - Lifestyle patterns
+- Gift category suggestions (no specific products or prices)
 
-### Gift Recommendations by Price Range
-
-**$10-25 Range**: Budget-friendly options
-**$25-50 Range**: Mid-range gifts  
-**$50-100 Range**: Higher-end options
-**$100+ Range**: Premium/luxury items
+### Gift Recommendations by Interest Category
 
 Each recommendation includes:
-- Gift name and description
-- Amazon search term
+
+- Product name from Amazon
+- Real Amazon product URL
 - Explanation of why it fits their interests
-- Estimated price range
 
 ## Example Output
 
 ```
 === PROFILE ANALYSIS ===
-Bio Analysis: Travel enthusiast and coffee lover based in Seattle
-Visual Themes: Mountain hiking, specialty coffee, vintage cameras
-Key Interests: Photography, outdoor adventures, artisan coffee
+### Profile Overview
+- Username: finnianthegoldie
+- Bio: "the globetrotting dog 🗺️⁀જ✈︎ 📍nyc"
+- Followers: 106,875
+
+### Key Interests Identified
+- Travel and adventure
+- Service dog advocacy
+- Community engagement
+- Urban lifestyle
+
+### Gift Category Suggestions
+- Travel accessories for pets
+- Dog health and safety items
+- Educational materials about service dogs
 
 === GIFT RECOMMENDATIONS ===
 
-$10-25 Range:
-- Coffee Bean Sampler Pack
-- Amazon Search: "specialty coffee bean sampler gift set"
-- Why It Fits: Matches their love for artisan coffee culture
-- Estimated Price: $15-20
+## Travel & Adventure
+**Collapsible Dog Travel Bowl**
+- Amazon URL: <link to amazon>
+- Why it fits: Perfect for Finnian's globetrotting lifestyle and travel adventures
 
-$25-50 Range:
-- Portable Coffee Grinder
-- Amazon Search: "manual coffee grinder travel camping"  
-- Why It Fits: Perfect for their hiking and coffee interests
-- Estimated Price: $30-40
+**Dog Car Safety Harness**
+- Amazon URL: <link to amazon>
+- Why it fits: Essential for safe travel with a service dog
 ```
 
 ## Configuration
 
 The agent uses:
-- **Puppeteer MCP Server**: For web scraping Instagram profiles
-- **OpenAI GPT-4**: For content analysis and gift recommendation generation
+
+- **Apify Instagram Scraper**: For scraping Instagram profiles professionally
+- **Google Search (g-search-mcp)**: For finding real Amazon product links
+- **Fetch Server**: For web content retrieval
+- **OpenAI GPT-4o-mini**: For content analysis and gift recommendation generation
 - **Asyncio**: For asynchronous execution
+
+## MCP Servers Used
+
+1. **Apify**: `https://mcp.apify.com/sse` - Professional Instagram scraping
+2. **G-Search**: `g-search-mcp` - Google search functionality
+3. **Fetch**: `mcp-server-fetch` - Web content fetching
 
 ## Limitations
 
 - Requires public Instagram profiles
-- Dependent on Instagram's current layout and accessibility
-- Gift recommendations are suggestions, not guaranteed product availability
-- Amazon search terms may need refinement for specific products
+- Some profiles may require login (handled by Apify OAuth)
+- Gift recommendations depend on Amazon product availability
+- Search results may vary over time
 
 ## Security Considerations
 
 - Never commit your actual secrets file (`mcp_agent.secrets.yaml`)
-- Use environment variables in production
-- Respect Instagram's terms of service and rate limits
+- API keys are referenced via environment variables in config
+- Apify handles bot detection and rate limiting professionally
 - This tool is for legitimate gift-giving purposes only
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Playwright Error**: Run `npx playwright install` to install browsers
+2. **Apify Connection**: Ensure your API token is valid in secrets file
+3. **Search Results**: G-search and fetch servers install automatically via npx
+
+### Logging
+
+Logs are saved to `logs/instagram_gift_advisor_[timestamp].jsonl` for debugging.
 
 ## License
 
