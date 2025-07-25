@@ -10,6 +10,9 @@ logger:
     path_pattern: "logs/instagram_gift_advisor_{unique_id}.jsonl"
     unique_id: "timestamp"
     timestamp_format: "%Y%m%d_%H%M%S"
+  filters:
+    - logger: "root"
+      level: error
 
 mcp:
   servers:
@@ -18,15 +21,14 @@ mcp:
       args:
         [
           "mcp-remote",
-          "https://mcp.apify.com/sse?actors=apify/instagram-api-scraper",
-          "--header",
-          "Authorization: Bearer ${APIFY_API_TOKEN}",
+          "https://mcp.apify.com/sse?token=${APIFY_API_TOKEN}&actors=apify/instagram-api-scraper",
         ]
-    brave-search:
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+    g-search:
       command: "npx"
-      args: ["-y", "@modelcontextprotocol/server-brave-search"]
-      env:
-        BRAVE_API_KEY: "${BRAVE_API_KEY}"
+      args: ["-y", "g-search-mcp"]
 
 openai:
   # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored

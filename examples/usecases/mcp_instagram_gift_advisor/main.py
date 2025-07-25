@@ -33,14 +33,15 @@ class InstagramGiftAdvisor:
                 
                 IMPORTANT: You have access to these tools and MUST use them:
                 - Apify Instagram scraper: Use to get real Instagram profile data
-                - Brave Search: Use to find REAL Amazon product links - never make up URLs
+                - Fetch tool: Use to search the web for REAL Amazon product links - never make up URLs
+                - Google Search (g-search): Use to search Google for Amazon products with real links
                 
                 Your capabilities include:
                 - Analyzing Instagram profile content (posts, captions, hashtags, bio)
                 - Identifying interests, hobbies, and lifestyle patterns
                 - Generating gift recommendations based on inferred preferences
                 - Finding REAL Amazon product links using search tools
-                - Organizing recommendations by price ranges ($10-25, $25-50, $50-100, $100+)
+                - Providing curated product recommendations with real Amazon links
                 
                 When analyzing a profile, look for:
                 - Visual content themes (travel, fitness, food, fashion, art, etc.)
@@ -49,20 +50,20 @@ class InstagramGiftAdvisor:
                 - Repeated patterns in posts that suggest preferences
                 
                 For gift recommendations:
-                - MANDATORY: Use brave_search tool before suggesting ANY product
+                - MANDATORY: Use fetch tool or g-search tool to search for products before suggesting ANY product
                 - FORBIDDEN: Writing "Please search on Amazon" or similar
                 - FORBIDDEN: Making up or guessing Amazon URLs
                 - REQUIRED: Only include products with real URLs from actual search results
-                - REQUIRED: Include actual prices from search results
-                - REQUIRED: Call brave_search multiple times (8-10 searches minimum)
+                - Focus on finding relevant, high-quality products that match their interests
+                - REQUIRED: Call fetch tool multiple times (8-10 searches minimum)
                 - Show which search terms you used and the actual results
                 
                 Always format your response with clear sections:
                 1. Profile Analysis Summary
                 2. Identified Interests
-                3. Gift Recommendations by Price Range (with real search results)
+                3. Curated Gift Recommendations (with real Amazon links)
             """),
-            server_names=["apify", "brave-search"],
+            server_names=["apify", "fetch", "g-search"],
         )
 
         llm = await gift_agent.attach_llm(OpenAIAugmentedLLM)
@@ -71,7 +72,7 @@ class InstagramGiftAdvisor:
 
     async def scrape_instagram_profile(self, llm, username):
         """Scrape Instagram profile and analyze content using Apify"""
-        
+
         prompt = dedent(f"""
             Use the Apify Instagram scraper to analyze the Instagram profile: {username}
             
@@ -90,11 +91,14 @@ class InstagramGiftAdvisor:
             Provide a comprehensive analysis that will be used for personalized gift recommendations.
             Focus on extracting actionable insights about what this person might enjoy receiving as gifts.
             
+            IMPORTANT: Do NOT include any Amazon links, prices, or specific product recommendations. 
+            Only provide analysis and general gift categories/ideas.
+            
             Format your response with clear sections:
             - Profile Overview
             - Key Interests Identified  
             - Lifestyle Analysis
-            - Gift Recommendation Insights
+            - Gift Category Suggestions (general ideas only, no links or prices)
         """)
 
         return await llm.generate_str(
@@ -104,56 +108,40 @@ class InstagramGiftAdvisor:
     async def generate_gift_recommendations(self, llm, profile_analysis):
         """Generate personalized gift recommendations with real Amazon links"""
         prompt = dedent(f"""
-            Based on this Instagram profile analysis, you MUST use the brave_search tool to find REAL Amazon products:
+            Based on this Instagram profile analysis, you MUST use the fetch tool to search for REAL Amazon products:
             
             {profile_analysis}
             
             STOP! Before you write ANYTHING, you must:
-            1. Call the brave_search tool at least 8-10 times to find actual Amazon products
-            2. Use search queries like: "site:amazon.com dog crate under $100"
-            3. Only proceed after you have REAL search results with REAL URLs
+            1. Use g-search tool to find Amazon product URLs (at least 8-10 searches)
+            2. Search for products that match the person's interests from the profile analysis
+            3. Find a variety of products across different categories and interests
+            4. Only include products with real Amazon URLs from search results
             
             You are FORBIDDEN from:
             - Writing "(Please search this directly on Amazon)"
             - Providing search terms without actual results
             - Making up Amazon URLs
             - Suggesting products without real links
+            - Making up or guessing prices that aren't clearly shown in search results
             
             MANDATORY PROCESS FOR EACH GIFT:
-            Step 1: Call brave_search with "site:amazon.com [product] [price range]"
+            Step 1: Use g-search tool with "site:amazon.com [product related to their interests]"
             Step 2: Extract the actual Amazon URL from the search results
-            Step 3: Only then write the gift recommendation with the real URL
+            Step 3: Include the product with the real Amazon link
             
-            Find 2-3 gifts per price range:
-            
-            **$10-25 Range:**
-            - Search: "site:amazon.com [item] under $25"
-            - Extract real Amazon URLs from results
-            
-            **$25-50 Range:**
-            - Search: "site:amazon.com [item] $25 $50"
-            - Extract real Amazon URLs from results
-            
-            **$50-100 Range:**
-            - Search: "site:amazon.com [item] $50 $100"
-            - Extract real Amazon URLs from results
-            
-            **$100+ Range:**
-            - Search: "site:amazon.com [item] over $100"
-            - Extract real Amazon URLs from results
+            Find 8-12 gift recommendations that match their interests and lifestyle.
             
             FORMAT REQUIREMENTS:
             ```
-            **[Exact Product Name from Amazon]**
-            - Amazon URL: [Copy exact URL from search results]
-            - Price: [Actual price from search results]
-            - Why it fits: [Based on their interests]
+            **[Product Name from Amazon]**
+            - Amazon URL: [Real Amazon URL from search results]
+            - Why it fits: [How this matches their interests from the profile analysis]
             ```
             
-            If brave_search returns no results for a product type, write:
-            "No Amazon products found for [item type] in this price range."
+            Organize the recommendations by categories based on their interests (e.g., Travel, Pet Care, etc.).
             
-            DO NOT PROCEED until you have called brave_search multiple times and have real URLs!
+            DO NOT PROCEED until you have called fetch multiple times and have real URLs!
         """)
 
         return await llm.generate_str(
