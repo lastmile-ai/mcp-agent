@@ -19,7 +19,7 @@ class ContextDependent:
     @property
     def context(self) -> "Context":
         """
-        Get context, with graceful fallback to global context if needed.
+        Get context, with graceful fallback to thread local context if needed.
         Raises clear error if no context is available.
         """
         # First try instance context
@@ -27,7 +27,7 @@ class ContextDependent:
             return self._context
 
         try:
-            # Fall back to global context if available
+            # Fall back to thread local context if available
             from mcp_agent.core.context import get_current_context
 
             return get_current_context()
