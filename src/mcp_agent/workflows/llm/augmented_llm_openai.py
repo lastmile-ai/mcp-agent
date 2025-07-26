@@ -494,7 +494,7 @@ class OpenAIAugmentedLLM(
     ) -> ChatCompletionToolMessageParam:
         """
         Execute a single tool call and return the result message.
-        Always returns a ChatCompletionToolMessageParam object, even when there's no content to add.
+        Returns a single ChatCompletionToolMessageParam object.
         """
         tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
@@ -1058,7 +1058,8 @@ def mcp_content_to_openai_content_part(
         return ChatCompletionContentPartTextParam(type="text", text=content.text)
     elif isinstance(content, ImageContent):
         return ChatCompletionContentPartImageParam(
-            type="image_url", image_url=f"data:{content.mimeType};base64,{content.data}"
+            type="image_url",
+            image_url={"url": f"data:{content.mimeType};base64,{content.data}"},
         )
     elif isinstance(content, EmbeddedResource):
         if isinstance(content.resource, TextResourceContents):
@@ -1071,7 +1072,9 @@ def mcp_content_to_openai_content_part(
             ):
                 return ChatCompletionContentPartImageParam(
                     type="image_url",
-                    image_url=f"data:{content.resource.mimeType};base64,{content.resource.blob}",
+                    image_url={
+                        "url": f"data:{content.resource.mimeType};base64,{content.resource.blob}"
+                    },
                 )
             else:
                 # Best effort if mime type is unknown
