@@ -1,0 +1,138 @@
+{
+  "description": "Abstract Components Overview",
+  "components": [
+    {
+      "name": "Execution Engine",
+      "description": "This is the core component responsible for the actual execution of tasks and activities. It provides an abstract interface (Executor) for running executable units, with concrete implementations like AsyncioExecutor for immediate asynchronous execution and TemporalExecutor for durable, long-running workflows. It manages the runtime environment for tasks and orchestrates their execution flow.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent/executor/executor.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/executor/executor.py",
+          "reference_start_line": 0,
+          "reference_end_line": 0
+        },
+        {
+          "qualified_name": "mcp_agent/executor/temporal/TemporalExecutor.py",
+          "reference_file": "mcp_agent/executor/temporal/TemporalExecutor.py",
+          "reference_start_line": 0,
+          "reference_end_line": 0
+        }
+      ]
+    },
+    {
+      "name": "Workflow Management",
+      "description": "This component defines the structure, state, and lifecycle of complex, multi-step processes. It provides the Workflow abstraction, allowing for the definition of sequences of tasks and decision points. InteractiveWorkflow specifically handles scenarios requiring human input or external interaction, enabling robust and adaptable agent workflows.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent/executor/workflow.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/executor/workflow.py",
+          "reference_start_line": 0,
+          "reference_end_line": 0
+        },
+        {
+          "qualified_name": "mcp_agent/executor/temporal/interactive_workflow.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/executor/temporal/interactive_workflow.py",
+          "reference_start_line": 0,
+          "reference_end_line": 0
+        }
+      ]
+    },
+    {
+      "name": "Task/Activity Registry",
+      "description": "A centralized repository that allows for the registration and dynamic retrieval of executable tasks or \"activities.\" This component is crucial for the Execution Engine to discover and invoke the specific functions or methods that constitute an agent's capabilities or a workflow's steps. It promotes modularity by decoupling task definition from task execution.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent/executor/task_registry.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/executor/task_registry.py",
+          "reference_start_line": 0,
+          "reference_end_line": 0
+        }
+      ]
+    },
+    {
+      "name": "Signal Handling",
+      "description": "This component provides a robust mechanism for inter-component communication and handling external events, including human input. It enables workflows and tasks to asynchronously wait for, send, and receive signals, which is vital for interactive processes, state transitions, and coordination within the agent system. It includes a registry for managing various signal handlers.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent/executor/signal_registry.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/executor/signal_registry.py",
+          "reference_start_line": 0,
+          "reference_end_line": 0
+        },
+        {
+          "qualified_name": "mcp_agent/executor/workflow_signal.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/executor/workflow_signal.py",
+          "reference_start_line": 0,
+          "reference_end_line": 0
+        }
+      ]
+    },
+    {
+      "name": "Decorator Registry",
+      "description": "This component serves as a dedicated registry for managing decorators that can be applied to tasks or workflows. It facilitates the application of cross-cutting concerns (e.g., logging, error handling, retry mechanisms, authentication) in a declarative manner, enhancing the extensibility and maintainability of the executable units without modifying their core logic.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent/executor/decorator_registry.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/executor/decorator_registry.py",
+          "reference_start_line": 0,
+          "reference_end_line": 0
+        }
+      ]
+    },
+    {
+      "name": "Workflow Registry",
+      "description": "This component is responsible for registering and providing access to defined workflow blueprints. It allows the system to dynamically discover and instantiate workflows based on their unique identifiers, supporting different underlying storage or persistence mechanisms (e.g., in-memory for transient workflows, Temporal for durable workflows).",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent/executor/workflow_registry.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/executor/workflow_registry.py",
+          "reference_start_line": 0,
+          "reference_end_line": 0
+        },
+        {
+          "qualified_name": "mcp_agent/executor/temporal/workflow_registry.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/executor/temporal/workflow_registry.py",
+          "reference_start_line": 0,
+          "reference_end_line": 0
+        }
+      ]
+    }
+  ],
+  "components_relations": [
+    {
+      "relation": "uses",
+      "src_name": "Execution Engine",
+      "dst_name": "Task/Activity Registry"
+    },
+    {
+      "relation": "uses",
+      "src_name": "Execution Engine",
+      "dst_name": "Workflow Management"
+    },
+    {
+      "relation": "uses",
+      "src_name": "Execution Engine",
+      "dst_name": "Signal Handling"
+    },
+    {
+      "relation": "uses",
+      "src_name": "Execution Engine",
+      "dst_name": "Workflow Registry"
+    },
+    {
+      "relation": "interacts with",
+      "src_name": "Workflow Management",
+      "dst_name": "Signal Handling"
+    },
+    {
+      "relation": "registers with",
+      "src_name": "Workflow Management",
+      "dst_name": "Workflow Registry"
+    },
+    {
+      "relation": "potentially uses",
+      "src_name": "Execution Engine",
+      "dst_name": "Decorator Registry"
+    }
+  ]
+}
