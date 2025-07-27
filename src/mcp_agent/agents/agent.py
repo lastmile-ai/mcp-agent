@@ -1088,7 +1088,6 @@ class AgentTasks:
             self.agent_refcounts[agent_name] = refcount + 1
 
         # Initialize the servers
-        aggregator = self.server_aggregators_for_agent[agent_name]
         await aggregator.initialize(force=request.force)
 
         return InitAggregatorResponse(
@@ -1126,6 +1125,18 @@ class AgentTasks:
 
         return True
 
+    async def _get_required_server_aggregator(self, agent_name: str) -> MCPAggregator:
+        """
+        Get the MCPAggregator for the agent using the lock. Raises ValueError if not found.
+        """
+        async with self.server_aggregators_for_agent_lock:
+            aggregator = self.server_aggregators_for_agent.get(agent_name)
+            if not aggregator:
+                raise ValueError(
+                    f"Server aggregator for agent '{agent_name}' not found"
+                )
+            return aggregator
+
     async def list_tools_task(self, request: ListToolsRequest) -> ListToolsResult:
         """
         List tools for an agent.
@@ -1134,11 +1145,7 @@ class AgentTasks:
         agent_name = request.agent_name
         server_name = request.server_name
 
-        # Get the MCPAggregator for the agent
-        aggregator = self.server_aggregators_for_agent.get(agent_name)
-        if not aggregator:
-            raise ValueError(f"Server aggregrator for agent '{agent_name}' not found")
-
+        aggregator = await self._get_required_server_aggregator(agent_name)
         return await aggregator.list_tools(server_name=server_name)
 
     async def call_tool_task(self, request: CallToolRequest) -> CallToolResult:
@@ -1149,11 +1156,7 @@ class AgentTasks:
         agent_name = request.agent_name
         server_name = request.server_name
 
-        # Get the MCPAggregator for the agent
-        aggregator = self.server_aggregators_for_agent.get(agent_name)
-        if not aggregator:
-            raise ValueError(f"Server aggregrator for agent '{agent_name}' not found")
-
+        aggregator = await self._get_required_server_aggregator(agent_name)
         return await aggregator.call_tool(
             name=request.name, arguments=request.arguments, server_name=server_name
         )
@@ -1166,11 +1169,7 @@ class AgentTasks:
         agent_name = request.agent_name
         server_name = request.server_name
 
-        # Get the MCPAggregator for the agent
-        aggregator = self.server_aggregators_for_agent.get(agent_name)
-        if not aggregator:
-            raise ValueError(f"Server aggregrator for agent '{agent_name}' not found")
-
+        aggregator = await self._get_required_server_aggregator(agent_name)
         return await aggregator.list_prompts(server_name=server_name)
 
     async def get_prompt_task(self, request: GetPromptRequest) -> GetPromptResult:
@@ -1181,11 +1180,7 @@ class AgentTasks:
         agent_name = request.agent_name
         server_name = request.server_name
 
-        # Get the MCPAggregator for the agent
-        aggregator = self.server_aggregators_for_agent.get(agent_name)
-        if not aggregator:
-            raise ValueError(f"Server aggregrator for agent '{agent_name}' not found")
-
+        aggregator = await self._get_required_server_aggregator(agent_name)
         return await aggregator.get_prompt(
             name=request.name, arguments=request.arguments, server_name=server_name
         )
@@ -1200,11 +1195,7 @@ class AgentTasks:
         agent_name = request.agent_name
         server_name = request.server_name
 
-        # Get the MCPAggregator for the agent
-        aggregator = self.server_aggregators_for_agent.get(agent_name)
-        if not aggregator:
-            raise ValueError(f"Server aggregrator for agent '{agent_name}' not found")
-
+        aggregator = await self._get_required_server_aggregator(agent_name)
         server_capabilities: Dict[str, ServerCapabilities] = {}
 
         if not server_name:
@@ -1234,11 +1225,7 @@ class AgentTasks:
         agent_name = request.agent_name
         server_name = request.server_name
 
-        # Get the MCPAggregator for the agent
-        aggregator = self.server_aggregators_for_agent.get(agent_name)
-        if not aggregator:
-            raise ValueError(f"Server aggregrator for agent '{agent_name}' not found")
-
+        aggregator = await self._get_required_server_aggregator(agent_name)
         server_session: MCPAgentClientSession = await aggregator.get_server(
             server_name=server_name
         )
@@ -1256,10 +1243,7 @@ class AgentTasks:
         agent_name = request.agent_name
         server_name = request.server_name
 
-        aggregator = self.server_aggregators_for_agent.get(agent_name)
-        if not aggregator:
-            raise ValueError(f"Server aggregator for agent '{agent_name}' not found")
-
+        aggregator = await self._get_required_server_aggregator(agent_name)
         return await aggregator.list_resources(server_name=server_name)
 
     async def read_resource_task(self, request: ReadResourceRequest):
@@ -1270,8 +1254,5 @@ class AgentTasks:
         uri = request.uri
         server_name = request.server_name
 
-        aggregator = self.server_aggregators_for_agent.get(agent_name)
-        if not aggregator:
-            raise ValueError(f"Server aggregator for agent '{agent_name}' not found")
-
+        aggregator = await self._get_required_server_aggregator(agent_name)
         return await aggregator.read_resource(uri=uri, server_name=server_name)
