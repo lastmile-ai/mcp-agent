@@ -1,4 +1,6 @@
 import json
+import sys
+from secrets import choice
 from typing import Optional
 
 import typer
@@ -92,9 +94,10 @@ def get_app_status(
         raise typer.Exit(1) from e
     except Exception as e:
         print_error(
-            f"Error getting status for app or config with ID or URL {app_id_or_url}: {str(e)}"
+            f"Error getting status for app or config with ID or URL {app_id_or_url}: {str(e)}",
+            e,
         )
-        raise typer.Exit(1)
+        raise e
 
 
 def print_server_info(server_info: AppServerInfo) -> None:
@@ -135,12 +138,16 @@ async def print_mcp_server_details(server_url: str, api_key: str) -> None:
             for key, description in choices.items():
                 console.print(f"[cyan]{key}[/cyan]: {description}")
 
-            choice = Prompt.ask(
-                "\nWhat would you like to display?",
-                choices=list(choices.keys()),
-                default="0",
-                show_choices=False,
-            )
+            if sys.stdout.isatty():
+                choice = Prompt.ask(
+                    "\nWhat would you like to display?",
+                    choices=list(choices.keys()),
+                    default="0",
+                    show_choices=False,
+                )
+            else:
+                console.print("Choosing 0 (Show All)")
+                choice = "0"
 
             if choice in ["0", "1"]:
                 await print_server_tools(mcp_client_session)

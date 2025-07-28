@@ -251,6 +251,7 @@ class MCPClient:
                 # Assume single duplex stream
                 read_stream = write_stream = client
             async with MCPClientSession(read_stream, write_stream) as session:
+                console.print("Initializing MCPClientSession")
                 await session.initialize()
                 yield session
 
@@ -258,61 +259,33 @@ class MCPClient:
 @asynccontextmanager
 async def mcp_connection_session(server_url: str, api_key: str):
     status = console.status(
-        "[cyan]Connecting to MCP server with streamable_http...",
+        "[cyan]Connecting to MCP server with sse...",
         spinner="dots",
     )
     try:
         status.start()
         async with asyncio.timeout(10):
             mcp_client = MCPClient(
-                server_url=server_url,
+                server_url=server_url + "/sse",
                 api_key=api_key,
-                transport_type=TransportType.STREAMABLE_HTTP,
+                transport_type=TransportType.SSE,
             )
             async with mcp_client.client_session() as session:
                 await session.send_ping()
-                print_success(
-                    f"Connected to MCP server at {server_url} using streamable_http."
-                )
+                print_success(f"Connected to MCP server at {server_url} using sse.")
                 status.stop()
                 yield session
 
-    except Exception as ex:
+    except Exception as e:
         status.stop()
-        if isinstance(ex, asyncio.TimeoutError):
-            print_warning(
-                f"Connection to MCP server at {server_url} timed out using streamable_http. Trying SSE..."
+        if isinstance(e, asyncio.TimeoutError):
+            print_error(
+                f"Connection to MCP server at {server_url} timed out using SSE. Please check the server URL and your network connection.",
+                e,
             )
         else:
-            print_warning(
-                f"Could not connect to MCP server at {server_url} using streamable_http. Trying SSE..."
+            print_error(
+                f"Error connecting to MCP server using SSE at {server_url}: {str(e)}", e
             )
-        status = console.status(
-            "[cyan]Connecting to MCP server with sse...",
-            spinner="dots",
-        )
-        try:
-            status.start()
-            async with asyncio.timeout(10):
-                mcp_client = MCPClient(
-                    server_url=server_url,
-                    api_key=api_key,
-                    transport_type=TransportType.SSE,
-                )
-                async with mcp_client.client_session() as session:
-                    await session.send_ping()
-                    print_success(f"Connected to MCP server at {server_url} using sse.")
-                    status.stop()
-                    yield session
 
-        except Exception as e:
-            status.stop()
-            if isinstance(e, asyncio.TimeoutError):
-                print_error(
-                    f"Connection to MCP server at {server_url} timed out using SSE. Please check the server URL and your network connection."
-                )
-            else:
-                print_error(
-                    f"Error connecting to MCP server using SSE at {server_url}: {str(e)}"
-                )
-            raise e
+        raise e
