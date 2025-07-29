@@ -165,7 +165,7 @@ class MCPAppClient(APIClient):
             if not is_valid_app_id_format(app_id):
                 raise ValueError(f"Invalid app ID format: {app_id}")
             request_data["appId"] = app_id
-        else:
+        elif server_url:
             if not is_valid_server_url_format(server_url):
                 raise ValueError(f"Invalid server URL format: {server_url}")
             request_data["appServerUrl"] = server_url
@@ -208,7 +208,7 @@ class MCPAppClient(APIClient):
                     f"Invalid app configuration ID format: {app_config_id}"
                 )
             request_data["appConfigurationId"] = app_config_id
-        else:
+        elif server_url:
             if not is_valid_server_url_format(server_url):
                 raise ValueError(f"Invalid server URL format: {server_url}")
             request_data["appConfigServerUrl"] = server_url

@@ -44,6 +44,9 @@ def get_workflow_status(
         )
         raise typer.Exit(1)
 
+    api_url = (
+        api_url or settings.API_BASE_URL
+    )  # already defaulted via typer, but making the type checker happy here
     client = WorkflowAPIClient(api_url=api_url, api_key=effective_api_key)
 
     if not workflow_id:

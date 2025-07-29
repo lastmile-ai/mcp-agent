@@ -1,0 +1,15 @@
+load("@pip//:requirements.bzl", "requirement")
+load("@rules_python//python:defs.bzl", "py_library")
+
+py_library(
+    name = "cli",
+    srcs = glob(["*.py"]),
+    imports = ["../.."],
+    tags = ["typecheck"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//mcp-agent-cloud/py/sdk-cloud/src/mcp_agent_cloud:__init__",
+        "//mcp-agent-cloud/py/sdk-cloud/src/mcp_agent_cloud/commands",
+        requirement("typer"),
+    ],
+)

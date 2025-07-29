@@ -1,0 +1,18 @@
+load("@pip//:requirements.bzl", "requirement")
+load("@rules_python//python:defs.bzl", "py_library")
+
+py_library(
+    name = "commands",
+    srcs = ["__init__.py"],
+    imports = ["../.."],
+    tags = ["typecheck"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//mcp-agent-cloud/py/sdk-cloud/src/mcp_agent_cloud/commands/app",
+        "//mcp-agent-cloud/py/sdk-cloud/src/mcp_agent_cloud/commands/apps",
+        "//mcp-agent-cloud/py/sdk-cloud/src/mcp_agent_cloud/commands/configure",
+        "//mcp-agent-cloud/py/sdk-cloud/src/mcp_agent_cloud/commands/deploy",
+        "//mcp-agent-cloud/py/sdk-cloud/src/mcp_agent_cloud/commands/login",
+        "//mcp-agent-cloud/py/sdk-cloud/src/mcp_agent_cloud/commands/workflow",
+    ],
+)

@@ -4,6 +4,7 @@ This module provides a mock implementation of the MCPAppClient interface
 that generates fake app data instead of making real API calls.
 """
 
+import datetime
 import uuid
 from typing import Any, Dict, List, Optional
 
@@ -74,8 +75,12 @@ class MockMCPAppClient:
             name=name,
             creatorId="u_12345678-1234-1234-1234-123456789012",
             description=description,
-            createdAt="2025-06-16T00:00:00Z",
-            updatedAt="2025-06-16T00:00:00Z",
+            createdAt=datetime.datetime(
+                2025, 6, 16, 0, 0, 0, tzinfo=datetime.timezone.utc
+            ),
+            updatedAt=datetime.datetime(
+                2025, 6, 16, 0, 0, 0, tzinfo=datetime.timezone.utc
+            ),
         )
 
     async def configure_app(
@@ -121,8 +126,12 @@ class MockMCPAppClient:
                 appId=app_id,
                 name=MOCK_APP_NAME if app_id == MOCK_APP_ID else "App",
                 creatorId="u_12345678-1234-1234-1234-123456789012",
-                createdAt="2025-06-16T00:00:00Z",
-                updatedAt="2025-06-16T00:00:00Z",
+                createdAt=datetime.datetime(
+                    2025, 6, 16, 0, 0, 0, tzinfo=datetime.timezone.utc
+                ),
+                updatedAt=datetime.datetime(
+                    2025, 6, 16, 0, 0, 0, tzinfo=datetime.timezone.utc
+                ),
             ),
             creatorId="u_12345678-1234-1234-1234-123456789012",
         )

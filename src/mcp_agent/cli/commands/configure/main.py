@@ -5,7 +5,7 @@ the required configuration parameters (e.g. user secrets).
 """
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 import typer
 from rich.panel import Panel
@@ -13,6 +13,7 @@ from rich.panel import Panel
 from mcp_agent_cloud.auth import load_api_key_credentials
 from mcp_agent_cloud.config import settings
 from mcp_agent_cloud.core.constants import (
+    DEFAULT_API_BASE_URL,
     ENV_API_BASE_URL,
     ENV_API_KEY,
     MCP_CONFIGURED_SECRETS_FILENAME,
@@ -126,12 +127,17 @@ def configure_app(
         )
         raise typer.Exit(1)
 
+    client: Union[MockMCPAppClient, MCPAppClient]
     if dry_run:
         # Use the mock api client in dry run mode
         print_info("Using MOCK API client for dry run")
-        client = MockMCPAppClient(api_url=api_url, api_key=effective_api_key)
+        client = MockMCPAppClient(
+            api_url=api_url or DEFAULT_API_BASE_URL, api_key=effective_api_key
+        )
     else:
-        client = MCPAppClient(api_url=api_url, api_key=effective_api_key)
+        client = MCPAppClient(
+            api_url=api_url or DEFAULT_API_BASE_URL, api_key=effective_api_key
+        )
 
     required_params = []
     try:
@@ -173,7 +179,7 @@ def configure_app(
 
                 # Create the mock client
                 mock_client = MockSecretsClient(
-                    api_url=api_url, api_key=effective_api_key
+                    api_url=api_url or DEFAULT_API_BASE_URL, api_key=effective_api_key
                 )
 
                 # Process with the mock client

@@ -14,7 +14,11 @@ from rich.text import Text
 from mcp_agent_cloud.auth import load_api_key_credentials
 from mcp_agent_cloud.config import settings
 from mcp_agent_cloud.core.api_client import UnauthenticatedError
-from mcp_agent_cloud.core.constants import ENV_API_BASE_URL, ENV_API_KEY
+from mcp_agent_cloud.core.constants import (
+    DEFAULT_API_BASE_URL,
+    ENV_API_BASE_URL,
+    ENV_API_KEY,
+)
 from mcp_agent_cloud.core.utils import run_async
 from mcp_agent_cloud.mcp_app.api_client import AppServerInfo, MCPAppClient
 from mcp_agent_cloud.mcp_app.mcp_client import (
@@ -56,7 +60,9 @@ def get_app_status(
         )
         raise typer.Exit(1)
 
-    client = MCPAppClient(api_url=api_url, api_key=effective_api_key)
+    client = MCPAppClient(
+        api_url=api_url or DEFAULT_API_BASE_URL, api_key=effective_api_key
+    )
 
     if not app_id_or_url:
         print_error("You must provide an app ID or server URL to get its status.")
@@ -185,7 +191,7 @@ async def print_server_tools(session: MCPClientSession) -> None:
             # Tool name and description
             header = Text(f"{tool.name}", style="bold cyan")
             desc = tool.description or "No description available"
-            body_parts = [Text(desc, style="white")]
+            body_parts: list = [Text(desc, style="white")]
 
             # Input schema
             if tool.inputSchema:
@@ -238,7 +244,7 @@ async def print_server_prompts(session: MCPClientSession) -> None:
         for prompt in res.prompts:
             header = Text(f"{prompt.name}", style="bold cyan")
             desc = prompt.description or "No description available"
-            body_parts = [Text(desc, style="white")]
+            body_parts: list = [Text(desc, style="white")]
             if prompt.arguments:
                 for arg in prompt.arguments:
                     # name, description, required
@@ -333,7 +339,7 @@ async def print_server_workflows(session: MCPClientSession) -> None:
         for workflow in res.workflows:
             header = Text(f"{workflow.name}", style="bold cyan")
             desc = workflow.description or "No description available"
-            body_parts = [Text(desc, style="white")]
+            body_parts: list = [Text(desc, style="white")]
             body = Group(*body_parts)
             panels.append(
                 Panel(

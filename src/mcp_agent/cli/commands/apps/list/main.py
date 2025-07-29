@@ -9,7 +9,11 @@ from rich.table import Table
 from mcp_agent_cloud.auth import load_api_key_credentials
 from mcp_agent_cloud.config import settings
 from mcp_agent_cloud.core.api_client import UnauthenticatedError
-from mcp_agent_cloud.core.constants import ENV_API_BASE_URL, ENV_API_KEY
+from mcp_agent_cloud.core.constants import (
+    DEFAULT_API_BASE_URL,
+    ENV_API_BASE_URL,
+    ENV_API_KEY,
+)
 from mcp_agent_cloud.core.utils import run_async
 from mcp_agent_cloud.mcp_app.api_client import (
     MCPApp,
@@ -46,7 +50,9 @@ def list_apps(
         )
         raise typer.Exit(1)
 
-    client = MCPAppClient(api_url=api_url, api_key=effective_api_key)
+    client = MCPAppClient(
+        api_url=api_url or DEFAULT_API_BASE_URL, api_key=effective_api_key
+    )
 
     try:
 
@@ -112,7 +118,7 @@ def print_apps(apps: List[MCPApp]) -> None:
 
     table.add_column("Name", style="cyan", overflow="fold")
     table.add_column("ID", style="bright_blue", no_wrap=True)
-    table.add_column("Description", style="cyan", overflow="wrap")
+    table.add_column("Description", style="cyan", overflow="fold")
     table.add_column("Server URL", style="bright_blue", no_wrap=True)
     table.add_column("Status", style="bright_blue", no_wrap=True)
     table.add_column("Created", style="cyan", overflow="fold")
@@ -145,7 +151,7 @@ def print_app_configs(app_configs: List[MCPAppConfiguration]) -> None:
     table.add_column("Name", style="cyan", overflow="fold")
     table.add_column("ID", style="bright_blue", no_wrap=True)
     table.add_column("App ID", style="bright_blue", overflow="fold")
-    table.add_column("Description", style="cyan", overflow="wrap")
+    table.add_column("Description", style="cyan", overflow="fold")
     table.add_column("Server URL", style="bright_blue", no_wrap=True)
     table.add_column("Status", style="bright_blue", no_wrap=True)
     table.add_column("Created", style="cyan", overflow="fold")
@@ -153,10 +159,10 @@ def print_app_configs(app_configs: List[MCPAppConfiguration]) -> None:
     for idx, config in enumerate(app_configs):
         is_last_row = idx == len(app_configs) - 1
         table.add_row(
-            config.app.name,
+            config.app.name if config.app else "",
             config.appConfigurationId,
-            config.app.appId,
-            config.app.description,
+            config.app.appId if config.app else "",
+            config.app.description if config.app else "",
             config.appServerInfo.serverUrl if config.appServerInfo else "",
             _server_status_text(
                 (
@@ -166,13 +172,13 @@ def print_app_configs(app_configs: List[MCPAppConfiguration]) -> None:
                 ),
                 is_last_row=is_last_row,
             ),
-            config.createdAt.strftime("%Y-%m-%d %H:%M:%S"),
+            config.createdAt.strftime("%Y-%m-%d %H:%M:%S") if config.createdAt else "",
         )
 
     console.print(table)
 
 
-def _server_status_text(status: str, is_last_row: bool = False) -> str:
+def _server_status_text(status: str, is_last_row: bool = False):
     """Convert server status code to emoji."""
     if status == "APP_SERVER_STATUS_ONLINE":
         return "🟢 Online"

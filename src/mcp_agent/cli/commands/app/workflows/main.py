@@ -14,7 +14,11 @@ from rich.text import Text
 from mcp_agent_cloud.auth import load_api_key_credentials
 from mcp_agent_cloud.config import settings
 from mcp_agent_cloud.core.api_client import UnauthenticatedError
-from mcp_agent_cloud.core.constants import ENV_API_BASE_URL, ENV_API_KEY
+from mcp_agent_cloud.core.constants import (
+    DEFAULT_API_BASE_URL,
+    ENV_API_BASE_URL,
+    ENV_API_KEY,
+)
 from mcp_agent_cloud.core.utils import run_async
 from mcp_agent_cloud.mcp_app.api_client import MCPAppClient, datetime
 from mcp_agent_cloud.mcp_app.mcp_client import (
@@ -57,7 +61,9 @@ def list_app_workflows(
         )
         raise typer.Exit(1)
 
-    client = MCPAppClient(api_url=api_url, api_key=effective_api_key)
+    client = MCPAppClient(
+        api_url=api_url or DEFAULT_API_BASE_URL, api_key=effective_api_key
+    )
 
     if not app_id_or_url:
         print_error("You must provide an app ID or server URL to view its workflows.")
@@ -167,7 +173,7 @@ async def print_workflows_list(session: MCPClientSession) -> None:
             desc = textwrap.dedent(
                 workflow.description or "No description available"
             ).strip()
-            body_parts = [Text(desc, style="white")]
+            body_parts: list = [Text(desc, style="white")]
 
             # Capabilities
             capabilities = getattr(workflow, "capabilities", [])
@@ -236,7 +242,7 @@ async def print_runs_list(session: MCPClientSession) -> None:
 
         def get_start_time(run: WorkflowRun):
             try:
-                return run.temporal.start_time or 0
+                return run.temporal.start_time if run.temporal else 0
             except AttributeError:
                 return 0
 
@@ -280,7 +286,7 @@ async def print_runs_list(session: MCPClientSession) -> None:
 
             table.add_row(
                 run.name or "-",
-                run.temporal.workflow_id or "N/A",
+                run.temporal.workflow_id if run.temporal else "N/A",
                 Padding(run.id, (0, 0, 0 if is_last_row else 1, 0)),
                 status_text,
                 start_str,

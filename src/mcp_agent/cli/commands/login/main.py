@@ -58,7 +58,7 @@ def login(
                 raise typer.Exit(1)
             save_api_key_credentials(api_key)
             print_success("API key set.")
-            return
+            return api_key
 
         stored_key = load_api_key_credentials()
         if stored_key:
@@ -71,7 +71,7 @@ def login(
                 "Using stored API key for authentication. Run with --force to re-authenticate."
             )
             print_success("API key set.")
-            return
+            return stored_key
 
     if force:
         print_info("Forcing login to obtain new credentials.")
@@ -96,7 +96,7 @@ def login(
         if _is_valid_api_key(input_api_key):
             save_api_key_credentials(input_api_key)
             print_success("API key set.")
-            return
+            return input_api_key
 
         print_warning("Invalid API key provided.")
 

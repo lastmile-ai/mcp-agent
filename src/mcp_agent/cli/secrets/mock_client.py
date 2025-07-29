@@ -8,9 +8,10 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from ..core.constants import UUID_PREFIX, SecretType
+from .api_client import SecretsClient
 
 
-class MockSecretsClient:
+class MockSecretsClient(SecretsClient):
     """Mock client that generates fake UUIDs for dry run mode."""
 
     def __init__(self, api_url: str = "http://mock-api", api_key: str = "mock-key"):
@@ -20,6 +21,7 @@ class MockSecretsClient:
             api_url: Mock API URL (ignored)
             api_key: Mock API key
         """
+        super().__init__(api_url, api_key)
         self.api_url = api_url
         self.api_key = api_key
         self._created_secrets: Dict[str, Dict[str, Any]] = {}
@@ -81,7 +83,7 @@ class MockSecretsClient:
 
         return self._created_secrets[handle]["value"]
 
-    async def set_secret_value(self, handle: str, value: str) -> None:
+    async def set_secret_value(self, handle: str, value: str) -> bool:
         """Set a mock secret value.
 
         Args:
@@ -95,6 +97,7 @@ class MockSecretsClient:
             raise ValueError(f"Secret {handle} not found (mock)")
 
         self._created_secrets[handle]["value"] = value
+        return True
 
     async def list_secrets(
         self, name_filter: Optional[str] = None
@@ -125,7 +128,7 @@ class MockSecretsClient:
 
         return results
 
-    async def delete_secret(self, handle: str) -> None:
+    async def delete_secret(self, handle: str) -> str:
         """Delete a mock secret.
 
         Args:
@@ -138,3 +141,4 @@ class MockSecretsClient:
             raise ValueError(f"Secret {handle} not found (mock)")
 
         del self._created_secrets[handle]
+        return handle

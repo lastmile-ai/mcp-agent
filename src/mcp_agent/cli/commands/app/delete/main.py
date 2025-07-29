@@ -5,7 +5,11 @@ import typer
 from mcp_agent_cloud.auth import load_api_key_credentials
 from mcp_agent_cloud.config import settings
 from mcp_agent_cloud.core.api_client import UnauthenticatedError
-from mcp_agent_cloud.core.constants import ENV_API_BASE_URL, ENV_API_KEY
+from mcp_agent_cloud.core.constants import (
+    DEFAULT_API_BASE_URL,
+    ENV_API_BASE_URL,
+    ENV_API_KEY,
+)
 from mcp_agent_cloud.core.utils import run_async
 from mcp_agent_cloud.mcp_app.api_client import (
     MCPAppClient,
@@ -54,7 +58,9 @@ def delete_app(
         )
         raise typer.Exit(1)
 
-    client = MCPAppClient(api_url=api_url, api_key=effective_api_key)
+    client = MCPAppClient(
+        api_url=api_url or DEFAULT_API_BASE_URL, api_key=effective_api_key
+    )
 
     if not app_id_or_url:
         print_error(

@@ -5,7 +5,7 @@ with secret tags and transforms them into deployment-ready configurations with s
 """
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 import typer
 from rich.panel import Panel
@@ -129,7 +129,7 @@ def deploy_config(
             effective_api_key = effective_api_key or "mock-key-for-dry-run"
 
             print_info("Using MOCK APP API client for dry run")
-            mcp_app_client = MockMCPAppClient(
+            mcp_app_client: Union[MockMCPAppClient, MCPAppClient] = MockMCPAppClient(
                 api_url=effective_api_url, api_key=effective_api_key
             )
 
@@ -261,6 +261,7 @@ def deploy_config(
             task = progress.add_task("Deploying MCP App bundle...", total=None)
 
             try:
+                assert isinstance(mcp_app_client, MCPAppClient)
                 app = run_async(
                     mcp_app_client.deploy_app(
                         app_id=app_id,
@@ -306,19 +307,22 @@ def get_config_files(config_dir: Path, no_secrets: bool) -> tuple[Path, Optional
         )
         raise typer.Exit(1)
 
-    secrets_file = config_dir / MCP_SECRETS_FILENAME
+    secrets_file_path = config_dir / MCP_SECRETS_FILENAME
+    secrets_file: Optional[Path] = None
 
     if no_secrets:
-        if secrets_file.exists():
+        if secrets_file_path.exists():
             print_error(
                 f"Secrets file '{MCP_SECRETS_FILENAME}' found in {config_dir} but --no-secrets is specified. Remove the secrets file or omit --no-secrets."
             )
             raise typer.Exit(1)
         secrets_file = None
-    elif not secrets_file.exists():
+    elif not secrets_file_path.exists():
         print_error(
             f"Secrets file '{MCP_SECRETS_FILENAME}' not found in {config_dir}. Required unless --no-secrets is specified."
         )
         raise typer.Exit(1)
+    else:
+        secrets_file = secrets_file_path
 
     return config_file, secrets_file

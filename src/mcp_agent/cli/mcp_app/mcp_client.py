@@ -266,7 +266,7 @@ async def mcp_connection_session(server_url: str, api_key: str):
         status.start()
         async with asyncio.timeout(10):
             mcp_client = MCPClient(
-                server_url=server_url + "/sse",
+                server_url=AnyUrl(server_url + "/sse"),
                 api_key=api_key,
                 transport_type=TransportType.SSE,
             )
