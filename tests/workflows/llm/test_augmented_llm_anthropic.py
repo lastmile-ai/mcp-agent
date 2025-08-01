@@ -627,9 +627,9 @@ class TestAnthropicAugmentedLLM:
         messages = final_call_args.payload["messages"]
 
         # Check for the presence of the final answer request message
-        assert self.check_final_iteration_prompt_in_messages(messages), (
-            "No message requesting to stop using tools was found"
-        )
+        assert self.check_final_iteration_prompt_in_messages(
+            messages
+        ), "No message requesting to stop using tools was found"
 
     # Test 17: Generate with String Input
     @pytest.mark.asyncio

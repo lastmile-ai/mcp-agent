@@ -494,6 +494,6 @@ class TestTracingIsolation:
                     resource = span.get("resource", {})
                     attributes = resource.get("attributes", {})
                     service_name = attributes.get("service.name")
-                    assert (
-                        service_name == f"concurrent-app-{app_num}"
-                    ), f"Span should be from concurrent-app-{app_num}, got {service_name}"
+                    assert service_name == f"concurrent-app-{app_num}", (
+                        f"Span should be from concurrent-app-{app_num}, got {service_name}"
+                    )

@@ -1,0 +1,2 @@
+# Requirements for running the Adaptive Workflow example
+mcp-agent
