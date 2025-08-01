@@ -47,7 +47,7 @@ py_image_layer(
 
 oci_image(
     name = "image",
-    base = "@lastmile_platform_cudaless",
+    base = "//:lastmile_platform_cudaless",
     entrypoint = [
         "mcp-agent-cloud/py/sdk-cloud/src/mcp_agent_cloud/cli/mcp-agent",
     ],
