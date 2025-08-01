@@ -66,12 +66,13 @@
           {
             "group": "Architecture",
             "pages": [
-              "codeboarding/overview",
-              "codeboarding/core-orchestration-execution",
-              "codeboarding/agent-workflow-framework",
-              "codeboarding/llm-external-tooling",
-              "codeboarding/mcp-api-gateway",
-              "codeboarding/intent-interaction-management"
+              "codeboarding/on_boarding",
+              "codeboarding/Core_Application_Setup",
+              "codeboarding/Agent_Execution_Workflow_Engine",
+              "codeboarding/Agent_Core_LLM_Integration",
+              "codeboarding/Agent_Workflow_Patterns",
+              "codeboarding/MCP_Service_Integration",
+              "codeboarding/Human_Interaction_Layer"
             ]
           }
         ]

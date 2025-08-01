@@ -1,0 +1,213 @@
+{
+  "description": "The `mcp-agent` project provides a robust framework for developing AI agents. At its core, the **Core Application & Setup** component initializes the entire system and manages configurations. The **Agent Execution & Workflow Engine** then takes over, orchestrating the execution of various **Agent Workflow Patterns** (like orchestration, routing, or parallel processing) which define the agent's high-level behaviors. These workflows, in turn, leverage the **Agent Core & LLM Integration** component to interact with Large Language Models and perform agent-specific actions. The **MCP Service Integration** component is crucial for discovering and connecting to external Model Context Protocol (MCP) servers, providing the necessary tools and resources to the agents. Finally, the **Human Interaction Layer** enables human-in-the-loop capabilities, allowing agents to request and receive input from users, which is then processed by the Execution Engine.",
+  "components": [
+    {
+      "name": "Core Application & Setup",
+      "description": "Initializes the entire agent framework, establishes the global application context, and manages the loading, parsing, and provision of application settings and sensitive information. It acts as the central orchestrator for the agent's environment and ensures all components operate with correct parameters.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent/app.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/app.py",
+          "reference_start_line": 1,
+          "reference_end_line": 1
+        },
+        {
+          "qualified_name": "mcp_agent/config.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/config.py",
+          "reference_start_line": 1,
+          "reference_end_line": 1
+        }
+      ]
+    },
+    {
+      "name": "Agent Execution & Workflow Engine",
+      "description": "Manages the lifecycle and execution of tasks, activities, and complex workflows. It provides mechanisms for registering executable units and handling their state, supporting both immediate asynchronous execution and durable, long-running workflows.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent/executor/executor.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/executor/executor.py",
+          "reference_start_line": 1,
+          "reference_end_line": 1
+        },
+        {
+          "qualified_name": "mcp_agent/executor/task_registry.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/executor/task_registry.py",
+          "reference_start_line": 1,
+          "reference_end_line": 1
+        },
+        {
+          "qualified_name": "mcp_agent/executor/signal_registry.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/executor/signal_registry.py",
+          "reference_start_line": 1,
+          "reference_end_line": 1
+        },
+        {
+          "qualified_name": "mcp_agent/executor/decorator_registry.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/executor/decorator_registry.py",
+          "reference_start_line": 1,
+          "reference_end_line": 1
+        },
+        {
+          "qualified_name": "mcp_agent/executor/workflow.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/executor/workflow.py",
+          "reference_start_line": 1,
+          "reference_end_line": 1
+        }
+      ]
+    },
+    {
+      "name": "Agent Core & LLM Integration",
+      "description": "Defines the fundamental interface and capabilities of an AI agent. It encapsulates interactions with Large Language Models (LLMs), external tools, prompts, and resources, providing a consistent and extensible model for agent behavior. It also offers a standardized and augmented interface for interacting with various LLM providers.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent/agents/agent.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/agents/agent.py",
+          "reference_start_line": 1,
+          "reference_end_line": 1
+        },
+        {
+          "qualified_name": "mcp_agent/workflows/llm/augmented_llm.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/llm/augmented_llm.py",
+          "reference_start_line": 1,
+          "reference_end_line": 1
+        },
+        {
+          "qualified_name": "mcp_agent/workflows/llm/llm_selector.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/llm/llm_selector.py",
+          "reference_start_line": 1,
+          "reference_end_line": 1
+        }
+      ]
+    },
+    {
+      "name": "MCP Service Integration",
+      "description": "Serves as a central point for discovering, collecting, and managing capabilities (tools, prompts, resources) exposed by various Model Context Protocol (MCP) servers. It also manages the underlying network connections and communication sessions with these external services.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent/mcp/mcp_aggregator.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/mcp/mcp_aggregator.py",
+          "reference_start_line": 1,
+          "reference_end_line": 1
+        },
+        {
+          "qualified_name": "mcp_agent/mcp/mcp_connection_manager.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/mcp/mcp_connection_manager.py",
+          "reference_start_line": 1,
+          "reference_end_line": 1
+        },
+        {
+          "qualified_name": "mcp_agent/mcp/mcp_server_registry.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/mcp/mcp_server_registry.py",
+          "reference_start_line": 1,
+          "reference_end_line": 1
+        }
+      ]
+    },
+    {
+      "name": "Agent Workflow Patterns",
+      "description": "Implements various complex, multi-step agent behaviors and patterns. This includes orchestrating sequences of actions, routing requests, classifying user intents, parallelizing LLM calls, and facilitating collaborative problem-solving among multiple agents.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent/workflows/orchestrator/orchestrator.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/orchestrator/orchestrator.py",
+          "reference_start_line": 1,
+          "reference_end_line": 1
+        },
+        {
+          "qualified_name": "mcp_agent/workflows/router/router_base.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/router/router_base.py",
+          "reference_start_line": 1,
+          "reference_end_line": 1
+        },
+        {
+          "qualified_name": "mcp_agent/workflows/intent_classifier/intent_classifier_base.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/intent_classifier/intent_classifier_base.py",
+          "reference_start_line": 1,
+          "reference_end_line": 1
+        },
+        {
+          "qualified_name": "mcp_agent/workflows/parallel/parallel_llm.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/parallel/parallel_llm.py",
+          "reference_start_line": 1,
+          "reference_end_line": 1
+        },
+        {
+          "qualified_name": "mcp_agent/workflows/swarm/swarm.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/swarm/swarm.py",
+          "reference_start_line": 1,
+          "reference_end_line": 1
+        }
+      ]
+    },
+    {
+      "name": "Human Interaction Layer",
+      "description": "Handles all interactions requiring human input or feedback. It provides mechanisms for agents to request information from users and process their responses, enabling human-in-the-loop workflows.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent/human_input/handler.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/human_input/handler.py",
+          "reference_start_line": 1,
+          "reference_end_line": 1
+        },
+        {
+          "qualified_name": "mcp_agent/human_input/types.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/human_input/types.py",
+          "reference_start_line": 1,
+          "reference_end_line": 1
+        }
+      ]
+    }
+  ],
+  "components_relations": [
+    {
+      "relation": "Configures",
+      "src_name": "Core Application & Setup",
+      "dst_name": "Agent Execution & Workflow Engine"
+    },
+    {
+      "relation": "Configures",
+      "src_name": "Core Application & Setup",
+      "dst_name": "MCP Service Integration"
+    },
+    {
+      "relation": "Manages",
+      "src_name": "Agent Execution & Workflow Engine",
+      "dst_name": "Agent Workflow Patterns"
+    },
+    {
+      "relation": "Requests input from",
+      "src_name": "Agent Execution & Workflow Engine",
+      "dst_name": "Human Interaction Layer"
+    },
+    {
+      "relation": "Utilizes",
+      "src_name": "Agent Core & LLM Integration",
+      "dst_name": "MCP Service Integration"
+    },
+    {
+      "relation": "Provides capabilities to",
+      "src_name": "Agent Core & LLM Integration",
+      "dst_name": "Agent Workflow Patterns"
+    },
+    {
+      "relation": "Provides capabilities to",
+      "src_name": "MCP Service Integration",
+      "dst_name": "Agent Core & LLM Integration"
+    },
+    {
+      "relation": "Orchestrates",
+      "src_name": "Agent Workflow Patterns",
+      "dst_name": "Agent Core & LLM Integration"
+    },
+    {
+      "relation": "Leverages",
+      "src_name": "Agent Workflow Patterns",
+      "dst_name": "MCP Service Integration"
+    },
+    {
+      "relation": "Provides input to",
+      "src_name": "Human Interaction Layer",
+      "dst_name": "Agent Execution & Workflow Engine"
+    }
+  ]
+}
