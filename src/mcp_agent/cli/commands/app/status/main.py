@@ -1,6 +1,7 @@
 import json
 import sys
 from secrets import choice
+from sys import exc_info
 from typing import Optional
 
 import typer
@@ -101,7 +102,7 @@ def get_app_status(
     except Exception as e:
         print_error(
             f"Error getting status for app or config with ID or URL {app_id_or_url}: {str(e)}",
-            e,
+            exc_info=True,
         )
         raise e
 

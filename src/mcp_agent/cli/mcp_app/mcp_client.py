@@ -217,7 +217,7 @@ class MCPClient:
 
     def _create_client(self):
         kwargs = {
-            "url": self.server_url,
+            "url": str(self.server_url),
             "headers": {
                 "Authorization": (f"Bearer {self._api_key}" if self._api_key else None),
             },
@@ -285,7 +285,7 @@ async def mcp_connection_session(server_url: str, api_key: str):
             )
         else:
             print_error(
-                f"Error connecting to MCP server using SSE at {server_url}: {str(e)}", e
+                f"Error connecting to MCP server using SSE at {server_url}: {str(e)}",
             )
 
         raise e
