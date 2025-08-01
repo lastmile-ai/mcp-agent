@@ -7,7 +7,8 @@ that generates fake UUIDs instead of making real API calls.
 import uuid
 from typing import Any, Dict, List, Optional
 
-from ..core.constants import UUID_PREFIX, SecretType
+from mcp_agent_cloud.core.constants import UUID_PREFIX, SecretType
+
 from .api_client import SecretsClient
 
 

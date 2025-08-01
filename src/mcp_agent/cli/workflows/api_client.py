@@ -5,7 +5,7 @@ from typing import Optional
 
 from pydantic import BaseModel
 
-from ..core.api_client import APIClient
+from mcp_agent_cloud.core.api_client import APIClient
 
 
 class WorkflowInfo(BaseModel):

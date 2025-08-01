@@ -2,8 +2,8 @@
 
 from typing import Any, Dict, List, Optional
 
-from ..core.api_client import APIClient
-from ..core.constants import (
+from mcp_agent_cloud.core.api_client import APIClient
+from mcp_agent_cloud.core.constants import (
     SECRET_ID_PATTERN,
     SecretType,
 )

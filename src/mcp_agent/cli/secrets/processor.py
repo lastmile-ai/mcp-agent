@@ -31,6 +31,7 @@ from mcp_agent_cloud.ux import (
     console,
     print_error,
     print_info,
+    print_secret_prompt,
     print_secret_summary,
     print_warning,
 )
@@ -300,8 +301,7 @@ async def transform_config_recursive(
             ):
                 # Reuse the existing handle instead of creating a new secret
                 print_info(
-                    f"Reusing existing developer secret handle at '{path}': {existing_handle}",
-                    console_output=True,
+                    f"Reusing existing developer secret handle at '{path}': {existing_handle}"
                 )
 
                 # Add to the secrets context
@@ -335,9 +335,6 @@ async def transform_config_recursive(
                     print_error(error_msg)
                     raise ValueError(error_msg)
                 else:
-                    # Prompt the user for the missing value
-                    from ..ux import print_secret_prompt
-
                     print_secret_prompt(env_var, path)
                     env_value = typer.prompt(
                         f"Enter value for {env_var}",
