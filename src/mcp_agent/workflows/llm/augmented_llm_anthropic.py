@@ -2,7 +2,7 @@ from typing import Any, Iterable, List, Type, Union, cast
 
 from pydantic import BaseModel
 
-from anthropic import Anthropic, AnthropicBedrock, AnthropicVertex
+from anthropic import AsyncAnthropic, AsyncAnthropicBedrock, AsyncAnthropicVertex
 from anthropic.types import (
     ContentBlock,
     DocumentBlockParam,
@@ -93,19 +93,19 @@ class RequestStructuredCompletionRequest(BaseModel):
 def create_anthropic_instance(settings: AnthropicSettings):
     """Select and initialise the appropriate anthropic client instance based on settings"""
     if settings.provider == "bedrock":
-        anthropic = AnthropicBedrock(
+        anthropic = AsyncAnthropicBedrock(
             aws_access_key=settings.aws_access_key_id,
             aws_secret_key=settings.aws_secret_access_key,
             aws_session_token=settings.aws_session_token,
             aws_region=settings.aws_region,
         )
     elif settings.provider == "vertexai":
-        anthropic = AnthropicVertex(
+        anthropic = AsyncAnthropicVertex(
             region=settings.location,
             project_id=settings.project,
         )
     else:
-        anthropic = Anthropic(api_key=settings.api_key)
+        anthropic = AsyncAnthropic(api_key=settings.api_key)
     return anthropic
 
 
@@ -750,10 +750,11 @@ class AnthropicCompletionTasks:
 
         anthropic = create_anthropic_instance(request.config)
 
-        payload = request.payload
-        response = anthropic.messages.create(**payload)
-        response = ensure_serializable(response)
-        return response
+        async with anthropic:
+            payload = request.payload
+            response = await anthropic.messages.create(**payload)
+            response = ensure_serializable(response)
+            return response
 
     @staticmethod
     @workflow_task
@@ -775,18 +776,20 @@ class AnthropicCompletionTasks:
                 "Either response_model or serialized_response_model must be provided for structured completion."
             )
 
-        # We pass the text through instructor to extract structured data
-        client = instructor.from_anthropic(create_anthropic_instance(request.config))
+        anthropic = create_anthropic_instance(request.config)
 
-        # Extract structured data from natural language
-        structured_response = client.chat.completions.create(
-            model=request.model,
-            response_model=response_model,
-            messages=[{"role": "user", "content": request.response_str}],
-            max_tokens=request.params.maxTokens,
-        )
+        async with anthropic:
+            # We pass the text through instructor to extract structured data
+            client = instructor.from_anthropic(anthropic)
 
-        return structured_response
+            structured_response = await client.chat.completions.create(
+                model=request.model,
+                response_model=response_model,
+                messages=[{"role": "user", "content": request.response_str}],
+                max_tokens=request.params.maxTokens,
+            )
+
+            return structured_response
 
 
 class AnthropicMCPTypeConverter(ProviderToMCPConverter[MessageParam, Message]):

@@ -4,6 +4,7 @@ A central context object to store global state that is shared across the applica
 
 import asyncio
 import concurrent.futures
+import threading
 from typing import Any, Optional, TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict
@@ -17,11 +18,18 @@ from mcp_agent.config import Settings
 from mcp_agent.executor.executor import AsyncioExecutor, Executor
 from mcp_agent.executor.decorator_registry import (
     DecoratorRegistry,
+    get_global_decorator_registry,
     register_asyncio_decorators,
     register_temporal_decorators,
 )
-from mcp_agent.executor.signal_registry import SignalRegistry
-from mcp_agent.executor.task_registry import ActivityRegistry
+from mcp_agent.executor.signal_registry import (
+    SignalRegistry,
+    get_global_signal_registry,
+)
+from mcp_agent.executor.task_registry import (
+    ActivityRegistry,
+    get_global_activity_registry,
+)
 
 from mcp_agent.logging.events import EventFilter
 from mcp_agent.logging.logger import LoggingConfig
@@ -204,12 +212,12 @@ async def initialize_context(
     await configure_logger(config, context.session_id, context.token_counter)
     await configure_usage_telemetry(config)
 
-    context.task_registry = task_registry or ActivityRegistry()
+    context.task_registry = task_registry or get_global_activity_registry()
 
-    context.signal_registry = signal_registry or SignalRegistry()
+    context.signal_registry = signal_registry or get_global_signal_registry()
 
     if not decorator_registry:
-        context.decorator_registry = DecoratorRegistry()
+        context.decorator_registry = get_global_decorator_registry()
         register_asyncio_decorators(context.decorator_registry)
         register_temporal_decorators(context.decorator_registry)
     else:
@@ -227,20 +235,60 @@ async def initialize_context(
             context.tracer = trace.get_tracer(config.otel.service_name)
 
     if store_globally:
-        global _global_context
-        _global_context = context
+        global _thread_local
+        _thread_local.context = context
 
     return context
 
 
 async def cleanup_context(shutdown_logger: bool = False):
     """
-    Cleanup the global application context.
-
-    Args:
-        shutdown_logger: If True, completely shutdown OTEL infrastructure.
-                      If False, just cleanup app-specific resources.
+    Cleanup the thread-local application context.
     """
+    # Clean up thread-local context and its resources
+    if hasattr(_thread_local, "context") and _thread_local.context is not None:
+        context = _thread_local.context
+
+        # Clean up server connections first (before event loop closure)
+        if context.server_registry and hasattr(
+            context.server_registry, "connection_manager"
+        ):
+            try:
+                logger.debug("Cleaning up server registry connection manager...")
+                connection_manager = context.server_registry.connection_manager
+
+                try:
+                    await connection_manager.disconnect_all()
+                except Exception as e:
+                    logger.warning(
+                        f"Timeout during disconnect_all(), forcing shutdown. Error: {e}"
+                    )
+
+                # Give a brief moment for subprocess transports to clean up
+                await asyncio.sleep(0.1)
+
+                # Mark the connection manager as inactive to avoid cross-context cleanup
+                if (
+                    hasattr(connection_manager, "_tg_active")
+                    and connection_manager._tg_active
+                ):
+                    try:
+                        connection_manager._tg_active = False
+                        connection_manager._tg = None
+                        logger.debug(
+                            "Context cleanup: Connection manager marked as inactive"
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            f"Error during connection manager state cleanup: {e}"
+                        )
+
+            except Exception as e:
+                logger.warning(f"Error during server connection cleanup: {e}")
+
+        # Clear the context reference
+        _thread_local.context = None
+
     if shutdown_logger:
         # Shutdown logging and telemetry completely
         await LoggingConfig.shutdown()
@@ -249,33 +297,47 @@ async def cleanup_context(shutdown_logger: bool = False):
         pass
 
 
-_global_context: Context | None = None
+# Thread-local storage for context instances
+_thread_local = threading.local()
 
 
 def get_current_context() -> Context:
     """
-    Synchronous initializer/getter for global application context.
-    For async usage, use aget_current_context instead.
+    Thread-local getter for application context.
+    Each thread gets its own context instance.
     """
-    global _global_context
-    if _global_context is None:
+    global _thread_local
+    if not getattr(_thread_local, "context", None):
         try:
-            # Try to get the current event loop
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # Create a new loop in a separate thread
-                def run_async():
-                    new_loop = asyncio.new_event_loop()
+            loop = asyncio.get_running_loop()
+
+            def run_async():
+                new_loop = asyncio.new_event_loop()
+                try:
                     asyncio.set_event_loop(new_loop)
                     return new_loop.run_until_complete(initialize_context())
+                finally:
+                    new_loop.close()
 
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    _global_context = pool.submit(run_async).result()
-            else:
-                _global_context = loop.run_until_complete(initialize_context())
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                _thread_local.context = pool.submit(run_async).result()
         except RuntimeError:
-            _global_context = asyncio.run(initialize_context())
-    return _global_context
+            loop = asyncio.new_event_loop()
+            try:
+                asyncio.set_event_loop(loop)
+                _thread_local.context = loop.run_until_complete(initialize_context())
+            finally:
+                loop.close()
+    return _thread_local.context
+
+
+def reset_thread_context():
+    """
+    Reset the thread-local context for the current thread.
+    Useful for ensuring clean state in multithreaded environments.
+    """
+    if hasattr(_thread_local, "context"):
+        _thread_local.context = None
 
 
 def get_current_config():
