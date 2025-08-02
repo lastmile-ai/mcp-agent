@@ -38,12 +38,12 @@ class RouterWorkflow(Workflow[str]):
     """
 
     @app.workflow_run
-    async def run(self, input: str) -> WorkflowResult[str]:
+    async def run(self) -> WorkflowResult[str]:
         """
-        Run the workflow, processing the input data.
+        Run the workflow.
 
         Args:
-            input_data: The data to process
+            N/A
 
         Returns:
             A WorkflowResult containing the processed data
@@ -150,7 +150,6 @@ async def main():
 
         handle = await executor.start_workflow(
             "RouterWorkflow",
-            None,
         )
         a = await handle.result()
         print(a)
