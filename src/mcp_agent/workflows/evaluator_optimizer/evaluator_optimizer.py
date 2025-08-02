@@ -76,6 +76,7 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
         max_refinements: int = 3,
         llm_factory: Callable[[Agent], AugmentedLLM] | None = None,
         context: Optional["Context"] = None,
+        share_memory: bool = False,
     ):
         """
         Initialize the evaluator-optimizer workflow.
@@ -90,6 +91,7 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
             min_rating: Minimum acceptable quality rating
             max_refinements: Maximum refinement iterations
             llm_factory: Optional factory to create LLMs from agents
+            share_memory: Whether to share the memory between the optimizer and evaluator
         """
         super().__init__(
             name=name,
@@ -148,7 +150,8 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
             )
         else:
             raise ValueError(f"Unsupported evaluator type: {type(evaluator)}")
-
+        if share_memory:
+            self.evaluator_llm.history = self.optimizer_llm.history
         self.min_rating = min_rating
         self.max_refinements = max_refinements
 
