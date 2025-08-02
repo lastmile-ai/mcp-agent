@@ -24,5 +24,11 @@ mcp:
       description: "Access GitHub API operations"
     slack:
       command: "npx"
-      args: ["-y", "@modelcontextprotocol/server-slack"]
-      description: "Access Slack API operations"
+      args: ["-y",
+        "slack-mcp-server@latest",
+        "--transport",
+        "stdio"]
+      env:
+        SLACK_MCP_XOXP_TOKEN: "ADD_YOUR_TOKEN_HERE"
+        SLACK_MCP_ADD_MESSAGE_TOOL: "true"
+      description: "Access Slack API operations"]
