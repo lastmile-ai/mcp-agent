@@ -8,11 +8,11 @@ from typing import Optional
 
 import typer
 
-from .. import __version__
-from ..commands import configure_app, deploy_config, login
-from ..commands.app import delete_app, get_app_status, list_app_workflows
-from ..commands.apps import list_apps
-from ..commands.workflow import get_workflow_status
+from mcp_agent_cloud import __version__
+from mcp_agent_cloud.commands import configure_app, deploy_config, login
+from mcp_agent_cloud.commands.app import delete_app, get_app_status, list_app_workflows
+from mcp_agent_cloud.commands.apps import list_apps
+from mcp_agent_cloud.commands.workflow import get_workflow_status
 
 # Setup file logging
 LOG_DIR = Path.home() / ".mcp-agent" / "logs"
