@@ -57,7 +57,7 @@ class APIClient:
         """Initialize the API client.
 
         Args:
-            api_url: The base URL of the API (e.g., https://mcp-agent-cloud-internal.lastmileai.dev/api)
+            api_url: The base URL of the API (e.g., https://mcp-agent.com/api)
             api_key: The API authentication key
         """
         self.api_url = api_url.rstrip(

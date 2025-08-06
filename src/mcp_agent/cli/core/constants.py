@@ -24,7 +24,7 @@ ENV_API_KEY = "MCP_API_KEY"  # Moved from secrets/constants.py
 ENV_VERBOSE = "MCP_VERBOSE"  # Moved from settings.py usage
 
 # API defaults
-DEFAULT_API_BASE_URL = "https://mcp-agent-cloud-internal.lastmileai.dev/api"  # Moved from secrets/constants.py
+DEFAULT_API_BASE_URL = "https://mcp-agent.com/api"  # Moved from secrets/constants.py
 
 # Secret types (string constants)
 SECRET_TYPE_DEVELOPER = "dev"  # Value from SecretType.DEVELOPER

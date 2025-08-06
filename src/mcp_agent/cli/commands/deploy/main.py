@@ -15,6 +15,7 @@ from mcp_agent_cloud.auth import load_api_key_credentials
 from mcp_agent_cloud.config import settings
 from mcp_agent_cloud.core.api_client import UnauthenticatedError
 from mcp_agent_cloud.core.constants import (
+    DEFAULT_API_BASE_URL,
     ENV_API_BASE_URL,
     ENV_API_KEY,
     MCP_CONFIG_FILENAME,
@@ -122,10 +123,7 @@ def deploy_config(
 
         if dry_run:
             # For dry run, we'll use mock values if not provided
-            effective_api_url = (
-                effective_api_url
-                or "https://mcp-agent-cloud-internal.lastmileai.dev/api"
-            )
+            effective_api_url = effective_api_url or DEFAULT_API_BASE_URL
             effective_api_key = effective_api_key or "mock-key-for-dry-run"
 
             print_info("Using MOCK APP API client for dry run")
