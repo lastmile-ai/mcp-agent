@@ -1,0 +1,227 @@
+{
+  "description": "Abstract Components Overview",
+  "components": [
+    {
+      "name": "LLM Augmentation Layer",
+      "description": "This foundational component provides a unified and augmented interface for interacting with various Large Language Models (LLMs) from different providers (e.g., Anthropic, OpenAI, Google). It abstracts away provider-specific API calls, handles structured completion, and integrates with the agent's context. It also includes a ModelSelector for choosing optimal LLMs.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent.workflows.llm.augmented_llm.AugmentedLLM",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/llm/augmented_llm.py",
+          "reference_start_line": 218,
+          "reference_end_line": 668
+        },
+        {
+          "qualified_name": "mcp_agent.workflows.llm.llm_selector.ModelSelector",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/llm/llm_selector.py",
+          "reference_start_line": 96,
+          "reference_end_line": 413
+        },
+        {
+          "qualified_name": "mcp_agent.workflows.llm.augmented_llm_anthropic.AnthropicAugmentedLLM",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/llm/augmented_llm_anthropic.py",
+          "reference_start_line": 110,
+          "reference_end_line": 722
+        }
+      ]
+    },
+    {
+      "name": "Embedding Models",
+      "description": "This component offers a standardized interface for generating and managing text embeddings using various underlying embedding models (e.g., Cohere, OpenAI). These vector representations of text are crucial for semantic search, similarity comparisons, and other vector-based operations.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent.workflows.embedding.embedding_base.EmbeddingModel",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/embedding/embedding_base.py",
+          "reference_start_line": 13,
+          "reference_end_line": 31
+        },
+        {
+          "qualified_name": "mcp_agent.workflows.embedding.embedding_cohere.CohereEmbeddingModel",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/embedding/embedding_cohere.py",
+          "reference_start_line": 18,
+          "reference_end_line": 72
+        },
+        {
+          "qualified_name": "mcp_agent.workflows.embedding.embedding_openai.OpenAIEmbeddingModel",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/embedding/embedding_openai.py",
+          "reference_start_line": 18,
+          "reference_end_line": 70
+        }
+      ]
+    },
+    {
+      "name": "Orchestration Workflow",
+      "description": "Responsible for managing complex, multi-step agent behaviors. It defines how agents plan, execute, and refine sequences of actions and tasks, often involving iterative processes and dynamic task management. This enables agents to break down complex problems into manageable steps and coordinate their execution.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent.workflows.orchestrator.orchestrator.Orchestrator",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/orchestrator/orchestrator.py",
+          "reference_start_line": 45,
+          "reference_end_line": 585
+        },
+        {
+          "qualified_name": "mcp_agent.workflows.orchestrator.orchestrator_models.AgentTask",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/orchestrator/orchestrator_models.py",
+          "reference_start_line": 26,
+          "reference_end_line": 31
+        },
+        {
+          "qualified_name": "mcp_agent.workflows.orchestrator.orchestrator_prompts",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/orchestrator/orchestrator_prompts.py",
+          "reference_start_line": 0,
+          "reference_end_line": 0
+        }
+      ]
+    },
+    {
+      "name": "Routing Workflow",
+      "description": "Intelligently directs incoming requests or tasks to the most appropriate agent, tool, or sub-workflow. It supports various routing strategies, including LLM-based decision-making and embedding-based similarity matching, enabling dynamic and context-aware task distribution within the agent system.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent.workflows.router.router_base.Router",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/router/router_base.py",
+          "reference_start_line": 63,
+          "reference_end_line": 275
+        },
+        {
+          "qualified_name": "mcp_agent.workflows.router.router_llm.LLMRouter",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/router/router_llm.py",
+          "reference_start_line": 81,
+          "reference_end_line": 373
+        },
+        {
+          "qualified_name": "mcp_agent.workflows.router.router_embedding.EmbeddingRouter",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/router/router_embedding.py",
+          "reference_start_line": 28,
+          "reference_end_line": 239
+        }
+      ]
+    },
+    {
+      "name": "Intent Classification Workflow",
+      "description": "Dedicated to identifying the underlying intent of a user's query or system message. It leverages both LLM-based reasoning and embedding-based similarity to accurately classify intents, which then informs the agent's subsequent actions or selection of appropriate workflows.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent.workflows.intent_classifier.intent_classifier_base.IntentClassifier",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/intent_classifier/intent_classifier_base.py",
+          "reference_start_line": 42,
+          "reference_end_line": 85
+        },
+        {
+          "qualified_name": "mcp_agent.workflows.intent_classifier.intent_classifier_llm.LLMIntentClassifier",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/intent_classifier/intent_classifier_llm.py",
+          "reference_start_line": 63,
+          "reference_end_line": 243
+        },
+        {
+          "qualified_name": "mcp_agent.workflows.intent_classifier.intent_classifier_embedding.EmbeddingIntentClassifier",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/intent_classifier/intent_classifier_embedding.py",
+          "reference_start_line": 32,
+          "reference_end_line": 177
+        }
+      ]
+    },
+    {
+      "name": "Parallel LLM Workflow",
+      "description": "Enables the concurrent execution of multiple LLM calls or agent actions. It implements \"fan-out\" to distribute tasks in parallel and \"fan-in\" to aggregate their results, significantly improving the efficiency and throughput of LLM-intensive operations.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent.workflows.parallel.parallel_llm.ParallelLLM",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/parallel/parallel_llm.py",
+          "reference_start_line": 23,
+          "reference_end_line": 279
+        },
+        {
+          "qualified_name": "mcp_agent.workflows.parallel.fan_in.FanIn",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/parallel/fan_in.py",
+          "reference_start_line": 30,
+          "reference_end_line": 422
+        },
+        {
+          "qualified_name": "mcp_agent.workflows.parallel.fan_out.FanOut",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/parallel/fan_out.py",
+          "reference_start_line": 23,
+          "reference_end_line": 243
+        }
+      ]
+    },
+    {
+      "name": "Swarm Workflow",
+      "description": "Facilitates collaborative problem-solving among multiple agents. It enables agents to interact, share information, and collectively work towards a common goal, supporting complex, distributed agent behaviors and multi-agent systems.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent.workflows.swarm.swarm.Swarm",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/swarm/swarm.py",
+          "reference_start_line": 189,
+          "reference_end_line": 310
+        },
+        {
+          "qualified_name": "mcp_agent.workflows.swarm.swarm_anthropic.AnthropicSwarm",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/swarm/swarm_anthropic.py",
+          "reference_start_line": 8,
+          "reference_end_line": 41
+        },
+        {
+          "qualified_name": "mcp_agent.workflows.swarm.swarm_openai.OpenAISwarm",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/swarm/swarm_openai.py",
+          "reference_start_line": 8,
+          "reference_end_line": 40
+        }
+      ]
+    },
+    {
+      "name": "Evaluation & Optimization Workflow",
+      "description": "Provides mechanisms for evaluating the performance, quality, and effectiveness of agent outputs or entire workflows. It can be used to assess responses, identify areas for improvement, and potentially guide the agent towards optimizing its future actions.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent.workflows.evaluator_optimizer.evaluator_optimizer.EvaluatorOptimizerLLM",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/evaluator_optimizer/evaluator_optimizer.py",
+          "reference_start_line": 47,
+          "reference_end_line": 475
+        }
+      ]
+    }
+  ],
+  "components_relations": [
+    {
+      "relation": "uses",
+      "src_name": "Orchestration Workflow",
+      "dst_name": "LLM Augmentation Layer"
+    },
+    {
+      "relation": "uses",
+      "src_name": "Routing Workflow",
+      "dst_name": "LLM Augmentation Layer"
+    },
+    {
+      "relation": "uses",
+      "src_name": "Routing Workflow",
+      "dst_name": "Embedding Models"
+    },
+    {
+      "relation": "uses",
+      "src_name": "Intent Classification Workflow",
+      "dst_name": "LLM Augmentation Layer"
+    },
+    {
+      "relation": "uses",
+      "src_name": "Intent Classification Workflow",
+      "dst_name": "Embedding Models"
+    },
+    {
+      "relation": "uses",
+      "src_name": "Parallel LLM Workflow",
+      "dst_name": "LLM Augmentation Layer"
+    },
+    {
+      "relation": "uses",
+      "src_name": "Swarm Workflow",
+      "dst_name": "LLM Augmentation Layer"
+    },
+    {
+      "relation": "uses",
+      "src_name": "Evaluation & Optimization Workflow",
+      "dst_name": "LLM Augmentation Layer"
+    }
+  ]
+}
