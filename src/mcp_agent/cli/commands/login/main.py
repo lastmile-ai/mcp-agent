@@ -4,7 +4,6 @@ import typer
 from rich.prompt import Prompt
 
 from mcp_agent_cloud.auth import (
-    load_api_key_credentials,
     save_api_key_credentials,
 )
 from mcp_agent_cloud.config import settings
@@ -30,11 +29,6 @@ def login(
         "--api-url",
         help="API base URL. Overrides MCP_API_BASE_URL environment variable and persisted credentials.",
     ),
-    force: bool = typer.Option(
-        False,
-        "--force",
-        help="Force login to obtain new credentials even if credentials already exist.",
-    ),
 ) -> str:
     """Authenticate to MCP Agent Cloud API.
 
@@ -43,38 +37,20 @@ def login(
     Args:
         api_key: Optionally set an existing API key to use for authentication, bypassing manual login.
         api_url: Override the default base API url.
-        force: Force login to obtain new credentials even if credentials already exist.
 
 
     Returns:
         None. Prints success message if login is successful.
     """
 
-    if not force:
-        if api_key:
-            print_info("Using provided API key for authentication.")
-            if not _is_valid_api_key(api_key):
-                print_error("Invalid API key provided.")
-                raise typer.Exit(1)
-            save_api_key_credentials(api_key)
-            print_success("API key set.")
-            return api_key
-
-        stored_key = load_api_key_credentials()
-        if stored_key:
-            if not _is_valid_api_key(stored_key):
-                print_error(
-                    "Invalid stored API key credentials. Use --force to re-authenticate."
-                )
-                raise typer.Exit(1)
-            print_info(
-                "Using stored API key for authentication. Run with --force to re-authenticate."
-            )
-            print_success("API key set.")
-            return stored_key
-
-    if force:
-        print_info("Forcing login to obtain new credentials.")
+    if api_key:
+        print_info("Using provided API key for authentication.")
+        if not _is_valid_api_key(api_key):
+            print_error("Invalid API key provided.")
+            raise typer.Exit(1)
+        save_api_key_credentials(api_key)
+        print_success("API key set.")
+        return api_key
 
     base_url = api_url or settings.API_BASE_URL
     auth_url = f"{base_url}/{DEFAULT_API_AUTH_PATH}"

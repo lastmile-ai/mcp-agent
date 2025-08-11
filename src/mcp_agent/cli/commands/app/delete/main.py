@@ -128,7 +128,7 @@ def delete_app(
 
     except UnauthenticatedError as e:
         print_error(
-            "Invalid API key. Run 'mcp-agent login --force' or set MCP_API_KEY environment variable with new API key."
+            "Invalid API key. Run 'mcp-agent login' or set MCP_API_KEY environment variable with new API key."
         )
         raise typer.Exit(1) from e
     except Exception as e:

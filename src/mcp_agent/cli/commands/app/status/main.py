@@ -55,7 +55,7 @@ def get_app_status(
 
     if not effective_api_key:
         print_error(
-            "Must be logged in to get app status. Run 'mcp-agent login --force', set MCP_API_KEY environment variable or specify --api-key option."
+            "Must be logged in to get app status. Run 'mcp-agent login', set MCP_API_KEY environment variable or specify --api-key option."
         )
         raise typer.Exit(1)
 
@@ -94,7 +94,7 @@ def get_app_status(
 
     except UnauthenticatedError as e:
         print_error(
-            "Invalid API key. Run 'mcp-agent login --force' or set MCP_API_KEY environment variable with new API key."
+            "Invalid API key. Run 'mcp-agent login' or set MCP_API_KEY environment variable with new API key."
         )
         raise typer.Exit(1) from e
     except Exception as e:
