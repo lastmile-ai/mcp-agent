@@ -9,9 +9,11 @@ from typing import Optional, Union
 
 import typer
 from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from mcp_agent_cloud.auth import load_api_key_credentials
 from mcp_agent_cloud.config import settings
+from mcp_agent_cloud.core.api_client import UnauthenticatedError
 from mcp_agent_cloud.core.constants import (
     DEFAULT_API_BASE_URL,
     ENV_API_BASE_URL,
@@ -22,6 +24,7 @@ from mcp_agent_cloud.core.utils import run_async
 from mcp_agent_cloud.mcp_app.api_client import (
     MCPAppClient,
     is_valid_app_id_format,
+    is_valid_server_url_format,
 )
 from mcp_agent_cloud.mcp_app.mock_client import MockMCPAppClient
 from mcp_agent_cloud.secrets.mock_client import MockSecretsClient
@@ -38,8 +41,11 @@ from mcp_agent_cloud.ux import (
 
 
 def configure_app(
-    app_id: str = typer.Argument(
-        help="ID of the MCP App to configure.",
+    app_id_or_url: str = typer.Option(
+        None,
+        "--id",
+        "-i",
+        help="ID or server URL of the app to configure.",
     ),
     secrets_file: Optional[Path] = typer.Option(
         None,
@@ -84,8 +90,8 @@ def configure_app(
     """Configure an MCP app with the required params (e.g. user secrets).
 
     Args:
-        app_id: ID of the MCP App to configure
-        secrets_file: Path to an existing secrets file containing processed user secrets to use for configuring the app.
+        app_id_or_url: ID or server URL of the MCP App to configure
+        secrets_file: Path to an existing secrets file containing processed user secrets to use for configuring the app
         secrets_output_file: Path to write processed secrets to, if secrets are prompted. Defaults to mcp-agent.configured.secrets.yaml
         dry_run: Don't actually store secrets, just validate
         api_url: API base URL
@@ -95,29 +101,8 @@ def configure_app(
         Configured app ID.
     """
     # Check what params the app requires (doubles as an access check)
-    if not app_id or app_id.strip() == "":
-        print_error("App ID must be provided")
-        raise typer.Exit(1)
-
-    if not is_valid_app_id_format(app_id):
-        print_error(f"Invalid app ID format: {app_id}")
-        raise typer.Exit(1)
-
-    # Cannot provide both secrets_file and secrets_output_file; either must be yaml files
-    if secrets_file and secrets_output_file:
-        print_error(
-            "Cannot provide both --secrets-file and --secrets-output-file options. Please specify only one."
-        )
-        raise typer.Exit(1)
-    elif secrets_file and not secrets_file.suffix == ".yaml":
-        print_error(
-            "The --secrets-file must be a YAML file. Please provide a valid path."
-        )
-        raise typer.Exit(1)
-    elif secrets_output_file and not secrets_output_file.suffix == ".yaml":
-        print_error(
-            "The --secrets-output-file must be a YAML file. Please provide a valid path."
-        )
+    if not app_id_or_url:
+        print_error("You must provide an app ID or server URL to configure.")
         raise typer.Exit(1)
 
     effective_api_key = api_key or settings.API_KEY or load_api_key_credentials()
@@ -138,6 +123,49 @@ def configure_app(
         client = MCPAppClient(
             api_url=api_url or DEFAULT_API_BASE_URL, api_key=effective_api_key
         )
+
+    app_id = app_server_url = None
+    if is_valid_app_id_format(app_id_or_url):
+        app_id = app_id_or_url
+    elif is_valid_server_url_format(app_id_or_url):
+        app_server_url = app_id_or_url
+
+    try:
+        app = run_async(client.get_app(app_id=app_id, server_url=app_server_url))
+
+        if not app:
+            print_error(f"App with ID or URL '{app_id_or_url}' not found.")
+            raise typer.Exit(1)
+
+        app_id = app.appId
+
+    except UnauthenticatedError as e:
+        print_error(
+            "Invalid API key. Run 'mcp-agent login' or set MCP_API_KEY environment variable with new API key."
+        )
+        raise typer.Exit(1) from e
+    except Exception as e:
+        print_error(
+            f"Error retrieving app to configure with ID or URL {app_id_or_url}",
+        )
+        raise typer.Exit(1) from e
+
+    # Cannot provide both secrets_file and secrets_output_file; either must be yaml files
+    if secrets_file and secrets_output_file:
+        print_error(
+            "Cannot provide both --secrets-file and --secrets-output-file options. Please specify only one."
+        )
+        raise typer.Exit(1)
+    elif secrets_file and not secrets_file.suffix == ".yaml":
+        print_error(
+            "The --secrets-file must be a YAML file. Please provide a valid path."
+        )
+        raise typer.Exit(1)
+    elif secrets_output_file and not secrets_output_file.suffix == ".yaml":
+        print_error(
+            "The --secrets-output-file must be a YAML file. Please provide a valid path."
+        )
+        raise typer.Exit(1)
 
     required_params = []
     try:
@@ -232,21 +260,29 @@ def configure_app(
         return "dry-run-app-configuration-id"
 
     # Finally, configure the app for the user
-    try:
-        config = run_async(
-            client.configure_app(app_id=app_id, config_params=configured_secrets)
-        )
+    with Progress(
+        SpinnerColumn(spinner_name="arrow3"),
+        TextColumn("[progress.description]{task.description}"),
+    ) as progress:
+        task = progress.add_task("Configuring MCP App...", total=None)
 
-        console.print(
-            Panel(
-                f"Configured App ID: [cyan]{config.appConfigurationId}[/cyan]\n"
-                f"Configured App Server URL: [cyan]{config.appServerInfo.serverUrl if config.appServerInfo else ''}[/cyan]",
-                title="Configuration Complete",
-                border_style="green",
+        try:
+            config = run_async(
+                client.configure_app(app_id=app_id, config_params=configured_secrets)
             )
-        )
+            progress.update(task, description="✅ MCP App configured successfully!")
+            console.print(
+                Panel(
+                    f"Configured App ID: [cyan]{config.appConfigurationId}[/cyan]\n"
+                    f"Configured App Server URL: [cyan]{config.appServerInfo.serverUrl if config.appServerInfo else ''}[/cyan]",
+                    title="Configuration Complete",
+                    border_style="green",
+                )
+            )
 
-        return config.appConfigurationId
-    except Exception as e:
-        print_error(f"Failed to configure app {app_id}: {str(e)}")
-        raise typer.Exit(1)
+            return config.appConfigurationId
+
+        except Exception as e:
+            progress.update(task, description="❌ MCP App configuration failed")
+            print_error(f"Failed to configure app {app_id}: {str(e)}")
+            raise typer.Exit(1) from e
