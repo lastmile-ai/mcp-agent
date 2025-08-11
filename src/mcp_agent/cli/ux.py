@@ -88,7 +88,7 @@ def print_error(
     if console_output:
         console.print(f"[error]ERROR:[/error] {message}", *args, **kwargs)
     if log:
-        logger.error(message)
+        logger.error(message, exc_info=True)
 
 
 def print_secret_prompt(env_var: str, path: str) -> None:
