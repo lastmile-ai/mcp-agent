@@ -17,12 +17,10 @@ from mcp_agent_cloud.ux import print_error
 
 from .constants import (
     CLOUDFLARE_ACCOUNT_ID,
-    CLOUDFLARE_API_BASE_URL,
     CLOUDFLARE_EMAIL,
-    WRANGLER_AUTH_DOMAIN,
-    WRANGLER_AUTH_URL,
     WRANGLER_SEND_METRICS,
 )
+from .settings import deployment_settings
 from .validation import validate_project
 
 _WELL_KNOWN_CONFIG_FILES = [
@@ -65,10 +63,10 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
             "CLOUDFLARE_ACCOUNT_ID": CLOUDFLARE_ACCOUNT_ID,
             "CLOUDFLARE_API_TOKEN": api_key,
             "CLOUDFLARE_EMAIL": CLOUDFLARE_EMAIL,
-            "WRANGLER_AUTH_DOMAIN": WRANGLER_AUTH_DOMAIN,
-            "WRANGLER_AUTH_URL": WRANGLER_AUTH_URL,
+            "WRANGLER_AUTH_DOMAIN": deployment_settings.wrangler_auth_domain,
+            "WRANGLER_AUTH_URL": deployment_settings.wrangler_auth_url,
             "WRANGLER_SEND_METRICS": str(WRANGLER_SEND_METRICS).lower(),
-            "CLOUDFLARE_API_BASE_URL": CLOUDFLARE_API_BASE_URL,
+            "CLOUDFLARE_API_BASE_URL": deployment_settings.cloudflare_api_base_url,
             "HOME": os.path.expanduser(settings.DEPLOYMENT_CACHE_DIR),
             "XDG_HOME_DIR": os.path.expanduser(settings.DEPLOYMENT_CACHE_DIR),
         }

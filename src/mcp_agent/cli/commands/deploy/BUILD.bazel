@@ -16,6 +16,7 @@ py_library(
         "//mcp-agent-cloud/py/sdk-cloud/src/mcp_agent_cloud/secrets",
         requirement("httpx"),
         requirement("pydantic"),
+        requirement("pydantic-settings"),
         requirement("pyyaml"),
         requirement("rich"),
         requirement("typer"),
