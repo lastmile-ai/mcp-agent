@@ -43,6 +43,45 @@ class MockMCPAppClient:
         """
         return MOCK_APP_ID if name == MOCK_APP_NAME else None
 
+    async def get_app(
+        self, app_id: Optional[str] = None, server_url: Optional[str] = None
+    ) -> MCPApp:
+        """Get a mock MCP App by ID.
+
+        Args:
+            app_id: The UUID of the app to retrieve
+            server_url: Optional server URL
+
+        Returns:
+            MCPApp: The mock MCP App with MOCK_APP_ID and MOCK_APP_NAME
+
+        Raises:
+            ValueError: If the app_id is invalid
+        """
+        if not (app_id or server_url):
+            raise ValueError("Either app_id or server_url must be provided")
+
+        if app_id:
+            resolved_app_id = app_id
+        else:
+            id_hash = hash(server_url)
+            raw_uuid = uuid.UUID(int=abs(id_hash) % (2**128 - 1))
+            uuid_str = str(raw_uuid)
+            resolved_app_id = f"app_{uuid_str}"
+
+        return MCPApp(
+            appId=resolved_app_id,
+            name="Test App",
+            creatorId="u_12345678-1234-1234-1234-123456789012",
+            description="A mock app for testing purposes",
+            createdAt=datetime.datetime(
+                2025, 6, 16, 0, 0, 0, tzinfo=datetime.timezone.utc
+            ),
+            updatedAt=datetime.datetime(
+                2025, 6, 16, 0, 0, 0, tzinfo=datetime.timezone.utc
+            ),
+        )
+
     async def create_app(self, name: str, description: Optional[str] = None) -> MCPApp:
         """Create a new mock MCP App.
 
