@@ -1,0 +1,65 @@
+---
+title: "Overview"
+description: "Complete implementation of industry-standard agent patterns - model-agnostic, composable, and production-ready."
+---
+
+import { Card, CardGroup } from "@mintlify/components";
+
+mcp-agent provides implementations for every pattern in [Anthropic's Building Effective Agents](https://www.anthropic.com/engineering/building-effective-agents), as well as the [OpenAI's Swarm](https://github.com/openai/swarm) pattern. Each pattern is model-agnostic, and exposed as an AugmentedLLM, making everything very composable.
+
+<CardGroup cols={2}>
+  <Card
+    title="Parallel Workflow"
+    href="/workflows/parallel"
+    icon="arrows-split-up-and-left"
+  >
+    Execute multiple tasks simultaneously with intelligent result aggregation
+    and conflict resolution.
+  </Card>
+
+{" "}
+
+<Card title="Router Pattern" href="/workflows/router" icon="route">
+  Intelligent task routing based on content analysis, user intent, and dynamic
+  conditions.
+</Card>
+
+{" "}
+
+<Card
+  title="Intent Classifier"
+  href="/workflows/intent-classifier"
+  icon="brain"
+>
+  Advanced intent recognition with confidence scoring and hierarchical
+  classification.
+</Card>
+
+{" "}
+
+<Card
+  title="Evaluator-Optimizer"
+  href="/workflows/evaluator-optimizer"
+  icon="arrows-rotate"
+>
+  Quality control with LLM-as-judge evaluation and iterative response
+  refinement.
+</Card>
+
+{" "}
+
+<Card title="Orchestrator" href="/workflows/orchestrator" icon="users">
+  Complex multi-step workflows with dependency management and state
+  coordination.
+</Card>
+
+  <Card title="Swarm Pattern" href="/workflows/swarm" icon="hexagon">
+    OpenAI Swarm-compatible multi-agent handoffs with context preservation.
+  </Card>
+</CardGroup>
+
+<Card>
+  **Next Steps:** Explore individual workflow patterns to see detailed
+  implementation examples and learn how to combine them for your specific use
+  cases.
+</Card>

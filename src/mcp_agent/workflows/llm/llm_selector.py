@@ -88,6 +88,9 @@ class ModelInfo(BaseModel):
     name: str
     description: str | None = None
     provider: str
+    context_window: int | None = None
+    tool_calling: bool | None = None
+    structured_outputs: bool | None = None
     metrics: ModelMetrics
 
 
@@ -126,13 +129,34 @@ class ModelSelector(ContextDependent):
             raise ValueError("Benchmark weights must sum to 1.0")
 
         self.max_values = self._calculate_max_scores(self.models)
+        # Store provider keys in lowercase for simple, predictable lookup
         self.models_by_provider = self._models_by_provider(self.models)
 
     def select_best_model(
-        self, model_preferences: ModelPreferences, provider: str | None = None
+        self,
+        model_preferences: ModelPreferences,
+        provider: str | None = None,
+        min_tokens: int | None = None,
+        max_tokens: int | None = None,
+        tool_calling: bool | None = None,
+        structured_outputs: bool | None = None,
     ) -> ModelInfo:
         """
         Select the best model from a given list of models based on the given model preferences.
+
+        Args:
+            model_preferences: MCP ModelPreferences with cost, speed, and intelligence priorities
+            provider: Optional provider to filter models by
+            min_tokens: Minimum context window size (in tokens) required
+            max_tokens: Maximum context window size (in tokens) allowed
+            tool_calling: If True, only include models with tool calling support; if None, no filter
+            structured_outputs: If True, only include models with structured outputs support; if None, no filter
+
+        Returns:
+            ModelInfo: The best model based on the preferences and filters
+
+        Raises:
+            ValueError: If no models match the specified criteria
         """
         tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
@@ -142,9 +166,24 @@ class ModelSelector(ContextDependent):
                 for k, v in self.benchmark_weights.items():
                     span.set_attribute(f"benchmark_weights.{k}", v)
 
+            # Set tracing attributes for new parameters
+            if min_tokens is not None:
+                span.set_attribute("min_tokens", min_tokens)
+            if max_tokens is not None:
+                span.set_attribute("max_tokens", max_tokens)
+            if tool_calling is not None:
+                span.set_attribute("tool_calling", tool_calling)
+            if structured_outputs is not None:
+                span.set_attribute("structured_outputs", structured_outputs)
+
             models: List[ModelInfo] = []
             if provider:
-                models = self.models_by_provider[provider]
+                # Lowercase provider for normalized lookup
+                provider_key = provider.lower()
+                models = self.models_by_provider.get(provider_key, [])
+                # Fallback: if we still have no models for this provider, don't fail; use all models
+                if not models:
+                    models = self.models
                 span.set_attribute("provider", provider)
             else:
                 models = self.models
@@ -170,6 +209,41 @@ class ModelSelector(ContextDependent):
                 if not candidate_models:
                     # If no hints match, we'll use all models and let the benchmark weights decide
                     candidate_models = models
+
+            # Filter by context window, tool calling, and structured outputs
+            filtered_models = []
+            for model in candidate_models:
+                # Check context window constraints
+                if min_tokens is not None and model.context_window is not None:
+                    if model.context_window < min_tokens:
+                        continue
+                if max_tokens is not None and model.context_window is not None:
+                    if model.context_window > max_tokens:
+                        continue
+
+                # Check tool calling requirement
+                if tool_calling is not None and model.tool_calling is not None:
+                    if tool_calling and not model.tool_calling:
+                        continue
+
+                # Check structured outputs requirement
+                if (
+                    structured_outputs is not None
+                    and model.structured_outputs is not None
+                ):
+                    if structured_outputs and not model.structured_outputs:
+                        continue
+
+                filtered_models.append(model)
+
+            candidate_models = filtered_models
+
+            if not candidate_models:
+                raise ValueError(
+                    f"No models match the specified criteria. "
+                    f"min_tokens={min_tokens}, max_tokens={max_tokens}, "
+                    f"tool_calling={tool_calling}, structured_outputs={structured_outputs}"
+                )
 
             scores = []
 
@@ -216,9 +290,10 @@ class ModelSelector(ContextDependent):
         """
         provider_models: Dict[str, List[ModelInfo]] = {}
         for model in models:
-            if model.provider not in provider_models:
-                provider_models[model.provider] = []
-            provider_models[model.provider].append(model)
+            key = (model.provider or "").lower()
+            if key not in provider_models:
+                provider_models[key] = []
+            provider_models[key].append(model)
         return provider_models
 
     def _check_model_hint(self, model: ModelInfo, hint: ModelHint) -> bool:
@@ -226,16 +301,30 @@ class ModelSelector(ContextDependent):
         Check if a model matches a specific hint.
         """
 
+        # Derive desired provider/name from hint. Support "provider:model" in hint.name
+        desired_name: str | None = hint.name
+        desired_provider: str | None = getattr(hint, "provider", None)
+        if desired_name and ":" in desired_name and not desired_provider:
+            lhs, rhs = desired_name.split(":", 1)
+            if lhs.strip() and rhs.strip():
+                desired_provider = lhs.strip()
+                desired_name = rhs.strip()
+
+        # Name match: exact (case-insensitive) then substring fallback
         name_match = True
-        if hint.name:
-            name_match = _fuzzy_match(hint.name, model.name)
+        if desired_name:
+            dn = desired_name.lower()
+            mn = (model.name or "").lower()
+            name_match = dn == mn or dn in mn or mn in dn
 
+        # Provider match: exact (case-insensitive)
         provider_match = True
-        provider: str | None = getattr(hint, "provider", None)
-        if provider:
-            provider_match = _fuzzy_match(provider, model.provider)
+        if desired_provider:
+            dp = desired_provider.lower()
+            mp = (model.provider or "").lower()
+            provider_match = dp == mp
 
-        # This can be extended to check for more hints
+        # Extend here for additional hint dimensions if needed
         return name_match and provider_match
 
     def _calculate_total_cost(self, model: ModelInfo, io_ratio: float = 3.0) -> float:
@@ -254,8 +343,14 @@ class ModelSelector(ContextDependent):
         input_cost = model.metrics.cost.input_cost_per_1m
         output_cost = model.metrics.cost.output_cost_per_1m
 
-        total_cost = (input_cost * io_ratio + output_cost) / (1 + io_ratio)
-        return total_cost
+        # Handle missing values gracefully
+        if input_cost is not None and output_cost is not None:
+            return (input_cost * io_ratio + output_cost) / (1 + io_ratio)
+        if input_cost is not None:
+            return input_cost
+        if output_cost is not None:
+            return output_cost
+        return 0.0
 
     def _calculate_cost_score(
         self,
@@ -264,8 +359,15 @@ class ModelSelector(ContextDependent):
         max_cost: float,
     ) -> float:
         """Normalized 0->1 cost score for a model."""
-        total_cost = self._calculate_total_cost(model, model_preferences)
-        return 1 - (total_cost / max_cost)
+        # Prefer the user-provided blend ratio if available; fallback to 3:1
+        try:
+            io_ratio = getattr(model_preferences, "ioRatio", 3.0) or 3.0
+        except Exception:
+            io_ratio = 3.0
+        total_cost = self._calculate_total_cost(model, io_ratio)
+        if max_cost <= 0:
+            return 1.0
+        return max(0.0, 1 - (total_cost / max_cost))
 
     def _calculate_intelligence_score(
         self, model: ModelInfo, max_values: Dict[str, float]

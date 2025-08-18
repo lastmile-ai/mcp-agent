@@ -11,6 +11,8 @@ from mcp_agent.executor.temporal import TemporalExecutor
 from mcp_agent.executor.workflow import Workflow, WorkflowResult
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 from mcp_agent.workflows.parallel.parallel_llm import ParallelLLM
+from mcp_agent.tracing.token_counter import TokenSummary
+from mcp_agent.core.context import Context
 
 from main import app
 
@@ -95,7 +97,60 @@ class ParallelWorkflow(Workflow[str]):
             message=f"Student short story submission: {input}",
         )
 
-        return WorkflowResult(value=result)
+        # Get token usage information
+        metadata = {}
+        if hasattr(parallel, "get_token_node"):
+            token_node = await parallel.get_token_node()
+            if token_node:
+                metadata["token_usage"] = token_node.get_usage()
+                metadata["token_cost"] = token_node.get_cost()
+                metadata["token_tree"] = token_node.format_tree()
+
+        return WorkflowResult(value=result, metadata=metadata)
+
+
+async def display_token_summary(context: Context):
+    """Display comprehensive token usage summary"""
+    if not context.token_counter:
+        print("\nNo token counter available")
+        return
+
+    summary: TokenSummary = await context.token_counter.get_summary()
+
+    print("\n" + "=" * 60)
+    print("TOKEN USAGE SUMMARY")
+    print("=" * 60)
+
+    # Display usage tree using the root node directly
+    root_node = await context.token_counter.get_app_node()
+    if root_node:
+        print("\nToken Usage Tree:")
+        print("-" * 40)
+        print(root_node.format_tree())
+
+        # Display cost for the root node
+        total_cost = root_node.get_cost()
+        if total_cost > 0:
+            print(f"\nTotal cost from tree: ${total_cost:.4f}")
+
+    # Total usage
+    print("\nTotal Usage:")
+    print(f"  Total tokens: {summary.usage.total_tokens:,}")
+    print(f"  Input tokens: {summary.usage.input_tokens:,}")
+    print(f"  Output tokens: {summary.usage.output_tokens:,}")
+    print(f"  Total cost: ${summary.cost:.4f}")
+
+    # Breakdown by model
+    if summary.model_usage:
+        print("\nBreakdown by Model:")
+        for model_key, data in summary.model_usage.items():
+            print(f"  {model_key}:")
+            print(
+                f"    Tokens: {data.usage.total_tokens:,} (input: {data.usage.input_tokens:,}, output: {data.usage.output_tokens:,})"
+            )
+            print(f"    Cost: ${data.cost:.4f}")
+
+    print("\n" + "=" * 60)
 
 
 async def main():
@@ -106,9 +161,52 @@ async def main():
             "ParallelWorkflow",
             SHORT_STORY,
         )
-        a = await handle.result()
-        print(a)
+        result = await handle.result()
+        print("\n=== WORKFLOW RESULT ===")
+        print(result.value)
+
+        # Display token information from workflow metadata if available
+        if result.metadata and "token_tree" in result.metadata:
+            print("\n=== WORKFLOW TOKEN USAGE ===")
+            print(result.metadata["token_tree"])
+            if "token_cost" in result.metadata:
+                print(f"\nWorkflow Cost: ${result.metadata['token_cost']:.4f}")
+            if "token_usage" in result.metadata:
+                usage = result.metadata["token_usage"]
+                print(
+                    f"Workflow Tokens: {usage.total_tokens:,} (input: {usage.input_tokens:,}, output: {usage.output_tokens:,})"
+                )
+
+        # Query the running workflow for its in-process token usage
+        try:
+            remote_tree = await handle.query("token_tree")
+            remote_summary = await handle.query("token_summary")
+
+            print("\n=== WORKFLOW TOKEN USAGE (queried) ===")
+            if isinstance(remote_tree, str):
+                print(remote_tree)
+            if isinstance(remote_summary, dict):
+                tu = remote_summary.get("total_usage", {})
+                print(
+                    f"\nTotal (queried): {tu.get('total_tokens', 0):,} (input: {tu.get('input_tokens', 0):,}, output: {tu.get('output_tokens', 0):,})"
+                )
+                print(
+                    f"Total cost (queried): ${remote_summary.get('total_cost', 0.0):.4f}"
+                )
+        except Exception:
+            # Queries may be unavailable if worker didn't register them; ignore
+            pass
+
+        # The local context's token counter reflects the client process and may be 0 under Temporal.
+        # We rely on the queried workflow metrics above instead of local TokenCounter here.
 
 
 if __name__ == "__main__":
+    import time
+
+    start = time.time()
     asyncio.run(main())
+    end = time.time()
+    t = end - start
+
+    print(f"\nTotal run time: {t:.2f}s")

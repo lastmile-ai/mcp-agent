@@ -36,21 +36,21 @@ async def example_usage():
             llm = await finder_agent.attach_llm(OpenAIAugmentedLLM)
             result = await llm.generate_str(
                 message="Print the contents of mcp_agent.config.yaml verbatim",
-                request_params=RequestParams(model="llama3.2:3b"),
+                request_params=RequestParams(model="gpt-oss:20b"),
             )
             logger.info(f"Result: {result}")
 
             # Let's switch the same agent to a different LLM
             result = await llm.generate_str(
                 message="Print the first 2 paragraphs of https://modelcontextprotocol.io/introduction",
-                request_params=RequestParams(model="llama3.1:8b"),
+                request_params=RequestParams(model="gpt-oss:20b"),
             )
             logger.info(f"Result: {result}")
 
             # Multi-turn conversations
             result = await llm.generate_str(
                 message="Summarize those paragraphs in a 128 character tweet",
-                request_params=RequestParams(model="llama3.2:3b"),
+                request_params=RequestParams(model="gpt-oss:20b"),
             )
             logger.info(f"Result: {result}")
 

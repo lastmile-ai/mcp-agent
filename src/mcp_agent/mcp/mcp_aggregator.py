@@ -23,7 +23,11 @@ from mcp.types import (
 from mcp_agent.logging.event_progress import ProgressAction
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.tracing.semconv import GEN_AI_AGENT_NAME, GEN_AI_TOOL_NAME
-from mcp_agent.tracing.telemetry import get_tracer, record_attributes
+from mcp_agent.tracing.telemetry import (
+    annotate_span_for_call_tool_result,
+    get_tracer,
+    record_attributes,
+)
 from mcp_agent.mcp.gen_client import gen_client
 
 from mcp_agent.core.context_dependent import ContextDependent
@@ -244,14 +248,17 @@ class MCPAggregator(ContextDependent):
                                         "Timeout during disconnect_all(), forcing shutdown"
                                     )
 
-                                # Ensure the exit method is called regardless
+                                # Avoid calling __aexit__ directly across threads; mark inactive
                                 try:
-                                    await self._persistent_connection_manager.__aexit__(
-                                        None, None, None
-                                    )
+                                    if hasattr(
+                                        self._persistent_connection_manager,
+                                        "_tg_active",
+                                    ):
+                                        self._persistent_connection_manager._tg_active = False
+                                        self._persistent_connection_manager._tg = None
                                 except Exception as e:
                                     logger.warning(
-                                        f"Error during connection manager cleanup: {e}"
+                                        f"Error during connection manager state cleanup: {e}"
                                     )
 
                                 # Clean up the connection manager from the context
@@ -860,22 +867,7 @@ class MCPAggregator(ContextDependent):
             def _annotate_span_for_result(result: CallToolResult):
                 if not self.context.tracing_enabled:
                     return
-                span.set_attribute("result.isError", result.isError)
-                if result.isError:
-                    span.set_status(trace.Status(trace.StatusCode.ERROR))
-                    error_message = (
-                        result.content[0].text
-                        if len(result.content) > 0 and result.content[0].type == "text"
-                        else "Error calling tool"
-                    )
-                    span.record_exception(Exception(error_message))
-                else:
-                    for idx, content in enumerate(result.content):
-                        span.set_attribute(f"result.content.{idx}.type", content.type)
-                        if content.type == "text":
-                            span.set_attribute(
-                                f"result.content.{idx}.text", result.content[idx].text
-                            )
+                annotate_span_for_call_tool_result(span, result)
 
             async def try_call_tool(client: ClientSession):
                 try:

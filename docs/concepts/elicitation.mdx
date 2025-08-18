@@ -1,0 +1,141 @@
+---
+title: "Elicitation"
+description: "Allows MCP servers to request additional information from users."
+---
+
+Elicitation is a powerful feature that allows MCP tools to pause execution and request additional information or confirmation from the user before proceeding. This enables more interactive and controlled tool behavior.
+
+## How It Works
+
+When a tool calls `ctx.elicit()`, it pauses execution and sends a request to the user. The user can then:
+
+- **Accept** the request by providing the requested information
+- **Decline** the request, causing the tool to handle the declined state
+- **Cancel** the request, stopping the tool execution
+
+```python
+# In an MCP server tool
+result = await ctx.elicit(
+    message="Confirm booking for 2 people on June 21st at 5pm?",
+    schema=ConfirmBooking
+)
+
+match result:
+    case AcceptedElicitation(data=data):
+        # User accepted and provided data
+        if data.confirm:
+            return "Booking confirmed!"
+    case DeclinedElicitation():
+        # User declined the request
+        return "Booking declined"
+    case CancelledElicitation():
+        # User cancelled the operation
+        return "Booking cancelled"
+```
+
+## Setting Up Elicitation
+
+### 1. Configure Your MCP App
+
+Your MCP app needs an elicitation callback to handle user interactions:
+
+```python
+from mcp_agent.app import MCPApp
+from mcp_agent.elicitation.handler import console_elicitation_callback
+
+app = MCPApp(
+    name="my_agent",
+    elicitation_callback=console_elicitation_callback,
+)
+```
+
+When elicitation is triggered, users see an interactive prompt like this:
+
+```
+ELICITATION RESPONSE NEEDED FROM: demo_server
+
+Elicitation Request
+
+Confirm booking for 2 on 2023-06-21T17:00:00?
+
+Type / to see available commands
+
+──────────────────────────────────────────────
+
+Enter confirm - Confirm booking?
+Type / to see available commands
+Enter: true/false, yes/no, y/n, or 1/0
+> 
+```
+
+### 2. Create Tools with Elicitation
+
+In your MCP server, define tools that use elicitation:
+
+```python
+from mcp.server.fastmcp import FastMCP, Context
+from mcp.server.elicitation import AcceptedElicitation, DeclinedElicitation, CancelledElicitation
+from pydantic import BaseModel, Field
+
+mcp = FastMCP("My Server")
+
+@mcp.tool()
+async def confirm_action(action: str, ctx: Context) -> str:
+    """Perform an action with user confirmation"""
+    
+    class ConfirmAction(BaseModel):
+        confirm: bool = Field(description="Confirm the action?")
+        notes: str = Field(default="", description="Additional notes")
+    
+    result = await ctx.elicit(
+        message=f"Are you sure you want to {action}?",
+        schema=ConfirmAction
+    )
+    
+    match result:
+        case AcceptedElicitation(data=data):
+            if data.confirm:
+                return f"Action '{action}' completed. Notes: {data.notes or 'None'}"
+            return "Action cancelled by user"
+        case DeclinedElicitation():
+            return "Action declined"
+        case CancelledElicitation():
+            return "Action cancelled"
+```
+
+## Schema Requirements
+
+<Warning>
+The elicitation schema must use only primitive types:
+- `str` - Text input
+- `int` - Integer numbers
+- `float` - Decimal numbers  
+- `bool` - True/false values
+
+Complex types like lists, dictionaries, or custom objects are not supported.
+</Warning>
+
+## Use Cases
+
+Elicitation is particularly useful for:
+
+<CardGroup cols={2}>
+  <Card title="Confirmation Dialogs" icon="circle-check">
+    "Are you sure you want to delete this file?"
+  </Card>
+  <Card title="Parameter Collection" icon="input-text">
+    "What's your preferred time for the meeting?"
+  </Card>
+  <Card title="Options Selection" icon="list">
+    "Which format would you like: PDF or Word?"
+  </Card>
+  <Card title="Safety Checks" icon="shield-check">
+    "This action will modify 50 files. Proceed?"
+  </Card>
+</CardGroup>
+
+## Complete Example
+
+<Card title="Elicitation Example" icon="github" href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp/mcp_elicitation">
+  View the complete example on GitHub
+</Card>

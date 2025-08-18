@@ -1,0 +1,180 @@
+---
+title: "MCP Primitives"
+description: "Learn how to use MCP server primitives like resources, prompts, and tools in your agent applications"
+---
+
+# MCP Primitives
+
+MCP (Model Context Protocol) primitives are standardized building blocks that enable agents to access structured data and functionality from MCP servers. This guide shows you how to use the three core MCP primitives: **resources**, **prompts**, and **tools**.
+
+## What are MCP Primitives?
+
+<CardGroup cols={3}>
+  <Card title="Resources" icon="database">
+    Data (files, database schemas, application-specific information) exposed by MCP servers, accessible via URIs
+  </Card>
+  <Card title="Prompts" icon="message-lines">
+    Messages and instructions that can be listed and invoked from MCP servers with parameters
+  </Card>
+  <Card title="Tools" icon="wrench">
+    Interact with external systems, such as querying databases, calling APIs, or performing computations
+  </Card>
+</CardGroup>
+
+## Creating an MCP Server
+
+First, create an MCP server that exposes resources and prompts:
+
+<CodeGroup>
+```python demo_server.py
+from mcp.server.fastmcp import FastMCP
+import datetime
+import json
+
+mcp = FastMCP("Resource Demo MCP Server")
+
+@mcp.resource("demo://docs/readme")
+def get_readme():
+    """Provide the README file content."""
+    return "# Demo Resource Server\n\nThis is a sample README resource."
+
+@mcp.prompt()
+def echo(message: str) -> str:
+    """Echo the provided message.
+    
+    This is a simple prompt that echoes back the input message.
+    """
+    return f"Prompt: {message}"
+
+if __name__ == "__main__":
+    mcp.run()
+```
+</CodeGroup>
+
+## Agent Configuration
+
+Configure your agent to connect to the MCP server:
+
+<CodeGroup>
+```yaml mcp_agent.config.yaml
+$schema: ../../../schema/mcp-agent.config.schema.json
+
+execution_engine: asyncio
+logger:
+  transports: [console, file]
+  level: debug
+  progress_display: true
+
+mcp:
+  servers:
+    demo_server:
+      command: "uv"
+      args: ["run", "demo_server.py"]
+      description: "Demo MCP server for resources and prompts"
+
+openai:
+  default_model: "gpt-4o-mini"
+```
+</CodeGroup>
+
+## Using MCP Primitives in Your Agent
+
+Here's how to use MCP primitives in your agent application:
+
+<CodeGroup>
+```python main.py
+import asyncio
+from mcp_agent.app import MCPApp
+from mcp_agent.agents.agent import Agent
+from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
+
+app = MCPApp(name="mcp_basic_agent")
+
+async def example_usage():
+    async with app.run() as agent_app:
+        logger = agent_app.logger
+        
+        # Create an agent connected to the demo server
+        agent = Agent(
+            name="agent",
+            instruction="Demo agent for MCP resource and prompt primitives",
+            server_names=["demo_server"],
+        )
+
+        async with agent:
+            # List all available resources
+            resources = await agent.list_resources("demo_server")
+            logger.info("Available resources:", data=resources.model_dump())
+
+            # List all available prompts
+            prompts = await agent.list_prompts("demo_server")
+            logger.info("Available prompts:", data=prompts.model_dump())
+
+            # Get both resource and prompt in a single call
+            combined_messages = await agent.create_prompt(
+                prompt_name="echo",
+                arguments={"message": "My name is John Doe."},
+                resource_uris="demo://docs/readme",
+                server_names=["demo_server"],
+            )
+
+            # Use LLM to process the content
+            llm = await agent.attach_llm(OpenAIAugmentedLLM)
+            res = await llm.generate_str([
+                "Summarise what are my prompts and resources?",
+                *combined_messages,
+            ])
+            logger.info(f"Summary: {res}")
+
+if __name__ == "__main__":
+    asyncio.run(example_usage())
+```
+</CodeGroup>
+
+## Key Methods
+
+### Listing Primitives
+
+<CodeGroup>
+```python
+# List all resources from a server
+resources = await agent.list_resources("demo_server")
+
+# List all prompts from a server  
+prompts = await agent.list_prompts("demo_server")
+
+# List all tools from a server
+tools = await agent.list_tools("demo_server")
+```
+</CodeGroup>
+
+
+### Using Prompts and Resources
+
+<CodeGroup>
+```python
+# Create prompt message with prompt only
+prompt_messages = await agent.create_prompt(
+    prompt_name="echo",
+    arguments={"message": "Hello, world!"},
+    server_names=["demo_server"]
+)
+
+# Create prompt messages with prompts and resources
+combined_messages = await agent.create_prompt(
+    prompt_name="echo",
+    arguments={"message": "My name is John Doe."},
+    resource_uris="demo://docs/readme",
+    server_names=["demo_server"]
+)
+```
+</CodeGroup>
+
+
+## Complete Example
+
+You can find a complete working example in our GitHub repository:
+
+<Card title="MCP Primitives Example" icon="github" href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp/mcp_prompts_and_resources">
+  View the complete example on GitHub
+</Card>

@@ -1,0 +1,389 @@
+---
+title: "Temporal"
+description: "Build fault-tolerant, long-running workflows requiring guaranteed execution."
+---
+
+mcp-agent supports durable workflow execution using [Temporal](https://temporal.io/), providing reliability, scalability, and observability for complex AI workflows.
+
+## Why Use Temporal?
+
+<CardGroup cols={2}>
+  <Card title="Durability" icon="shield">
+    Workflows survive failures, restarts, and infrastructure changes
+  </Card>
+  <Card title="Scalability" icon="chart-line">
+    Distribute execution across multiple workers and machines
+  </Card>
+  <Card title="Observability" icon="chart-bar">
+    Built-in monitoring, logging, and debugging through Temporal UI
+  </Card>
+  <Card title="Reliability" icon="hammer">
+    Automatic retries, timeouts, and error handling
+  </Card>
+</CardGroup>
+
+## Configuration
+
+Configure Temporal in your `mcp_agent.config.yaml`:
+
+```yaml
+execution_engine: temporal
+temporal:
+  host: "localhost"
+  port: 7233
+  namespace: "default"
+  task_queue: "mcp-agent"
+  max_concurrent_activities: 100
+  max_concurrent_workflows: 1000
+```
+
+## Quick Start
+
+<Steps>
+  <Step title="Start Temporal Server">
+    ```bash
+    # Install Temporal CLI
+    brew install temporal
+
+    # Start development server
+    temporal server start-dev
+    ```
+
+    This starts:
+    - Temporal server on `localhost:7233`
+    - Temporal Web UI on `http://localhost:8233`
+  </Step>
+
+  <Step title="Create a Workflow">
+    Create `workflow.py`:
+
+    ```python workflow.py
+    from mcp_agent.app import MCPApp
+    from mcp_agent.agents.agent import Agent
+    from mcp_agent.workflows.workflow import Workflow, WorkflowResult
+
+    app = MCPApp(name="temporal_example")
+
+    @app.workflow
+    class DataProcessingWorkflow(Workflow[str]):
+        @app.workflow_run
+        async def run(self, input: str) -> WorkflowResult[str]:
+            # Create an agent with filesystem access
+            agent = Agent(
+                name="processor",
+                instruction="Process files and return results",
+                server_names=["filesystem"]
+            )
+            
+            async with agent:
+                # Agent operations are durable
+                result = await agent.generate_str(f"Process this data: {input}")
+                return WorkflowResult(value=result)
+    ```
+  </Step>
+
+  <Step title="Start Worker">
+    Create `worker.py`:
+
+    ```python worker.py
+    import asyncio
+    from workflow import app
+    from mcp_agent.executor.temporal.worker import create_temporal_worker_for_app
+
+    async def main():
+        async with create_temporal_worker_for_app(app) as worker:
+            print("Worker started. Ctrl+C to exit.")
+            await worker.run()
+
+    if __name__ == "__main__":
+        asyncio.run(main())
+    ```
+
+    Run the worker:
+    ```bash
+    python worker.py
+    ```
+  </Step>
+
+  <Step title="Execute Workflow">
+    Create `execute.py`:
+
+    ```python execute.py
+    import asyncio
+    from workflow import app
+
+    async def execute_workflow():
+        async with app.run() as agent_app:
+            executor = agent_app.executor
+            
+            # Start workflow
+            handle = await executor.start_workflow(
+                "DataProcessingWorkflow",
+                "sample data to process"
+            )
+            
+            # Get result
+            result = await handle.result()
+            print(f"Result: {result.value}")
+
+    if __name__ == "__main__":
+        asyncio.run(execute_workflow())
+    ```
+
+    Run the workflow:
+    ```bash
+    python execute.py
+    ```
+  </Step>
+</Steps>
+
+## Workflow Patterns
+
+### Basic Agent Workflow
+
+Simple single-agent task execution:
+
+```python
+@app.workflow
+class SimpleAgentWorkflow(Workflow[str]):
+    @app.workflow_run
+    async def run(self, query: str) -> WorkflowResult[str]:
+        agent = Agent(
+            name="researcher",
+            instruction="Research and provide detailed answers",
+            server_names=["fetch", "filesystem"]
+        )
+        
+        async with agent:
+            result = await agent.generate_str(query)
+            return WorkflowResult(value=result)
+```
+
+### Multi-Agent Orchestration
+
+Coordinate multiple agents for complex tasks:
+
+```python
+@app.workflow
+class OrchestratorWorkflow(Workflow[str]):
+    @app.workflow_run
+    async def run(self, task: str) -> WorkflowResult[str]:
+        # Planning agent
+        planner = Agent(
+            name="planner",
+            instruction="Break down tasks into steps",
+            server_names=["fetch"]
+        )
+        
+        # Execution agent
+        executor = Agent(
+            name="executor",
+            instruction="Execute specific steps",
+            server_names=["filesystem"]
+        )
+        
+        async with planner, executor:
+            # Step 1: Plan
+            plan = await planner.generate_str(f"Create plan for: {task}")
+            
+            # Step 2: Execute
+            result = await executor.generate_str(f"Execute plan: {plan}")
+            
+            return WorkflowResult(value=result)
+```
+
+### Parallel Processing
+
+Fan-out/fan-in pattern for concurrent execution:
+
+```python
+@app.workflow
+class ParallelWorkflow(Workflow[List[str]]):
+    @app.workflow_run
+    async def run(self, items: List[str]) -> WorkflowResult[List[str]]:
+        async def process_item(item: str) -> str:
+            agent = Agent(
+                name=f"processor_{item}",
+                instruction="Process individual items",
+                server_names=["fetch"]
+            )
+            
+            async with agent:
+                return await agent.generate_str(f"Process: {item}")
+        
+        # Process items in parallel
+        results = await asyncio.gather(*[
+            process_item(item) for item in items
+        ])
+        
+        return WorkflowResult(value=results)
+```
+
+### Interactive Workflows
+
+Human-in-the-loop workflows with pause/resume:
+
+```python
+from mcp_agent.executor.temporal.interactive_workflow import InteractiveWorkflow
+
+@app.workflow
+class InteractiveReviewWorkflow(InteractiveWorkflow[str]):
+    @app.workflow_run
+    async def run(self, content: str) -> WorkflowResult[str]:
+        agent = Agent(
+            name="reviewer",
+            instruction="Review and improve content",
+            server_names=["fetch"]
+        )
+        
+        async with agent:
+            # Initial processing
+            draft = await agent.generate_str(f"Review: {content}")
+            
+            # Wait for human input
+            feedback = await self.wait_for_human_input(
+                f"Review this draft: {draft}",
+                timeout_seconds=3600  # 1 hour timeout
+            )
+            
+            # Incorporate feedback
+            final = await agent.generate_str(
+                f"Improve draft based on feedback: {draft}\nFeedback: {feedback}"
+            )
+            
+            return WorkflowResult(value=final)
+```
+
+## Workflow Signals
+
+Control running workflows with signals:
+
+```python
+from temporalio import workflow
+
+@app.workflow
+class ControllableWorkflow(Workflow[str]):
+    def __init__(self):
+        self._paused = False
+        
+    @workflow.signal
+    async def pause(self):
+        self._paused = True
+        
+    @workflow.signal
+    async def resume(self):
+        self._paused = False
+        
+    @app.workflow_run
+    async def run(self, input: str) -> WorkflowResult[str]:
+        agent = Agent(name="worker", server_names=["fetch"])
+        
+        async with agent:
+            # Check for pause signal
+            await workflow.wait_condition(lambda: not self._paused)
+            
+            result = await agent.generate_str(input)
+            return WorkflowResult(value=result)
+```
+
+Send signals to workflows:
+
+```python
+# Get workflow handle
+handle = await executor.start_workflow("ControllableWorkflow", "task")
+
+# Send pause signal
+await handle.signal("pause")
+
+# Send resume signal
+await handle.signal("resume")
+```
+
+## Monitoring and Debugging
+
+### Temporal Web UI
+
+Access the Temporal Web UI at `http://localhost:8233` to:
+
+- View running and completed workflows
+- Inspect workflow history and state
+- Debug failed executions
+- Monitor performance metrics
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Workflow Design">
+    - Keep workflows deterministic and idempotent
+    - Use activities for non-deterministic operations
+    - Minimize workflow state and avoid large data
+    - Design for failure and recovery scenarios
+  </Accordion>
+
+  <Accordion title="Performance">
+    - Configure appropriate concurrency limits
+    - Use parallel execution for independent tasks
+    - Monitor resource usage and scaling needs
+    - Implement proper timeout and retry policies
+  </Accordion>
+
+  <Accordion title="Production Deployment">
+    - Use proper Temporal server clusters
+    - Implement monitoring and alerting
+    - Version workflows for backward compatibility
+    - Use namespaces for environment isolation
+  </Accordion>
+</AccordionGroup>
+
+## Examples
+
+Explore complete Temporal examples:
+
+<CardGroup cols={2}>
+  <Card title="Basic Workflow" icon="play" href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/temporal/basic">
+    Simple agent workflow with filesystem access
+  </Card>
+  <Card title="Multi-Agent Orchestration" icon="sitemap" href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/temporal/orchestrator">
+    Coordinate multiple agents for complex tasks
+  </Card>
+  <Card title="Parallel Processing" icon="layer-group" href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/temporal/parallel">
+    Fan-out/fan-in pattern for concurrent execution
+  </Card>
+  <Card title="Interactive Workflows" icon="comments" href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/temporal/interactive">
+    Human-in-the-loop workflows with pause/resume
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Connection Issues">
+    - Ensure Temporal server is running on configured host/port
+    - Check network connectivity and firewall rules
+    - Verify namespace and task queue configuration
+  </Accordion>
+
+  <Accordion title="Workflow Failures">
+    - Check Temporal Web UI for error details
+    - Review workflow history and stack traces
+    - Verify agent configurations and MCP server connectivity
+  </Accordion>
+
+  <Accordion title="Performance Issues">
+    - Monitor worker resource usage
+    - Adjust concurrency limits based on workload
+    - Consider scaling workers horizontally
+    - Optimize workflow and activity implementations
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration" icon="gear" href="/configuration">
+    Configure Temporal settings and connections
+  </Card>
+  <Card title="Temporal Documentation" icon="book" href="https://docs.temporal.io/">
+    Learn more about Temporal concepts and features
+  </Card>
+</CardGroup>

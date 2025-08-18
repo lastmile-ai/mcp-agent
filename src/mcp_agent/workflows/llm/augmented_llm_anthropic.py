@@ -1,8 +1,10 @@
+import asyncio
+import functools
 from typing import Any, Iterable, List, Type, Union, cast
 
 from pydantic import BaseModel
 
-from anthropic import Anthropic
+from anthropic import Anthropic, AnthropicBedrock, AnthropicVertex, AsyncAnthropic
 from anthropic.types import (
     ContentBlock,
     DocumentBlockParam,
@@ -44,6 +46,7 @@ from mcp_agent.tracing.semconv import (
     GEN_AI_USAGE_OUTPUT_TOKENS,
 )
 from mcp_agent.tracing.telemetry import get_tracer, is_otel_serializable, telemetry
+from mcp_agent.tracing.token_tracking_decorator import track_tokens
 from mcp_agent.utils.common import ensure_serializable, typed_dict_extras, to_string
 from mcp_agent.utils.pydantic_type_serializer import serialize_model, deserialize_model
 from mcp_agent.workflows.llm.augmented_llm import (
@@ -89,6 +92,25 @@ class RequestStructuredCompletionRequest(BaseModel):
     model: str
 
 
+def create_anthropic_instance(settings: AnthropicSettings):
+    """Select and initialise the appropriate anthropic client instance based on settings"""
+    if settings.provider == "bedrock":
+        anthropic = AnthropicBedrock(
+            aws_access_key=settings.aws_access_key_id,
+            aws_secret_key=settings.aws_secret_access_key,
+            aws_session_token=settings.aws_session_token,
+            aws_region=settings.aws_region,
+        )
+    elif settings.provider == "vertexai":
+        anthropic = AnthropicVertex(
+            region=settings.location,
+            project_id=settings.project,
+        )
+    else:
+        anthropic = Anthropic(api_key=settings.api_key)
+    return anthropic
+
+
 class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
     """
     The basic building block of agentic systems is an LLM enhanced with augmentations
@@ -114,11 +136,18 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             intelligencePriority=0.3,
         )
 
-        default_model = "claude-3-7-sonnet-latest"  # Fallback default
+        default_model = "claude-sonnet-4-20250514"
 
         if self.context.config.anthropic:
+            self.provider = self.context.config.anthropic.provider
+            if self.context.config.anthropic.provider == "bedrock":
+                default_model = "anthropic.claude-sonnet-4-20250514-v1:0"
+            elif self.context.config.anthropic.provider == "vertexai":
+                default_model = "claude-sonnet-4@20250514"
+
             if hasattr(self.context.config.anthropic, "default_model"):
                 default_model = self.context.config.anthropic.default_model
+
         self.default_request_params = self.default_request_params or RequestParams(
             model=default_model,
             modelPreferences=self.model_preferences,
@@ -129,6 +158,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             use_history=True,
         )
 
+    @track_tokens()
     async def generate(
         self,
         message,
@@ -198,15 +228,17 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                     "model": model,
                     "max_tokens": params.maxTokens,
                     "messages": messages,
-                    "system": self.instruction or params.systemPrompt,
-                    "stop_sequences": params.stopSequences,
+                    "stop_sequences": params.stopSequences or [],
                     "tools": available_tools,
                 }
+
+                if system := (self.instruction or params.systemPrompt):
+                    arguments["system"] = system
 
                 if params.metadata:
                     arguments = {**arguments, **params.metadata}
 
-                self.logger.debug(f"{arguments}")
+                self.logger.debug("Completion request arguments:", data=arguments)
                 self._log_chat_progress(chat_turn=(len(messages) + 1) // 2, model=model)
 
                 request = RequestCompletionRequest(
@@ -234,13 +266,26 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
 
                 self._annotate_span_for_completion_response(span, response, i)
 
-                total_input_tokens += response.usage.input_tokens
-                total_output_tokens += response.usage.output_tokens
+                # Per-iteration token counts
+                iteration_input = response.usage.input_tokens
+                iteration_output = response.usage.output_tokens
+
+                total_input_tokens += iteration_input
+                total_output_tokens += iteration_output
 
                 response_as_message = self.convert_message_to_message_param(response)
                 messages.append(response_as_message)
                 responses.append(response)
                 finish_reasons.append(response.stop_reason)
+
+                # Incremental token tracking inside loop so watchers update during long runs
+                if self.context.token_counter:
+                    await self.context.token_counter.record_usage(
+                        input_tokens=iteration_input,
+                        output_tokens=iteration_output,
+                        model_name=model,
+                        provider=self.provider,
+                    )
 
                 if response.stop_reason == "end_turn":
                     self.logger.debug(
@@ -708,13 +753,22 @@ class AnthropicCompletionTasks:
         """
         Request a completion from Anthropic's API.
         """
-
-        anthropic = Anthropic(api_key=request.config.api_key)
-
-        payload = request.payload
-        response = anthropic.messages.create(**payload)
-        response = ensure_serializable(response)
-        return response
+        # Prefer async client where available to avoid blocking the event loop
+        if request.config.provider in (None, "", "anthropic"):
+            client = AsyncAnthropic(api_key=request.config.api_key)
+            payload = request.payload
+            response = await client.messages.create(**payload)
+            response = ensure_serializable(response)
+            return response
+        else:
+            anthropic = create_anthropic_instance(request.config)
+            payload = request.payload
+            loop = asyncio.get_running_loop()
+            response = await loop.run_in_executor(
+                None, functools.partial(anthropic.messages.create, **payload)
+            )
+            response = ensure_serializable(response)
+            return response
 
     @staticmethod
     @workflow_task
@@ -737,16 +791,19 @@ class AnthropicCompletionTasks:
             )
 
         # We pass the text through instructor to extract structured data
-        client = instructor.from_anthropic(
-            Anthropic(api_key=request.config.api_key),
-        )
+        client = instructor.from_anthropic(create_anthropic_instance(request.config))
 
-        # Extract structured data from natural language
-        structured_response = client.chat.completions.create(
-            model=request.model,
-            response_model=response_model,
-            messages=[{"role": "user", "content": request.response_str}],
-            max_tokens=request.params.maxTokens,
+        # Extract structured data from natural language without blocking the loop
+        loop = asyncio.get_running_loop()
+        structured_response = await loop.run_in_executor(
+            None,
+            functools.partial(
+                client.chat.completions.create,
+                model=request.model,
+                response_model=response_model,
+                messages=[{"role": "user", "content": request.response_str}],
+                max_tokens=request.params.maxTokens,
+            ),
         )
 
         return structured_response

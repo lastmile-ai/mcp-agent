@@ -1,0 +1,82 @@
+---
+title: "Parallel"
+description: "Execute multiple tasks simultaneously with intelligent result aggregation and conflict resolution."
+---
+
+import { Card } from "@mintlify/components";
+
+![Parallel Workflow Pattern](/images/parallel-workflow.png)
+
+## Overview
+
+The Parallel Workflow pattern uses a fan-out/fan-in approach where multiple agents work on different aspects of a task simultaneously, then a coordinating agent aggregates their results.
+
+## Quick Example
+
+```python
+from mcp_agent.app import MCPApp
+from mcp_agent.agents.agent import Agent
+from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
+from mcp_agent.workflows.parallel.parallel_llm import ParallelLLM
+
+app = MCPApp(name="parallel_example")
+
+async with app.run() as context:
+    # Create specialized agents for different tasks
+    proofreader = Agent(
+        name="proofreader",
+        instruction="Review for grammar, spelling, and punctuation errors."
+    )
+
+    fact_checker = Agent(
+        name="fact_checker",
+        instruction="Verify factual consistency and logical coherence."
+    )
+
+    style_enforcer = Agent(
+        name="style_enforcer",
+        instruction="Analyze narrative flow and storytelling quality.",
+        server_names=["fetch"]
+    )
+
+    # Aggregator agent
+    grader = Agent(
+        name="grader",
+        instruction="Compile feedback into a structured report with final grade."
+    )
+
+    # Create parallel LLM with fan-out and fan-in
+    parallel = ParallelLLM(
+        fan_in_agent=grader,
+        fan_out_agents=[proofreader, fact_checker, style_enforcer],
+        llm_factory=OpenAIAugmentedLLM,
+    )
+
+    # Execute parallel workflow
+    result = await parallel.generate_str(
+        message="Grade this student's short story submission: [story text]"
+    )
+```
+
+## Key Features
+
+- **Fan-Out Processing**: Distribute work across multiple specialized agents
+- **Fan-In Aggregation**: Intelligent result compilation and synthesis
+- **Concurrent Execution**: All fan-out agents work simultaneously
+- **Specialized Roles**: Each agent focuses on specific expertise areas
+- **Structured Output**: Coordinated final result from aggregator agent
+
+## Use Cases
+
+- **Content Review**: Multiple reviewers checking different aspects
+- **Multi-perspective Analysis**: Getting diverse viewpoints on complex topics
+- **Quality Assurance**: Parallel validation across different criteria
+- **Research Synthesis**: Gathering information from multiple specialized sources
+
+<Card
+  title="Full Implementation"
+  href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows/workflow_parallel"
+>
+  See the complete parallel workflow example with student assignment grading use
+  case.
+</Card>

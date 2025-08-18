@@ -158,7 +158,7 @@ async def test_disconnect_server(server_registry, dummy_client_session_factory):
         await server_conn.wait_for_initialized()
         await mgr.disconnect_server("srv1")
         await anyio.sleep(0)  # let event propagate
-        assert server_conn._shutdown_event.is_set()
+        assert server_conn._is_shutdown_requested_flag()
         assert "srv1" not in mgr.running_servers
 
 
@@ -175,8 +175,8 @@ async def test_disconnect_all(server_registry, dummy_client_session_factory):
         await conn2.wait_for_initialized()
         await mgr.disconnect_all()
         await anyio.sleep(0)
-        assert conn1._shutdown_event.is_set()
-        assert conn2._shutdown_event.is_set()
+        assert conn1._is_shutdown_requested_flag()
+        assert conn2._is_shutdown_requested_flag()
         assert mgr.running_servers == {}
 
 

@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 from mcp_agent.tracing.semconv import GEN_AI_AGENT_NAME
 from mcp_agent.tracing.telemetry import get_tracer, record_attributes
+from mcp_agent.tracing.token_tracking_decorator import track_tokens
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     MessageParamT,
@@ -84,11 +85,11 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
                      - An Agent that will be converted to an AugmentedLLM
                      - An AugmentedLLM instance
                      - An Orchestrator/Router/ParallelLLM workflow
-            evaluator_agent: The agent/LLM that evaluates responses
-            evaluation_criteria: Criteria for the evaluator to assess responses
+            evaluator: The agent/LLM that evaluates responses
             min_rating: Minimum acceptable quality rating
-            max_refinements: Maximum refinement iterations
+            max_refinements: Maximum refinement iterations (max number of times to refine the response)
             llm_factory: Optional factory to create LLMs from agents
+            context: The context to use for the LLM.
         """
         super().__init__(
             name=name,
@@ -154,6 +155,7 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
         # Track iteration history
         self.refinement_history = []
 
+    @track_tokens(node_type="agent")
     async def generate(
         self,
         message: str | MessageParamT | List[MessageParamT],

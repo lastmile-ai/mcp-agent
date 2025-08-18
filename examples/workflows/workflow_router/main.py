@@ -61,8 +61,9 @@ async def example_usage():
             server_names=[],
         )
 
-        # You can use any LLM with an LLMRouter
+        # You can use any LLM with an LLMRouter; subclasses now provide llm_factory
         router = OpenAILLMRouter(
+            name="openai-router",
             agents=[finder_agent, writer_agent, reasoning_agent],
             functions=[print_to_console, print_hello_world],
         )
@@ -87,8 +88,9 @@ async def example_usage():
             )
             logger.info("read_file result:", data=result.model_dump())
 
-        # We can also use a router already configured with a particular LLM
+        # We can also use an Anthropic-backed router (subclass supplies llm_factory)
         anthropic_router = AnthropicLLMRouter(
+            name="anthropic-router",
             server_names=["fetch", "filesystem"],
             agents=[finder_agent, writer_agent, reasoning_agent],
             functions=[print_to_console, print_hello_world],
@@ -118,6 +120,12 @@ async def example_usage():
             top_k=3,
         )
         logger.info("Router Results:", data=results)
+
+        # Should route/delegate to the finder agent
+        result = await anthropic_router.generate(
+            "Print the contents of mcp_agent.config.yaml verbatim"
+        )
+        logger.info("Router generate Results:", data=result)
 
 
 if __name__ == "__main__":

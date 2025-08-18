@@ -6,7 +6,7 @@ mcp-agent workflows and agents as MCP tools.
 import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any, Dict, List, Type, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Tuple, Type, TYPE_CHECKING
 
 from mcp.server.fastmcp import Context as MCPContext, FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
@@ -81,12 +81,60 @@ class ServerContext(ContextDependent):
         return self.context.workflow_registry
 
 
-def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
+def _get_attached_app(mcp: FastMCP) -> MCPApp | None:
+    """Return the MCPApp instance attached to the FastMCP server, if any."""
+    return getattr(mcp, "_mcp_agent_app", None)
+
+
+def _get_attached_server_context(mcp: FastMCP) -> ServerContext | None:
+    """Return the ServerContext attached to the FastMCP server, if any."""
+    return getattr(mcp, "_mcp_agent_server_context", None)
+
+
+def _resolve_workflows_and_context(
+    ctx: MCPContext,
+) -> Tuple[Dict[str, Type["Workflow"]] | None, Optional["Context"]]:
+    """Resolve the workflows mapping and underlying app context regardless of startup mode.
+
+    Tries lifespan ServerContext first (including compatible mocks), then attached app.
+    """
+    # Try lifespan-provided ServerContext first
+    lifespan_ctx = getattr(ctx.request_context, "lifespan_context", None)
+    if (
+        lifespan_ctx is not None
+        and hasattr(lifespan_ctx, "workflows")
+        and hasattr(lifespan_ctx, "context")
+    ):
+        return lifespan_ctx.workflows, lifespan_ctx.context
+
+    # Fall back to app attached to FastMCP
+    app: MCPApp | None = _get_attached_app(ctx.fastmcp)
+    if app is not None:
+        return app.workflows, app.context
+
+    return None, None
+
+
+def _resolve_workflow_registry(ctx: MCPContext) -> WorkflowRegistry | None:
+    """Resolve the workflow registry regardless of startup mode."""
+    lifespan_ctx = getattr(ctx.request_context, "lifespan_context", None)
+    if lifespan_ctx is not None and hasattr(lifespan_ctx, "workflow_registry"):
+        return lifespan_ctx.workflow_registry
+
+    app: MCPApp | None = _get_attached_app(ctx.fastmcp)
+    if app is not None and app.context is not None:
+        return app.context.workflow_registry
+
+    return None
+
+
+def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
     """
     Create an MCP server for a given MCPApp instance.
 
     Args:
         app: The MCPApp instance to create a server for
+        kwargs: Optional FastMCP settings to configure the server.
 
     Returns:
         A configured FastMCP server instance
@@ -102,7 +150,7 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
         # Create the server context which is available during the lifespan of the server
         server_context = ServerContext(mcp=mcp, context=app.context)
 
-        # Register initial workflow tools
+        # Register initial workflow tools when running with our managed lifespan
         create_workflow_tools(mcp, server_context)
 
         try:
@@ -111,15 +159,35 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
             # Don't clean up the MCPApp here - let the caller handle that
             pass
 
-    # Create FastMCP server with the app's name
-    mcp = FastMCP(
-        name=app.name or "mcp_agent_server",
-        # TODO: saqadri (MAC) - create a much more detailed description
-        # based on all the available agents and workflows,
-        # or use the MCPApp's description if available.
-        instructions=f"MCP server exposing {app.name} workflows and agents. Description: {app.description}",
-        lifespan=app_specific_lifespan,
-    )
+    # Create or attach FastMCP server
+    if app.mcp:
+        # Using an externally provided FastMCP instance: attach app and context
+        mcp = app.mcp
+        setattr(mcp, "_mcp_agent_app", app)
+
+        # Create and attach a ServerContext since we don't control the server's lifespan
+        # This enables tools to access context via ctx.fastmcp._mcp_agent_server_context
+        if not hasattr(mcp, "_mcp_agent_server_context"):
+            server_context = ServerContext(mcp=mcp, context=app.context)
+            setattr(mcp, "_mcp_agent_server_context", server_context)
+        else:
+            server_context = getattr(mcp, "_mcp_agent_server_context")
+
+        # Register per-workflow tools
+        create_workflow_tools(mcp, server_context)
+    else:
+        mcp = FastMCP(
+            name=app.name or "mcp_agent_server",
+            # TODO: saqadri (MAC) - create a much more detailed description
+            # based on all the available agents and workflows,
+            # or use the MCPApp's description if available.
+            instructions=f"MCP server exposing {app.name} workflows and agents. Description: {app.description}",
+            lifespan=app_specific_lifespan,
+            **kwargs,
+        )
+        # Store the server on the app so it's discoverable and can be extended further
+        app.mcp = mcp
+        setattr(mcp, "_mcp_agent_app", app)
 
     # region Workflow Tools
 
@@ -130,10 +198,10 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
         Returns information about each workflow type including name, description, and parameters.
         This helps in making an informed decision about which workflow to run.
         """
-        server_context: ServerContext = ctx.request_context.lifespan_context
-
-        result = {}
-        for workflow_name, workflow_cls in server_context.workflows.items():
+        result: Dict[str, Dict[str, Any]] = {}
+        workflows, _ = _resolve_workflows_and_context(ctx)
+        workflows = workflows or {}
+        for workflow_name, workflow_cls in workflows.items():
             # Get workflow documentation
             run_fn_tool = FastTool.from_function(workflow_cls.run)
 
@@ -165,7 +233,11 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
         Returns:
             A dictionary mapping workflow instance IDs to their detailed status information.
         """
-        server_context: ServerContext = ctx.request_context.lifespan_context
+        server_context = getattr(
+            ctx.request_context, "lifespan_context", None
+        ) or _get_attached_server_context(ctx.fastmcp)
+        if server_context is None or not hasattr(server_context, "workflow_registry"):
+            raise ToolError("Server context not available for MCPApp Server.")
 
         # Get all workflow statuses from the registry
         workflow_statuses = (
@@ -178,7 +250,8 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
         ctx: MCPContext,
         workflow_name: str,
         run_parameters: Dict[str, Any] | None = None,
-    ) -> str:
+        **kwargs: Any,
+    ) -> Dict[str, str]:
         """
         Run a workflow with the given name.
 
@@ -186,12 +259,13 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
             workflow_name: The name of the workflow to run.
             run_parameters: Arguments to pass to the workflow run.
                 workflows/list method will return the run_parameters schema for each workflow.
+            kwargs: Ignore, for internal use only.
 
         Returns:
-            The run ID of the started workflow run, which can be passed to
+            A dict with workflow_id and run_id for the started workflow run, can be passed to
             workflows/get_status, workflows/resume, and workflows/cancel.
         """
-        return await _workflow_run(ctx, workflow_name, run_parameters)
+        return await _workflow_run(ctx, workflow_name, run_parameters, **kwargs)
 
     @mcp.tool(name="workflows-get_status")
     async def get_workflow_status(
@@ -327,7 +401,7 @@ def create_workflow_specific_tools(
     @mcp.tool(
         name=f"workflows-{workflow_name}-run",
         description=f"""
-        Run the '{workflow_name}' workflow and get a run ID back.
+        Run the '{workflow_name}' workflow and get a dict with workflow_id and run_id back.
         Workflow Description: {workflow_cls.__doc__}
 
         {run_fn_tool.description}
@@ -341,7 +415,7 @@ def create_workflow_specific_tools(
     async def run(
         ctx: MCPContext,
         run_parameters: Dict[str, Any] | None = None,
-    ) -> Dict[str, Any]:
+    ) -> Dict[str, str]:
         return await _workflow_run(ctx, workflow_name, run_parameters)
 
     @mcp.tool(
@@ -354,7 +428,7 @@ def create_workflow_specific_tools(
         """,
     )
     async def get_status(ctx: MCPContext, run_id: str) -> Dict[str, Any]:
-        return await _workflow_status(ctx, run_id=run_id, workflow_id=workflow_name)
+        return await _workflow_status(ctx, run_id=run_id, workflow_name=workflow_name)
 
 
 # endregion
@@ -404,48 +478,65 @@ def _get_server_descriptions_as_string(
 
 async def _workflow_run(
     ctx: MCPContext,
-    workflow_id: str,
+    workflow_name: str,
     run_parameters: Dict[str, Any] | None = None,
-) -> str:
-    server_context: ServerContext = ctx.request_context.lifespan_context
+    **kwargs: Any,
+) -> Dict[str, str]:
+    # Resolve workflows and app context irrespective of startup mode
+    workflows_dict, app_context = _resolve_workflows_and_context(ctx)
+    if not workflows_dict or not app_context:
+        raise ToolError("Server context not available for MCPApp Server.")
 
-    if workflow_id not in server_context.workflows:
-        raise ToolError(f"Workflow '{workflow_id}' not found.")
+    if workflow_name not in workflows_dict:
+        raise ToolError(f"Workflow '{workflow_name}' not found.")
 
     # Get the workflow class
-    workflow_cls = server_context.workflows[workflow_id]
+    workflow_cls = workflows_dict[workflow_name]
 
     # Create and initialize the workflow instance using the factory method
     try:
         # Create workflow instance
-        workflow = await workflow_cls.create(
-            name=workflow_id, context=server_context.context
-        )
+        workflow = await workflow_cls.create(name=workflow_name, context=app_context)
 
         run_parameters = run_parameters or {}
 
+        # Pass workflow_id and task_queue as special system parameters
+        workflow_id = kwargs.get("workflow_id", None)
+        task_queue = kwargs.get("task_queue", None)
+
+        # Using __mcp_agent_ prefix to avoid conflicts with user parameters
+        if workflow_id:
+            run_parameters["__mcp_agent_workflow_id"] = workflow_id
+        if task_queue:
+            run_parameters["__mcp_agent_task_queue"] = task_queue
+
         # Run the workflow asynchronously and get its ID
-        run_id = await workflow.run_async(**run_parameters)
+        execution = await workflow.run_async(**run_parameters)
 
         logger.info(
-            f"Workflow {workflow_id} started with run ID {run_id}. Parameters: {run_parameters}"
+            f"Workflow {workflow_name} started with workflow ID {execution.workflow_id} and run ID {execution.run_id}. Parameters: {run_parameters}"
         )
 
-        return run_id
+        return {
+            "workflow_id": execution.workflow_id,
+            "run_id": execution.run_id,
+        }
 
     except Exception as e:
-        logger.error(f"Error creating workflow {workflow_id}: {str(e)}")
-        raise ToolError(f"Error creating workflow {workflow_id}: {str(e)}") from e
+        logger.error(f"Error creating workflow {workflow_name}: {str(e)}")
+        raise ToolError(f"Error creating workflow {workflow_name}: {str(e)}") from e
 
 
 async def _workflow_status(
-    ctx: MCPContext, run_id: str, workflow_id: str | None = None
+    ctx: MCPContext, run_id: str, workflow_name: str | None = None
 ) -> Dict[str, Any]:
-    server_context: ServerContext = ctx.request_context.lifespan_context
-    workflow_registry: WorkflowRegistry = server_context.workflow_registry
+    workflow_registry: WorkflowRegistry | None = _resolve_workflow_registry(ctx)
 
     if not workflow_registry:
         raise ToolError("Workflow registry not found for MCPApp Server.")
+
+    workflow = await workflow_registry.get_workflow(run_id)
+    workflow_id = workflow.id if workflow and workflow.id else workflow_name
 
     status = await workflow_registry.get_workflow_status(
         run_id=run_id, workflow_id=workflow_id

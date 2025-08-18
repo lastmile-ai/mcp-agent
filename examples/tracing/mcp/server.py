@@ -7,7 +7,6 @@ from mcp.server.sse import SseServerTransport
 from mcp.types import EmbeddedResource, ImageContent, TextContent
 from openinference.instrumentation.mcp import MCPInstrumentor
 from opentelemetry import trace
-from pydantic import BaseModel, create_model
 from starlette.applications import Starlette
 from starlette.routing import Mount, Route
 
@@ -23,11 +22,11 @@ def _configure_server_otel():
     MCPInstrumentor().instrument()
 
 
-def some_tool_function():
+def get_magic_number(original_number: int = 0) -> int:
     tracer = trace.get_tracer(__name__)
     with tracer.start_as_current_span("some_tool_function") as span:
         span.set_attribute("example.attribute", "value")
-        result = 42
+        result = 42 + original_number
         span.set_attribute("result", result)
         return result
 
@@ -39,14 +38,14 @@ def main():
     @server.list_tools()
     @telemetry.traced(kind=trace.SpanKind.SERVER)
     async def handle_list_tools() -> list[Tool]:
-        # Create an empty schema (or define a real one if you need parameters)
-        EmptyInputSchema = create_model("EmptyInputSchema", __base__=BaseModel)
-
         return [
             Tool(
                 name="get-magic-number",
-                description="Returns the magic number",
-                inputSchema=EmptyInputSchema.model_json_schema(),  # Add the required inputSchema
+                description="Returns a magic number",
+                inputSchema={
+                    "type": "object",
+                    "properties": {"original_number": {"type": "number"}},
+                },
             )
         ]
 
@@ -56,11 +55,11 @@ def main():
         name: str, arguments: dict[str, Any] | None
     ) -> list[TextContent | ImageContent | EmbeddedResource]:
         span = trace.get_current_span()
-        res = str(some_tool_function())
+        res = str(get_magic_number(arguments.get("original_number", 0)))
         span.set_attribute(GEN_AI_TOOL_NAME, name)
         span.set_attribute("result", res)
         if arguments:
-            record_attributes(span, arguments)
+            record_attributes(span, arguments, "arguments")
 
         return [
             TextContent(type="text", text=res)

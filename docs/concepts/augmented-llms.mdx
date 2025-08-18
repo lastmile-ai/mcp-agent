@@ -1,0 +1,512 @@
+---
+title: "Augmented LLMs"
+description: "Understanding augmented LLMs in mcp-agent - enhanced language models with tools, memory, and agent capabilities."
+---
+
+import { Card, CardGroup, Tabs, Tab } from "@mintlify/components";
+
+## What are Augmented LLMs?
+
+**Augmented LLMs** are the core intelligence layer in the `mcp-agent` framework. They extend standard language models with enhanced capabilities including tool access, persistent memory, agent integration, and structured output generation.
+
+Think of augmented LLMs as:
+
+- **Enhanced language models** with access to external tools and data sources
+- **Stateful conversational agents** that maintain memory across interactions
+- **Multi-modal processors** that can handle text, images, and structured data
+- **Tool-enabled systems** that can execute functions and access MCP servers
+
+<Card>
+  **Key Concept:** Augmented LLMs = Base LLM + Tools + Memory + Agent
+  Integration + Structured Output
+</Card>
+
+## Provider Support
+
+The `mcp-agent` framework supports multiple LLM providers through a unified interface:
+
+### OpenAI
+
+```python
+from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
+
+# Create OpenAI-powered augmented LLM
+llm = await agent.attach_llm(OpenAIAugmentedLLM)
+
+# Configuration (in mcp_agent.secrets.yaml or mcp_agent.config.yaml)
+openai:
+  api_key: "your-openai-api-key"
+  default_model: "gpt-4o"
+  reasoning_effort: "medium"  # For o1/o3 models
+```
+
+### Anthropic
+
+```python
+from mcp_agent.workflows.llm.augmented_llm_anthropic import AnthropicAugmentedLLM
+
+# Create Anthropic-powered augmented LLM
+llm = await agent.attach_llm(AnthropicAugmentedLLM)
+```
+
+<Tabs>
+  <Tab title="Anthropic API">
+    ```yaml mcp_agent.secrets.yaml
+    # Configuration for Claude models directly from Anthropic
+    anthropic:
+      api_key: "your-anthropic-api-key"
+      default_model: "claude-3-5-sonnet-latest"
+    ```
+  </Tab>
+  <Tab title="AWS Bedrock">
+    ```yaml mcp_agent.secrets.yaml
+    # Configuration for Claude models through AWS Bedrock
+    anthropic:
+      provider: "bedrock"
+      aws_region: "us-east-1"
+      aws_access_key_id: "your-aws-access-key"
+      aws_secret_access_key: "your-aws-secret-key"
+      # Optional: aws_session_token for temporary credentials
+    ```
+  </Tab>
+  <Tab title="Google Vertex AI">
+    ```yaml mcp_agent.secrets.yaml
+    # Configuration for Claude models through Google Vertex AI
+    anthropic:
+      provider: "vertexai"
+      project: "your-gcp-project-id"
+      location: "us-central1"
+    ```
+  </Tab>
+</Tabs>
+
+### Azure
+
+```python
+from mcp_agent.workflows.llm.augmented_llm_azure import AzureAugmentedLLM
+
+# Create Azure-powered augmented LLM
+llm = await agent.attach_llm(AzureAugmentedLLM)
+```
+
+<Tabs>
+  <Tab title="Azure OpenAI">
+    ```yaml mcp_agent.secrets.yaml
+    # Configuration for Azure OpenAI inference endpoint
+    azure:
+      api_key: "your-azure-api-key"
+      endpoint: "https://your-resource-name.cognitiveservices.azure.com/openai/deployments/your-deployment-name"
+      api_version: "2025-01-01-preview"
+      default_model: "gpt-4o-mini"
+    ```
+  </Tab>
+  <Tab title="Azure AI">
+    ```yaml mcp_agent.secrets.yaml
+    # Configuration for Azure AI inference endpoint
+    azure:
+      api_key: "your-azure-api-key"
+      endpoint: "https://your-resource-name.services.ai.azure.com/models"
+      default_model: "DeepSeek-V3"
+    ```
+  </Tab>
+</Tabs>
+
+### Amazon Bedrock
+
+```python
+from mcp_agent.workflows.llm.augmented_llm_bedrock import BedrockAugmentedLLM
+
+# Create Bedrock-powered augmented LLM
+llm = await agent.attach_llm(BedrockAugmentedLLM)
+```
+
+```yaml mcp_agent.secrets.yaml
+# Configuration for Amazon Bedrock
+bedrock:
+  aws_region: "us-east-1"
+  aws_access_key_id: "your-aws-access-key"
+  aws_secret_access_key: "your-aws-secret-key"
+  # Optional: aws_session_token for temporary credentials
+  default_model: "anthropic.claude-3-haiku-20240307-v1:0"
+```
+
+### Google AI
+
+```python
+from mcp_agent.workflows.llm.augmented_llm_google import GoogleAugmentedLLM
+
+# Create Google-powered augmented LLM
+llm = await agent.attach_llm(GoogleAugmentedLLM)
+```
+
+<Tabs>
+  <Tab title="Google AI API">
+    ```yaml mcp_agent.secrets.yaml
+    # Configuration for Google AI (Gemini)
+    google:
+      api_key: "your-google-api-key"
+      default_model: "gemini-2.0-flash"
+    ```
+  </Tab>
+  <Tab title="Vertex AI">
+    ```yaml mcp_agent.secrets.yaml
+    # Configuration for Vertex AI
+    google:
+      vertexai: true
+      project: "your-gcp-project-id"
+      location: "us-central1"
+      default_model: "gemini-2.0-flash"
+    ```
+  </Tab>
+</Tabs>
+
+### Ollama
+
+```python
+from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
+
+# Create Ollama-powered augmented LLM (uses OpenAI-compatible API)
+llm = await agent.attach_llm(OpenAIAugmentedLLM)
+```
+
+```yaml mcp_agent.config.yaml
+# Configuration for Ollama (local models)
+openai:
+  base_url: "http://localhost:11434/v1"
+  api_key: "ollama"  # Can be any value for local Ollama
+  default_model: "llama3.2"  # Or any model you have installed
+```
+
+## Core Capabilities
+
+### 1. Multi-Turn Conversations
+
+Augmented LLMs maintain conversation history and context across multiple interactions:
+
+```python
+from mcp_agent.agents.agent import Agent
+from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
+
+# Create agent with conversation capabilities
+agent = Agent(
+    name="conversational_agent",
+    instruction="You are a helpful assistant that remembers our conversation.",
+    server_names=["filesystem", "fetch"]
+)
+
+async with agent:
+    llm = await agent.attach_llm(OpenAIAugmentedLLM)
+
+    # First turn
+    response1 = await llm.generate_str("What files are in the current directory?")
+
+    # Second turn - references previous context
+    response2 = await llm.generate_str("Can you read the contents of the first file?")
+
+    # Third turn - maintains full conversation history
+    response3 = await llm.generate_str("Summarize what we've learned so far")
+```
+
+### 2. Tool Integration
+
+Augmented LLMs automatically discover and use tools from connected MCP servers:
+
+```python
+# Agent with multiple tool sources
+agent = Agent(
+    name="tool_user",
+    instruction="You can access files, fetch web content, and analyze data.",
+    server_names=["filesystem", "fetch", "database"]
+)
+
+async with agent:
+    # List available tools
+    tools = await agent.list_tools()
+    print(f"Available tools: {[tool.name for tool in tools.tools]}")
+
+    llm = await agent.attach_llm(OpenAIAugmentedLLM)
+
+    # LLM automatically uses appropriate tools
+    result = await llm.generate_str(
+        "Read the README.md file and fetch the latest release notes from the GitHub API"
+    )
+```
+
+### 3. Structured Output Generation
+
+Generate structured data using Pydantic models:
+
+```python
+from pydantic import BaseModel
+from typing import List
+
+class TaskAnalysis(BaseModel):
+    priority: str
+    estimated_hours: float
+    dependencies: List[str]
+    risk_factors: List[str]
+
+# Generate structured output
+analysis = await llm.generate_structured(
+    message="Analyze this project task: 'Implement user authentication system'",
+    response_model=TaskAnalysis
+)
+
+print(f"Priority: {analysis.priority}")
+print(f"Estimated hours: {analysis.estimated_hours}")
+```
+
+## Configuration and Setup
+
+### Basic Configuration
+
+```yaml
+# mcp_agent.config.yaml
+execution_engine: asyncio
+
+# OpenAI configuration
+openai:
+  default_model: "gpt-4o"
+  reasoning_effort: "medium"
+
+# Anthropic configuration
+anthropic:
+  default_model: "claude-3-5-sonnet-latest"
+
+# MCP servers for tool access
+mcp:
+  servers:
+    filesystem:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-filesystem"]
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+```
+
+### Model Preferences
+
+Control model selection with preferences:
+
+```python
+from mcp_agent.workflows.llm.augmented_llm import RequestParams
+from mcp_agent.workflows.llm.llm_selector import ModelPreferences
+
+# Configure model selection preferences
+request_params = RequestParams(
+    modelPreferences=ModelPreferences(
+        costPriority=0.3,         # 30% weight on cost
+        speedPriority=0.4,        # 40% weight on speed
+        intelligencePriority=0.3  # 30% weight on intelligence
+    ),
+    maxTokens=4096,
+    temperature=0.7,
+    max_iterations=10
+)
+
+# Use preferences in generation
+result = await llm.generate_str(
+    message="Explain quantum computing",
+    request_params=request_params
+)
+```
+
+### Advanced Request Parameters
+
+```python
+# Comprehensive request configuration
+advanced_params = RequestParams(
+    model="gpt-4o",                    # Override model selection
+    maxTokens=2048,                    # Response length limit
+    temperature=0.7,                   # Creativity level
+    max_iterations=10,                 # Tool use iterations
+    parallel_tool_calls=False,         # Sequential tool execution
+    use_history=True,                  # Include conversation history
+    systemPrompt="You are an expert developer",
+    stopSequences=["END", "STOP"],
+    user="user_123"                    # User identifier
+)
+```
+
+## Integration Patterns
+
+### Agent-LLM Integration
+
+The standard pattern for using augmented LLMs with agents:
+
+```python
+# 1. Create agent with capabilities
+agent = Agent(
+    name="data_analyst",
+    instruction="""You are a data analyst with access to databases and
+    file systems. Help users analyze data and generate insights.""",
+    server_names=["database", "filesystem", "visualization"]
+)
+
+# 2. Connect to servers and attach LLM
+async with agent:
+    # Discover available tools
+    tools = await agent.list_tools()
+    print(f"Available tools: {[tool.name for tool in tools.tools]}")
+
+    # Attach preferred LLM provider
+    llm = await agent.attach_llm(OpenAIAugmentedLLM)
+
+    # 3. Use LLM with full agent capabilities
+    result = await llm.generate_str(
+        "Analyze the sales data from Q1 and create a summary report"
+    )
+```
+
+### Memory Management
+
+Augmented LLMs automatically manage conversation memory:
+
+```python
+# Access conversation history
+last_message = await llm.get_last_message()
+last_message_text = await llm.get_last_message_str()
+
+# Clear memory if needed
+llm.history.clear()
+
+# Set specific history
+from mcp_agent.workflows.llm.augmented_llm import SimpleMemory
+llm.history = SimpleMemory()
+llm.history.extend(previous_messages)
+```
+
+## Generation Methods
+
+### Basic Text Generation
+
+```python
+# Simple text generation
+response = await llm.generate_str("What is machine learning?")
+
+# Advanced generation with parameters
+response = await llm.generate_str(
+    message="Explain neural networks",
+    request_params=RequestParams(
+        maxTokens=1000,
+        temperature=0.5
+    )
+)
+```
+
+### Raw Message Generation
+
+```python
+# Get raw message objects
+messages = await llm.generate("Explain quantum computing")
+
+# Process individual messages
+for message in messages:
+    content = llm.message_str(message)
+    print(f"Message content: {content}")
+```
+
+### Structured Generation
+
+```python
+from pydantic import BaseModel
+from typing import List, Optional
+
+class CodeReview(BaseModel):
+    summary: str
+    issues: List[str]
+    suggestions: List[str]
+    score: int  # 1-10
+    approved: bool
+
+# Generate structured code review
+review = await llm.generate_structured(
+    message="Review this Python function: def factorial(n): return n * factorial(n-1)",
+    response_model=CodeReview
+)
+
+print(f"Review score: {review.score}")
+print(f"Approved: {review.approved}")
+```
+
+## Real-World Examples
+
+### Multi-Agent Collaboration
+
+```python
+# Research agent
+research_agent = Agent(
+    name="researcher",
+    instruction="You research topics and gather information.",
+    server_names=["fetch", "database"]
+)
+
+# Analysis agent
+analysis_agent = Agent(
+    name="analyst",
+    instruction="You analyze data and create insights.",
+    server_names=["filesystem", "visualization"]
+)
+
+async with research_agent, analysis_agent:
+    # Research phase
+    research_llm = await research_agent.attach_llm(OpenAIAugmentedLLM)
+    research_data = await research_llm.generate_str(
+        "Research the latest trends in renewable energy"
+    )
+
+    # Analysis phase
+    analysis_llm = await analysis_agent.attach_llm(AnthropicAugmentedLLM)
+    analysis = await analysis_llm.generate_str(
+        f"Analyze this research data and create actionable insights: {research_data}"
+    )
+```
+
+### Content Generation Pipeline
+
+```python
+from pydantic import BaseModel
+
+class ContentPlan(BaseModel):
+    title: str
+    outline: List[str]
+    target_length: int
+    keywords: List[str]
+
+class BlogPost(BaseModel):
+    title: str
+    content: str
+    meta_description: str
+    tags: List[str]
+
+# Content planning
+plan = await llm.generate_structured(
+    message="Create a content plan for a blog post about sustainable technology",
+    response_model=ContentPlan
+)
+
+# Content generation
+blog_post = await llm.generate_structured(
+    message=f"""Write a blog post based on this plan:
+    Title: {plan.title}
+    Outline: {plan.outline}
+    Target length: {plan.target_length} words
+    Keywords: {plan.keywords}""",
+    response_model=BlogPost
+)
+```
+
+<CardGroup>
+  <Card title="Agent Integration" href="/concepts/agents">
+    Learn how agents use augmented LLMs for enhanced capabilities.
+  </Card>
+  <Card title="MCP Servers" href="/concepts/mcp-servers">
+    Understand how MCP servers provide tools and data to augmented LLMs.
+  </Card>
+  <Card
+    title="Examples"
+    href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples"
+  >
+    Explore practical examples of augmented LLMs in action.
+  </Card>
+</CardGroup>

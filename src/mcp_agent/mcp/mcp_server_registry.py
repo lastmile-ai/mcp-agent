@@ -70,11 +70,18 @@ class ServerRegistry:
             config (Settings): The Settings object containing the server configurations.
             config_path (str): Path to the YAML configuration file.
         """
-        self.registry = (
+        mcp_servers = (
             self.load_registry_from_file(config_path)
             if config is None
             else config.mcp.servers
         )
+
+        # Use default server name if config name not defined
+        for server_name in mcp_servers:
+            if mcp_servers[server_name].name is None:
+                mcp_servers[server_name].name = server_name
+
+        self.registry = mcp_servers
         self.init_hooks: Dict[str, InitHookCallable] = {}
         self.connection_manager = MCPConnectionManager(self)
 

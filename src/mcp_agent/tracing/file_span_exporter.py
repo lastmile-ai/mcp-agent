@@ -1,7 +1,7 @@
 from datetime import datetime
 from os import linesep
 from pathlib import Path
-from typing import Callable, Optional, Sequence
+from typing import Callable, Sequence
 import uuid
 
 from opentelemetry.sdk.trace import ReadableSpan
@@ -18,24 +18,30 @@ class FileSpanExporter(SpanExporter):
 
     def __init__(
         self,
-        service_name: Optional[str] = None,
-        session_id: Optional[str] = None,
+        service_name: str | None = None,
+        session_id: str | None = None,
         formatter: Callable[[ReadableSpan], str] = lambda span: span.to_json(
             indent=None
         )
         + linesep,
-        path_settings: Optional[TracePathSettings] = None,
+        path_settings: TracePathSettings | None = None,
+        custom_path: str | None = None,
     ):
         self.formatter = formatter
         self.service_name = service_name
         self.session_id = session_id or str(uuid.uuid4())
         self.path_settings = path_settings or TracePathSettings()
+        self.custom_path = custom_path
         self.filepath = Path(self._get_trace_filename())
         # Create directory if it doesn't exist
         self.filepath.parent.mkdir(parents=True, exist_ok=True)
 
     def _get_trace_filename(self) -> str:
         """Generate a trace filename based on the path settings."""
+        # If custom_path is provided, use it directly
+        if self.custom_path:
+            return self.custom_path
+
         path_pattern = self.path_settings.path_pattern
         unique_id_type = self.path_settings.unique_id
 
@@ -53,7 +59,6 @@ class FileSpanExporter(SpanExporter):
         return path_pattern.replace("{unique_id}", unique_id)
 
     def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
-        logger.info("EXPORTING SPANS TO FILE", data={"spans": spans})
         try:
             with open(self.filepath, "a", encoding="utf-8") as f:
                 for span in spans:

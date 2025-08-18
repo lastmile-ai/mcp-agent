@@ -7,9 +7,13 @@ This example demonstrates three approaches to creating agents and workflows:
 3. Declarative agent configuration using FastMCPApp decorators
 """
 
+import argparse
 import asyncio
 import os
 import logging
+from typing import Dict, Any
+
+from mcp.server.fastmcp import FastMCP
 
 from mcp_agent.app import MCPApp
 from mcp_agent.server.app_server import create_mcp_server_for_app
@@ -20,13 +24,22 @@ from mcp_agent.workflows.llm.augmented_llm_anthropic import AnthropicAugmentedLL
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 from mcp_agent.workflows.parallel.parallel_llm import ParallelLLM
 from mcp_agent.executor.workflow import Workflow, WorkflowResult
+from mcp_agent.tracing.token_counter import TokenNode
 
 # Initialize logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Create a single FastMCPApp instance (which extends MCPApp)
-app = MCPApp(name="basic_agent_server", description="Basic agent server example")
+# Note: This is purely optional:
+# if not provided, a default FastMCP server will be created by MCPApp using create_mcp_server_for_app()
+mcp = FastMCP(name="basic_agent_server", description="My basic agent server example.")
+
+# Define the MCPApp instance
+app = MCPApp(
+    name="basic_agent_server",
+    description="Basic agent server example",
+    mcp=mcp,
+)
 
 
 @app.workflow
@@ -166,7 +179,133 @@ class ParallelWorkflow(Workflow[str]):
         return WorkflowResult(value=result)
 
 
+# Add custom tool to get token usage for a workflow
+@mcp.tool(
+    name="get_token_usage",
+    structured_output=True,
+    description="""
+Get detailed token usage information for a specific workflow run.
+
+This provides a comprehensive breakdown of token usage including:
+- Total tokens used across all LLM calls within the workflow
+- Breakdown by model provider and specific models
+- Hierarchical usage tree showing usage at each level (workflow -> agent -> llm)
+- Total cost estimate based on model pricing
+
+Args:
+    workflow_id: Optional workflow ID (if multiple workflows have the same name)
+    run_id: Optional ID of the workflow run to get token usage for
+    workflow_name: Optional name of the workflow (used as fallback)
+
+Returns:
+    Detailed token usage information for the specific workflow run
+""",
+)
+async def get_workflow_token_usage(
+    workflow_id: str | None = None,
+    run_id: str | None = None,
+    workflow_name: str | None = None,
+) -> Dict[str, Any]:
+    """Get token usage information for a specific workflow run."""
+    context = app.context
+
+    if not context.token_counter:
+        return {
+            "error": "Token counter not available",
+            "message": "Token tracking is not enabled for this application",
+        }
+
+    # Find the specific workflow node
+    workflow_node = await context.token_counter.get_workflow_node(
+        name=workflow_name, workflow_id=workflow_id, run_id=run_id
+    )
+
+    if not workflow_node:
+        return {
+            "error": "Workflow not found",
+            "message": f"Could not find workflow with run_id='{run_id}'",
+        }
+
+    # Get the aggregated usage for this workflow
+    workflow_usage = workflow_node.aggregate_usage()
+
+    # Calculate cost for this workflow
+    workflow_cost = context.token_counter._calculate_node_cost(workflow_node)
+
+    # Build the response
+    result = {
+        "workflow": {
+            "name": workflow_node.name,
+            "run_id": workflow_node.metadata.get("run_id"),
+            "workflow_id": workflow_node.metadata.get("workflow_id"),
+        },
+        "usage": {
+            "input_tokens": workflow_usage.input_tokens,
+            "output_tokens": workflow_usage.output_tokens,
+            "total_tokens": workflow_usage.total_tokens,
+        },
+        "cost": round(workflow_cost, 4),
+        "model_breakdown": {},
+        "usage_tree": workflow_node.to_dict(),
+    }
+
+    # Get model breakdown for this workflow
+    model_usage = {}
+
+    def collect_model_usage(node: TokenNode):
+        """Recursively collect model usage from a node tree"""
+        if node.usage.model_name:
+            model_name = node.usage.model_name
+            provider = node.usage.model_info.provider if node.usage.model_info else None
+
+            # Use tuple as key to handle same model from different providers
+            model_key = (model_name, provider)
+
+            if model_key not in model_usage:
+                model_usage[model_key] = {
+                    "model_name": model_name,
+                    "provider": provider,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "total_tokens": 0,
+                }
+
+            model_usage[model_key]["input_tokens"] += node.usage.input_tokens
+            model_usage[model_key]["output_tokens"] += node.usage.output_tokens
+            model_usage[model_key]["total_tokens"] += node.usage.total_tokens
+
+        for child in node.children:
+            collect_model_usage(child)
+
+    collect_model_usage(workflow_node)
+
+    # Calculate costs for each model and format for output
+    for (model_name, provider), usage in model_usage.items():
+        cost = context.token_counter.calculate_cost(
+            model_name, usage["input_tokens"], usage["output_tokens"], provider
+        )
+
+        # Create display key with provider info if available
+        display_key = f"{model_name} ({provider})" if provider else model_name
+
+        result["model_breakdown"][display_key] = {
+            **usage,
+            "cost": round(cost, 4),
+        }
+
+    return result
+
+
 async def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--custom-fastmcp-settings",
+        action="store_true",
+        help="Enable custom FastMCP settings for the server",
+    )
+    args = parser.parse_args()
+    use_custom_fastmcp_settings = args.custom_fastmcp_settings
+
     async with app.run() as agent_app:
         # Add the current directory to the filesystem server's args if needed
         context = agent_app.context
@@ -180,8 +319,15 @@ async def main():
         for workflow_id in agent_app.workflows:
             logger.info(f"  - {workflow_id}")
 
-        # Create the MCP server that exposes both workflows and agent configurations
-        mcp_server = create_mcp_server_for_app(agent_app)
+        # Create the MCP server that exposes both workflows and agent configurations,
+        # optionally using custom FastMCP settings
+        fast_mcp_settings = (
+            {"host": "localhost", "port": 8001, "debug": True, "log_level": "DEBUG"}
+            if use_custom_fastmcp_settings
+            else None
+        )
+        mcp_server = create_mcp_server_for_app(agent_app, **(fast_mcp_settings or {}))
+        logger.info(f"MCP Server settings: {mcp_server.settings}")
 
         # Run the server
         await mcp_server.run_stdio_async()

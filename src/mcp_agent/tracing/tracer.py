@@ -16,36 +16,47 @@ logger = get_logger(__name__)
 
 
 class TracingConfig:
-    """Global configuration for the tracing system."""
+    """Configuration for the tracing system."""
 
-    _initialized = False
+    _global_provider_set = False  # Track if global provider has been set
+    _instrumentation_initialized = (
+        False  # Class variable to track global instrumentation
+    )
 
-    @classmethod
+    def __init__(self):
+        self._tracer_provider = None
+
     async def configure(
-        cls,
+        self,
         settings: OpenTelemetrySettings,
         session_id: str | None = None,
+        force: bool = False,
     ):
         """
         Configure the tracing system.
 
         Args:
+            settings: OpenTelemetry settings
             session_id: Optional session ID for exported traces
-            **kwargs: Additional configuration options
+            force: Force reconfiguration even if already initialized
         """
-        if cls._initialized:
-            return
-
         if not settings.enabled:
             logger.info("OpenTelemetry is disabled. Skipping configuration.")
             return
 
-        # Check if a provider is already set to avoid re-initialization
-        if isinstance(trace.get_tracer_provider(), TracerProvider):
+        # Check if we should skip configuration
+        if self._tracer_provider and not force:
             logger.info(
-                f"Otel tracer provider already set: {trace.get_tracer_provider().__class__.__name__}"
+                "Tracer provider already configured for this instance, skipping reconfiguration"
             )
             return
+
+        # If force and we have an existing provider, shutdown
+        if force and self._tracer_provider:
+            logger.info("Force reconfiguring tracer provider")
+            if hasattr(self._tracer_provider, "shutdown"):
+                self._tracer_provider.shutdown()
+            self._tracer_provider = None
 
         # Set up global textmap propagator first
         set_global_textmap(TraceContextTextMapPropagator())
@@ -94,7 +105,10 @@ class TracingConfig:
                 if settings.otlp_settings:
                     tracer_provider.add_span_processor(
                         BatchSpanProcessor(
-                            OTLPSpanExporter(endpoint=settings.otlp_settings.endpoint)
+                            OTLPSpanExporter(
+                                endpoint=settings.otlp_settings.endpoint,
+                                headers=settings.otlp_settings.headers,
+                            )
                         )
                     )
                 else:
@@ -108,6 +122,7 @@ class TracingConfig:
                             service_name=settings.service_name,
                             session_id=session_id,
                             path_settings=settings.path_settings,
+                            custom_path=settings.path,
                         )
                     )
                 )
@@ -117,26 +132,93 @@ class TracingConfig:
                     f"Unknown exporter '{exporter}' specified. Supported exporters: console, otlp, file."
                 )
 
-        # Set as global tracer provider
-        trace.set_tracer_provider(tracer_provider)
+        # Store the tracer provider instance
+        self._tracer_provider = tracer_provider
 
-        # Set up autoinstrumentation
-        # pylint: disable=import-outside-toplevel (do not import if otel is not enabled)
-        try:
-            from opentelemetry.instrumentation.anthropic import AnthropicInstrumentor
-
-            AnthropicInstrumentor().instrument()
-        except ModuleNotFoundError:
-            logger.error(
-                "Anthropic otel instrumentation not available. Please install opentelemetry-instrumentation-anthropic."
-            )
-        try:
-            from opentelemetry.instrumentation.openai import OpenAIInstrumentor
-
-            OpenAIInstrumentor().instrument()
-        except ModuleNotFoundError:
-            logger.error(
-                "OpenAI otel instrumentation not available. Please install opentelemetry-instrumentation-anthropic."
+        # Only set the global provider once
+        if not TracingConfig._global_provider_set and isinstance(
+            trace.get_tracer_provider(), trace.ProxyTracerProvider
+        ):
+            trace.set_tracer_provider(tracer_provider)
+            TracingConfig._global_provider_set = True
+            logger.info(f"Set global tracer provider for service: {service_name}")
+        else:
+            logger.info(
+                f"Global tracer provider already set, created local provider for service: {service_name}"
             )
 
-        cls._initialized = True
+        # Set up autoinstrumentation only once globally
+        if not TracingConfig._instrumentation_initialized:
+            # pylint: disable=import-outside-toplevel (do not import if otel is not enabled)
+            try:
+                from opentelemetry.instrumentation.anthropic import (
+                    AnthropicInstrumentor,
+                )
+
+                if not AnthropicInstrumentor().is_instrumented_by_opentelemetry:
+                    AnthropicInstrumentor().instrument()
+            except ModuleNotFoundError:
+                logger.error(
+                    "Anthropic OTEL instrumentation not available. Please install opentelemetry-instrumentation-anthropic."
+                )
+            try:
+                from opentelemetry.instrumentation.openai import OpenAIInstrumentor
+
+                if not OpenAIInstrumentor().is_instrumented_by_opentelemetry:
+                    OpenAIInstrumentor().instrument()
+            except ModuleNotFoundError:
+                logger.error(
+                    "OpenAI OTEL instrumentation not available. Please install opentelemetry-instrumentation-anthropic."
+                )
+
+            TracingConfig._instrumentation_initialized = True
+
+    def get_tracer(self, name: str):
+        """Get a tracer from this configuration's provider."""
+        if self._tracer_provider:
+            return self._tracer_provider.get_tracer(name)
+        return trace.get_tracer(name)
+
+    async def flush(self, timeout_ms: int = 5000) -> bool:
+        """
+        Force flush all pending spans to ensure they are exported.
+
+        Args:
+            timeout_ms: Maximum time to wait for flush in milliseconds
+
+        Returns:
+            True if flush succeeded, False otherwise
+        """
+        if not self._tracer_provider:
+            return True
+
+        if hasattr(self._tracer_provider, "force_flush"):
+            try:
+                # force_flush returns True if all spans were successfully flushed
+                success = self._tracer_provider.force_flush(timeout_millis=timeout_ms)
+                if not success:
+                    logger.warning(
+                        f"Failed to flush all traces within {timeout_ms}ms timeout"
+                    )
+                return success
+            except Exception as e:
+                logger.error(f"Error flushing traces: {e}")
+                return False
+
+        return True
+
+    def shutdown(self):
+        """
+        Shutdown the tracer provider and all its processors.
+        This stops all background threads and ensures clean shutdown.
+        """
+        if not self._tracer_provider:
+            return
+
+        if hasattr(self._tracer_provider, "shutdown"):
+            try:
+                logger.debug("Shutting down tracer provider")
+                self._tracer_provider.shutdown()
+                self._tracer_provider = None
+            except Exception as e:
+                logger.error(f"Error shutting down tracer provider: {e}")

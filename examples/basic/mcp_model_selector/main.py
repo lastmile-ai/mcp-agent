@@ -108,6 +108,95 @@ async def example_usage(model_selector: ModelSelector):
         data={"model_preferences": model_preferences, "model": model},
     )
 
+    # Examples showcasing new filtering capabilities
+    print("\n[bold cyan]Testing new filtering capabilities:[/bold cyan]")
+
+    # Example 1: Models with large context windows (> 100k tokens)
+    model_preferences = ModelPreferences(
+        costPriority=0.2, speedPriority=0.3, intelligencePriority=0.5
+    )
+    model = model_selector.select_best_model(
+        model_preferences=model_preferences, min_tokens=100000
+    )
+    logger.info(
+        "Best model with context window > 100k tokens:",
+        data={
+            "model_preferences": model_preferences,
+            "model": model,
+            "context_window": model.context_window,
+        },
+    )
+
+    # Example 2: Models with tool calling support
+    model_preferences = ModelPreferences(
+        costPriority=0.3, speedPriority=0.3, intelligencePriority=0.4
+    )
+    model = model_selector.select_best_model(
+        model_preferences=model_preferences, tool_calling=True
+    )
+    logger.info(
+        "Best model with tool calling support:",
+        data={
+            "model_preferences": model_preferences,
+            "model": model,
+            "tool_calling": model.tool_calling,
+        },
+    )
+
+    # Example 3: Models with structured outputs (JSON mode)
+    model_preferences = ModelPreferences(
+        costPriority=0.4, speedPriority=0.3, intelligencePriority=0.3
+    )
+    model = model_selector.select_best_model(
+        model_preferences=model_preferences, structured_outputs=True
+    )
+    logger.info(
+        "Best model with structured outputs support:",
+        data={
+            "model_preferences": model_preferences,
+            "model": model,
+            "structured_outputs": model.structured_outputs,
+        },
+    )
+
+    # Example 4: Models with medium context window (50k-150k tokens) and tool calling
+    model_preferences = ModelPreferences(
+        costPriority=0.25, speedPriority=0.25, intelligencePriority=0.5
+    )
+    model = model_selector.select_best_model(
+        model_preferences=model_preferences,
+        min_tokens=50000,
+        max_tokens=150000,
+        tool_calling=True,
+    )
+    logger.info(
+        "Best model with 50k-150k context window and tool calling:",
+        data={
+            "model_preferences": model_preferences,
+            "model": model,
+            "context_window": model.context_window,
+            "tool_calling": model.tool_calling,
+        },
+    )
+
+    # Example 5: Fast models with both tool calling and structured outputs
+    model_preferences = ModelPreferences(
+        costPriority=0.2, speedPriority=0.7, intelligencePriority=0.1
+    )
+    model = model_selector.select_best_model(
+        model_preferences=model_preferences, tool_calling=True, structured_outputs=True
+    )
+    logger.info(
+        "Fastest model with both tool calling and structured outputs:",
+        data={
+            "model_preferences": model_preferences,
+            "model": model,
+            "tool_calling": model.tool_calling,
+            "structured_outputs": model.structured_outputs,
+            "speed": model.metrics.speed.tokens_per_second,
+        },
+    )
+
 
 if __name__ == "__main__":
     import time

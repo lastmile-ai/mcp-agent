@@ -25,12 +25,11 @@ class TestAnthropicAugmentedLLM:
     """
 
     @pytest.fixture
-    def mock_llm(self):
+    def mock_llm(self, mock_context):
         """
         Creates a mock LLM instance with common mocks set up.
         """
         # Setup mock objects
-        mock_context = MagicMock()
         mock_context.config.anthropic = AnthropicSettings(api_key="test_key")
         mock_context.config.default_model = "claude-3-7-sonnet-latest"
 
@@ -809,3 +808,253 @@ class TestAnthropicAugmentedLLM:
         assert isinstance(result, TestResponseModel)
         assert result.name == "MixedTypes"
         assert result.value == 123
+
+    # Test 25: System Prompt Not None in API Call
+    @pytest.mark.asyncio
+    async def test_system_prompt_not_none_in_api_call(self, mock_llm, default_usage):
+        """
+        Tests that system prompt is not None when passed to anthropic.messages.create.
+        This verifies the fix for the system prompt handling bug.
+        """
+        # Setup mock executor to capture the arguments passed
+        captured_payload = None
+
+        async def capture_execute(*args, **kwargs):
+            nonlocal captured_payload
+            captured_payload = args[1].payload
+            return self.create_text_message("Test response", default_usage)
+
+        mock_llm.executor.execute = AsyncMock(side_effect=capture_execute)
+
+        # Test 1: With systemPrompt in RequestParams
+        system_prompt = "You are a helpful assistant."
+        request_params = RequestParams(systemPrompt=system_prompt)
+        await mock_llm.generate("Test query", request_params)
+
+        # Verify system prompt is included and not None
+        assert "system" in captured_payload
+        assert captured_payload["system"] == system_prompt
+        assert captured_payload["system"] is not None
+
+        # Test 2: With instruction set on LLM instance
+        mock_llm.instruction = "You are a pirate assistant."
+        await mock_llm.generate("Test query")
+
+        # Verify instruction is used as system prompt
+        assert "system" in captured_payload
+        assert captured_payload["system"] == "You are a pirate assistant."
+        assert captured_payload["system"] is not None
+
+        # Test 3: Both instruction and systemPrompt provided
+        mock_llm.instruction = "Default instruction"
+        request_params = RequestParams(systemPrompt="Override system prompt")
+        await mock_llm.generate("Test query", request_params)
+
+        # Verify instruction takes precedence
+        assert "system" in captured_payload
+        assert captured_payload["system"] == "Default instruction"
+        assert captured_payload["system"] is not None
+
+        # Test 4: Neither instruction nor systemPrompt provided
+        mock_llm.instruction = None
+        request_params = RequestParams()
+        await mock_llm.generate("Test query", request_params)
+
+        # Verify system is not included when neither is provided
+        assert "system" not in captured_payload
+
+
+class TestAnthropicTokenCounting:
+    """
+    Tests for token counting integration in AnthropicAugmentedLLM.
+    """
+
+    @pytest.fixture
+    def mock_llm_with_token_counter(self):
+        """
+        Creates a mock LLM instance with token counter enabled.
+        """
+        # Setup mock objects
+        mock_context = MagicMock()
+        mock_context.config.anthropic = AnthropicSettings(api_key="test_key")
+        mock_context.config.default_model = "claude-3-7-sonnet-latest"
+        mock_context.tracing_enabled = True
+
+        # Create a real TokenCounter
+        from mcp_agent.tracing.token_counter import TokenCounter
+
+        mock_context.token_counter = TokenCounter()
+
+        # Create LLM instance
+        llm = AnthropicAugmentedLLM(name="test", context=mock_context)
+
+        # Setup common mocks
+        llm.agent = MagicMock()
+        llm.agent.list_tools = AsyncMock(return_value=MagicMock(tools=[]))
+        llm.history = MagicMock()
+        llm.history.get = MagicMock(return_value=[])
+        llm.history.set = MagicMock()
+        llm.select_model = AsyncMock(return_value="claude-3-7-sonnet-latest")
+        llm._log_chat_progress = MagicMock()
+        llm._log_chat_finished = MagicMock()
+
+        # Create executor mock
+        llm.executor = MagicMock()
+        llm.executor.execute = AsyncMock()
+
+        return llm
+
+    @pytest.mark.asyncio
+    async def test_token_counting_with_decorator(self, mock_llm_with_token_counter):
+        """
+        Test that the @track_tokens decorator properly tracks token usage.
+        """
+        # Create a mock response with usage
+        usage = Usage(
+            cache_creation_input_tokens=0,
+            cache_read_input_tokens=0,
+            input_tokens=100,
+            output_tokens=50,
+        )
+
+        mock_llm_with_token_counter.executor.execute = AsyncMock(
+            return_value=Message(
+                role="assistant",
+                content=[TextBlock(type="text", text="Test response")],
+                model="claude-3-7-sonnet-latest",
+                stop_reason="end_turn",
+                id="test_id",
+                type="message",
+                usage=usage,
+            )
+        )
+
+        # The token counter should have no context initially
+        assert len(mock_llm_with_token_counter.context.token_counter._stack) == 0
+
+        # Call generate (which has @track_tokens decorator)
+        await mock_llm_with_token_counter.generate("Test query")
+
+        # After the call, the stack should be empty again (pushed and popped)
+        assert len(mock_llm_with_token_counter.context.token_counter._stack) == 0
+
+        # Check that tokens were recorded in the global usage
+        usage_by_model = (
+            mock_llm_with_token_counter.context.token_counter._usage_by_model
+        )
+        assert ("claude-3-7-sonnet-latest", "anthropic") in usage_by_model
+
+        recorded_usage = usage_by_model[("claude-3-7-sonnet-latest", "anthropic")]
+        assert recorded_usage.input_tokens == 100
+        assert recorded_usage.output_tokens == 50
+        assert recorded_usage.total_tokens == 150
+
+    @pytest.mark.asyncio
+    async def test_token_counting_nested_calls(self, mock_llm_with_token_counter):
+        """
+        Test token counting with nested contexts (app -> workflow -> llm).
+        """
+        usage = Usage(
+            cache_creation_input_tokens=0,
+            cache_read_input_tokens=0,
+            input_tokens=200,
+            output_tokens=100,
+        )
+
+        mock_llm_with_token_counter.executor.execute = AsyncMock(
+            return_value=Message(
+                role="assistant",
+                content=[TextBlock(type="text", text="Test response")],
+                model="claude-3-7-sonnet-latest",
+                stop_reason="end_turn",
+                id="test_id",
+                type="message",
+                usage=usage,
+            )
+        )
+
+        # Simulate app and workflow contexts
+        token_counter = mock_llm_with_token_counter.context.token_counter
+        await token_counter.push("test_app", "app")
+        await token_counter.push("test_workflow", "workflow")
+
+        # Call generate
+        await mock_llm_with_token_counter.generate("Test query")
+
+        # Pop workflow and app contexts
+        workflow_node = await token_counter.pop()
+        app_node = await token_counter.pop()
+
+        # Check aggregated usage
+        assert workflow_node.aggregate_usage().total_tokens == 300  # 200 + 100
+        assert app_node.aggregate_usage().total_tokens == 300  # Includes child usage
+
+    @pytest.mark.asyncio
+    async def test_token_counting_summary(self, mock_llm_with_token_counter):
+        """
+        Test getting token usage summary after multiple calls.
+        In real usage, there would be a higher-level context (app/workflow) that persists.
+        """
+        # Push a persistent context (simulating an app or workflow)
+        token_counter = mock_llm_with_token_counter.context.token_counter
+        await token_counter.push("test_app", "app")
+
+        # First call with one model
+        usage1 = Usage(
+            input_tokens=100,
+            output_tokens=50,
+            cache_creation_input_tokens=0,
+            cache_read_input_tokens=0,
+        )
+        mock_llm_with_token_counter.executor.execute = AsyncMock(
+            return_value=Message(
+                role="assistant",
+                content=[TextBlock(type="text", text="Response 1")],
+                model="claude-3-7-sonnet-latest",
+                stop_reason="end_turn",
+                id="test_1",
+                type="message",
+                usage=usage1,
+            )
+        )
+
+        await mock_llm_with_token_counter.generate("Query 1")
+
+        # Second call with same model
+        usage2 = Usage(
+            input_tokens=200,
+            output_tokens=100,
+            cache_creation_input_tokens=0,
+            cache_read_input_tokens=0,
+        )
+        mock_llm_with_token_counter.executor.execute = AsyncMock(
+            return_value=Message(
+                role="assistant",
+                content=[TextBlock(type="text", text="Response 2")],
+                model="claude-3-7-sonnet-latest",
+                stop_reason="end_turn",
+                id="test_2",
+                type="message",
+                usage=usage2,
+            )
+        )
+
+        await mock_llm_with_token_counter.generate("Query 2")
+
+        # Pop the app context
+        await token_counter.pop()
+
+        # Get summary
+        summary = await mock_llm_with_token_counter.context.token_counter.get_summary()
+
+        # Check total usage (should aggregate both calls)
+        assert summary.usage.input_tokens == 300  # 100 + 200
+        assert summary.usage.output_tokens == 150  # 50 + 100
+        assert summary.usage.total_tokens == 450
+
+        # Check by model (global tracking still works)
+        assert "claude-3-7-sonnet-latest (anthropic)" in summary.model_usage
+        model_summary = summary.model_usage["claude-3-7-sonnet-latest (anthropic)"]
+        assert model_summary.usage.input_tokens == 300
+        assert model_summary.usage.output_tokens == 150
+        assert model_summary.provider == "anthropic"

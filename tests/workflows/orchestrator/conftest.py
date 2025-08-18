@@ -59,6 +59,9 @@ def mock_context():
     context.model_selector = MagicMock()
     context.model_selector.select_model = MagicMock(return_value="test-model")
 
+    # Add token_counter attribute
+    context.token_counter = None
+
     return context
 
 

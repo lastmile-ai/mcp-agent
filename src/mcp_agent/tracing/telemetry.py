@@ -13,6 +13,9 @@ from opentelemetry import trace
 from opentelemetry.trace import SpanKind, Status, StatusCode
 
 from mcp_agent.core.context_dependent import ContextDependent
+from mcp.types import (
+    CallToolResult,
+)
 
 if TYPE_CHECKING:
     from mcp_agent.core.context import Context
@@ -101,6 +104,10 @@ def serialize_attribute(key: str, value: Any) -> Dict[str, Any]:
         for sub_key, sub_value in value.items():
             serialized.update(serialize_attribute(f"{key}.{sub_key}", sub_value))
 
+    elif isinstance(value, (list, tuple)):
+        for idx, item in enumerate(value):
+            serialized.update(serialize_attribute(f"{key}.{idx}", item))
+
     elif isinstance(value, Callable):
         serialized[f"{key}_callable_name"] = getattr(value, "__qualname__", str(value))
         serialized[f"{key}_callable_module"] = getattr(value, "__module__", "unknown")
@@ -109,6 +116,11 @@ def serialize_attribute(key: str, value: Any) -> Dict[str, Any]:
     elif inspect.iscoroutine(value):
         serialized[f"{key}_coroutine"] = str(value)
         serialized[f"{key}_is_coroutine"] = True
+
+    else:
+        s = str(value)
+        # TODO: jerron - Truncate very long strings. Not sure if this is necessary.
+        serialized[key] = s if len(s) < 256 else s[:255] + "…"
 
     return serialized
 
@@ -127,7 +139,7 @@ def serialize_attributes(
     return serialized
 
 
-def record_attribute(span, key, value):
+def record_attribute(span: trace.Span, key, value):
     """Record a single serializable value on the span."""
     if is_otel_serializable(value):
         span.set_attribute(key, value)
@@ -137,7 +149,7 @@ def record_attribute(span, key, value):
             span.set_attribute(attr_key, attr_value)
 
 
-def record_attributes(span, attributes: Dict[str, Any], prefix: str = ""):
+def record_attributes(span: trace.Span, attributes: Dict[str, Any], prefix: str = ""):
     """Record a dict of attributes on the span after serialization."""
     serialized = serialize_attributes(attributes, prefix)
     for attr_key, attr_value in serialized.items():
@@ -160,7 +172,34 @@ def get_tracer(context: "Context") -> trace.Tracer:
     """
     Get the OpenTelemetry tracer for the context.
     """
-    return context.tracer or trace.get_tracer("mcp-agent")
+    return getattr(context, "tracer", None) or trace.get_tracer("mcp-agent")
+
+
+def annotate_span_for_call_tool_result(span: trace.Span, result: CallToolResult):
+    """
+    Annotate the span with attributes from the CallToolResult.
+    """
+    if hasattr(result, "isError"):
+        span.set_attribute("result.isError", result.isError)
+
+    result_content = getattr(result, "content", [])
+
+    if getattr(result, "isError", False):
+        span.set_status(trace.Status(trace.StatusCode.ERROR))
+        error_message = (
+            result_content[0].text
+            if len(result_content) > 0 and result_content[0].type == "text"
+            else "Error calling tool"
+        )
+        span.record_exception(Exception(error_message))
+
+    for idx, content in enumerate(result_content):
+        span.set_attribute(f"result.content.{idx}.type", content.type)
+        if content.type == "text":
+            span.set_attribute(
+                f"result.content.{idx}.text",
+                content.text,
+            )
 
 
 telemetry = TelemetryManager()

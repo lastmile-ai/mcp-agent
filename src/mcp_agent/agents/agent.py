@@ -23,7 +23,11 @@ from mcp.types import (
 
 from mcp_agent.core.context import Context
 from mcp_agent.tracing.semconv import GEN_AI_AGENT_NAME, GEN_AI_TOOL_NAME
-from mcp_agent.tracing.telemetry import get_tracer, record_attributes
+from mcp_agent.tracing.telemetry import (
+    annotate_span_for_call_tool_result,
+    get_tracer,
+    record_attributes,
+)
 from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
 from mcp_agent.mcp.mcp_aggregator import (
     MCPAggregator,
@@ -144,24 +148,10 @@ class Agent(BaseModel):
     # endregion
 
     def model_post_init(self, __context) -> None:
-        if self.context is None:
-            # Fall back to global context if available
-            from mcp_agent.core.context import get_current_context
-
-            self.context = get_current_context()
-
         # Map function names to tools
         self._function_tool_map = {
             (tool := FastTool.from_function(fn)).name: tool for fn in self.functions
         }
-
-        # Default human_input_callback from context, if absent
-        if self.human_input_callback is None:
-            ctx_handler = getattr(self.context, "human_input_handler", None)
-            if ctx_handler is not None:
-                self.human_input_callback = ctx_handler
-
-        self._agent_tasks = AgentTasks(self.context)
 
     async def attach_llm(
         self, llm_factory: Callable[..., LLM] | None = None, llm: LLM | None = None
@@ -203,8 +193,85 @@ class Agent(BaseModel):
             self.context.active_llm = self.llm
             return self.llm
 
+    async def get_token_node(self, return_all_matches: bool = False):
+        """Return this Agent's token node(s) from the global counter."""
+        if not self.context or not getattr(self.context, "token_counter", None):
+            return [] if return_all_matches else None
+        counter = self.context.token_counter
+        return (
+            await counter.get_agent_node(self.name, return_all_matches=True)
+            if return_all_matches
+            else await counter.get_agent_node(self.name)
+        )
+
+    async def get_token_usage(self):
+        """Return aggregated token usage for this Agent (including children)."""
+        node = await self.get_token_node()
+        return node.get_usage() if node else None
+
+    async def get_token_cost(self) -> float:
+        """Return total cost for this Agent (including children)."""
+        node = await self.get_token_node()
+        return node.get_cost() if node else 0.0
+
+    async def watch_tokens(
+        self,
+        callback,
+        *,
+        threshold: int | None = None,
+        throttle_ms: int | None = None,
+        include_subtree: bool = True,
+    ) -> str | None:
+        """Watch this Agent's token usage. Returns a watch_id or None if not available."""
+        if not self.context or not getattr(self.context, "token_counter", None):
+            return None
+        counter = self.context.token_counter
+        # If there are multiple nodes with the same agent name, register a name/type-based watch
+        nodes = await counter.get_agent_node(self.name, return_all_matches=True)
+        if isinstance(nodes, list) and len(nodes) > 1:
+            return await counter.watch(
+                callback,
+                node_name=self.name,
+                node_type="agent",
+                threshold=threshold,
+                throttle_ms=throttle_ms,
+                include_subtree=include_subtree,
+            )
+        # Otherwise fall back to watching a specific resolved node
+        node = (
+            nodes[0]
+            if isinstance(nodes, list) and nodes
+            else await self.get_token_node()
+        )
+        if not node:
+            return None
+        return await node.watch(
+            callback,
+            threshold=threshold,
+            throttle_ms=throttle_ms,
+            include_subtree=include_subtree,
+        )
+
+    async def format_token_tree(self) -> str:
+        node = await self.get_token_node()
+        if not node:
+            return "(no token usage)"
+        return node.format_tree()
+
     async def initialize(self, force: bool = False):
         """Initialize the agent."""
+
+        if self.initialized and not force:
+            return
+
+        if self.context is None:
+            # Fall back to global context if available
+            from mcp_agent.core.context import get_current_context
+
+            # Advisory: obtaining a global context can be unsafe in multithreaded runs
+            # Prefer explicitly setting agent.context = app.context when running per-thread apps
+            self.context = get_current_context()
+
         tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.initialize"
@@ -215,11 +282,16 @@ class Agent(BaseModel):
             span.set_attribute("force", force)
 
             async with self._init_lock:
-                if self.initialized and not force:
-                    return
-
                 span.add_event("initialize_start")
                 logger.debug(f"Initializing agent {self.name}...")
+
+                if self._agent_tasks is None:
+                    self._agent_tasks = AgentTasks(self.context)
+
+                if self.human_input_callback is None:
+                    ctx_handler = getattr(self.context, "human_input_handler", None)
+                    if ctx_handler is not None:
+                        self.human_input_callback = ctx_handler
 
                 executor = self.context.executor
 
@@ -269,6 +341,10 @@ class Agent(BaseModel):
         """
         logger.debug(f"Shutting down agent {self.name}...")
 
+        if not self.initialized:
+            logger.debug(f"Agent {self.name} is not initialized, skipping shutdown.")
+            return
+
         tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.shutdown"
@@ -312,15 +388,15 @@ class Agent(BaseModel):
         """
         Get the capabilities of a specific server.
         """
+        if not self.initialized:
+            await self.initialize()
+
         tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.get_capabilities"
         ) as span:
             span.set_attribute(GEN_AI_AGENT_NAME, self.name)
             span.set_attribute("initialized", self.initialized)
-
-            if not self.initialized:
-                await self.initialize()
 
             executor = self.context.executor
             result: Dict[str, ServerCapabilities] = await executor.execute(
@@ -366,6 +442,8 @@ class Agent(BaseModel):
         """
         Get the session data of a specific server.
         """
+        if not self.initialized:
+            await self.initialize()
 
         tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
@@ -373,9 +451,6 @@ class Agent(BaseModel):
         ) as span:
             span.set_attribute(GEN_AI_AGENT_NAME, self.name)
             span.set_attribute("initialized", self.initialized)
-
-            if not self.initialized:
-                await self.initialize()
 
             executor = self.context.executor
             result: GetServerSessionResponse = await executor.execute(
@@ -386,6 +461,9 @@ class Agent(BaseModel):
             return result
 
     async def list_tools(self, server_name: str | None = None) -> ListToolsResult:
+        if not self.initialized:
+            await self.initialize()
+
         tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.list_tools"
@@ -395,9 +473,6 @@ class Agent(BaseModel):
             span.set_attribute(
                 "human_input_callback", self.human_input_callback is not None
             )
-
-            if not self.initialized:
-                await self.initialize()
 
             if server_name:
                 span.set_attribute("server_name", server_name)
@@ -470,13 +545,7 @@ class Agent(BaseModel):
                 Tool(
                     name=HUMAN_INPUT_TOOL_NAME,
                     description=human_input_tool.description,
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "request": HumanInputRequest.model_json_schema()
-                        },
-                        "required": ["request"],
-                    },
+                    inputSchema=human_input_tool.parameters,
                 )
             )
 
@@ -490,6 +559,9 @@ class Agent(BaseModel):
         """
         List resources available to the agent from MCP servers.
         """
+        if not self.initialized:
+            await self.initialize()
+
         tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.list_resources"
@@ -498,9 +570,6 @@ class Agent(BaseModel):
             span.set_attribute("initialized", self.initialized)
             if server_name:
                 span.set_attribute("server_name", server_name)
-
-            if not self.initialized:
-                await self.initialize()
 
             executor = self.context.executor
             result: ListResourcesResult = await executor.execute(
@@ -513,6 +582,9 @@ class Agent(BaseModel):
         """
         Read a resource from an MCP server.
         """
+        if not self.initialized:
+            await self.initialize()
+
         tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.read_resource"
@@ -522,9 +594,6 @@ class Agent(BaseModel):
             span.set_attribute("uri", uri)
             if server_name:
                 span.set_attribute("server_name", server_name)
-
-            if not self.initialized:
-                await self.initialize()
 
             executor = self.context.executor
             result: ReadResourceResult = await executor.execute(
@@ -629,6 +698,10 @@ class Agent(BaseModel):
         return messages
 
     async def list_prompts(self, server_name: str | None = None) -> ListPromptsResult:
+        # Check if the agent is initialized
+        if not self.initialized:
+            await self.initialize()
+
         tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.list_prompts"
@@ -639,14 +712,10 @@ class Agent(BaseModel):
             if server_name:
                 span.set_attribute("server_name", server_name)
 
-            # Check if the agent is initialized
-            if not self.initialized:
-                await self.initialize()
-
             executor = self.context.executor
             result: ListPromptsResult = await executor.execute(
                 self._agent_tasks.list_prompts_task,
-                ListToolsRequest(agent_name=self.name, server_name=server_name),
+                ListPromptsRequest(agent_name=self.name, server_name=server_name),
             )
 
             if self.context.tracing_enabled:
@@ -678,6 +747,9 @@ class Agent(BaseModel):
         arguments: dict[str, str] | None = None,
         server_name: str | None = None,
     ) -> GetPromptResult:
+        if not self.initialized:
+            await self.initialize()
+
         tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.get_prompt"
@@ -687,9 +759,6 @@ class Agent(BaseModel):
                 span.set_attribute(GEN_AI_AGENT_NAME, self.name)
                 span.set_attribute("initialized", self.initialized)
                 record_attributes(span, arguments, "arguments")
-
-            if not self.initialized:
-                await self.initialize()
 
             executor = self.context.executor
             result: GetPromptResult = await executor.execute(
@@ -787,12 +856,19 @@ class Agent(BaseModel):
                                 "metadata": json.dumps(user_input.metadata or {}),
                             },
                         )
+
                     await self.context.executor.signal(
-                        signal_name=request_id, payload=user_input
+                        signal_name=request_id,
+                        payload=user_input,
+                        workflow_id=request.workflow_id,
+                        run_id=request.run_id,
                     )
                 except Exception as e:
                     await self.context.executor.signal(
-                        request_id, payload=f"Error getting human input: {str(e)}"
+                        request_id,
+                        payload=f"Error getting human input: {str(e)}",
+                        workflow_id=request.workflow_id,
+                        run_id=request.run_id,
                     )
 
             asyncio.create_task(call_callback_and_signal())
@@ -829,6 +905,8 @@ class Agent(BaseModel):
         self, name: str, arguments: dict | None = None, server_name: str | None = None
     ) -> CallToolResult:
         # Call the tool on the server
+        if not self.initialized:
+            await self.initialize()
 
         tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
@@ -845,28 +923,10 @@ class Agent(BaseModel):
                 if arguments is not None:
                     record_attributes(span, arguments, "arguments")
 
-            if not self.initialized:
-                await self.initialize()
-
             def _annotate_span_for_result(result: CallToolResult):
                 if not self.context.tracing_enabled:
                     return
-                span.set_attribute("result.isError", result.isError)
-                if result.isError:
-                    span.set_status(trace.Status(trace.StatusCode.ERROR))
-                    error_message = (
-                        result.content[0].text
-                        if len(result.content) > 0 and result.content[0].type == "text"
-                        else "Error calling tool"
-                    )
-                    span.record_exception(Exception(error_message))
-                else:
-                    for idx, content in enumerate(result.content):
-                        span.set_attribute(f"result.content.{idx}.type", content.type)
-                        if content.type == "text":
-                            span.set_attribute(
-                                f"result.content.{idx}.text", result.content[idx].text
-                            )
+                annotate_span_for_call_tool_result(span, result)
 
             if name == HUMAN_INPUT_TOOL_NAME:
                 # Call the human input tool
@@ -901,7 +961,9 @@ class Agent(BaseModel):
     ) -> CallToolResult:
         # Handle human input request
         try:
-            request = HumanInputRequest(**arguments["request"])
+            request = self.context.executor.create_human_input_request(
+                arguments["request"]
+            )
             result: HumanInputResponse = await self.request_human_input(request=request)
             return CallToolResult(
                 content=[
@@ -1057,16 +1119,14 @@ class AgentTasks:
     Agent tasks for executing agent-related activities.
     """
 
-    # --- global-per-worker state -------------------------------------------------
-    # Maps agent name to its corresponding MCPAggregator
-    server_aggregators_for_agent: Dict[str, MCPAggregator] = {}
-    server_aggregators_for_agent_lock: asyncio.Lock = asyncio.Lock()
-    # Maps agent name to its reference count
-    agent_refcounts: dict[str, int] = {}
-    # ---------------------------------------------------------------------------
-
     def __init__(self, context: "Context"):
         self.context = context
+        # --- instance-scoped state (thread-safe for Temporal worker event loop) ---
+        # Using instance attributes avoids cross-thread event loop affinity issues with asyncio.Lock
+        # when activities run concurrently in Temporal workers or multi-threaded environments.
+        self.server_aggregators_for_agent: Dict[str, MCPAggregator] = {}
+        self.server_aggregators_for_agent_lock: asyncio.Lock = asyncio.Lock()
+        self.agent_refcounts: dict[str, int] = {}
 
     async def initialize_aggregator_task(
         self, request: InitAggregatorRequest

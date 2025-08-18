@@ -208,6 +208,26 @@ class TemporalSignalHandler(BaseSignalHandler[SignalValueT]):
         # Validate the signal (already checks workflow_id is not None)
         self.validate_signal(signal)
 
+        if workflow._Runtime.current() is not None:
+            workflow_info = workflow.info()
+            if (
+                signal.workflow_id == workflow_info.workflow_id
+                and signal.run_id == workflow_info.run_id
+            ):
+                # We're already in the workflow that should receive the signal. Temporal does not allow
+                # sending signals to the same workflow from within itself, so we handle it directly.
+                # Ref: https://github.com/temporalio/temporal/issues/682
+                logger.debug("Already in the target workflow, sending signal directly")
+
+                mailbox = self._mailbox_ref.get()
+                if mailbox is None:
+                    raise RuntimeError(
+                        "Signal mailbox not initialized for this workflow. Please call attach_to_workflow first."
+                    )
+
+                mailbox.push(signal.name, signal.payload)
+                return
+
         try:
             # First try the in-workflow path
             wf_handle = workflow.get_external_workflow_handle(

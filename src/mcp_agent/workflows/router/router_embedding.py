@@ -9,6 +9,7 @@ from mcp_agent.workflows.embedding.embedding_base import (
     compute_similarity_scores,
     compute_confidence,
 )
+from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
 from mcp_agent.workflows.router.router_base import (
     Router,
     RouterCategory,
@@ -52,7 +53,7 @@ class EmbeddingRouter(Router):
         self,
         embedding_model: EmbeddingModel,
         server_names: List[str] | None = None,
-        agents: List[Agent] | None = None,
+        agents: List[Agent | AugmentedLLM] | None = None,
         functions: List[Callable] | None = None,
         context: Optional["Context"] = None,
         **kwargs,
@@ -72,7 +73,7 @@ class EmbeddingRouter(Router):
         cls,
         embedding_model: EmbeddingModel,
         server_names: List[str] | None = None,
-        agents: List[Agent] | None = None,
+        agents: List[Agent | AugmentedLLM] | None = None,
         functions: List[Callable] | None = None,
         context: Optional["Context"] = None,
     ) -> "EmbeddingRouter":
@@ -131,7 +132,7 @@ class EmbeddingRouter(Router):
 
     async def route(
         self, request: str, top_k: int = 1
-    ) -> List[RouterResult[str | Agent | Callable]]:
+    ) -> List[RouterResult[str | Agent | AugmentedLLM | Callable]]:
         """Route the request based on embedding similarity"""
         if not self.initialized:
             await self.initialize()
@@ -156,7 +157,7 @@ class EmbeddingRouter(Router):
 
     async def route_to_agent(
         self, request: str, top_k: int = 1
-    ) -> List[RouterResult[Agent]]:
+    ) -> List[RouterResult[Agent | AugmentedLLM]]:
         """Route specifically to agent categories"""
         if not self.initialized:
             await self.initialize()

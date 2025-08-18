@@ -1,4 +1,4 @@
-from typing import Any, AsyncIterator, Protocol
+from typing import Any, Protocol
 from pydantic import BaseModel
 
 HUMAN_INPUT_SIGNAL_NAME = "__human_input__"
@@ -18,6 +18,9 @@ class HumanInputRequest(BaseModel):
 
     workflow_id: str | None = None
     """Optional workflow ID if using workflow engine"""
+
+    run_id: str | None = None
+    """Optional run ID if using workflow engine"""
 
     timeout_seconds: int | None = None
     """Optional timeout in seconds"""
@@ -42,9 +45,7 @@ class HumanInputResponse(BaseModel):
 class HumanInputCallback(Protocol):
     """Protocol for callbacks that handle human input requests."""
 
-    async def __call__(
-        self, request: HumanInputRequest
-    ) -> AsyncIterator[HumanInputResponse]:
+    async def __call__(self, request: HumanInputRequest) -> HumanInputResponse:
         """
         Handle a human input request.
 
@@ -52,7 +53,6 @@ class HumanInputCallback(Protocol):
             request: The input request to handle
 
         Returns:
-            AsyncIterator yielding responses as they come in
-            TODO: saqadri - Keep it simple and just return HumanInputResponse?
+            The response from the human input
         """
         ...

@@ -16,6 +16,7 @@ from mcp_agent.workflows.llm.augmented_llm import RequestParams
 from mcp_agent.workflows.llm.llm_selector import ModelPreferences
 from mcp_agent.workflows.llm.augmented_llm_anthropic import AnthropicAugmentedLLM
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
+from mcp_agent.tracing.token_counter import TokenSummary
 
 settings = Settings(
     execution_engine="asyncio",
@@ -98,6 +99,47 @@ async def example_usage():
                 ),
             )
             logger.info(f"Paragraph as a tweet: {result}")
+
+        # Display final comprehensive token usage summary (use app convenience)
+        await display_token_summary(agent_app, finder_agent)
+
+
+async def display_token_summary(app_ctx: MCPApp, agent: Agent | None = None):
+    """Display comprehensive token usage summary using app/agent convenience APIs."""
+    summary: TokenSummary = await app_ctx.get_token_summary()
+
+    print("\n" + "=" * 50)
+    print("TOKEN USAGE SUMMARY")
+    print("=" * 50)
+
+    # Total usage and cost
+    print("\nTotal Usage:")
+    print(f"  Total tokens: {summary.usage.total_tokens:,}")
+    print(f"  Input tokens: {summary.usage.input_tokens:,}")
+    print(f"  Output tokens: {summary.usage.output_tokens:,}")
+    print(f"  Total cost: ${summary.cost:.4f}")
+
+    # Breakdown by model
+    if summary.model_usage:
+        print("\nBreakdown by Model:")
+        for model_key, data in summary.model_usage.items():
+            print(f"\n  {model_key}:")
+            print(
+                f"    Tokens: {data.usage.total_tokens:,} (input: {data.usage.input_tokens:,}, output: {data.usage.output_tokens:,})"
+            )
+            print(f"    Cost: ${data.cost:.4f}")
+
+    # Optional: show a specific agent's aggregated usage
+    if agent is not None:
+        agent_usage = await agent.get_token_usage()
+        if agent_usage:
+            print("\nAgent Usage:")
+            print(f"  Agent: {agent.name}")
+            print(f"  Total tokens: {agent_usage.total_tokens:,}")
+            print(f"  Input tokens: {agent_usage.input_tokens:,}")
+            print(f"  Output tokens: {agent_usage.output_tokens:,}")
+
+    print("\n" + "=" * 50)
 
 
 if __name__ == "__main__":

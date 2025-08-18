@@ -18,6 +18,7 @@ from typing import (
     TYPE_CHECKING,
 )
 
+from mcp_agent.human_input.types import HumanInputRequest
 from pydantic import BaseModel, ConfigDict
 
 from mcp_agent.core.context_dependent import ContextDependent
@@ -107,6 +108,13 @@ class Executor(ABC, ContextDependent):
         **kwargs: Any,
     ) -> AsyncIterator[R | BaseException]:
         """Execute tasks and yield results as they complete"""
+
+    @abstractmethod
+    def create_human_input_request(
+        self,
+        request: dict,
+    ) -> HumanInputRequest:
+        """Create a HumanInputRequest for the given request."""
 
     async def map(
         self,
@@ -411,3 +419,15 @@ class AsyncioExecutor(Executor):
             timeout_seconds,
             signal_type,
         )
+
+    def create_human_input_request(self, request: dict) -> HumanInputRequest:
+        """
+        Create a human input request from the arguments.
+
+        Args:
+            request: Optional arguments to include in the request.
+
+        Returns:
+            A HumanInputRequest object.
+        """
+        return HumanInputRequest(**request)

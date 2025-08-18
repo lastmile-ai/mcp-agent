@@ -1,0 +1,95 @@
+---
+title: "Swarm"
+description: "OpenAI Swarm-compatible multi-agent handoffs with context preservation."
+---
+
+import { Card } from "@mintlify/components";
+
+![Swarm Workflow Pattern](/images/swarm-workflow.png)
+
+## Overview
+
+The Swarm pattern implements OpenAI's Swarm framework for multi-agent handoffs, enabling seamless context transfer between specialized agents based on conversation flow and requirements.
+
+## Quick Example
+
+```python
+from mcp_agent.app import MCPApp
+from mcp_agent.agents.agent import Agent
+from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
+from mcp_agent.workflows.swarm.swarm_orchestrator import SwarmOrchestrator
+
+app = MCPApp(name="swarm_example")
+
+async with app.run() as context:
+    # Create specialized agents
+    sales_agent = Agent(
+        name="sales",
+        instruction="Handle sales inquiries and product recommendations.",
+        server_names=["database", "fetch"]
+    )
+
+    support_agent = Agent(
+        name="support",
+        instruction="Provide technical support and troubleshooting.",
+        server_names=["knowledge_base", "ticketing"]
+    )
+
+    billing_agent = Agent(
+        name="billing",
+        instruction="Handle billing, refunds, and account management.",
+        server_names=["billing_system", "database"]
+    )
+
+    # Define handoff conditions
+    handoff_rules = {
+        "sales": {
+            "triggers": ["price", "buy", "purchase", "product"],
+            "confidence_threshold": 0.7
+        },
+        "support": {
+            "triggers": ["error", "bug", "help", "troubleshoot"],
+            "confidence_threshold": 0.8
+        },
+        "billing": {
+            "triggers": ["refund", "payment", "invoice", "subscription"],
+            "confidence_threshold": 0.9
+        }
+    }
+
+    # Create swarm orchestrator
+    swarm = SwarmOrchestrator(
+        agents=[sales_agent, support_agent, billing_agent],
+        handoff_rules=handoff_rules,
+        llm_factory=OpenAIAugmentedLLM,
+        initial_agent="sales"
+    )
+
+    # Execute with automatic handoffs
+    result = await swarm.generate_str(
+        message="I'm interested in your premium plan but having trouble with payment"
+    )
+    # Automatically hands off from sales -> billing agent
+```
+
+## Key Features
+
+- **Automatic Handoffs**: Context-aware agent switching based on conversation flow
+- **Context Preservation**: Full conversation history maintained across handoffs
+- **Trigger-Based Routing**: Configurable keywords and confidence thresholds
+- **Bidirectional Communication**: Agents can hand back to previous agents
+- **State Management**: Maintains conversation state and agent history
+
+## Use Cases
+
+- **Customer Service**: Route between sales, support, and billing specialists
+- **Multi-Domain Assistance**: Hand off between technical and business experts
+- **Progressive Disclosure**: Start general, become more specialized as needed
+- **Workflow Orchestration**: Pass tasks through specialist processing pipeline
+
+<Card
+  title="Full Implementation"
+  href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows/swarm"
+>
+  See the complete swarm pattern implementation with OpenAI Swarm compatibility.
+</Card>

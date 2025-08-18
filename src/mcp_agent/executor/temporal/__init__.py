@@ -21,9 +21,11 @@ from typing import (
 )
 import inspect
 
+from mcp_agent.human_input.types import HumanInputRequest
 from pydantic import ConfigDict
 from temporalio import activity, workflow, exceptions
 from temporalio.client import Client as TemporalClient, WorkflowHandle
+from temporalio.contrib.opentelemetry import TracingInterceptor
 from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.common import WorkflowIDReusePolicy
 from temporalio.worker import Worker
@@ -261,6 +263,10 @@ class TemporalExecutor(Executor):
                 api_key=self.config.api_key,
                 tls=self.config.tls,
                 data_converter=pydantic_data_converter,
+                interceptors=[TracingInterceptor()]
+                if self.context.tracing_enabled
+                else [],
+                rpc_metadata=self.config.rpc_metadata or {},
             )
 
         return self.client
@@ -270,6 +276,8 @@ class TemporalExecutor(Executor):
         workflow_type: str,
         *args: Any,
         wait_for_result: bool = False,
+        workflow_id: str | None = None,
+        task_queue: str | None = None,
         **kwargs: Any,
     ) -> WorkflowHandle:
         """
@@ -279,6 +287,8 @@ class TemporalExecutor(Executor):
             workflow_type (str): Type (class name) of the Workflow to be started.
             *workflow_args: Positional arguments to pass to the workflow.
             wait_for_result: Whether to wait for the workflow to complete and return the result.
+            workflow_id: Optional workflow ID to use (instead of auto-generating).
+            task_queue: Optional task queue to use (instead of default from config).
             **workflow_kwargs: Keyword arguments to pass to the workflow.
 
         Returns:
@@ -327,8 +337,13 @@ class TemporalExecutor(Executor):
             # multi-arg workflow - pack into a sequence
             input_arg = bound_args
 
-        # Generate a unique execution ID for this workflow instance
-        workflow_id = f"{workflow_type}-{self.uuid()}"
+        # Use provided workflow_id or generate a unique one
+        if workflow_id is None:
+            workflow_id = f"{workflow_type}-{self.uuid()}"
+
+        # Use provided task_queue or use the one from config
+        if task_queue is None:
+            task_queue = self.config.task_queue
 
         # Start the workflow
         if input_arg is not None:
@@ -336,15 +351,17 @@ class TemporalExecutor(Executor):
                 wf,
                 input_arg,
                 id=workflow_id,
-                task_queue=self.config.task_queue,
+                task_queue=task_queue,
                 id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+                rpc_metadata=self.config.rpc_metadata or {},
             )
         else:
             handle: WorkflowHandle = await self.client.start_workflow(
                 wf,
                 id=workflow_id,
-                task_queue=self.config.task_queue,
+                task_queue=task_queue,
                 id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+                rpc_metadata=self.config.rpc_metadata or {},
             )
 
         # Wait for the result if requested
@@ -357,6 +374,8 @@ class TemporalExecutor(Executor):
         self,
         workflow_type: str,
         *workflow_args: Any,
+        workflow_id: str | None = None,
+        task_queue: str | None = None,
         **workflow_kwargs: Any,
     ) -> Any:
         """
@@ -365,7 +384,28 @@ class TemporalExecutor(Executor):
         This is a convenience wrapper around start_workflow with wait_for_result=True.
         """
         return await self.start_workflow(
-            workflow_type, *workflow_args, wait_for_result=True, **workflow_kwargs
+            workflow_type,
+            *workflow_args,
+            wait_for_result=True,
+            workflow_id=workflow_id,
+            task_queue=task_queue,
+            **workflow_kwargs,
+        )
+
+    def create_human_input_request(self, request: dict) -> HumanInputRequest:
+        """
+        Create a human input request from the arguments.
+
+        Args:
+            request: Optional arguments to include in the request.
+
+        Returns:
+            A HumanInputRequest object with workflow_id and run_id populated.
+        """
+        return HumanInputRequest(
+            **request,
+            workflow_id=workflow.info().workflow_id,
+            run_id=workflow.info().run_id,
         )
 
     async def terminate_workflow(

@@ -1,6 +1,6 @@
 [project]
 name = "mcp-agent"
-version = "0.1.3"
+version = "0.1.13"
 description = "Build effective agents with Model Context Protocol (MCP) using simple, composable patterns."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -14,32 +14,44 @@ classifiers = [
 ]
 requires-python = ">=3.10"
 dependencies = [
+    "aiohttp>=3.11.13",
     "fastapi>=0.115.6",
     "instructor>=1.7.9",
+    "jsonref>=1.1.0",
+    "mcp>=1.10.1",
+    "numpy>=2.1.3",
     "opentelemetry-distro>=0.50b0",
     "opentelemetry-exporter-otlp-proto-http>=1.29.0",
+    "opentelemetry-instrumentation-anthropic>=0.39.3",
+    "opentelemetry-instrumentation-openai>=0.39.3",
+    "prompt-toolkit>=3.0.50",
     "pydantic-settings>=2.7.0",
+    "pydantic-yaml>=1.5.1",
     "pydantic>=2.10.4",
     "pyyaml>=6.0.2",
     "rich>=13.9.4",
-    "typer>=0.15.1",
-    "numpy>=2.1.3",
     "scikit-learn>=1.6.0",
-    "prompt-toolkit>=3.0.50",
-    "aiohttp>=3.11.13",
+    "typer>=0.15.1",
     "websockets>=12.0",
-    "opentelemetry-instrumentation-openai>=0.39.3",
-    "opentelemetry-instrumentation-anthropic>=0.39.3",
-    "mcp>=1.9.0",
 ]
 
 [project.optional-dependencies]
 temporal = [
-    "temporalio>=1.10.0",
+    "temporalio[opentelemetry]>=1.10.0",
 ]
 anthropic = [
     "anthropic>=0.48.0",
 ]
+
+anthropic_bedrock = [
+    "anthropic[bedrock]>=0.52.0",
+]
+
+anthropic_vertex = [
+    "anthropic[vertex]>=0.52.0",
+    "google-cloud-aiplatform>=1.101.0",
+]
+
 bedrock = [
     "boto3>=1.37.23"
 ]

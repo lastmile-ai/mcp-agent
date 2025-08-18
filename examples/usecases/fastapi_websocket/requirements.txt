@@ -1,0 +1,16 @@
+# Core framework dependency
+mcp-agent @ file://../../../  # Link to the local mcp-agent project root
+
+# FastAPI and WebSocket dependencies
+fastapi
+uvicorn[standard]
+websockets
+python-multipart
+
+# LLM providers
+openai
+anthropic
+
+# Additional utilities
+python-dateutil
+aioconsole

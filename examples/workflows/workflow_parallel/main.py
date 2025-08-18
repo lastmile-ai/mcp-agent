@@ -57,9 +57,11 @@ async def example_usage():
 
         style_enforcer = Agent(
             name="style_enforcer",
-            instruction="""Analyze the story for adherence to style guidelines.
+            instruction="""Analyze the story for adherence to style guidelines but first fetch APA style guides from
+            at https://owl.purdue.edu/owl/research_and_citation/apa_style/apa_formatting_and_style_guide/general_format.html.
             Evaluate the narrative flow, clarity of expression, and tone. Suggest improvements to 
             enhance storytelling, readability, and engagement.""",
+            server_names=["fetch"],
         )
 
         grader = Agent(
@@ -77,7 +79,7 @@ async def example_usage():
         )
 
         result = await parallel.generate_str(
-            message=f"Student short story submission: {SHORT_STORY}",
+            message=f"Grade this student's short story submission: {SHORT_STORY}",
         )
 
         logger.info(f"{result}")

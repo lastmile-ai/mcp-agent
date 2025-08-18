@@ -138,7 +138,11 @@ class TemporalWorkflowRegistry(WorkflowRegistry):
         self, run_id: str, workflow_id: str | None = None
     ) -> Optional[Dict[str, Any]]:
         workflow = await self.get_workflow(run_id)
-        workflow_id = workflow.name if workflow and workflow_id is None else workflow_id
+        workflow_id = (
+            (workflow.id or workflow.name)
+            if workflow and workflow_id is None
+            else workflow_id
+        )
 
         if not workflow_id:
             # In Temporal, we need both workflow_id and run_id to target a specific run
@@ -168,10 +172,11 @@ class TemporalWorkflowRegistry(WorkflowRegistry):
         for run_id, workflow in self._local_workflows.items():
             # Get the workflow status directly to have consistent behavior
             status = await workflow.get_status()
+            workflow_id = workflow.id or workflow.name
 
             # Query Temporal for the status
             temporal_status = await self._get_temporal_workflow_status(
-                workflow_id=workflow.name, run_id=run_id
+                workflow_id=workflow_id, run_id=run_id
             )
 
             status["temporal"] = temporal_status

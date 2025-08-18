@@ -26,7 +26,6 @@ class JSONSerializer:
         "api_key",
         "secret",
         "password",
-        "token",
         "auth",
         "private_key",
         "client_secret",
@@ -126,12 +125,19 @@ class JSONSerializer:
 
             # Handle dictionaries with sensitive data redaction
             if isinstance(obj, Dict):
-                return {
-                    str(key): self._redact_sensitive_value(value)
-                    if self._is_sensitive_key(key)
-                    else self._serialize_object(value, depth + 1)
-                    for key, value in obj.items()
-                }
+                safe_dict: Dict[str, Any] = {}
+                for key, value in obj.items():
+                    skey = str(key)
+                    if self._is_sensitive_key(skey):
+                        # Redact strings; for non-strings, avoid leaking complex objects
+                        safe_dict[skey] = (
+                            self._redact_sensitive_value(value)
+                            if isinstance(value, str)
+                            else "<redacted>"
+                        )
+                    else:
+                        safe_dict[skey] = self._serialize_object(value, depth + 1)
+                return safe_dict
 
             # Handle iterables (lists, tuples, sets)
             if isinstance(obj, Iterable) and not isinstance(obj, (str, bytes)):

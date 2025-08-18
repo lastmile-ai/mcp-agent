@@ -35,7 +35,7 @@ Steps are sequential, but each Step can have parallel subtasks.
 For each Step, specify a description of the step and independent subtasks that can run in parallel.
 For each subtask specify:
     1. Clear description of the task that an LLM can execute  
-    2. Name of 1 Agent OR List of MCP server names to use for the task
+    2. Name of 1 Agent (ONLY using the available agents specified) OR List of MCP server names to use for the task
     
 Return your response in the following JSON structure:
     {{
@@ -82,7 +82,7 @@ Agents:
 Generate the next step, by specifying a description of the step and independent subtasks that can run in parallel:
 For each subtask specify:
     1. Clear description of the task that an LLM can execute  
-    2. Name of 1 Agent OR List of MCP server names to use for the task
+    2. Name of 1 Agent (ONLY using the available agents specified) OR List of MCP server names to use for the task
 
 Return your response in the following JSON structure:
     {{

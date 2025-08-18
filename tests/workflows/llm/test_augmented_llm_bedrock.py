@@ -119,6 +119,44 @@ class TestBedrockAugmentedLLM:
             ],
         }
 
+    @staticmethod
+    def create_multiple_tool_use_response(
+        tool_uses, text_prefix=None, stop_reason="tool_use", usage=None
+    ):
+        """
+        Creates a response with multiple tool uses for testing.
+        """
+        content = []
+        if text_prefix:
+            content.append({"text": text_prefix})
+
+        for tool_use in tool_uses:
+            content.append(
+                {
+                    "toolUse": {
+                        "name": tool_use["name"],
+                        "input": tool_use.get("input", {}),
+                        "toolUseId": tool_use["toolUseId"],
+                    }
+                }
+            )
+
+        return {
+            "output": {
+                "message": {
+                    "role": "assistant",
+                    "content": content,
+                },
+            },
+            "stopReason": stop_reason,
+            "usage": usage
+            or {
+                "inputTokens": 150,
+                "outputTokens": 100,
+                "totalTokens": 250,
+            },
+        }
+
     # Test 1: Basic Text Generation
     @pytest.mark.asyncio
     async def test_basic_text_generation(self, mock_llm):
@@ -714,3 +752,60 @@ class TestBedrockAugmentedLLM:
         assert isinstance(result, TestResponseModel)
         assert result.name == "MixedTypes"
         assert result.value == 123
+
+    # Test 16: Multiple Tool Usage
+    @pytest.mark.asyncio
+    async def test_multiple_tool_usage(self, mock_llm: BedrockAugmentedLLM):
+        """
+        Tests multiple tool uses in a single response.
+        Verifies that all tool results are combined into a single message.
+        """
+        # Setup mock executor to return multiple tool uses, then final response
+        mock_llm.executor.execute = AsyncMock(
+            side_effect=[
+                self.create_multiple_tool_use_response(
+                    tool_uses=[
+                        {"name": "test_tool", "input": {}, "toolUseId": "tool_1"},
+                        {"name": "test_tool", "input": {}, "toolUseId": "tool_2"},
+                    ],
+                    text_prefix="Processing with multiple tools",
+                ),
+                self.create_text_response("Final response after both tools"),
+            ]
+        )
+
+        # Mock tool calls
+        mock_llm.call_tool = AsyncMock(
+            side_effect=[
+                MagicMock(
+                    content=[TextContent(type="text", text="Tool 1 result")],
+                    isError=False,
+                ),
+                MagicMock(
+                    content=[TextContent(type="text", text="Tool 2 result")],
+                    isError=False,
+                ),
+            ]
+        )
+
+        # Call LLM
+        responses = await mock_llm.generate("Test multiple tools")
+
+        # Assertions
+        assert len(responses) == 3
+
+        # First response: assistant with 2 tool uses
+        assert responses[0]["role"] == "assistant"
+        assert len(responses[0]["content"]) == 3  # text + 2 tool uses
+
+        # Second response: single user message with both tool results
+        assert responses[1]["role"] == "user"
+        assert len(responses[1]["content"]) == 2  # 2 tool results combined
+        assert responses[1]["content"][0]["toolResult"]["toolUseId"] == "tool_1"
+        assert responses[1]["content"][1]["toolResult"]["toolUseId"] == "tool_2"
+
+        # Third response: final assistant message
+        assert responses[2]["content"][0]["text"] == "Final response after both tools"
+
+        # Verify both tools were called
+        assert mock_llm.call_tool.call_count == 2

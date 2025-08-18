@@ -165,10 +165,81 @@ class TestAgent:
         self, mock_context, mock_human_input_callback
     ):
         """Test initialization with context's human input handler."""
+        from mcp_agent.agents.agent import InitAggregatorResponse
+
         mock_context.human_input_handler = mock_human_input_callback
         agent = Agent(name="test_agent", context=mock_context)
 
+        # Mock the executor to return a successful initialization response
+        mock_context.executor.execute.return_value = InitAggregatorResponse(
+            initialized=True,
+            namespaced_tool_map={},
+            server_to_tool_map={},
+            namespaced_prompt_map={},
+            server_to_prompt_map={},
+        )
+
+        # Initialize agent to trigger context setup
+        await agent.initialize()
+
         assert agent.human_input_callback == mock_human_input_callback
+
+    @pytest.mark.asyncio
+    async def test_initialization_with_global_context(self, mock_context):
+        """Test initialization with context from get_current_context."""
+        from mcp_agent.agents.agent import InitAggregatorResponse
+
+        # Create agent without context
+        agent = Agent(name="test_agent", context=None)
+
+        # Mock the executor to return a successful initialization response
+        mock_context.executor.execute.return_value = InitAggregatorResponse(
+            initialized=True,
+            namespaced_tool_map={},
+            server_to_tool_map={},
+            namespaced_prompt_map={},
+            server_to_prompt_map={},
+        )
+
+        with patch(
+            "mcp_agent.core.context.get_current_context",
+            return_value=mock_context,
+        ):
+            # Initialize agent - should use context from get_current_context
+            await agent.initialize()
+            assert agent.context == mock_context
+
+    @pytest.mark.asyncio
+    async def test_initialization_with_explicit_context_overrides_global(
+        self, mock_context
+    ):
+        """Test that explicit context is used and global context is not called."""
+        from mcp_agent.agents.agent import InitAggregatorResponse
+
+        # Create a different context to use as global
+        global_context = MagicMock()
+
+        # Create agent with explicit context
+        agent = Agent(name="test_agent", context=mock_context)
+
+        # Mock the executor to return a successful initialization response
+        mock_context.executor.execute.return_value = InitAggregatorResponse(
+            initialized=True,
+            namespaced_tool_map={},
+            server_to_tool_map={},
+            namespaced_prompt_map={},
+            server_to_prompt_map={},
+        )
+
+        with patch(
+            "mcp_agent.core.context.get_current_context",
+            return_value=global_context,
+        ) as mock_get_context:
+            # Initialize agent - should use explicit context, not global
+            await agent.initialize()
+            assert agent.context == mock_context
+            # Verify get_current_context was not called
+            mock_get_context.assert_not_called()
 
     #
     # LLM Attachment Tests
@@ -195,7 +266,26 @@ class TestAgent:
     @pytest.mark.asyncio
     async def test_shutdown(self, basic_agent):
         """Test agent shutdown."""
-        # Patch the executor's execute method to simulate shutdown_aggregator_task
+        from mcp_agent.agents.agent import InitAggregatorResponse
+
+        # Test shutdown when agent is not initialized - should not call executor
+        with patch.object(
+            basic_agent.context.executor, "execute", AsyncMock(return_value=True)
+        ) as mock_execute:
+            await basic_agent.shutdown()
+            mock_execute.assert_not_called()
+
+        # Mock successful initialization
+        basic_agent.context.executor.execute.return_value = InitAggregatorResponse(
+            initialized=True,
+            namespaced_tool_map={},
+            server_to_tool_map={},
+            namespaced_prompt_map={},
+            server_to_prompt_map={},
+        )
+
+        # Test shutdown when agent is initialized - should call executor
+        await basic_agent.initialize()
         with patch.object(
             basic_agent.context.executor, "execute", AsyncMock(return_value=True)
         ) as mock_execute:

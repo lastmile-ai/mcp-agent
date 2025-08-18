@@ -7,6 +7,7 @@ from mcp_agent.tracing.telemetry import (
     record_attributes,
     serialize_attributes,
 )
+from mcp_agent.tracing.token_tracking_decorator import track_tokens
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     MessageParamT,
@@ -98,6 +99,7 @@ class ParallelLLM(AugmentedLLM[MessageParamT, MessageT]):
             context=context,
         )
 
+    @track_tokens(node_type="agent")
     async def generate(
         self,
         message: str | MessageParamT | List[MessageParamT],

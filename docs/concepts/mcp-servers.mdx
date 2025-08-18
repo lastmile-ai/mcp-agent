@@ -1,0 +1,490 @@
+---
+title: "MCP Servers"
+description: "Understanding MCP servers and how to create, configure, and use them with mcp-agent."
+---
+
+import { Card, CardGroup } from "@mintlify/components";
+
+## What are MCP Servers?
+
+**MCP Servers** are the powerhouse behind agents in the `mcp-agent` framework. They provide specialized capabilities to agents through the Model Context Protocol (MCP), acting as external tools, data sources, and services that agents can access.
+
+Think of MCP servers as:
+
+- **Tools** that agents can call to perform specific tasks
+- **Data sources** that provide access to information and resources
+- **Services** that extend agent capabilities beyond the base LLM
+- **Independent processes** that can be developed, deployed, and scaled separately
+
+<Card>
+  **Core Concept:** MCP Servers extend agent capabilities by providing tools,
+  resources, and prompts through a standardized protocol.
+</Card>
+
+## Server Types and Transports
+
+The `mcp-agent` framework supports multiple transport mechanisms for connecting to MCP servers:
+
+### STDIO (Standard Input/Output)
+
+Best for local development and subprocess-based servers:
+
+```yaml
+# mcp_agent.config.yaml
+mcp:
+  servers:
+    filesystem:
+      transport: "stdio" # Default transport
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-filesystem"]
+      env:  # Environment variables passed to the server process
+        ROOT_PATH: "/path/to/files"
+      terminate_on_close: true # Default: true
+```
+
+### Server-Sent Events (SSE)
+
+Ideal for streaming responses and real-time data:
+
+```yaml
+mcp:
+  servers:
+    sse_server:
+      transport: "sse"
+      url: "http://localhost:8000/sse"
+      headers:
+        Authorization: "Bearer your-token"
+      http_timeout_seconds: 30
+      read_timeout_seconds: 60
+```
+
+### WebSocket
+
+For bidirectional, persistent connections:
+
+```yaml
+mcp:
+  servers:
+    websocket_server:
+      transport: "websocket"
+      url: "ws://localhost:8001/ws"
+      headers:
+        Authorization: "Bearer your-token"
+```
+
+### Streamable HTTP
+
+For HTTP-based servers with streaming support:
+
+```yaml
+mcp:
+  servers:
+    http_server:
+      transport: "streamable_http"
+      url: "http://localhost:8002/mcp"
+      headers:
+        Authorization: "Bearer your-token"
+        Content-Type: "application/json"
+      http_timeout_seconds: 30
+      read_timeout_seconds: 120
+```
+
+## Server Capabilities
+
+MCP servers can provide three main types of capabilities:
+
+### 1. Tools
+
+Functions that agents can call to perform actions:
+
+```python
+# Example tool implementation using FastMCP
+from mcp.server.fastmcp import FastMCP
+
+mcp = FastMCP("My Server")
+
+@mcp.tool()
+def calculate_sum(a: int, b: int) -> int:
+    """Calculate the sum of two numbers."""
+    return a + b
+
+@mcp.tool()
+def fetch_weather(city: str) -> str:
+    """Get weather information for a city."""
+    # Implementation here
+    return f"Weather in {city}: Sunny, 75°F"
+```
+
+### 2. Resources
+
+Data and content that agents can read and reference:
+
+```python
+@mcp.resource("file://{path}")
+def read_file(path: str) -> str:
+    """Read content from a file."""
+    with open(path, 'r') as f:
+        return f.read()
+
+@mcp.resource("db://users/{user_id}")
+def get_user(user_id: str) -> dict:
+    """Get user information from database."""
+    # Database lookup implementation
+    return {"id": user_id, "name": "John Doe"}
+```
+
+### 3. Prompts
+
+Reusable prompt templates that agents can utilize:
+
+```python
+@mcp.prompt()
+def analysis_prompt(data: str, context: str = "") -> str:
+    """Generate an analysis prompt with data and optional context."""
+    return f"""Analyze the following data:
+
+Data: {data}
+Context: {context}
+
+Provide a detailed analysis including key insights and recommendations."""
+```
+
+## Configuration Examples
+
+### Basic Server Configuration
+
+```yaml
+# mcp_agent.config.yaml
+$schema: ../../schema/mcp-agent.config.schema.json
+
+execution_engine: asyncio
+
+mcp:
+  servers:
+    # Filesystem access
+    filesystem:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-filesystem"]
+      env:  # Environment variables passed to the server process
+        ROOT_PATH: "/workspace"
+
+    # Web fetching capabilities
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+
+    # Custom SSE server
+    analytics:
+      url: "http://localhost:8000/sse"
+      transport: "sse"
+      headers:
+        Authorization: "Bearer ${ANALYTICS_TOKEN}"
+```
+
+### Advanced Server Configuration
+
+```yaml
+mcp:
+  servers:
+    # Production database server with authentication
+    database:
+      name: "Production Database Server"
+      description: "Provides access to production database"
+      transport: "streamable_http"
+      url: "https://api.example.com/mcp"
+      headers:
+        Authorization: "Bearer ${DB_API_TOKEN}"
+        X-Client-ID: "${CLIENT_ID}"
+      http_timeout_seconds: 30
+      read_timeout_seconds: 120
+      auth:
+        type: "bearer"
+        token: "${DB_API_TOKEN}"
+
+    # Local development server with custom environment and roots
+    dev_tools:
+      name: "Development Tools Server"
+      description: "Local development tools and utilities"
+      transport: "stdio"
+      command: "python"
+      args: ["-m", "my_mcp_server"]
+      env:  # Environment variables passed to the server process
+        DEBUG: "true"
+        LOG_LEVEL: "debug"
+        DATABASE_URL: "${DEV_DATABASE_URL}"
+      terminate_on_close: true
+      roots:
+        - uri: "file:///workspace"
+          name: "Workspace"
+        - uri: "file:///tmp"
+          name: "Temporary Files"
+```
+
+## Creating Your Own MCP Server
+
+### Using FastMCP (Recommended)
+
+FastMCP provides the easiest way to create MCP servers:
+
+```python
+# server.py
+from mcp.server.fastmcp import FastMCP
+from mcp.server.models import InitializationOptions
+import asyncio
+
+# Create the server
+mcp = FastMCP("My Custom Server")
+
+@mcp.tool()
+def greet(name: str) -> str:
+    """Greet someone by name."""
+    return f"Hello, {name}! Nice to meet you."
+
+@mcp.tool()
+async def async_calculation(x: float, y: float) -> float:
+    """Perform an async calculation."""
+    await asyncio.sleep(0.1)  # Simulate async work
+    return x * y + 42
+
+@mcp.resource("data://{dataset}")
+def get_dataset(dataset: str) -> str:
+    """Get dataset information."""
+    datasets = {
+        "sales": "Q1 Sales: $1.2M, Q2 Sales: $1.5M",
+        "users": "Active Users: 15,432, New Users: 1,234"
+    }
+    return datasets.get(dataset, "Dataset not found")
+
+@mcp.prompt()
+def report_prompt(data_type: str, period: str = "monthly") -> str:
+    """Generate a report prompt template."""
+    return f"""Please create a {period} report for {data_type}.
+
+Include:
+1. Summary of key metrics
+2. Trends and patterns
+3. Recommendations for improvement
+4. Action items for next period
+
+Format the report in a clear, professional manner."""
+
+# Run the server
+if __name__ == "__main__":
+    mcp.run()
+```
+
+## Integration Patterns
+
+### Using Servers with Agents
+
+```python
+from mcp_agent.agents.agent import Agent
+from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
+
+# Create an agent with multiple server types
+agent = Agent(
+    name="data_analyst",
+    instruction="""You are a data analyst with access to databases,
+    file systems, and analytics tools. Help users analyze data and
+    generate insights.""",
+    server_names=["filesystem", "database", "analytics"]
+)
+
+async with agent:
+    # Discover available tools
+    tools = await agent.list_tools()
+    print(f"Available tools: {[tool.name for tool in tools.tools]}")
+
+    # Use the agent with an LLM
+    llm = await agent.attach_llm(OpenAIAugmentedLLM)
+
+    result = await llm.generate_str(
+        "Analyze the sales data from Q1 and create a summary report"
+    )
+    print(result)
+```
+
+## Server Development Best Practices
+
+### 1. Error Handling
+
+```python
+@mcp.tool()
+def safe_division(a: float, b: float) -> str:
+    """Safely divide two numbers."""
+    try:
+        if b == 0:
+            return "Error: Division by zero is not allowed"
+        result = a / b
+        return f"Result: {result}"
+    except Exception as e:
+        return f"Error: {str(e)}"
+```
+
+### 2. Input Validation
+
+```python
+from pydantic import BaseModel, validator
+
+class WeatherRequest(BaseModel):
+    city: str
+    units: str = "fahrenheit"
+
+    @validator('city')
+    def city_must_not_be_empty(cls, v):
+        if not v.strip():
+            raise ValueError('City name cannot be empty')
+        return v.strip()
+
+    @validator('units')
+    def units_must_be_valid(cls, v):
+        if v not in ['fahrenheit', 'celsius']:
+            raise ValueError('Units must be fahrenheit or celsius')
+        return v
+
+@mcp.tool()
+def get_weather(request: WeatherRequest) -> str:
+    """Get weather with validated input."""
+    # Implementation here
+    return f"Weather in {request.city}: 75°{request.units[0].upper()}"
+```
+
+### 3. Async Operations
+
+```python
+import aiohttp
+
+@mcp.tool()
+async def fetch_url(url: str) -> str:
+    """Fetch content from a URL asynchronously."""
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.get(url) as response:
+                if response.status == 200:
+                    content = await response.text()
+                    return f"Content fetched successfully (length: {len(content)})"
+                else:
+                    return f"Error: HTTP {response.status}"
+        except Exception as e:
+            return f"Error fetching URL: {str(e)}"
+```
+
+## Advanced Features
+
+### Elicitation Support
+
+Elicitation allows servers to request additional structured input from users during tool execution:
+
+```python
+from mcp.server.fastmcp import FastMCP, Context
+from mcp.server.elicitation import (
+    AcceptedElicitation,
+    DeclinedElicitation,
+    CancelledElicitation,
+)
+from pydantic import BaseModel, Field
+
+mcp = FastMCP("Booking System")
+
+@mcp.tool()
+async def book_table(date: str, party_size: int, ctx: Context) -> str:
+    """Book a table with confirmation"""
+    
+    # Schema must only contain primitive types (str, int, float, bool)
+    class ConfirmBooking(BaseModel):
+        confirm: bool = Field(description="Confirm booking?")
+        notes: str = Field(default="", description="Special requests")
+    
+    result = await ctx.elicit(
+        message=f"Confirm booking for {party_size} on {date}?", 
+        schema=ConfirmBooking
+    )
+    
+    match result:
+        case AcceptedElicitation(data=data):
+            if data.confirm:
+                return f"Booked! Notes: {data.notes or 'None'}"
+            return "Booking cancelled"
+        case DeclinedElicitation():
+            return "Booking declined"
+        case CancelledElicitation():
+            return "Booking cancelled"
+```
+
+## Production Considerations
+
+### Security
+
+```python
+# Use environment variables for sensitive data
+import os
+
+@mcp.tool()
+def secure_api_call(endpoint: str) -> str:
+    """Make a secure API call using stored credentials."""
+    api_key = os.getenv("API_KEY")
+    if not api_key:
+        return "Error: API key not configured"
+
+    # Make authenticated request
+    # Implementation here
+    return "API call completed successfully"
+```
+
+### Performance
+
+```yaml
+# Configure timeouts and headers for better performance
+mcp:
+  servers:
+    high_traffic_server:
+      transport: "streamable_http"
+      url: "https://api.example.com/mcp"
+      http_timeout_seconds: 30
+      read_timeout_seconds: 120
+      headers:
+        Keep-Alive: "timeout=60, max=100"
+        Connection: "keep-alive"
+```
+
+### Monitoring
+
+```python
+import logging
+
+# Configure logging in your server
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+@mcp.tool()
+def monitored_operation(data: str) -> str:
+    """Operation with monitoring and logging."""
+    logger.info(f"Starting operation with data length: {len(data)}")
+
+    try:
+        # Process data
+        result = process_data(data)
+        logger.info("Operation completed successfully")
+        return result
+    except Exception as e:
+        logger.error(f"Operation failed: {str(e)}")
+        return f"Error: {str(e)}"
+```
+
+<CardGroup>
+  <Card
+    title="Getting Started"
+    href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp"
+  >
+    Explore example MCP servers and learn implementation patterns.
+  </Card>
+  <Card
+    title="FastMCP Documentation"
+    href="https://github.com/modelcontextprotocol/servers"
+  >
+    Learn more about FastMCP and the official MCP server toolkit.
+  </Card>
+  <Card title="Agent Integration" href="/concepts/agents">
+    Learn how agents discover and use MCP server capabilities.
+  </Card>
+</CardGroup>

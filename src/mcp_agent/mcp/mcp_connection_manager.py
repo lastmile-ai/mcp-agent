@@ -3,6 +3,7 @@ Manages the lifecycle of multiple MCP server connections.
 """
 
 from datetime import timedelta
+import threading
 from typing import (
     AsyncGenerator,
     Callable,
@@ -99,6 +100,11 @@ class ServerConnection:
         Request the server to shut down. Signals the server lifecycle task to exit.
         """
         self._shutdown_event.set()
+
+    # Back-compat helper to avoid tests reaching into Event internals across threads
+    def _is_shutdown_requested_flag(self) -> bool:
+        """Return True if a shutdown has been requested for this server connection."""
+        return self._shutdown_event.is_set()
 
     async def wait_for_shutdown_request(self) -> None:
         """
@@ -229,6 +235,8 @@ class MCPConnectionManager(ContextDependent):
         # Manage our own task group - independent of task context
         self._tg: TaskGroup | None = None
         self._tg_active = False
+        # Track the thread this manager was created in to ensure TaskGroup cleanup
+        self._thread_id = threading.get_ident()
 
     async def __aenter__(self):
         # We create a task group to manage all server lifecycle tasks
@@ -246,21 +254,28 @@ class MCPConnectionManager(ContextDependent):
             logger.debug("MCPConnectionManager: shutting down all server tasks...")
             await self.disconnect_all()
 
-            # TODO: saqadri (FA1) - Is this needed?
-            # Add a small delay to allow for clean shutdown
+            # Add a small delay to allow for clean shutdown of subprocess transports, etc.
             await anyio.sleep(0.5)
 
-            # Then close the task group if it's active
-            if self._tg_active:
-                try:
-                    await self._tg.__aexit__(exc_type, exc_val, exc_tb)
-                except Exception as e:
+            # Then close the task group if it's active and we're in the same thread
+            if self._tg_active and self._tg:
+                current_thread = threading.get_ident()
+                if current_thread == self._thread_id:
+                    try:
+                        await self._tg.__aexit__(exc_type, exc_val, exc_tb)
+                    except Exception as e:
+                        logger.warning(
+                            f"MCPConnectionManager: Error during task group cleanup: {e}"
+                        )
+                else:
+                    # Different thread – cannot safely cleanup anyio TaskGroup
                     logger.warning(
-                        f"MCPConnectionManager: Error during task group cleanup: {e}"
+                        f"MCPConnectionManager: Task group cleanup called from different thread "
+                        f"(created in {self._thread_id}, called from {current_thread}). Skipping cleanup."
                     )
-                finally:
-                    self._tg_active = False
-                    self._tg = None
+                # Always mark as inactive and drop reference
+                self._tg_active = False
+                self._tg = None
         except AttributeError:  # Handle missing `_exceptions`
             pass
         except Exception as e:
@@ -478,5 +493,9 @@ class MCPConnectionManager(ContextDependent):
         for name, conn in servers_to_shutdown:
             logger.info(f"{name}: Requesting shutdown...")
             conn.request_shutdown()
+
+        # Allow some time for transports to clean up if we actually shut anything down
+        if servers_to_shutdown:
+            await anyio.sleep(0.2)
 
         logger.info("All persistent server connections signaled to disconnect.")

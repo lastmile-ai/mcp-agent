@@ -1,6 +1,7 @@
 from mcp_agent.workflows.swarm.swarm import Swarm
 from mcp_agent.workflows.llm.augmented_llm import RequestParams
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
+from mcp_agent.tracing.token_tracking_decorator import track_tokens
 from mcp_agent.logging.logger import get_logger
 
 logger = get_logger(__name__)
@@ -11,6 +12,7 @@ class OpenAISwarm(Swarm, OpenAIAugmentedLLM):
     MCP version of the OpenAI Swarm class (https://github.com/openai/swarm.), using OpenAI's ChatCompletion as the LLM.
     """
 
+    @track_tokens(node_type="agent")
     async def generate(self, message, request_params: RequestParams | None = None):
         params = self.get_request_params(
             request_params,

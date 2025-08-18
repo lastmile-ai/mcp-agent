@@ -16,31 +16,33 @@ from mcp_agent.utils.tool_filter import ToolFilter, apply_tool_filter
 async def main():
     # Create app
     app = MCPApp(name="quickstart")
-    
+
     async with app.run() as agent_app:
         context = agent_app.context
-        
+
         # Configure filesystem server
         if "filesystem" in context.config.mcp.servers:
             cwd = os.getcwd()
             if cwd not in context.config.mcp.servers["filesystem"].args:
                 context.config.mcp.servers["filesystem"].args.append(cwd)
-        
+
         # Create agent
         agent = Agent(
             name="my_agent",
             instruction="You are a helpful assistant.",
-            server_names=["filesystem"]
+            server_names=["filesystem"],
         )
-        
+
         async with agent:
             # Attach LLM
             llm = await agent.attach_llm(OpenAIAugmentedLLM)
-            
+
             # Apply filter - only allow read operations
-            filter = ToolFilter(allowed=["filesystem_read_file", "filesystem_list_directory"])
+            filter = ToolFilter(
+                allowed=["filesystem_read_file", "filesystem_list_directory"]
+            )
             apply_tool_filter(llm, filter)
-            
+
             # Use the filtered LLM
             result = await llm.generate_str("What files are in the current directory?")
             print(f"\nResult: {result}")

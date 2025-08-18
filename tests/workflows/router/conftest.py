@@ -19,7 +19,13 @@ def mock_context():
     Returns a mock Context instance for testing.
     """
     mock = MagicMock(spec=Context)
+    # Tracing disabled by default in unit tests
+    mock.tracer = None
+    mock.tracing_enabled = False
+
+    # Executor with a stable uuid for AugmentedLLM name generation
     mock.executor = MagicMock()
+    mock.executor.uuid = MagicMock(return_value="test-uuid")
 
     # Setup configuration for different providers
     mock.config = MagicMock()
@@ -50,6 +56,13 @@ def mock_context():
 
     server_config = ServerConfig()
     mock.server_registry.get_server_config = MagicMock(return_value=server_config)
+
+    # Provide a model selector used by AugmentedLLM.select_model if invoked
+    mock.model_selector = MagicMock()
+    mock.model_selector.select_model = MagicMock(return_value="test-model")
+
+    # Token counter not used in these tests
+    mock.token_counter = None
 
     return mock
 

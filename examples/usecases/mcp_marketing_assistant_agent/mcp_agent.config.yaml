@@ -1,0 +1,45 @@
+execution_engine: asyncio
+
+logger:
+  transports: [console, file]
+  level: debug
+  path: "logs/marketing.jsonl"
+  path_settings:
+    path_pattern: "logs/marketing-{unique_id}.jsonl"
+    unique_id: "timestamp"
+    timestamp_format: "%Y%m%d_%H%M%S"
+mcp:
+  servers:      
+    # Document processing server
+    markitdown:
+      command: "markitdown-mcp"
+      args: []
+      description: "Convert various file formats to Markdown using Microsoft MarkItDown"
+      
+    # Basic memory server
+    memory:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-memory"]
+      description: "Basic knowledge graph memory system"
+      
+    # Filesystem access
+    filesystem:
+      command: "npx"
+      args: [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "./content_samples",
+        "./posts",
+        "./company_docs"
+      ]
+      description: "Secure file operations"
+      
+    # Web content fetching
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+      description: "Web content fetching and conversion"
+
+# OpenAI configuration
+openai:
+  default_model: gpt-4o-mini

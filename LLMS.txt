@@ -1536,6 +1536,7 @@ Example usage:
   - `max_concurrent_activities` (int | None) = None
   - `api_key` (str | None) = None
   - `timeout_seconds` (int | None) = 60
+  - `rpc_metadata` (Dict[str, str] | None) = None
 
 **Class: `UsageTelemetrySettings`**
 - **Inherits from**: BaseModel
@@ -2532,13 +2533,13 @@ Some key notes:
 - **Parameters**
   - `self`
 
-**Function:** `Workflow.run_async(self) -> str`
+**Function:** `Workflow.run_async(self) -> WorkflowExecution`
 
-- **Description**: Run the workflow asynchronously and return a workflow ID. This creates an async task that will be executed through the executor and returns immediately with a workflow run ID that can be used to check status, resume, or cancel. Args: *args: Positional arguments to pass to the run method **kwargs: Keyword arguments to pass to the run method Returns: str: A unique workflow ID that can be used to reference this workflow instance
+- **Description**: Run the workflow asynchronously and return the WorkflowExecution. This creates an async task that will be executed through the executor and returns immediately with a WorkflowExecution with run ID that can be used to check status, resume, or cancel. Args: *args: Positional arguments to pass to the run method **kwargs: Keyword arguments to pass to the run method Returns: str: A unique workflow ID that can be used to reference this workflow instance
 - **Parameters**
   - `self`
 - **Returns**
-  - `str`: str: A unique workflow ID that can be used to reference this workflow instance
+  - `WorkflowExecution`: WorkflowExecution: The execution details including run ID and workflow ID
 
 **Function:** `Workflow._execute_workflow()`
 
@@ -7326,4 +7327,3 @@ using Anthropic's API as the LLM.
 - **Description**: MCP version of the OpenAI Swarm class (https://github.com/openai/swarm.), using OpenAI's ChatCompletion as the LLM.
 
 **Function:** `OpenAISwarm.generate(self, message, request_params: RequestParams | None = None)`
-

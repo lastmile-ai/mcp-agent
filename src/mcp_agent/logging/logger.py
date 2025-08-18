@@ -244,7 +244,10 @@ class LoggingConfig:
 
         # Only add progress listener if enabled in settings
         if "progress" not in bus.listeners and kwargs.get("progress_display", True):
-            bus.add_listener("progress", ProgressListener())
+            bus.add_listener(
+                "progress",
+                ProgressListener(token_counter=kwargs.get("token_counter", None)),
+            )
 
         if "batching" not in bus.listeners:
             bus.add_listener(

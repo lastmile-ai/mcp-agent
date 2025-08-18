@@ -12,7 +12,7 @@ https://github.com/user-attachments/assets/f651af86-222d-4df0-8241-616414df66e4
 
 - Creating workflows with the `Workflow` base class
 - Registering workflows with an `MCPApp`
-- Exposing workflows as MCP tools using `create_mcp_server_for_app`
+- Exposing workflows as MCP tools using `create_mcp_server_for_app`, optionally using custom FastMCP settings
 - Connecting to an MCP server using `gen_client`
 - Running workflows remotely and monitoring their status
 
@@ -93,11 +93,18 @@ You can also run the server and client separately:
 
    ```bash
    uv run basic_agent_server.py
+
+   # Optionally, run with the example custom FastMCP settings
+   uv run basic_agent_server.py --custom-fastmcp-settings
    ```
 
 2. In another terminal, run the client:
+
    ```bash
    uv run client.py
+
+   # Optionally, run with the example custom FastMCP settings
+   uv run client.py --custom-fastmcp-settings
    ```
 
 ## MCP Clients

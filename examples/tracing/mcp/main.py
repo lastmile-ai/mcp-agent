@@ -20,13 +20,16 @@ async def test_sse():
             server_names=["mcp_test_server_sse"],
         )
 
+        original_number = 1
+
         async with agent:
             print(await agent.list_tools())
             call_tool_result: CallToolResult = await agent.call_tool(
-                "mcp_test_server_sse_get-magic-number"
+                "mcp_test_server_sse_get-magic-number",
+                {"original_number": original_number},
             )
 
-            assert call_tool_result.content[0].text == "42"
+            assert call_tool_result.content[0].text == str(42 + original_number)
             print("SSE test passed!")
 
 

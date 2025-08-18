@@ -155,13 +155,13 @@ dmypy.json
 cython_debug/
 
 # Make sure secrets files aren't added
-examples/**/*.secrets.yaml
+**/*.secrets.yaml
 
 # but make sure example files are
 !examples/**/*.secrets.yaml.example
 
 # Test data files
-examples/mcp_root_test/test_data/*.png
+examples/mcp/mcp_roots/test_data/*.png
 
 # PyCharm
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
@@ -177,3 +177,5 @@ prompt.md
 # example logs
 examples/**/*.jsonl
 **/.DS_Store
+
+.idea

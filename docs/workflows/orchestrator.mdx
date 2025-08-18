@@ -1,0 +1,94 @@
+---
+title: "Orchestrator"
+description: "Complex multi-step workflows with dependency management and state coordination."
+---
+
+import { Card } from "@mintlify/components";
+
+![Orchestrator Workflow Pattern](/images/orchestrator-workflow.png)
+
+## Overview
+
+The Orchestrator pattern handles complex, multi-step tasks through dynamic planning, parallel execution, and intelligent result synthesis. It breaks down objectives into manageable steps and coordinates specialized agents.
+
+## Quick Example
+
+```python
+from mcp_agent.app import MCPApp
+from mcp_agent.agents.agent import Agent
+from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
+from mcp_agent.workflows.orchestrator.orchestrator import Orchestrator
+
+app = MCPApp(name="orchestrator_example")
+
+async with app.run() as context:
+    # Create specialized worker agents
+    finder_agent = Agent(
+        name="finder",
+        instruction="Find and read files, fetch URLs for analysis.",
+        server_names=["fetch", "filesystem"]
+    )
+    
+    writer_agent = Agent(
+        name="writer", 
+        instruction="Write comprehensive reports to filesystem.",
+        server_names=["filesystem"]
+    )
+    
+    proofreader = Agent(
+        name="proofreader",
+        instruction="Review for grammar, spelling, and punctuation errors.",
+        server_names=["fetch"]
+    )
+    
+    # Create orchestrator with worker agents
+    orchestrator = Orchestrator(
+        worker_agents=[finder_agent, writer_agent, proofreader],
+        llm_factory=OpenAIAugmentedLLM,
+        plan_type="iterative"  # Dynamic planning
+    )
+    
+    # Execute complex multi-step task
+    result = await orchestrator.generate_str(
+        message="Grade the student assignment in short_story.md, check it against APA style guidelines, and write a comprehensive graded report"
+    )
+    
+    print(result)  # Coordinated results from multiple agents
+```
+
+## Key Features
+
+- **Dynamic Planning**: Breaks down complex objectives into manageable steps
+- **Parallel Execution**: Tasks within each step run simultaneously
+- **Iterative vs Full Planning**: Choose between adaptive or upfront planning
+- **Context Preservation**: Previous results inform subsequent steps
+- **Intelligent Synthesis**: Combines results from multiple specialized agents
+
+## Planning Modes
+
+### Full Planning
+```python
+orchestrator = Orchestrator(
+    worker_agents=agents,
+    plan_type="full"  # Generate complete plan upfront
+)
+```
+
+### Iterative Planning
+```python
+orchestrator = Orchestrator(
+    worker_agents=agents, 
+    plan_type="iterative"  # Plan one step at a time
+)
+```
+
+## Use Cases
+
+- **Complex Coding Tasks**: Multi-file modifications with dependencies
+- **Research Projects**: Gathering and synthesizing information from multiple sources
+- **Content Creation**: Multi-stage content development with review cycles
+- **Quality Assurance**: Multi-dimensional testing and validation workflows
+
+<Card title="Full Implementation" href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows/workflow_orchestrator_worker">
+  See the complete orchestrator example with student assignment grading workflow.
+</Card>

@@ -26,6 +26,10 @@ class TestMCPApp:
         mock_context.tracer = (
             MagicMock()
         )  # Add tracer attribute for tests that require it
+        mock_context.tracing_enabled = False
+        mock_context.upstream_session = None
+        mock_context.tracing_config = None
+        mock_context.token_counter = None  # Add token_counter attribute
         return mock_context
 
     @pytest.fixture
@@ -68,8 +72,8 @@ class TestMCPApp:
         return TestWorkflow
 
     @pytest.fixture
-    def test_task(self):
-        """Create a test task function."""
+    def test_task(self, request):
+        """Create a test task function with a unique name per test to avoid collisions."""
 
         async def task_function(param1: str, param2: int = 0):
             """A test task function.
@@ -82,6 +86,10 @@ class TestMCPApp:
                 Task result
             """
             return f"Task executed with {param1} and {param2}"
+
+        # Ensure a unique function identity to avoid activity name collisions across tests
+        task_function.__name__ = f"task_function_{request.node.name}"
+        task_function.__qualname__ = f"task_function_{request.node.name}"
 
         return task_function
 

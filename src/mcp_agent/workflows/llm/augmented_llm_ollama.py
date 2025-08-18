@@ -1,6 +1,6 @@
 from typing import Type
 
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 from mcp_agent.executor.workflow_task import workflow_task
 from mcp_agent.utils.pydantic_type_serializer import serialize_model, deserialize_model
@@ -100,22 +100,23 @@ class OllamaCompletionTasks:
             )
 
         # Next we pass the text through instructor to extract structured data
-        client = instructor.from_openai(
-            OpenAI(
-                api_key=request.config.api_key,
-                base_url=request.config.base_url,
-                http_client=request.config.http_client,
-            ),
-            mode=instructor.Mode.JSON,
-        )
+        async with AsyncOpenAI(
+            api_key=request.config.api_key,
+            base_url=request.config.base_url,
+            http_client=request.config.http_client,
+        ) as async_client:
+            client = instructor.from_openai(
+                async_client,
+                mode=instructor.Mode.JSON,
+            )
 
-        # Extract structured data from natural language
-        structured_response = client.chat.completions.create(
-            model=request.model,
-            response_model=response_model,
-            messages=[
-                {"role": "user", "content": request.response_str},
-            ],
-        )
+            # Extract structured data from natural language
+            structured_response = await client.chat.completions.create(
+                model=request.model,
+                response_model=response_model,
+                messages=[
+                    {"role": "user", "content": request.response_str},
+                ],
+            )
 
-        return structured_response
+            return structured_response

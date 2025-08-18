@@ -94,6 +94,120 @@ async def test_start_workflow(executor, mock_context):
 
 
 @pytest.mark.asyncio
+async def test_start_workflow_with_custom_workflow_id(executor, mock_context):
+    """Test that custom workflow_id is used instead of auto-generated one"""
+
+    class DummyWorkflow:
+        @staticmethod
+        async def run():
+            return "ok"
+
+    mock_workflow = DummyWorkflow
+    mock_context.app.workflows.get.return_value = mock_workflow
+    executor.client.start_workflow = AsyncMock(return_value=AsyncMock())
+
+    custom_workflow_id = "my-custom-workflow-id"
+    await executor.start_workflow(
+        "test_workflow", workflow_id=custom_workflow_id, wait_for_result=False
+    )
+
+    # Verify the custom workflow_id was used
+    call_args = executor.client.start_workflow.call_args
+    assert call_args.kwargs["id"] == custom_workflow_id
+
+
+@pytest.mark.asyncio
+async def test_start_workflow_with_custom_task_queue(executor, mock_context):
+    """Test that custom task_queue is used instead of config default"""
+
+    class DummyWorkflow:
+        @staticmethod
+        async def run():
+            return "ok"
+
+    mock_workflow = DummyWorkflow
+    mock_context.app.workflows.get.return_value = mock_workflow
+    executor.client.start_workflow = AsyncMock(return_value=AsyncMock())
+
+    custom_task_queue = "my-custom-task-queue"
+    await executor.start_workflow(
+        "test_workflow", task_queue=custom_task_queue, wait_for_result=False
+    )
+
+    # Verify the custom task_queue was used
+    call_args = executor.client.start_workflow.call_args
+    assert call_args.kwargs["task_queue"] == custom_task_queue
+
+
+@pytest.mark.asyncio
+async def test_start_workflow_with_both_custom_params(executor, mock_context):
+    """Test that both custom workflow_id and task_queue are used"""
+
+    class DummyWorkflow:
+        @staticmethod
+        async def run(param1, param2):
+            return f"{param1}-{param2}"
+
+    mock_workflow = DummyWorkflow
+    mock_context.app.workflows.get.return_value = mock_workflow
+    executor.client.start_workflow = AsyncMock(return_value=AsyncMock())
+
+    custom_workflow_id = "my-custom-workflow-id"
+    custom_task_queue = "my-custom-task-queue"
+
+    await executor.start_workflow(
+        "test_workflow",
+        "value1",
+        "value2",
+        workflow_id=custom_workflow_id,
+        task_queue=custom_task_queue,
+        wait_for_result=False,
+    )
+
+    # Verify both custom parameters were used
+    call_args = executor.client.start_workflow.call_args
+    assert call_args.kwargs["id"] == custom_workflow_id
+    assert call_args.kwargs["task_queue"] == custom_task_queue
+    # Verify the input args were passed correctly
+    assert call_args.args[1] == [
+        "value1",
+        "value2",
+    ]  # Multi-arg workflow packs into sequence
+
+
+@pytest.mark.asyncio
+async def test_execute_workflow_with_custom_params(executor, mock_context):
+    """Test that execute_workflow passes custom params to start_workflow"""
+
+    class DummyWorkflow:
+        @staticmethod
+        async def run():
+            return "result"
+
+    mock_workflow = DummyWorkflow
+    mock_context.app.workflows.get.return_value = mock_workflow
+
+    mock_handle = AsyncMock()
+    mock_handle.result.return_value = "workflow_result"
+    executor.client.start_workflow = AsyncMock(return_value=mock_handle)
+
+    custom_workflow_id = "my-custom-workflow-id"
+    custom_task_queue = "my-custom-task-queue"
+
+    result = await executor.execute_workflow(
+        "test_workflow", workflow_id=custom_workflow_id, task_queue=custom_task_queue
+    )
+
+    # Verify start_workflow was called with custom params
+    call_args = executor.client.start_workflow.call_args
+    assert call_args.kwargs["id"] == custom_workflow_id
+    assert call_args.kwargs["task_queue"] == custom_task_queue
+
+    # Verify result was waited for
+    assert result == "workflow_result"
+
+
+@pytest.mark.asyncio
 async def test_terminate_workflow(executor):
     mock_handle = AsyncMock()
     executor.client.get_workflow_handle = MagicMock(return_value=mock_handle)

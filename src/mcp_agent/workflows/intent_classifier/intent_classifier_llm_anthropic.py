@@ -1,5 +1,6 @@
 from typing import List, Optional, TYPE_CHECKING
 
+from mcp_agent.workflows.llm.augmented_llm import RequestParams
 from mcp_agent.workflows.llm.augmented_llm_anthropic import AnthropicAugmentedLLM
 from mcp_agent.workflows.intent_classifier.intent_classifier_base import Intent
 from mcp_agent.workflows.intent_classifier.intent_classifier_llm import (
@@ -27,11 +28,15 @@ class AnthropicLLMIntentClassifier(LLMIntentClassifier):
         classification_instruction: str | None = None,
         name: str | None = None,
         llm: AnthropicAugmentedLLM | None = None,
+        request_params: RequestParams | None = None,
         context: Optional["Context"] = None,
         **kwargs,
     ):
         anthropic_llm = llm or AnthropicAugmentedLLM(
-            name=name, instruction=CLASSIFIER_SYSTEM_INSTRUCTION, context=context
+            name=name,
+            instruction=CLASSIFIER_SYSTEM_INSTRUCTION,
+            default_request_params=request_params,
+            context=context,
         )
 
         super().__init__(
@@ -49,6 +54,7 @@ class AnthropicLLMIntentClassifier(LLMIntentClassifier):
         intents: List[Intent],
         classification_instruction: str | None = None,
         name: str | None = None,
+        request_params: RequestParams | None = None,
         context: Optional["Context"] = None,
     ) -> "AnthropicLLMIntentClassifier":
         """
@@ -60,6 +66,7 @@ class AnthropicLLMIntentClassifier(LLMIntentClassifier):
             intents=intents,
             classification_instruction=classification_instruction,
             name=name,
+            request_params=request_params,
             context=context,
         )
         await instance.initialize()

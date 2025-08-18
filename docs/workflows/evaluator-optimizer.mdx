@@ -1,0 +1,105 @@
+---
+title: "Evaluator-Optimizer"
+description: "Quality control with LLM-as-judge evaluation and iterative response refinement."
+---
+
+import { Card } from "@mintlify/components";
+
+![Evaluator-Optimizer Workflow Pattern](/images/evaluator-optimizer-workflow.png)
+
+## Overview
+
+The Evaluator-Optimizer pattern implements quality control through LLM-as-judge evaluation, iteratively refining responses until they meet specified quality thresholds.
+
+## Quick Example
+
+```python
+from mcp_agent.app import MCPApp
+from mcp_agent.agents.agent import Agent
+from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
+from mcp_agent.workflows.evaluator_optimizer.evaluator_optimizer import (
+    EvaluatorOptimizerLLM,
+    QualityRating,
+)
+
+app = MCPApp(name="cover_letter_writer")
+
+async with app.run() as cover_letter_app:
+    # Create optimizer agent for content generation
+    optimizer = Agent(
+        name="optimizer",
+        instruction="""You are a career coach specializing in cover letter writing.
+        You are tasked with generating a compelling cover letter given the job posting,
+        candidate details, and company information. Tailor the response to the company and job requirements.""",
+        server_names=["fetch"],
+    )
+
+    # Create evaluator agent with detailed criteria
+    evaluator = Agent(
+        name="evaluator",
+        instruction="""Evaluate the following response based on the criteria below:
+        1. Clarity: Is the language clear, concise, and grammatically correct?
+        2. Specificity: Does the response include relevant and concrete details tailored to the job description?
+        3. Relevance: Does the response align with the prompt and avoid unnecessary information?
+        4. Tone and Style: Is the tone professional and appropriate for the context?
+        5. Persuasiveness: Does the response effectively highlight the candidate's value?
+        6. Grammar and Mechanics: Are there any spelling or grammatical issues?
+        7. Feedback Alignment: Has the response addressed feedback from previous iterations?
+
+        For each criterion:
+        - Provide a rating (EXCELLENT, GOOD, FAIR, or POOR).
+        - Offer specific feedback or suggestions for improvement."""
+    )
+
+    # Create evaluator-optimizer workflow
+    evaluator_optimizer = EvaluatorOptimizerLLM(
+        optimizer=optimizer,
+        evaluator=evaluator,
+        llm_factory=OpenAIAugmentedLLM,
+        min_rating=QualityRating.EXCELLENT,
+    )
+
+    # Example usage with job posting data
+    job_posting = (
+        "Software Engineer at LastMile AI. Responsibilities include developing AI systems, "
+        "collaborating with cross-functional teams, and enhancing scalability. Skills required: "
+        "Python, distributed systems, and machine learning."
+    )
+    candidate_details = (
+        "Alex Johnson, 3 years in machine learning, contributor to open-source AI projects, "
+        "proficient in Python and TensorFlow. Motivated by building scalable AI systems."
+    )
+    company_information = (
+        "Look up from the LastMile AI About page: https://lastmileai.dev/about"
+    )
+
+    # Generate and optimize cover letter
+    result = await evaluator_optimizer.generate_str(
+        message=f"Write a cover letter for the following job posting: {job_posting}\n\n"
+                f"Candidate Details: {candidate_details}\n\n"
+                f"Company information: {company_information}"
+    )
+
+    print(result)  # High-quality, refined cover letter
+```
+
+## Key Features
+
+- **LLM-as-Judge**: Automated quality evaluation using specialized evaluator agents
+- **Iterative Refinement**: Multiple improvement cycles until quality threshold met
+- **Configurable Thresholds**: Set minimum quality standards for different use cases
+
+## Use Cases
+
+- **Content Quality Control**: Ensure documentation meets editorial standards
+- **Code Review Automation**: Iteratively improve code quality and documentation
+- **Research Paper Refinement**: Multi-pass improvement of academic writing
+- **Customer Communication**: Refine responses for clarity and professionalism
+
+<Card
+  title="Full Implementation"
+  href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows/workflow_evaluator_optimizer"
+>
+  See the complete evaluator-optimizer implementation with research-based
+  quality metrics.
+</Card>

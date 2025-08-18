@@ -1,9 +1,132 @@
 {
   "$defs": {
+    "AgentSpec": {
+      "additionalProperties": true,
+      "description": "Canonical, strongly-typed Agent specification used across the system.\n\nThis represents a declarative way to define an Agent without constructing it yet.\nAgentSpec is used to create an Agent instance.\nIt can be defined as a config (loaded from a md, yaml, json, etc.), or\nit can be created programmatically.",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "instruction": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Instruction"
+        },
+        "server_names": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Server Names",
+          "type": "array"
+        },
+        "connection_persistence": {
+          "default": true,
+          "title": "Connection Persistence",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "AgentSpec",
+      "type": "object"
+    },
     "AnthropicSettings": {
       "additionalProperties": true,
       "description": "Settings for using Anthropic models in the MCP Agent application.",
       "properties": {
+        "aws_access_key_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Aws Access Key Id"
+        },
+        "aws_secret_access_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Aws Secret Access Key"
+        },
+        "aws_session_token": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Aws Session Token"
+        },
+        "aws_region": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Aws Region"
+        },
+        "profile": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Profile"
+        },
+        "project": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Project"
+        },
+        "location": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Location"
+        },
         "api_key": {
           "anyOf": [
             {
@@ -15,6 +138,28 @@
           ],
           "default": null,
           "title": "Api Key"
+        },
+        "default_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Default Model"
+        },
+        "provider": {
+          "default": "anthropic",
+          "enum": [
+            "anthropic",
+            "bedrock",
+            "vertexai"
+          ],
+          "title": "Provider",
+          "type": "string"
         }
       },
       "title": "AnthropicSettings",
@@ -37,8 +182,16 @@
           "title": "Api Key"
         },
         "endpoint": {
-          "title": "Endpoint",
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Endpoint"
         },
         "credential_scopes": {
           "anyOf": [
@@ -58,9 +211,6 @@
           "title": "Credential Scopes"
         }
       },
-      "required": [
-        "endpoint"
-      ],
       "title": "AzureSettings",
       "type": "object"
     },
@@ -156,24 +306,6 @@
       "additionalProperties": true,
       "description": "Settings for using Google models in the MCP Agent application.",
       "properties": {
-        "api_key": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Api Key",
-          "description": "Or use the GOOGLE_API_KEY environment variable"
-        },
-        "vertexai": {
-          "default": false,
-          "title": "Vertexai",
-          "type": "boolean"
-        },
         "project": {
           "anyOf": [
             {
@@ -197,12 +329,30 @@
           ],
           "default": null,
           "title": "Location"
+        },
+        "api_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Api Key"
+        },
+        "vertexai": {
+          "default": false,
+          "title": "Vertexai",
+          "type": "boolean"
         }
       },
       "title": "GoogleSettings",
       "type": "object"
     },
     "LogPathSettings": {
+      "additionalProperties": true,
       "description": "Settings for configuring log file paths with dynamic elements like timestamps or session IDs.",
       "properties": {
         "path_pattern": {
@@ -229,6 +379,7 @@
       "type": "object"
     },
     "LoggerSettings": {
+      "additionalProperties": true,
       "description": "Logger settings for the MCP Agent application.",
       "properties": {
         "type": {
@@ -659,12 +810,25 @@
           ],
           "default": null,
           "title": "Default Headers"
+        },
+        "default_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Default Model"
         }
       },
       "title": "OpenAISettings",
       "type": "object"
     },
     "OpenTelemetrySettings": {
+      "additionalProperties": true,
       "description": "OTEL settings for the MCP Agent application.",
       "properties": {
         "enabled": {
@@ -733,6 +897,18 @@
           "default": null,
           "description": "OTLP settings for OpenTelemetry tracing. Required if using otlp exporter."
         },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Path"
+        },
         "path_settings": {
           "anyOf": [
             {
@@ -748,7 +924,43 @@
       "title": "OpenTelemetrySettings",
       "type": "object"
     },
+    "SubagentSettings": {
+      "additionalProperties": true,
+      "description": "Settings for discovering and loading project/user subagents (AgentSpec files).\nSupports common formats like Claude Code subagents.",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean",
+          "description": "Enable automatic subagent discovery and loading."
+        },
+        "search_paths": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Search Paths",
+          "type": "array"
+        },
+        "pattern": {
+          "default": "**/*.*",
+          "title": "Pattern",
+          "type": "string",
+          "description": "Glob pattern within each directory to match files (YAML/JSON/Markdown supported)."
+        },
+        "definitions": {
+          "items": {
+            "$ref": "#/$defs/AgentSpec"
+          },
+          "title": "Definitions",
+          "type": "array",
+          "description": "Inline AgentSpec definitions directly in config."
+        }
+      },
+      "title": "SubagentSettings",
+      "type": "object"
+    },
     "TemporalSettings": {
+      "additionalProperties": true,
       "description": "Temporal settings for the MCP Agent application.",
       "properties": {
         "host": {
@@ -804,6 +1016,21 @@
           ],
           "default": 60,
           "title": "Timeout Seconds"
+        },
+        "rpc_metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rpc Metadata"
         }
       },
       "required": [
@@ -814,21 +1041,44 @@
       "type": "object"
     },
     "TraceOTLPSettings": {
+      "additionalProperties": true,
       "description": "Settings for OTLP exporter in OpenTelemetry.",
       "properties": {
         "endpoint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
           "title": "Endpoint",
-          "type": "string",
           "description": "OTLP endpoint for exporting traces."
+        },
+        "headers": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Headers",
+          "description": "Optional headers for OTLP exporter."
         }
       },
-      "required": [
-        "endpoint"
-      ],
       "title": "TraceOTLPSettings",
       "type": "object"
     },
     "TracePathSettings": {
+      "additionalProperties": true,
       "description": "Settings for configuring trace file paths with dynamic elements like timestamps or session IDs.",
       "properties": {
         "path_pattern": {
@@ -855,6 +1105,7 @@
       "type": "object"
     },
     "UsageTelemetrySettings": {
+      "additionalProperties": true,
       "description": "Settings for usage telemetry in the MCP Agent application.\nAnonymized usage metrics are sent to a telemetry server to help improve the product.",
       "properties": {
         "enabled": {
@@ -922,7 +1173,6 @@
           "type": "null"
         }
       ],
-      "default": null,
       "description": "Settings for using Anthropic models in the MCP Agent application"
     },
     "bedrock": {
@@ -934,7 +1184,6 @@
           "type": "null"
         }
       ],
-      "default": null,
       "description": "Settings for using Bedrock models in the MCP Agent application"
     },
     "cohere": {
@@ -946,7 +1195,6 @@
           "type": "null"
         }
       ],
-      "default": null,
       "description": "Settings for using Cohere models in the MCP Agent application"
     },
     "openai": {
@@ -958,7 +1206,6 @@
           "type": "null"
         }
       ],
-      "default": null,
       "description": "Settings for using OpenAI models in the MCP Agent application"
     },
     "azure": {
@@ -970,7 +1217,6 @@
           "type": "null"
         }
       ],
-      "default": null,
       "description": "Settings for using Azure models in the MCP Agent application"
     },
     "google": {
@@ -982,7 +1228,6 @@
           "type": "null"
         }
       ],
-      "default": null,
       "description": "Settings for using Google models in the MCP Agent application"
     },
     "otel": {
@@ -1002,6 +1247,7 @@
         "service_version": null,
         "sample_rate": 1.0,
         "otlp_settings": null,
+        "path": null,
         "path_settings": null
       },
       "description": "OpenTelemetry logging settings for the MCP Agent application"
@@ -1045,6 +1291,28 @@
         "enable_detailed_telemetry": false
       },
       "description": "Usage tracking settings for the MCP Agent application"
+    },
+    "agents": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SubagentSettings"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": {
+        "enabled": true,
+        "search_paths": [
+          ".claude/agents",
+          "~/.claude/agents",
+          ".mcp-agent/agents",
+          "~/.mcp-agent/agents"
+        ],
+        "pattern": "**/*.*",
+        "definitions": []
+      },
+      "description": "Settings for defining and loading subagents for the MCP Agent application"
     }
   },
   "title": "MCP Agent Configuration Schema",

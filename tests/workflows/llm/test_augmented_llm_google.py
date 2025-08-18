@@ -793,3 +793,127 @@ class TestGoogleAugmentedLLM:
             assert isinstance(result, TestResponseModel)
             assert result.name == "MixedTypes"
             assert result.value == 123
+
+    @pytest.mark.asyncio
+    async def test_parallel_tool_calls(self, mock_llm: GoogleAugmentedLLM):
+        """
+        Tests that parallel tool calls return a single Content with multiple function response parts.
+        """
+        from google.genai import types
+
+        parallel_tool_response = types.GenerateContentResponse(
+            candidates=[
+                types.Candidate(
+                    content=types.Content(
+                        role="model",
+                        parts=[
+                            types.Part(
+                                function_call=types.FunctionCall(
+                                    name="tool1", args={"param": "value1"}, id="call_1"
+                                )
+                            ),
+                            types.Part(
+                                function_call=types.FunctionCall(
+                                    name="tool2", args={"param": "value2"}, id="call_2"
+                                )
+                            ),
+                        ],
+                    ),
+                    finish_reason="STOP",
+                )
+            ]
+        )
+
+        final_response = self.create_text_response(
+            "Final response after parallel tools"
+        )
+
+        mock_llm.executor.execute = AsyncMock(
+            side_effect=[parallel_tool_response, final_response]
+        )
+
+        async def mock_execute_tool_call(function_call):
+            if function_call.name == "tool1":
+                return types.Content(
+                    role="tool",
+                    parts=[
+                        types.Part.from_function_response(
+                            name="tool1", response={"result": "Result from tool 1"}
+                        )
+                    ],
+                )
+            elif function_call.name == "tool2":
+                return types.Content(
+                    role="tool",
+                    parts=[
+                        types.Part.from_function_response(
+                            name="tool2", response={"result": "Result from tool 2"}
+                        )
+                    ],
+                )
+
+        mock_llm.execute_tool_call = AsyncMock(side_effect=mock_execute_tool_call)
+
+        mock_llm.executor.execute_many = AsyncMock(
+            return_value=[
+                types.Content(
+                    role="tool",
+                    parts=[
+                        types.Part.from_function_response(
+                            name="tool1", response={"result": "Result from tool 1"}
+                        )
+                    ],
+                ),
+                types.Content(
+                    role="tool",
+                    parts=[
+                        types.Part.from_function_response(
+                            name="tool2", response={"result": "Result from tool 2"}
+                        )
+                    ],
+                ),
+            ]
+        )
+
+        # Track the messages to verify our fix combines tool responses correctly
+        original_messages = []
+
+        def track_messages(messages):
+            original_messages.extend(messages)
+            return messages
+
+        mock_llm.history.set = MagicMock(side_effect=track_messages)
+
+        responses = await mock_llm.generate("Test parallel tool calls")
+
+        # Verify the responses
+        assert len(responses) == 2  # Tool call response + final response
+        assert len(responses[0].parts) == 2  # Two parallel tool calls
+        assert responses[0].parts[0].function_call.name == "tool1"
+        assert responses[0].parts[1].function_call.name == "tool2"
+        assert responses[1].parts[0].text == "Final response after parallel tools"
+
+        # Verify that only ONE tool response message was added to messages
+        tool_messages = [
+            msg
+            for msg in original_messages
+            if hasattr(msg, "role") and msg.role == "tool"
+        ]
+        assert len(tool_messages) == 1, (
+            f"Expected 1 tool message, got {len(tool_messages)}"
+        )
+
+        # Verify the single tool message contains both function responses
+        tool_message = tool_messages[0]
+        assert len(tool_message.parts) == 2, (
+            f"Expected 2 parts in tool message, got {len(tool_message.parts)}"
+        )
+
+        # Verify both tool responses are present in the combined message
+        part_names = [
+            part.function_response.name
+            for part in tool_message.parts
+            if part.function_response
+        ]
+        assert "tool1" in part_names, "tool1 response not found in combined message"
+        assert "tool2" in part_names, "tool2 response not found in combined message"

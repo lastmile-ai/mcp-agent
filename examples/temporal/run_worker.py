@@ -15,6 +15,7 @@ from evaluator_optimizer import EvaluatorOptimizerWorkflow  # noqa: F401
 from orchestrator import OrchestratorWorkflow  # noqa: F401
 from parallel import ParallelWorkflow  # noqa: F401
 from router import RouterWorkflow  # noqa: F401
+from interactive import WorkflowWithInteraction  # noqa: F401
 
 from mcp_agent.executor.temporal import create_temporal_worker_for_app
 

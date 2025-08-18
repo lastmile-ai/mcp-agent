@@ -1,3 +1,5 @@
+import asyncio
+import functools
 from typing import TYPE_CHECKING, Type
 from boto3 import Session
 
@@ -27,6 +29,7 @@ from mcp_agent.workflows.llm.augmented_llm import (
 )
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.workflows.llm.multipart_converter_bedrock import BedrockConverter
+from mcp_agent.tracing.token_tracking_decorator import track_tokens
 
 if TYPE_CHECKING:
     from mypy_boto3_bedrock_runtime.type_defs import (
@@ -88,6 +91,7 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
             use_history=True,
         )
 
+    @track_tokens()
     async def generate(self, message, request_params: RequestParams | None = None):
         """
         Process a query using an LLM and available tools.
@@ -151,7 +155,7 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
                     "additionalModelRequestFields": params.metadata,
                 }
 
-            self.logger.debug(f"{arguments}")
+            self.logger.debug("Completion request arguments:", data=arguments)
             self._log_chat_progress(chat_turn=(len(messages) + 1) // 2, model=model)
 
             response: ConverseResponseTypeDef = await self.executor.execute(
@@ -206,6 +210,9 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
                 )
                 break
             elif response["stopReason"] == "tool_use":
+                # Collect all tool results first
+                tool_results = []
+
                 for content in response["output"]["message"]["content"]:
                     if content.get("toolUse"):
                         tool_use_block = content["toolUse"]
@@ -224,25 +231,27 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
                             request=tool_call_request, tool_call_id=tool_use_id
                         )
 
-                        tool_result_message = {
-                            "role": "user",
-                            "content": [
-                                {
-                                    "toolResult": {
-                                        "content": mcp_content_to_bedrock_content(
-                                            result.content
-                                        ),
-                                        "toolUseId": tool_use_id,
-                                        "status": "error"
-                                        if result.isError
-                                        else "success",
-                                    }
+                        tool_results.append(
+                            {
+                                "toolResult": {
+                                    "content": mcp_content_to_bedrock_content(
+                                        result.content
+                                    ),
+                                    "toolUseId": tool_use_id,
+                                    "status": "error" if result.isError else "success",
                                 }
-                            ],
-                        }
+                            }
+                        )
 
-                        messages.append(tool_result_message)
-                        responses.append(tool_result_message)
+                # Create a single message with all tool results
+                if tool_results:
+                    tool_result_message = {
+                        "role": "user",
+                        "content": tool_results,
+                    }
+
+                    messages.append(tool_result_message)
+                    responses.append(tool_result_message)
 
         if params.use_history:
             self.history.set(messages)
@@ -388,7 +397,11 @@ class BedrockCompletionTasks:
             bedrock_client = session.client("bedrock-runtime")
 
         payload = request.payload
-        response = bedrock_client.converse(**payload)
+        # Offload to a thread to avoid blocking the event loop
+        loop = asyncio.get_running_loop()
+        response = await loop.run_in_executor(
+            None, functools.partial(bedrock_client.converse, **payload)
+        )
         return response
 
     @staticmethod
@@ -425,11 +438,16 @@ class BedrockCompletionTasks:
 
         client = instructor.from_bedrock(bedrock_client)
 
-        # Extract structured data from natural language
-        structured_response = client.chat.completions.create(
-            modelId=request.model,
-            messages=[{"role": "user", "content": request.response_str}],
-            response_model=response_model,
+        # Extract structured data from natural language without blocking
+        loop = asyncio.get_running_loop()
+        structured_response = await loop.run_in_executor(
+            None,
+            functools.partial(
+                client.chat.completions.create,
+                modelId=request.model,
+                messages=[{"role": "user", "content": request.response_str}],
+                response_model=response_model,
+            ),
         )
 
         return structured_response

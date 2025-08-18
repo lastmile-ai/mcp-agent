@@ -1,12 +1,15 @@
+import asyncio
+import os
+import sys
 import functools
+
 from types import MethodType
 from typing import Any, Dict, Optional, Type, TypeVar, Callable, TYPE_CHECKING
 from datetime import timedelta
-import asyncio
-import sys
 from contextlib import asynccontextmanager
 
 from mcp import ServerSession
+from mcp.server.fastmcp import FastMCP
 from mcp_agent.core.context import Context, initialize_context, cleanup_context
 from mcp_agent.config import Settings, get_settings
 from mcp_agent.executor.signal_registry import SignalRegistry
@@ -21,11 +24,14 @@ from mcp_agent.executor.task_registry import ActivityRegistry
 from mcp_agent.executor.workflow_signal import SignalWaitCallback
 from mcp_agent.executor.workflow_task import GlobalWorkflowTaskRegistry
 from mcp_agent.human_input.types import HumanInputCallback
+from mcp_agent.elicitation.types import ElicitationCallback
 from mcp_agent.tracing.telemetry import get_tracer
 from mcp_agent.utils.common import unwrap
 from mcp_agent.workflows.llm.llm_selector import ModelSelector
+from mcp_agent.workflows.factory import load_agent_specs_from_dir
 
 if TYPE_CHECKING:
+    from mcp_agent.agents.agent_spec import AgentSpec
     from mcp_agent.executor.workflow import Workflow
 
 R = TypeVar("R")
@@ -56,11 +62,13 @@ class MCPApp:
         self,
         name: str = "mcp_application",
         description: str | None = None,
-        settings: Optional[Settings] | str = None,
-        human_input_callback: Optional[HumanInputCallback] = None,
-        signal_notification: Optional[SignalWaitCallback] = None,
+        settings: Settings | str | None = None,
+        mcp: FastMCP | None = None,
+        human_input_callback: HumanInputCallback | None = None,
+        elicitation_callback: ElicitationCallback | None = None,
+        signal_notification: SignalWaitCallback | None = None,
         upstream_session: Optional["ServerSession"] = None,
-        model_selector: ModelSelector = None,
+        model_selector: ModelSelector | None = None,
     ):
         """
         Initialize the application with a name and optional settings.
@@ -70,6 +78,9 @@ class MCPApp:
                 provide a detailed description, since it will be used as the server's description.
             settings: Application configuration - If unspecified, the settings are loaded from mcp_agent.config.yaml.
                 If this is a string, it is treated as the path to the config file to load.
+            mcp: MCP server instance to use for the application to expose agents and workflows as tools.
+                If not provided, a default FastMCP server will be created by create_mcp_server_for_app().
+                If provided, the MCPApp will add tools to the provided server instance.
             human_input_callback: Callback for handling human input
             signal_notification: Callback for getting notified on workflow signals/events.
             upstream_session: Upstream session if the MCPApp is running as a server to an MCP client.
@@ -77,6 +88,7 @@ class MCPApp:
         """
         self.name = name
         self.description = description or "MCP Agent Application"
+        self.mcp = mcp
 
         # We use these to initialize the context in initialize()
         if settings is None:
@@ -97,6 +109,7 @@ class MCPApp:
         self._registered_global_workflow_tasks = set()
 
         self._human_input_callback = human_input_callback
+        self._elicitation_callback = elicitation_callback
         self._signal_notification = signal_notification
         self._upstream_session = upstream_session
         self._model_selector = model_selector
@@ -106,6 +119,7 @@ class MCPApp:
         self._logger = None
         self._context: Optional[Context] = None
         self._initialized = False
+        self._tracer_provider = None
 
         try:
             # Set event loop policy for Windows
@@ -181,14 +195,77 @@ class MCPApp:
             store_globally=True,
         )
 
+        # Store the app-specific tracer provider
+        if self._context.tracing_enabled and self._context.tracing_config:
+            self._tracer_provider = self._context.tracing_config._tracer_provider
+
         # Set the properties that were passed in the constructor
         self._context.human_input_handler = self._human_input_callback
+        self._context.elicitation_handler = self._elicitation_callback
         self._context.signal_notification = self._signal_notification
         self._context.upstream_session = self._upstream_session
         self._context.model_selector = self._model_selector
 
         # Store a reference to this app instance in the context for easier access
         self._context.app = self
+
+        # Auto-load subagents if enabled in settings
+        try:
+            subagents = self._config.agents
+
+            if subagents is not None and subagents.enabled:
+                self.logger.info("Loading subagents from configuration...")
+
+                # Enforce precedence and deduplicate by name:
+                # - Inline definitions (highest precedence)
+                # - search_paths in given order (earlier has higher precedence)
+                loaded_by_name: Dict[str, "AgentSpec"] = {}
+
+                # Process search paths from lowest to highest precedence so that
+                # higher precedence can overwrite lower ones while logging a warning.
+                for p in reversed(subagents.search_paths or []):
+                    path = os.path.expanduser(p)
+                    agents_from_search_path = load_agent_specs_from_dir(
+                        path=path, pattern=subagents.pattern, context=self._context
+                    )
+
+                    if agents_from_search_path:
+                        self.logger.info(
+                            f"Found subagents in {path}",
+                            data={"count": len(agents_from_search_path)},
+                        )
+                        for spec in agents_from_search_path:
+                            if spec.name in loaded_by_name:
+                                self.logger.warning(
+                                    "Duplicate subagent name encountered; overwriting with higher-precedence definition",
+                                    data={"agent_name": spec.name, "source": path},
+                                )
+                            loaded_by_name[spec.name] = spec
+
+                # Inline subagents (highest precedence): overwrite if duplicate
+                for spec in subagents.definitions or []:
+                    if spec.name in loaded_by_name:
+                        self.logger.warning(
+                            "Duplicate subagent name encountered; overwriting with inline definition",
+                            data={"agent_name": spec.name},
+                        )
+                    loaded_by_name[spec.name] = spec
+
+                if loaded_by_name:
+                    # Keep the loaded specs on context for access by workflows/factories
+                    self._context.loaded_subagents = list(loaded_by_name.values())
+                    self.logger.info(
+                        "Loaded subagents",
+                        data={
+                            "count": len(self._context.loaded_subagents),
+                            "agents": [
+                                spec.name for spec in self._context.loaded_subagents
+                            ],
+                        },
+                    )
+        except Exception as e:
+            # Non-fatal: log and continue
+            self.logger.warning(f"Subagent discovery failed: {e}")
 
         self._register_global_workflow_tasks()
 
@@ -202,6 +279,51 @@ class MCPApp:
                 "session_id": self.session_id,
             },
         )
+
+    async def get_token_node(self):
+        """Return the root app token node, if available."""
+        if not self._context or not getattr(self._context, "token_counter", None):
+            return None
+        return await self._context.token_counter.get_app_node()
+
+    async def get_token_usage(self):
+        """Return total token usage across the app (root node)."""
+        if not self._context or not getattr(self._context, "token_counter", None):
+            return None
+        node = await self.get_token_node()
+        return node.get_usage() if node else None
+
+    async def get_token_summary(self):
+        """Return TokenSummary across the entire app."""
+        if not self._context or not getattr(self._context, "token_counter", None):
+            return None
+        # Keep summary for model breakdowns while delegating node-sourced methods elsewhere
+        return await self._context.token_counter.get_summary()
+
+    async def watch_tokens(
+        self,
+        callback,
+        *,
+        threshold: int | None = None,
+        throttle_ms: int | None = None,
+        include_subtree: bool = True,
+    ) -> str | None:
+        """Watch the root app token usage. Returns a watch_id or None if not available."""
+        node = await self.get_token_node()
+        if not node:
+            return None
+        return await node.watch(
+            callback,
+            threshold=threshold,
+            throttle_ms=throttle_ms,
+            include_subtree=include_subtree,
+        )
+
+    async def format_token_tree(self) -> str:
+        node = await self.get_token_node()
+        if not node:
+            return "(no token usage)"
+        return node.format_tree()
 
     async def cleanup(self):
         """Cleanup application resources."""
@@ -218,13 +340,24 @@ class MCPApp:
             },
         )
 
+        # Force flush traces before cleanup
+        if self._context and self._context.tracing_config:
+            await self._context.tracing_config.flush()
+
         try:
-            await cleanup_context()
+            # Don't shutdown OTEL completely, just cleanup app-specific resources
+            await cleanup_context(shutdown_logger=False)
         except asyncio.CancelledError:
             self.logger.debug("Cleanup cancelled during shutdown")
 
+        # Shutdown the tracer provider to stop background threads
+        # This prevents dangling span exports after cleanup
+        if self._context and self._context.tracing_config:
+            self._context.tracing_config.shutdown()
+
         self._context = None
         self._initialized = False
+        self._tracer_provider = None
 
     @asynccontextmanager
     async def run(self):
@@ -238,11 +371,18 @@ class MCPApp:
         """
         await self.initialize()
 
+        # Push token tracking context for the app
+        if self.context.token_counter:
+            await self.context.token_counter.push(name=self.name, node_type="app")
+
         tracer = get_tracer(self.context)
         with tracer.start_as_current_span(self.name):
             try:
                 yield self
             finally:
+                # Pop token tracking context
+                if self.context.token_counter:
+                    await self.context.token_counter.pop()
                 await self.cleanup()
 
     def workflow(

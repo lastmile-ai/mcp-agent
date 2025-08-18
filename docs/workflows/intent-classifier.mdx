@@ -1,0 +1,92 @@
+---
+title: "Intent Classifier"
+description: "Advanced intent recognition with confidence scoring and classification."
+---
+
+import { Card } from "@mintlify/components";
+
+## Overview
+
+The Intent Classifier pattern provides sophisticated natural language understanding to categorize user requests. It is a close sibling of the [router workflow](/workflows/router).
+
+## Quick Example
+
+```python
+from mcp_agent.app import MCPApp
+from mcp_agent.workflows.intent_classifier.intent_classifier_base import Intent
+from mcp_agent.workflows.intent_classifier.intent_classifier_llm_openai import OpenAILLMIntentClassifier
+from mcp_agent.workflows.intent_classifier.intent_classifier_embedding_openai import OpenAIEmbeddingIntentClassifier
+
+app = MCPApp(name="intent_example")
+
+async with app.run() as intent_app:
+    context = intent_app.context
+
+    embedding_intent_classifier = OpenAIEmbeddingIntentClassifier(
+        intents=[
+            Intent(
+                name="greeting",
+                description="A friendly greeting",
+                examples=["Hello", "Hi there", "Good morning"],
+            ),
+            Intent(
+                name="farewell",
+                description="A friendly farewell",
+                examples=["Goodbye", "See you later", "Take care"],
+            ),
+        ],
+        context=context,
+    )
+
+    results = await embedding_intent_classifier.classify(
+        request="Hello, how are you?",
+        top_k=1,
+    )
+
+    print(f"Embedding-based Intent classification results: {results}")
+
+    llm_intent_classifier = OpenAILLMIntentClassifier(
+        intents=[
+            Intent(
+                name="greeting",
+                description="A friendly greeting",
+                examples=["Hello", "Hi there", "Good morning"],
+            ),
+            Intent(
+                name="farewell",
+                description="A friendly farewell",
+                examples=["Goodbye", "See you later", "Take care"],
+            ),
+        ],
+        context=context,
+    )
+
+    results = await llm_intent_classifier.classify(
+        request="Hello, how are you?",
+        top_k=1,
+    )
+
+    print(f"LLM-based Intent classification results: {results}")
+```
+
+## Key Features
+
+- **Multiple Classification Methods**: Choose between embedding-based or LLM-based classification
+- **Custom Intent Definitions**: Define intents with descriptions and example phrases
+- **Top-K Results**: Return multiple potential intents ranked by confidence
+- **Flexible Integration**: Easy integration with existing chat and routing systems
+
+## Use Cases
+
+- **Customer Support Routing**: Automatically route tickets to appropriate teams
+- **Chatbot Intelligence**: Provide contextually relevant responses
+- **Content Personalization**: Customize content based on user intent
+- **Analytics and Insights**: Track user intent patterns and trends
+
+<Card
+  title="Full Implementation"
+  href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows/workflow_intent_classifier"
+>
+  See the complete intent classifier with hierarchical categories and confidence
+  scoring.
+</Card>

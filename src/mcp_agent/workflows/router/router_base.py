@@ -7,13 +7,14 @@ from mcp.server.fastmcp.tools import Tool as FastTool
 from mcp_agent.agents.agent import Agent
 from mcp_agent.core.context_dependent import ContextDependent
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
 
 if TYPE_CHECKING:
     from mcp_agent.core.context import Context
 
 logger = get_logger(__name__)
 
-ResultT = TypeVar("ResultT", bound=str | Agent | Callable)
+ResultT = TypeVar("ResultT", bound=str | Agent | AugmentedLLM | Callable)
 
 
 class RouterResult(BaseModel, Generic[ResultT]):
@@ -43,7 +44,7 @@ class RouterCategory(BaseModel):
     description: str | None = None
     """A description of the category"""
 
-    category: str | Agent | Callable
+    category: str | Agent | AugmentedLLM | Callable
     """The class to route to"""
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
@@ -93,7 +94,7 @@ class Router(ABC, ContextDependent):
     def __init__(
         self,
         server_names: List[str] | None = None,
-        agents: List[Agent] | None = None,
+        agents: List[Agent | AugmentedLLM] | None = None,
         functions: List[Callable] | None = None,
         routing_instruction: str | None = None,
         context: Optional["Context"] = None,
@@ -127,7 +128,7 @@ class Router(ABC, ContextDependent):
     @abstractmethod
     async def route(
         self, request: str, top_k: int = 1
-    ) -> List[RouterResult[str | Agent | Callable]]:
+    ) -> List[RouterResult[str | Agent | AugmentedLLM | Callable]]:
         """
         Route the input request to one or more MCP servers, agents, or functions.
         If no routing decision can be made, returns an empty list.
@@ -146,7 +147,7 @@ class Router(ABC, ContextDependent):
     @abstractmethod
     async def route_to_agent(
         self, request: str, top_k: int = 1
-    ) -> List[RouterResult[Agent]]:
+    ) -> List[RouterResult[Agent | AugmentedLLM]]:
         """Route the input to one or more agents."""
 
     @abstractmethod
@@ -202,7 +203,7 @@ class Router(ABC, ContextDependent):
             description=server_config.description,
         )
 
-    def get_agent_category(self, agent: Agent) -> AgentRouterCategory:
+    def get_agent_category(self, agent: Agent | AugmentedLLM) -> AgentRouterCategory:
         agent_description = (
             agent.instruction({}) if callable(agent.instruction) else agent.instruction
         )

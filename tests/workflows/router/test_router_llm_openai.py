@@ -5,11 +5,8 @@ from typing import Optional, TYPE_CHECKING
 if TYPE_CHECKING:
     from mcp_agent.core.context import Context
 
-from mcp_agent.workflows.router.router_llm import LLMRouter
-from mcp_agent.workflows.router.router_llm_openai import (
-    OpenAILLMRouter,
-    ROUTING_SYSTEM_INSTRUCTION,
-)
+from mcp_agent.workflows.router.router_llm import LLMRouter, ROUTING_SYSTEM_INSTRUCTION
+from mcp_agent.workflows.router.router_llm_openai import OpenAILLMRouter
 
 
 class MockOpenAIAugmentedLLM:

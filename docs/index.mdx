@@ -1,0 +1,161 @@
+---
+title: Introduction
+description: "Build effective agents with Model Context Protocol using simple, composable patterns."
+---
+
+**mcp-agent** is a simple, composable framework for building AI agents using the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction). It implements [Anthropic's Building Effective Agents](https://www.anthropic.com/research/building-effective-agents) patterns in a model-agnostic way, allowing you to create robust agent applications that can leverage any MCP-compatible tools and services.
+
+## What is mcp-agent?
+
+mcp-agent bridges the gap between the low-level [Model Context Protocol](https://modelcontextprotocol.io/introduction) and high-level agent patterns. It handles the complex mechanics of managing MCP server connections, tool orchestration, and workflow patterns so you can focus on building your application logic.
+
+<CardGroup cols={2}>
+  <Card title="MCP Integration" icon="link">
+    Seamless connection to any MCP server with tools, resources, prompts, and
+    file system roots
+  </Card>
+  <Card title="Agent Patterns" icon="diagram-project">
+    Pre-built implementations of proven agent workflow patterns
+  </Card>
+  <Card title="Model Agnostic" icon="brain">
+    Works with OpenAI, Anthropic, Azure, AWS Bedrock, Google, and Ollama
+  </Card>
+  <Card title="Composable" icon="puzzle-piece">
+    Chain workflow patterns together for complex behaviors
+  </Card>
+  <Card title="Human-in-the-Loop" icon="hand">
+    Built-in support for human input and workflow signaling
+  </Card>
+  <Card title="Observable" icon="chart-line">
+    Comprehensive logging and telemetry support
+  </Card>
+</CardGroup>
+
+## Why mcp-agent?
+
+### The MCP Ecosystem
+
+As [more services become MCP-aware](https://github.com/punkpeye/awesome-mcp-servers), you can use mcp-agent to build agents that leverage these tools out-of-the-box. mcp-agent is the only framework purpose-built for the MCP protocol, making it the simplest way to build robust agent applications.
+
+### Proven Patterns
+
+mcp-agent implements every pattern from Anthropic's research on building effective agents:
+
+<CardGroup cols={3}>
+  <Card
+    title="Parallel Workflow"
+    icon="arrows-split-up-and-left"
+    href="/workflows/parallel"
+  >
+    Fan-out tasks to multiple agents
+  </Card>
+  <Card title="Router Pattern" icon="route" href="/workflows/router">
+    Route inputs to appropriate handlers
+  </Card>
+  <Card
+    title="Intent Classifier"
+    href="/workflows/intent-classifier"
+    icon="brain"
+  >
+    Intent classification with confidence scoring
+  </Card>
+  <Card
+    title="Evaluator-Optimizer"
+    icon="arrows-rotate"
+    href="/workflows/evaluator-optimizer"
+  >
+    Iteratively improve responses
+  </Card>
+  <Card title="Orchestrator" icon="users" href="/workflows/orchestrator">
+    Plan and execute complex tasks
+  </Card>
+  <Card title="Swarm" icon="hexagon" href="/workflows/swarm">
+    Multi-agent collaboration
+  </Card>
+</CardGroup>
+
+## Quick Example
+
+Here's a simple agent that can read files and fetch web content:
+
+```python
+import asyncio
+from mcp_agent.app import MCPApp
+from mcp_agent.agents.agent import Agent
+from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
+
+app = MCPApp(name="finder_agent")
+
+async def main():
+    async with app.run() as mcp_agent_app:
+        # Create an agent with access to fetch and filesystem servers
+        finder_agent = Agent(
+            name="finder",
+            instruction="You can read local files or fetch URLs. Return the requested information when asked.",
+            server_names=["fetch", "filesystem"]
+        )
+
+        async with finder_agent:
+            # Attach an LLM to the agent
+            llm = await finder_agent.attach_llm(OpenAIAugmentedLLM)
+
+            # Ask the agent to read a file
+            result = await llm.generate_str("Show me what's in README.md")
+            print(result)
+
+            # Multi-turn conversation
+            result = await llm.generate_str("Summarize that in a tweet")
+            print(result)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## What You'll Learn
+
+<Steps>
+  <Step title="Get Started">Install mcp-agent and create your first agent</Step>
+  <Step title="Core Concepts">
+    Understand agents, MCP servers, and Augmented LLMs
+  </Step>
+  <Step title="MCP Servers">
+    Work with tools, resources, prompts, and roots
+  </Step>
+  <Step title="Workflow Patterns">Implement sophisticated agent behaviors</Step>
+  <Step title="Integrations">
+    Build applications with Streamlit, Claude Desktop, and more
+  </Step>
+  <Step title="Advanced Features">
+    Composition, Monitoring and Temporal
+  </Step>
+</Steps>
+
+## Community and Support
+
+<CardGroup cols={3}>
+  <Card
+    title="GitHub"
+    icon="github"
+    href="https://github.com/lastmile-ai/mcp-agent"
+  >
+    Source code, issues, and contributions
+  </Card>
+  <Card
+    title="Discord"
+    icon="discord"
+    href="https://lmai.link/discord/mcp-agent"
+  >
+    Join our community for support
+  </Card>
+  <Card
+    title="Examples"
+    icon="code"
+    href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples"
+  >
+    30+ working examples to learn from
+  </Card>
+</CardGroup>
+
+<Card title="Ready to Get Started?" icon="rocket" href="/installation">
+  Let's install mcp-agent and build your first agent!
+</Card>

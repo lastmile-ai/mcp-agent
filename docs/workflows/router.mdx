@@ -1,0 +1,82 @@
+---
+title: "Router"
+description: "Intelligent task routing based on content analysis, user intent, and dynamic conditions."
+---
+
+import { Card } from "@mintlify/components";
+
+![Router Workflow Pattern](/images/router-workflow.png)
+
+## Overview
+
+The Router Pattern intelligently analyzes incoming requests and routes them to the most appropriate handler from three categories: MCP servers, specialized agents, or individual functions.
+
+## Quick Example
+
+```python
+from mcp_agent.app import MCPApp
+from mcp_agent.agents.agent import Agent
+from mcp_agent.workflows.router.router_llm import OpenAILLMRouter
+
+app = MCPApp(name="router_example")
+
+async with app.run() as context:
+    # Create specialized agents
+    finder_agent = Agent(
+        name="finder",
+        instruction="Find and retrieve information from files and URLs.",
+        server_names=["fetch", "filesystem"]
+    )
+
+    writer_agent = Agent(
+        name="writer",
+        instruction="Create and modify files on the filesystem.",
+        server_names=["filesystem"]
+    )
+
+    reasoning_agent = Agent(
+        name="reasoner",
+        instruction="General knowledge and reasoning tasks.",
+        server_names=[]
+    )
+
+    # Create router with multiple options
+    router = OpenAILLMRouter(
+        agents=[finder_agent, writer_agent, reasoning_agent],
+        functions=[print_to_console, print_hello_world],
+    )
+
+    # Route request to best agent
+    results = await router.route_to_agent(
+        request="Print the contents of mcp_agent.config.yaml verbatim",
+        top_k=1
+    )
+
+    # Use the selected agent
+    selected_agent = results[0].result
+    async with selected_agent:
+        llm = await selected_agent.attach_llm(OpenAIAugmentedLLM)
+        result = await llm.generate_str("Print the config file contents")
+```
+
+## Key Features
+
+- **Multi-Category Routing**: Routes between MCP servers, agents, and functions
+- **Confidence Scoring**: Returns confidence levels with reasoning
+- **Top-K Results**: Multiple routing candidates ranked by relevance
+- **LLM-Powered**: Uses natural language understanding for routing decisions
+- **Provider Agnostic**: Works with OpenAI, Anthropic, and other LLM providers
+
+## Use Cases
+
+- **Customer Service**: Route queries to general, refunds, or technical support
+- **Content Management**: Direct requests to appropriate content specialists
+- **Model Optimization**: Route simple questions to fast models, complex to powerful ones
+- **Multi-Domain Systems**: Separate concerns across specialized agents
+
+<Card
+  title="Full Implementation"
+  href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows/workflow_router"
+>
+  See complete router examples with specialized agents and routing logic.
+</Card>

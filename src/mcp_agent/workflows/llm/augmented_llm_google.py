@@ -30,6 +30,7 @@ from mcp_agent.workflows.llm.augmented_llm import (
     CallToolResult,
 )
 from mcp_agent.workflows.llm.multipart_converter_google import GoogleConverter
+from mcp_agent.tracing.token_tracking_decorator import track_tokens
 
 
 class GoogleAugmentedLLM(
@@ -46,7 +47,7 @@ class GoogleAugmentedLLM(
     def __init__(self, *args, **kwargs):
         super().__init__(*args, type_converter=GoogleMCPTypeConverter, **kwargs)
 
-        self.provider = "Google (AI Studio)"
+        self.provider = "Google (AI_Studio)"
         # Initialize logger with name if available
         self.logger = get_logger(f"{__name__}.{self.name}" if self.name else __name__)
 
@@ -72,6 +73,7 @@ class GoogleAugmentedLLM(
             use_history=True,
         )
 
+    @track_tokens()
     async def generate(self, message, request_params: RequestParams | None = None):
         """
         Process a query using an LLM and available tools.
@@ -125,7 +127,7 @@ class GoogleAugmentedLLM(
                 "config": inference_config,
             }
 
-            self.logger.debug(f"{arguments}")
+            self.logger.debug("Completion request arguments:", data=arguments)
             self._log_chat_progress(chat_turn=(len(messages) + 1) // 2, model=model)
 
             response: types.GenerateContentResponse = await self.executor.execute(
@@ -165,20 +167,36 @@ class GoogleAugmentedLLM(
             ]
 
             if function_calls:
-                results = await self.executor.execute_many(function_calls)
+                results: list[
+                    types.Content | BaseException | None
+                ] = await self.executor.execute_many(function_calls)
 
                 self.logger.debug(
                     f"Iteration {i}: Tool call results: {str(results) if results else 'None'}"
                 )
 
+                function_response_parts: list[types.Part] = []
                 for result in results:
-                    if isinstance(result, BaseException):
+                    if (
+                        result
+                        and not isinstance(result, BaseException)
+                        and result.parts
+                    ):
+                        function_response_parts.extend(result.parts)
+                    else:
                         self.logger.error(
-                            f"Warning: Unexpected error during tool execution: {result}. Continuing.."
+                            f"Warning: Unexpected error during tool execution: {result}. Continuing..."
                         )
-                        break
-                    if result is not None:
-                        messages.append(result)
+                        function_response_parts.append(
+                            types.Part.from_text(text=f"Error executing tool: {result}")
+                        )
+
+                # Combine all parallel function responses into a single message
+                if function_response_parts:
+                    function_response_content = types.Content(
+                        role="tool", parts=function_response_parts
+                    )
+                    messages.append(function_response_content)
             else:
                 self.logger.debug(
                     f"Iteration {i}: Stopping because finish_reason is '{candidate.finish_reason}'"

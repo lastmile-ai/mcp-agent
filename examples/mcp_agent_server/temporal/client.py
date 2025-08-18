@@ -1,8 +1,10 @@
 import asyncio
+import json
 import time
 from mcp.types import CallToolResult
 from mcp_agent.app import MCPApp
 from mcp_agent.config import MCPServerSettings
+from mcp_agent.executor.workflow import WorkflowExecution
 from mcp_agent.mcp.gen_client import gen_client
 
 
@@ -36,8 +38,11 @@ async def main():
                 },
             )
 
-            run_id: str = run_result.content[0].text
-            logger.info(f"Started BasicAgentWorkflow-run. workflow run ID={run_id}")
+            execution = WorkflowExecution(**json.loads(run_result.content[0].text))
+            run_id = execution.run_id
+            logger.info(
+                f"Started BasicAgentWorkflow-run. workflow ID={execution.workflow_id}, run ID={run_id}"
+            )
 
             # Wait for the workflow to complete
             while True:

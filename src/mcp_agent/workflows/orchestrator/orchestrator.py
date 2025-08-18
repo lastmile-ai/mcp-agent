@@ -1,10 +1,13 @@
+from abc import abstractmethod
 import contextlib
+from dataclasses import dataclass
 from typing import (
     Callable,
     Coroutine,
     List,
     Literal,
     Optional,
+    Protocol,
     Type,
     TYPE_CHECKING,
 )
@@ -12,6 +15,7 @@ from typing import (
 from mcp_agent.agents.agent import Agent
 from mcp_agent.tracing.semconv import GEN_AI_AGENT_NAME
 from mcp_agent.tracing.telemetry import get_tracer
+from mcp_agent.tracing.token_tracking_decorator import track_tokens
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     MessageParamT,
@@ -43,9 +47,75 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+class GetFullPlanPrompt(Protocol):
+    """Protocol for getting the full plan prompt"""
+
+    @abstractmethod
+    def __call__(
+        self, objective: str, plan_result: PlanResult, agents: List[Agent]
+    ) -> str:
+        """Get the full plan prompt for the given objective, plan result, and agents"""
+        ...
+
+
+class GetIterativePlanPrompt(Protocol):
+    """Protocol for getting the iterative plan prompt"""
+
+    @abstractmethod
+    def __call__(
+        self, objective: str, plan_result: PlanResult, agents: List[Agent]
+    ) -> str:
+        """Get the iterative plan prompt for the given objective, plan result, and agents"""
+        ...
+
+
+class GetTaskPrompt(Protocol):
+    """Protocol for getting the task prompt"""
+
+    @abstractmethod
+    def __call__(self, objective: str, task: str, context: str) -> str:
+        """Get the task prompt for the given objective, task, and context"""
+        ...
+
+
+class GetSynthesizePlanPrompt(Protocol):
+    """Protocol for getting the synthesize plan prompt"""
+
+    @abstractmethod
+    def __call__(self, plan_result: PlanResult) -> str:
+        """Get the synthesize plan prompt for the given plan result"""
+        ...
+
+
+@dataclass
+class OrchestratorOverrides:
+    """Configuration overrides for Orchestrator behavior and prompts"""
+
+    orchestrator_instruction: str | None = None
+    """Override the main orchestrator LLM's system instruction"""
+
+    planner_instruction: str | None = None
+    """Override the planner agent's instruction (used to break down tasks into steps)"""
+
+    synthesizer_instruction: str | None = None
+    """Override the synthesizer agent's instruction (used to combine results into final output)"""
+
+    get_full_plan_prompt: GetFullPlanPrompt | None = None
+    """Get prompt to generate the full plan of action"""
+
+    get_iterative_plan_prompt: GetIterativePlanPrompt | None = None
+    """Get prompt to generate the next step of action"""
+
+    get_task_prompt: GetTaskPrompt | None = None
+    """Get prompt to specify as system instruction for a subtask in the plan"""
+
+    get_synthesize_plan_prompt: GetSynthesizePlanPrompt | None = None
+    """Get prompt to synthesize the orchestration of the workflow into a final response"""
+
+
 class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
     """
-    In the orchestrator-workers workflow, a central LLM dynamically breaks down tasks,
+    In the orchestrator-workers workflow, a central planner LLM dynamically breaks down tasks,
     delegates them to worker LLMs, and synthesizes their results. It does this
     in a loop until the task is complete.
 
@@ -64,10 +134,11 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         self,
         llm_factory: Callable[[Agent], AugmentedLLM[MessageParamT, MessageT]],
         name: str | None = None,
-        planner: AugmentedLLM | None = None,
-        synthesizer: AugmentedLLM | None = None,
+        planner: Agent | AugmentedLLM | None = None,
+        synthesizer: Agent | AugmentedLLM | None = None,
         available_agents: List[Agent | AugmentedLLM] | None = None,
         plan_type: Literal["full", "iterative"] = "full",
+        overrides: OrchestratorOverrides | None = None,
         context: Optional["Context"] = None,
         **kwargs,
     ):
@@ -78,33 +149,63 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             plan_type: "full" planning generates the full plan first, then executes. "iterative" plans the next step, and loops until success.
             available_agents: List of agents available to tasks executed by this orchestrator
             context: Application context
+            overrides: Optional overrides for instructions and prompt templates
         """
+        self.overrides = overrides or OrchestratorOverrides()
+
+        orchestrator_instruction = (
+            self.overrides.orchestrator_instruction
+            or "You are an orchestrator-worker LLM that breaks down tasks into subtasks, delegates them to worker LLMs, and synthesizes their results."
+        )
+
         super().__init__(
             name=name,
-            instruction="You are an orchestrator-worker LLM that breaks down tasks into subtasks, delegates them to worker LLMs, and synthesizes their results.",
+            instruction=orchestrator_instruction,
             context=context,
             **kwargs,
         )
 
         self.llm_factory = llm_factory
 
-        self.planner = planner or llm_factory(
-            agent=Agent(
-                name="LLM Orchestration Planner",
-                instruction="""
-                You are an expert planner. Given an objective task and a list of MCP servers (which are collections of tools)
-                or Agents (which are collections of servers), your job is to break down the objective into a series of steps,
-                which can be performed by LLMs with access to the servers or agents.
-                """,
-            )
+        planner_instruction = (
+            self.overrides.planner_instruction
+            or """
+            You are an expert planner. Given an objective task and a list of MCP servers (which are collections of tools)
+            or Agents (which are collections of servers), your job is to break down the objective into a series of steps,
+            which can be performed by LLMs with access to the servers or agents.
+            """
         )
 
-        self.synthesizer = synthesizer or llm_factory(
-            agent=Agent(
-                name="LLM Orchestration Synthesizer",
-                instruction="You are an expert at synthesizing the results of a plan into a single coherent message.",
+        if planner is not None:
+            if isinstance(planner, Agent):
+                self.planner = llm_factory(planner)
+            else:
+                self.planner = planner
+        else:
+            self.planner = llm_factory(
+                agent=Agent(
+                    name="LLM Orchestration Planner",
+                    instruction=planner_instruction,
+                )
             )
-        )
+
+        if synthesizer is not None:
+            if isinstance(synthesizer, Agent):
+                self.synthesizer = llm_factory(synthesizer)
+            else:
+                self.synthesizer = synthesizer
+        else:
+            synthesizer_instruction = (
+                self.overrides.synthesizer_instruction
+                or "You are an expert at synthesizing the results of a plan into a single coherent message."
+            )
+
+            self.synthesizer = llm_factory(
+                agent=Agent(
+                    name="LLM Orchestration Synthesizer",
+                    instruction=synthesizer_instruction,
+                )
+            )
 
         if plan_type not in ["full", "iterative"]:
             raise ValueError("plan_type must be 'full' or 'iterative'")
@@ -121,6 +222,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             maxTokens=16384,
         )
 
+    @track_tokens(node_type="agent")
     async def generate(
         self,
         message: str | MessageParamT | List[MessageParamT],
@@ -351,9 +453,15 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
                     plan_result.is_complete = True
 
                     # Synthesize final result into a single message
-                    synthesis_prompt = SYNTHESIZE_PLAN_PROMPT_TEMPLATE.format(
-                        plan_result=format_plan_result(plan_result)
-                    )
+                    synthesis_prompt: str
+                    if self.overrides.get_synthesize_plan_prompt:
+                        synthesis_prompt = self.overrides.get_synthesize_plan_prompt(
+                            plan_result=plan_result
+                        )
+                    else:
+                        synthesis_prompt = SYNTHESIZE_PLAN_PROMPT_TEMPLATE.format(
+                            plan_result=format_plan_result(plan_result)
+                        )
 
                     plan_result.result = await self.synthesizer.generate_str(
                         message=synthesis_prompt,
@@ -428,7 +536,9 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
                 agent = self.agents.get(task.agent)
                 if not agent:
                     # TODO: saqadri - should we fail the entire workflow in this case?
-                    raise ValueError(f"No agent found matching {task.agent}")
+                    raise ValueError(
+                        f'The planner created a task to "{task.description}" but there isn\'t an agent suitable for the task, consider adding an agent.'
+                    )
                 elif isinstance(agent, AugmentedLLM):
                     llm = agent
                 else:
@@ -440,11 +550,19 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
                         active_agents[agent.name] = ctx_agent
                     llm = await ctx_agent.attach_llm(self.llm_factory)
 
-                task_description = TASK_PROMPT_TEMPLATE.format(
-                    objective=previous_result.objective,
-                    task=task.description,
-                    context=context,
-                )
+                task_description: str
+                if self.overrides.get_task_prompt:
+                    task_description = self.overrides.get_task_prompt(
+                        objective=previous_result.objective,
+                        task=task.description,
+                        context=context,
+                    )
+                else:
+                    task_description = TASK_PROMPT_TEMPLATE.format(
+                        objective=previous_result.objective,
+                        task=task.description,
+                        context=context,
+                    )
 
                 futures.append(
                     llm.generate_str(
@@ -505,11 +623,17 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             ]
         )
 
-        prompt = FULL_PLAN_PROMPT_TEMPLATE.format(
-            objective=objective,
-            plan_result=format_plan_result(plan_result),
-            agents=agents,
-        )
+        prompt: str
+        if self.overrides.get_full_plan_prompt:
+            prompt = self.overrides.get_full_plan_prompt(
+                objective=objective, plan_result=plan_result, agents=agents
+            )
+        else:
+            prompt = FULL_PLAN_PROMPT_TEMPLATE.format(
+                objective=objective,
+                plan_result=format_plan_result(plan_result),
+                agents=agents,
+            )
 
         plan = await self.planner.generate_structured(
             message=prompt,
@@ -534,11 +658,17 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             ]
         )
 
-        prompt = ITERATIVE_PLAN_PROMPT_TEMPLATE.format(
-            objective=objective,
-            plan_result=format_plan_result(plan_result),
-            agents=agents,
-        )
+        prompt: str
+        if self.overrides.get_iterative_plan_prompt:
+            prompt = self.overrides.get_iterative_plan_prompt(
+                objective=objective, plan_result=plan_result, agents=agents
+            )
+        else:
+            prompt = ITERATIVE_PLAN_PROMPT_TEMPLATE.format(
+                objective=objective,
+                plan_result=format_plan_result(plan_result),
+                agents=agents,
+            )
 
         next_step = await self.planner.generate_structured(
             message=prompt,

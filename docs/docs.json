@@ -1,0 +1,124 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "maple",
+  "name": "mcp-agent",
+  "colors": {
+    "primary": "#2563EB",
+    "light": "#60A5FA",
+    "dark": "#1E3A8A"
+  },
+  "background": {
+    "decoration": "grid"
+  },
+  "favicon": "/favicon.png",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "index",
+              "installation",
+              "quickstart",
+              "configuration"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/agents",
+              "concepts/mcp-servers",
+              "concepts/augmented-llms",
+              "concepts/mcp-primitives",
+              "concepts/elicitation"
+            ]
+          },
+          {
+            "group": "Workflow Patterns",
+            "pages": [
+              "workflows/overview",
+              "workflows/parallel",
+              "workflows/router",
+              "workflows/intent-classifier",
+              "workflows/evaluator-optimizer",
+              "workflows/orchestrator",
+              "workflows/swarm"
+            ]
+          },
+          {
+            "group": "Integration Examples",
+            "hidden": true,
+            "pages": [
+              "integrations/streamlit",
+              "integrations/claude-desktop",
+              "integrations/jupyter",
+              "integrations/filesystem"
+            ]
+          },
+          {
+            "group": "Advanced Features",
+            "pages": [
+              "advanced/temporal"
+            ]
+          },
+          {
+            "group": "Architecture",
+            "pages": [
+              "codeboarding/overview",
+              "codeboarding/core-orchestration-execution",
+              "codeboarding/agent-workflow-framework",
+              "codeboarding/llm-external-tooling",
+              "codeboarding/mcp-api-gateway",
+              "codeboarding/intent-interaction-management"
+            ]
+          }
+        ]
+      }
+    ],
+    "global": {
+      "anchors": [
+        {
+          "anchor": "GitHub",
+          "href": "https://github.com/lastmile-ai/mcp-agent",
+          "icon": "github"
+        },
+        {
+          "anchor": "Discord",
+          "href": "https://lmai.link/discord/mcp-agent",
+          "icon": "discord"
+        },
+        {
+          "anchor": "MCP",
+          "href": "https://modelcontextprotocol.io/introduction",
+          "icon": "link"
+        }
+      ]
+    }
+  },
+  "logo": {
+    "light": "logo/phetch.gif",
+    "dark": "logo/phetch.gif"
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "Examples",
+        "href": "https://github.com/lastmile-ai/mcp-agent/tree/main/examples"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Get Started",
+      "href": "https://github.com/lastmile-ai/mcp-agent"
+    }
+  },
+  "footer": {
+    "socials": {
+      "x": "https://x.com/lastmileai",
+      "github": "https://github.com/lastmile-ai/mcp-agent",
+      "discord": "https://lmai.link/discord/mcp-agent"
+    }
+  }
+}

@@ -27,6 +27,7 @@ from mcp.client.session import (
     LoggingFnT,
     MessageHandlerFnT,
     SamplingFnT,
+    ElicitationFnT,
 )
 
 from mcp.types import (
@@ -43,6 +44,9 @@ from mcp.types import (
     NotificationParams,
     RequestParams,
     Root,
+    ElicitRequestParams as MCPElicitRequestParams,
+    ElicitResult,
+    PaginatedRequestParams,
 )
 
 from mcp_agent.config import MCPServerSettings
@@ -83,6 +87,7 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
         read_timeout_seconds: timedelta | None = None,
         sampling_callback: SamplingFnT | None = None,
         list_roots_callback: ListRootsFnT | None = None,
+        elicitation_callback: ElicitationFnT | None = None,
         logging_callback: LoggingFnT | None = None,
         message_handler: MessageHandlerFnT | None = None,
         client_info: Implementation | None = None,
@@ -94,6 +99,8 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
             sampling_callback = self._handle_sampling_callback
         if list_roots_callback is None:
             list_roots_callback = self._handle_list_roots_callback
+        if elicitation_callback is None:
+            elicitation_callback = self._handle_elicitation_callback
 
         ClientSession.__init__(
             self,
@@ -105,6 +112,7 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
             logging_callback=logging_callback,
             message_handler=message_handler,
             client_info=client_info,
+            elicitation_callback=elicitation_callback,
         )
 
         self.server_config: Optional[MCPServerSettings] = None
@@ -177,14 +185,20 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
                 inject(trace_headers)
                 if "traceparent" in trace_headers or "tracestate" in trace_headers:
                     if params is None:
-                        params = RequestParams()
-                    if params.meta is None:
-                        params.meta = RequestParams.Meta()
-                    if "traceparent" in trace_headers:
-                        params.meta.traceparent = trace_headers["traceparent"]
-                    if "tracestate" in trace_headers:
-                        params.meta.tracestate = trace_headers["tracestate"]
-                    request.root.params = params
+                        params = PaginatedRequestParams(
+                            cursor=None,
+                            meta=RequestParams.Meta(
+                                traceparent=trace_headers.get("traceparent"),
+                                tracestate=trace_headers.get("tracestate"),
+                            ),
+                        )
+                    else:
+                        if params.meta is None:
+                            params.meta = RequestParams.Meta(
+                                traceparent=trace_headers.get("traceparent"),
+                                tracestate=trace_headers.get("tracestate"),
+                            )
+                    request.root = request.root.model_copy(update={"params": params})
 
                 if metadata and metadata.resumption_token:
                     span.set_attribute(
@@ -343,6 +357,41 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
             except Exception as e:
                 return ErrorData(code=-32603, message=str(e))
 
+    async def _handle_elicitation_callback(
+        self,
+        context: RequestContext["ClientSession", Any],
+        params: MCPElicitRequestParams,
+    ) -> ElicitResult | ErrorData:
+        """Handle elicitation requests by prompting user for input via console."""
+        logger.info("Handling elicitation request", data=params.model_dump())
+
+        try:
+            if not self.context.elicitation_handler:
+                logger.error(
+                    "No elicitation handler configured for elicitation. Rejecting elicitation."
+                )
+                return ElicitResult(action="decline")
+
+            server_name = None
+            if hasattr(self, "server_config") and self.server_config:
+                server_name = getattr(self.server_config, "name", None)
+
+            elicitation_request = params.model_copy(update={"server_name": server_name})
+            elicitation_response = await self.context.elicitation_handler(
+                elicitation_request
+            )
+            return elicitation_response
+        except KeyboardInterrupt:
+            logger.info("User cancelled elicitation")
+            return ElicitResult(action="cancel")
+        except TimeoutError:
+            logger.info("Elicitation timed out")
+            return ElicitResult(action="cancel")
+        except Exception as e:
+            logger.error(f"Error handling elicitation: {e}")
+            return ErrorData(
+                code=-32603, message=f"Failed to handle elicitation: {str(e)}"
+            )
 
     async def _handle_list_roots_callback(
         self,

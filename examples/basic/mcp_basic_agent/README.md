@@ -44,9 +44,41 @@ Install requirements specific to this example:
 uv pip install -r requirements.txt
 ```
 
-## `2` Set up api keys
+## `2` Set up API keys
 
-In `main.py`, set your `api_key` in `OpenAISettings` and/or `AnthropicSettings`.
+You have three options to provide secrets:
+
+- mcp_agent.secrets.yaml (existing pattern)
+- .env file (now supported)
+- MCP_APP_SETTINGS_PRELOAD (secure preload; recommended for production)
+
+Recommended for local dev (choose one):
+
+1. .env file
+
+```bash
+cp .env.example .env
+# Edit .env and set OPENAI_API_KEY / ANTHROPIC_API_KEY, etc.
+```
+
+2. Secrets YAML
+
+```bash
+cp mcp_agent.secrets.yaml.example mcp_agent.secrets.yaml
+# Edit mcp_agent.secrets.yaml and set your API keys
+```
+
+3. Preload (process-scoped)
+
+```bash
+export MCP_APP_SETTINGS_PRELOAD="$(python - <<'PY'
+from pydantic_yaml import to_yaml_str
+from mcp_agent.config import Settings, OpenAISettings
+print(to_yaml_str(Settings(openai=OpenAISettings(api_key='sk-...'))))
+PY
+)"
+uv run main.py
+```
 
 ## `3` Run locally
 

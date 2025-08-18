@@ -24,7 +24,8 @@ class TestLLMRouter:
         mock_context.tracer = None
         mock_context.tracing_enabled = False
         router = LLMRouter(
-            llm=mock_llm,
+            name="test_router",
+            llm_factory=lambda agent: mock_llm,
             server_names=["test_server"],
             agents=[mock_agent],
             functions=[test_function],
@@ -33,7 +34,7 @@ class TestLLMRouter:
 
         # Assertions
         assert router is not None
-        assert router.llm == mock_llm
+        assert router.llm is mock_llm
         assert router.server_names == ["test_server"]
         assert router.agents == [mock_agent]
         assert router.functions == [test_function]
@@ -48,7 +49,8 @@ class TestLLMRouter:
         mock_context.tracing_enabled = False
         # Create router using factory method
         router = await LLMRouter.create(
-            llm=mock_llm,
+            name="test_router",
+            llm_factory=lambda agent: mock_llm,
             server_names=["test_server"],
             agents=[mock_agent],
             context=mock_context,
@@ -57,7 +59,7 @@ class TestLLMRouter:
         # Assertions
         assert router is not None
         assert router.initialized is True
-        assert router.llm == mock_llm
+        assert router.llm is mock_llm
         assert router.server_names == ["test_server"]
         assert router.agents == [mock_agent]
         assert router.context == mock_context
@@ -70,7 +72,8 @@ class TestLLMRouter:
         mock_context.tracer = None
         mock_context.tracing_enabled = False
         router = LLMRouter(
-            llm=mock_llm,
+            name="test_router",
+            llm_factory=lambda agent: mock_llm,
             server_names=["test_server"],
             context=mock_context,
         )
@@ -105,7 +108,8 @@ class TestLLMRouter:
         custom_instruction = "Custom routing instruction: {context}, {request}, {top_k}"
 
         router = LLMRouter(
-            llm=mock_llm,
+            name="test_router",
+            llm_factory=lambda agent: mock_llm,
             server_names=["test_server"],
             routing_instruction=custom_instruction,
             context=mock_context,
@@ -142,7 +146,8 @@ class TestLLMRouter:
         mock_context.tracing_enabled = False
         # Setup router
         router = LLMRouter(
-            llm=mock_llm,
+            name="test_router",
+            llm_factory=lambda agent: mock_llm,
             server_names=["test_server"],
             agents=[mock_agent],
             functions=[test_function],
@@ -191,7 +196,8 @@ class TestLLMRouter:
         mock_context.tracing_enabled = False
         # Setup router
         router = LLMRouter(
-            llm=mock_llm,
+            name="test_router",
+            llm_factory=lambda agent: mock_llm,
             server_names=["test_server"],
             agents=[mock_agent],
             context=mock_context,
@@ -231,7 +237,8 @@ class TestLLMRouter:
         mock_context.tracing_enabled = False
         # Setup router
         router = LLMRouter(
-            llm=mock_llm,
+            name="test_router",
+            llm_factory=lambda agent: mock_llm,
             server_names=["test_server1", "test_server2"],
             context=mock_context,
         )
@@ -271,7 +278,8 @@ class TestLLMRouter:
         mock_context.tracing_enabled = False
         # Setup router
         router = LLMRouter(
-            llm=mock_llm,
+            name="test_router",
+            llm_factory=lambda agent: mock_llm,
             agents=[mock_agent],
             context=mock_context,
         )
@@ -313,7 +321,8 @@ class TestLLMRouter:
         mock_context.tracing_enabled = False
         # Setup router
         router = LLMRouter(
-            llm=mock_llm,
+            name="test_router",
+            llm_factory=lambda agent: mock_llm,
             functions=[test_function],
             context=mock_context,
         )
@@ -353,7 +362,8 @@ class TestLLMRouter:
         mock_context.tracing_enabled = False
         # Setup router
         router = LLMRouter(
-            llm=mock_llm,
+            name="test_router",
+            llm_factory=lambda agent: mock_llm,
             server_names=["test_server"],
             context=mock_context,
         )
@@ -378,7 +388,8 @@ class TestLLMRouter:
         mock_context.tracing_enabled = False
         # Setup router
         router = LLMRouter(
-            llm=mock_llm,
+            name="test_router",
+            llm_factory=lambda agent: mock_llm,
             server_names=["test_server"],
             context=mock_context,
         )
@@ -420,7 +431,8 @@ class TestLLMRouter:
         mock_context.tracing_enabled = False
         # Setup router
         router = LLMRouter(
-            llm=mock_llm,
+            name="test_router",
+            llm_factory=lambda agent: mock_llm,
             server_names=["test_server"],
             agents=[mock_agent],
             functions=[test_function],
@@ -500,3 +512,126 @@ class TestLLMRouter:
         assert "Server Category:" not in function_context
         assert "Agent Category:" not in function_context
         assert "Function Category:" in function_context
+
+    # Test 13: generate delegates to selected LLM
+    @pytest.mark.asyncio
+    async def test_generate_delegates(self, mock_context, mock_llm, mock_agent):
+        mock_context.tracer = None
+        mock_context.tracing_enabled = False
+
+        router = LLMRouter(
+            name="test_router",
+            llm_factory=lambda agent: mock_llm,
+            agents=[mock_agent],
+            context=mock_context,
+        )
+
+        # First call: classifier routes to agent
+        router_response = StructuredResponse(
+            categories=[
+                StructuredResponseCategory(
+                    category=mock_agent.name,
+                    confidence="high",
+                    reasoning="Agent match",
+                )
+            ]
+        )
+        mock_llm.generate_structured.reset_mock()
+        mock_llm.generate_structured.side_effect = [router_response]
+
+        # Delegate call returns a list of messages
+        mock_llm.generate.reset_mock()
+        mock_llm.generate.return_value = ["delegated-response"]
+
+        result = await router.generate(message="Hello world")
+
+        # Verify classifier routing happened
+        assert mock_llm.generate_structured.call_count == 1
+        # Verify delegation happened with original message
+        mock_llm.generate.assert_awaited_once_with("Hello world")
+        assert result == ["delegated-response"]
+
+    # Test 14: generate_str delegates to selected LLM
+    @pytest.mark.asyncio
+    async def test_generate_str_delegates(self, mock_context, mock_llm, mock_agent):
+        mock_context.tracer = None
+        mock_context.tracing_enabled = False
+
+        router = LLMRouter(
+            name="test_router",
+            llm_factory=lambda agent: mock_llm,
+            agents=[mock_agent],
+            context=mock_context,
+        )
+
+        # First call: classifier routes to agent
+        router_response = StructuredResponse(
+            categories=[
+                StructuredResponseCategory(
+                    category=mock_agent.name,
+                    confidence="high",
+                    reasoning="Agent match",
+                )
+            ]
+        )
+        mock_llm.generate_structured.reset_mock()
+        mock_llm.generate_structured.side_effect = [router_response]
+
+        # Delegate call returns a string
+        mock_llm.generate_str.reset_mock()
+        mock_llm.generate_str.return_value = "delegated-string"
+
+        result = await router.generate_str(message="Ping")
+
+        # Verify classifier routing happened
+        assert mock_llm.generate_structured.call_count == 1
+        # Verify delegation happened with original message
+        mock_llm.generate_str.assert_awaited_once_with("Ping")
+        assert result == "delegated-string"
+
+    # Test 15: generate_structured delegates to selected LLM with correct response model
+    @pytest.mark.asyncio
+    async def test_generate_structured_delegates(
+        self, mock_context, mock_llm, mock_agent
+    ):
+        from pydantic import BaseModel
+
+        class DummyModel(BaseModel):
+            value: str
+
+        mock_context.tracer = None
+        mock_context.tracing_enabled = False
+
+        router = LLMRouter(
+            name="test_router",
+            llm_factory=lambda agent: mock_llm,
+            agents=[mock_agent],
+            context=mock_context,
+        )
+
+        # First classifier call returns routing categories
+        router_response = StructuredResponse(
+            categories=[
+                StructuredResponseCategory(
+                    category=mock_agent.name,
+                    confidence="high",
+                    reasoning="Agent match",
+                )
+            ]
+        )
+        # Second call (delegate) returns the structured model instance
+        structured_result = DummyModel(value="ok")
+
+        mock_llm.generate_structured.reset_mock()
+        mock_llm.generate_structured.side_effect = [router_response, structured_result]
+
+        result = await router.generate_structured(
+            message="Make it structured",
+            response_model=DummyModel,
+        )
+
+        # Classifier + delegate structured calls
+        assert mock_llm.generate_structured.call_count == 2
+        # The final result should be the DummyModel returned by the delegate
+        assert isinstance(result, DummyModel)
+        assert result.value == "ok"

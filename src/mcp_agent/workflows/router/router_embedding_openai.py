@@ -2,6 +2,7 @@ from typing import Callable, List, Optional, TYPE_CHECKING
 
 from mcp_agent.agents.agent import Agent
 from mcp_agent.workflows.embedding.embedding_openai import OpenAIEmbeddingModel
+from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
 from mcp_agent.workflows.router.router_embedding import EmbeddingRouter
 
 if TYPE_CHECKING:
@@ -18,7 +19,7 @@ class OpenAIEmbeddingRouter(EmbeddingRouter):
     def __init__(
         self,
         server_names: List[str] | None = None,
-        agents: List[Agent] | None = None,
+        agents: List[Agent | AugmentedLLM] | None = None,
         functions: List[Callable] | None = None,
         embedding_model: OpenAIEmbeddingModel | None = None,
         context: Optional["Context"] = None,
@@ -40,7 +41,7 @@ class OpenAIEmbeddingRouter(EmbeddingRouter):
         cls,
         embedding_model: OpenAIEmbeddingModel | None = None,
         server_names: List[str] | None = None,
-        agents: List[Agent] | None = None,
+        agents: List[Agent | AugmentedLLM] | None = None,
         functions: List[Callable] | None = None,
         context: Optional["Context"] = None,
     ) -> "OpenAIEmbeddingRouter":
