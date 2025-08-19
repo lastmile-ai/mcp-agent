@@ -34,7 +34,9 @@ file_handler.setFormatter(
 logging.basicConfig(level=logging.INFO, handlers=[file_handler])
 
 # Root typer for `mcp-agent` CLI commands
-app = typer.Typer(help="MCP Agent Cloud CLI for deployment and management")
+app = typer.Typer(
+    help="MCP Agent Cloud CLI for deployment and management", no_args_is_help=True
+)
 
 # Simply wrap the function with typer to preserve its signature
 app.command(name="configure")(configure_app)
