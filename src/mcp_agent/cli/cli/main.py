@@ -8,8 +8,6 @@ from typing import Optional
 
 import click
 import typer
-from rich.console import Console
-from rich.panel import Panel
 from typer.core import TyperGroup
 
 from mcp_agent_cloud import __version__
@@ -17,6 +15,7 @@ from mcp_agent_cloud.commands import configure_app, deploy_config, login
 from mcp_agent_cloud.commands.app import delete_app, get_app_status, list_app_workflows
 from mcp_agent_cloud.commands.apps import list_apps
 from mcp_agent_cloud.commands.workflow import get_workflow_status
+from mcp_agent_cloud.ux import print_error
 
 # Setup file logging
 LOG_DIR = Path.home() / ".mcp-agent" / "logs"
@@ -47,15 +46,7 @@ class HelpfulTyperGroup(TyperGroup):
         except click.UsageError as e:
             click.echo(ctx.get_help())
 
-            console = Console(stderr=True)
-            error_panel = Panel(
-                str(e),
-                title="Error",
-                title_align="left",
-                border_style="red",
-                expand=True,
-            )
-            console.print(error_panel)
+            print_error(str(e), log=False)
             ctx.exit(2)
 
 
