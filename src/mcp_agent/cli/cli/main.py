@@ -45,7 +45,6 @@ class HelpfulTyperGroup(TyperGroup):
             return super().resolve_command(ctx, args)
         except click.UsageError as e:
             click.echo(ctx.get_help())
-
             print_error(str(e), log=False)
             ctx.exit(2)
 
@@ -58,9 +57,39 @@ app = typer.Typer(
 )
 
 # Simply wrap the function with typer to preserve its signature
-app.command(name="configure")(configure_app)
-app.command(name="deploy")(deploy_config)
-app.command(name="login")(login)
+app.command(
+    name="configure",
+    help="Configure an MCP app with the required params (e.g. user secrets).",
+)(configure_app)
+
+
+# Deployment command
+app.command(
+    name="deploy",
+    help="""
+Deploy an MCP agent using the specified configuration.
+
+An MCP App is deployed from bundling the code at the specified config directory.\n\n
+
+This directory must contain an 'mcp_agent.config.yaml' at its root.\n\n
+
+If secrets are required (i.e. `no_secrets` is not set), a secrets file named 'mcp_agent.secrets.yaml' must also be present.\n
+The secrets file is processed to replace secret tags with secret handles before deployment and that transformed 
+file is included in the deployment bundle in place of the original secrets file.
+""".strip(),
+)(deploy_config)
+
+
+# Login command
+app.command(
+    name="login",
+    help="""
+Authenticate to MCP Agent Cloud API.\n\n
+
+Direct to the api keys page for obtaining credentials, routing through login.
+""".strip(),
+)(login)
+
 
 # Sub-typer for `mcp-agent apps` commands
 app_cmd_apps = typer.Typer(
