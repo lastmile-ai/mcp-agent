@@ -38,17 +38,15 @@ file_handler.setFormatter(
 logging.basicConfig(level=logging.INFO, handlers=[file_handler])
 
 
-class CustomTyperGroup(TyperGroup):
-    """Custom Typer group that shows help before error for invalid commands."""
+class HelpfulTyperGroup(TyperGroup):
+    """Typer group that shows help before usage errors for better UX."""
 
     def resolve_command(self, ctx, args):
         try:
             return super().resolve_command(ctx, args)
         except click.UsageError as e:
-            # Show help first for all usage errors
             click.echo(ctx.get_help())
 
-            # Then show the formatted error
             console = Console(stderr=True)
             error_panel = Panel(
                 str(e),
@@ -65,7 +63,7 @@ class CustomTyperGroup(TyperGroup):
 app = typer.Typer(
     help="MCP Agent Cloud CLI for deployment and management",
     no_args_is_help=True,
-    cls=CustomTyperGroup,
+    cls=HelpfulTyperGroup,
 )
 
 # Simply wrap the function with typer to preserve its signature
@@ -75,14 +73,18 @@ app.command(name="login")(login)
 
 # Sub-typer for `mcp-agent apps` commands
 app_cmd_apps = typer.Typer(
-    help="Management commands for multiple MCP Apps", no_args_is_help=True
+    help="Management commands for multiple MCP Apps",
+    no_args_is_help=True,
+    cls=HelpfulTyperGroup,
 )
 app_cmd_apps.command(name="list")(list_apps)
 app.add_typer(app_cmd_apps, name="apps", help="Manage MCP Apps")
 
 # Sub-typer for `mcp-agent app` commands
 app_cmd_app = typer.Typer(
-    help="Management commands for an MCP App", no_args_is_help=True
+    help="Management commands for an MCP App",
+    no_args_is_help=True,
+    cls=HelpfulTyperGroup,
 )
 app_cmd_app.command(name="delete")(delete_app)
 app_cmd_app.command(name="status")(get_app_status)
@@ -91,7 +93,9 @@ app.add_typer(app_cmd_app, name="app", help="Manage an MCP App")
 
 # Sub-typer for `mcp-agent workflow` commands
 app_cmd_workflow = typer.Typer(
-    help="Management commands for MCP Workflows", no_args_is_help=True
+    help="Management commands for MCP Workflows",
+    no_args_is_help=True,
+    cls=HelpfulTyperGroup,
 )
 app_cmd_workflow.command(name="status")(get_workflow_status)
 app.add_typer(app_cmd_workflow, name="workflow", help="Manage MCP Workflows")
