@@ -41,7 +41,9 @@ from .wrangler_wrapper import wrangler_deploy
 
 
 def deploy_config(
-    app_name: str = typer.Argument(
+    ctx: typer.Context,
+    app_name: Optional[str] = typer.Argument(
+        None,
         help="Name of the MCP App to deploy.",
     ),
     app_description: Optional[str] = typer.Option(
@@ -110,6 +112,11 @@ def deploy_config(
     Returns:
         Newly-deployed MCP App ID
     """
+    # Show help if no app_name is provided
+    if app_name is None:
+        typer.echo(ctx.get_help())
+        raise typer.Exit()
+
     # Validate config directory and required files
     config_file, secrets_file = get_config_files(config_dir, no_secrets)
     print_deployment_header(config_file, secrets_file, dry_run)
