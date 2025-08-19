@@ -322,7 +322,7 @@ class MCPAppClient(APIClient):
     async def configure_app(
         self,
         app_id: str,
-        config_params: Dict[str, Any],
+        config_params: Dict[str, Any] = {},
     ) -> MCPAppConfiguration:
         """Configure a deployed MCP App via the API.
 
@@ -340,9 +340,6 @@ class MCPAppClient(APIClient):
         """
         if not app_id or not is_valid_app_id_format(app_id):
             raise ValueError(f"Invalid app ID format: {app_id}")
-
-        if not config_params or not isinstance(config_params, dict):
-            raise ValueError("Configuration parameters must be a non-empty dictionary")
 
         payload = {
             "appId": app_id,
