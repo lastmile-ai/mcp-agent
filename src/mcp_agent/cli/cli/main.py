@@ -44,19 +44,25 @@ app.command(name="deploy")(deploy_config)
 app.command(name="login")(login)
 
 # Sub-typer for `mcp-agent apps` commands
-app_cmd_apps = typer.Typer(help="Management commands for multiple MCP Apps")
+app_cmd_apps = typer.Typer(
+    help="Management commands for multiple MCP Apps", no_args_is_help=True
+)
 app_cmd_apps.command(name="list")(list_apps)
 app.add_typer(app_cmd_apps, name="apps", help="Manage MCP Apps")
 
 # Sub-typer for `mcp-agent app` commands
-app_cmd_app = typer.Typer(help="Management commands for an MCP App")
+app_cmd_app = typer.Typer(
+    help="Management commands for an MCP App", no_args_is_help=True
+)
 app_cmd_app.command(name="delete")(delete_app)
 app_cmd_app.command(name="status")(get_app_status)
 app_cmd_app.command(name="workflows")(list_app_workflows)
 app.add_typer(app_cmd_app, name="app", help="Manage an MCP App")
 
 # Sub-typer for `mcp-agent workflow` commands
-app_cmd_workflow = typer.Typer(help="Management commands for MCP Workflows")
+app_cmd_workflow = typer.Typer(
+    help="Management commands for MCP Workflows", no_args_is_help=True
+)
 app_cmd_workflow.command(name="status")(get_workflow_status)
 app.add_typer(app_cmd_workflow, name="workflow", help="Manage MCP Workflows")
 
