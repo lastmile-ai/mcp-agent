@@ -67,8 +67,9 @@ app_cmd_workflow.command(name="status")(get_workflow_status)
 app.add_typer(app_cmd_workflow, name="workflow", help="Manage MCP Workflows")
 
 
-@app.callback()
+@app.callback(invoke_without_command=True)
 def callback(
+    ctx: typer.Context,
     version: Optional[bool] = typer.Option(
         None, "--version", "-v", help="Show version and exit", is_flag=True
     ),
