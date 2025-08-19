@@ -6,7 +6,11 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Optional
 
+import click
 import typer
+from rich.console import Console
+from rich.panel import Panel
+from typer.core import TyperGroup
 
 from mcp_agent_cloud import __version__
 from mcp_agent_cloud.commands import configure_app, deploy_config, login
@@ -33,9 +37,35 @@ file_handler.setFormatter(
 # Configure logging - only sending to file, not to console
 logging.basicConfig(level=logging.INFO, handlers=[file_handler])
 
+
+class CustomTyperGroup(TyperGroup):
+    """Custom Typer group that shows help before error for invalid commands."""
+
+    def resolve_command(self, ctx, args):
+        try:
+            return super().resolve_command(ctx, args)
+        except click.UsageError as e:
+            # Show help first for all usage errors
+            click.echo(ctx.get_help())
+
+            # Then show the formatted error
+            console = Console(stderr=True)
+            error_panel = Panel(
+                str(e),
+                title="Error",
+                title_align="left",
+                border_style="red",
+                expand=True,
+            )
+            console.print(error_panel)
+            ctx.exit(2)
+
+
 # Root typer for `mcp-agent` CLI commands
 app = typer.Typer(
-    help="MCP Agent Cloud CLI for deployment and management", no_args_is_help=True
+    help="MCP Agent Cloud CLI for deployment and management",
+    no_args_is_help=True,
+    cls=CustomTyperGroup,
 )
 
 # Simply wrap the function with typer to preserve its signature
