@@ -191,6 +191,7 @@ Respond with:
 
             messages = self._extract_message_content(params.messages)
             request_params = self._build_llm_request_params(params)
+
             result = await llm.generate_str(
                 message=messages, request_params=request_params
             )
@@ -256,6 +257,8 @@ Respond with:
             max_iterations=1,
             parallel_tool_calls=False,
             use_history=False,
+            messages=None,
+            modelPreferences = params.modelPreferences,
         )
 
     def _format_sampling_request_for_human(
