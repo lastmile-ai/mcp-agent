@@ -36,7 +36,7 @@ def print_info(
     console_output: bool = True,
     **kwargs: Any,
 ) -> None:
-    """Print an informational message in a Rich panel.
+    """Print an informational message.
 
     Args:
         message: The message to print
@@ -44,14 +44,7 @@ def print_info(
         console_output: Whether to print to console
     """
     if console_output:
-        info_panel = Panel(
-            message,
-            title="Info",
-            title_align="left",
-            border_style="cyan",
-            expand=True,
-        )
-        console.print(info_panel, *args, **kwargs)
+        console.print(f"[info]INFO:[/info] {message}", *args, **kwargs)
     if log:
         logger.info(message)
 
@@ -63,16 +56,9 @@ def print_success(
     console_output: bool = True,
     **kwargs: Any,
 ) -> None:
-    """Print a success message in a Rich panel."""
+    """Print a success message."""
     if console_output:
-        success_panel = Panel(
-            message,
-            title="Success",
-            title_align="left",
-            border_style="green",
-            expand=True,
-        )
-        console.print(success_panel, *args, **kwargs)
+        console.print(f"[success]SUCCESS:[/success] {message}", *args, **kwargs)
     if log:
         logger.info(f"SUCCESS: {message}")
 
@@ -84,16 +70,9 @@ def print_warning(
     console_output: bool = True,
     **kwargs: Any,
 ) -> None:
-    """Print a warning message in a Rich panel."""
+    """Print a warning message."""
     if console_output:
-        warning_panel = Panel(
-            message,
-            title="Warning",
-            title_align="left",
-            border_style="yellow",
-            expand=True,
-        )
-        console.print(warning_panel, *args, **kwargs)
+        console.print(f"[warning]WARNING:[/warning] {message}", *args, **kwargs)
     if log:
         logger.warning(message)
 
@@ -105,16 +84,9 @@ def print_error(
     console_output: bool = True,
     **kwargs: Any,
 ) -> None:
-    """Print an error message in a Rich panel."""
+    """Print an error message."""
     if console_output:
-        error_panel = Panel(
-            message,
-            title="Error",
-            title_align="left",
-            border_style="red",
-            expand=True,
-        )
-        console.print(error_panel, *args, **kwargs)
+        console.print(f"[error]ERROR:[/error] {message}", *args, **kwargs)
     if log:
         logger.error(message, exc_info=True)
 
