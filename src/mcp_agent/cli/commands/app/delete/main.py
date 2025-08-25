@@ -11,6 +11,7 @@ from mcp_agent_cloud.core.constants import (
     ENV_API_KEY,
 )
 from mcp_agent_cloud.core.utils import run_async
+from mcp_agent_cloud.exceptions import CLIError
 from mcp_agent_cloud.mcp_app.api_client import (
     MCPAppClient,
     MCPAppConfiguration,
@@ -53,20 +54,18 @@ def delete_app(
     effective_api_key = api_key or settings.API_KEY or load_api_key_credentials()
 
     if not effective_api_key:
-        print_error(
+        raise CLIError(
             "Must be logged in to delete. Run 'mcp-agent login', set MCP_API_KEY environment variable or specify --api-key option."
         )
-        raise typer.Exit(1)
 
     client = MCPAppClient(
         api_url=api_url or DEFAULT_API_BASE_URL, api_key=effective_api_key
     )
 
     if not app_id_or_url:
-        print_error(
+        raise CLIError(
             "You must provide an app ID, app config ID, or server URL to delete."
         )
-        raise typer.Exit(1)
 
     # The ID could be either an app ID or an app configuration ID. Use the prefix to parse it.
     id_type = "app"
@@ -82,10 +81,9 @@ def delete_app(
             id_type = "app"
 
     except Exception as e:
-        print_error(
+        raise CLIError(
             f"Error retrieving app or config with ID or URL {app_id_or_url}: {str(e)}"
-        )
-        raise typer.Exit(1)
+        ) from e
 
     if not force:
         confirmation = typer.confirm(
@@ -114,8 +112,7 @@ def delete_app(
                 )
             return
         except Exception as e:
-            print_error(f"Error during dry run: {str(e)}")
-            raise typer.Exit(1)
+            raise CLIError(f"Error during dry run: {str(e)}") from e
 
     try:
         run_async(
@@ -127,10 +124,8 @@ def delete_app(
         print_success(f"Successfully deleted the {id_type} with ID '{id_to_delete}'.")
 
     except UnauthenticatedError as e:
-        print_error(
+        raise CLIError(
             "Invalid API key. Run 'mcp-agent login' or set MCP_API_KEY environment variable with new API key."
-        )
-        raise typer.Exit(1) from e
+        ) from e
     except Exception as e:
-        print_error(f"Error deleting {id_type}: {str(e)}")
-        raise typer.Exit(1)
+        raise CLIError(f"Error deleting {id_type}: {str(e)}") from e

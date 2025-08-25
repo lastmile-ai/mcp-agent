@@ -21,6 +21,7 @@ from mcp_agent_cloud.core.constants import (
     MCP_CONFIGURED_SECRETS_FILENAME,
 )
 from mcp_agent_cloud.core.utils import run_async
+from mcp_agent_cloud.exceptions import CLIError
 from mcp_agent_cloud.mcp_app.api_client import (
     MCPAppClient,
     is_valid_app_id_format,
@@ -34,7 +35,6 @@ from mcp_agent_cloud.secrets.processor import (
 from mcp_agent_cloud.ux import (
     console,
     print_configuration_header,
-    print_error,
     print_info,
     print_success,
 )
@@ -102,15 +102,13 @@ def configure_app(
     """
     # Check what params the app requires (doubles as an access check)
     if not app_id_or_url:
-        print_error("You must provide an app ID or server URL to configure.")
-        raise typer.Exit(1)
+        raise CLIError("You must provide an app ID or server URL to configure.")
 
     effective_api_key = api_key or settings.API_KEY or load_api_key_credentials()
     if not effective_api_key:
-        print_error(
+        raise CLIError(
             "Must be logged in to configure. Run 'mcp-agent login', set MCP_API_KEY environment variable or specify --api-key option."
         )
-        raise typer.Exit(1)
 
     client: Union[MockMCPAppClient, MCPAppClient]
     if dry_run:
@@ -134,45 +132,38 @@ def configure_app(
         app = run_async(client.get_app(app_id=app_id, server_url=app_server_url))
 
         if not app:
-            print_error(f"App with ID or URL '{app_id_or_url}' not found.")
-            raise typer.Exit(1)
+            raise CLIError(f"App with ID or URL '{app_id_or_url}' not found.")
 
         app_id = app.appId
 
     except UnauthenticatedError as e:
-        print_error(
+        raise CLIError(
             "Invalid API key. Run 'mcp-agent login' or set MCP_API_KEY environment variable with new API key."
-        )
-        raise typer.Exit(1) from e
+        ) from e
     except Exception as e:
-        print_error(
+        raise CLIError(
             f"Error retrieving app to configure with ID or URL {app_id_or_url}",
-        )
-        raise typer.Exit(1) from e
+        ) from e
 
     # Cannot provide both secrets_file and secrets_output_file; either must be yaml files
     if secrets_file and secrets_output_file:
-        print_error(
+        raise CLIError(
             "Cannot provide both --secrets-file and --secrets-output-file options. Please specify only one."
         )
-        raise typer.Exit(1)
     elif secrets_file and not secrets_file.suffix == ".yaml":
-        print_error(
+        raise CLIError(
             "The --secrets-file must be a YAML file. Please provide a valid path."
         )
-        raise typer.Exit(1)
     elif secrets_output_file and not secrets_output_file.suffix == ".yaml":
-        print_error(
+        raise CLIError(
             "The --secrets-output-file must be a YAML file. Please provide a valid path."
         )
-        raise typer.Exit(1)
 
     required_params = []
     try:
         required_params = run_async(client.list_config_params(app_id=app_id))
     except Exception as e:
-        print_error(f"Failed to retrieve required secrets for app {app_id}: {e}")
-        raise typer.Exit(1)
+        raise CLIError(f"Failed to retrieve required secrets for app {app_id}: {e}")
 
     requires_secrets = len(required_params) > 0
     configured_secrets = {}
@@ -221,10 +212,9 @@ def configure_app(
                         )
                     )
                 except Exception as e:
-                    print_error(
+                    raise CLIError(
                         f"Error during secrets processing with mock client: {str(e)}"
-                    )
-                    raise
+                    ) from e
             else:
                 # Use the real API client
                 configured_secrets = run_async(
@@ -240,20 +230,18 @@ def configure_app(
             print_success("User secrets processed successfully")
 
         except Exception as e:
-            print_error(f"{str(e)}")
             if settings.VERBOSE:
                 import traceback
 
                 typer.echo(traceback.format_exc())
-            raise typer.Exit(1)
+            raise CLIError(f"{str(e)}") from e
 
     else:
         print_info(f"App {app_id} does not require any parameters.")
         if secrets_file:
-            print_error(
+            raise CLIError(
                 f"App {app_id} does not require any parameters, but a secrets file was provided: {secrets_file}"
             )
-            raise typer.Exit(1)
 
     if dry_run:
         print_success("Configuration completed in dry run mode.")
@@ -284,5 +272,4 @@ def configure_app(
 
         except Exception as e:
             progress.update(task, description="❌ MCP App configuration failed")
-            print_error(f"Failed to configure app {app_id}: {str(e)}")
-            raise typer.Exit(1) from e
+            raise CLIError(f"Failed to configure app {app_id}: {str(e)}") from e

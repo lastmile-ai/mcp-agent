@@ -8,7 +8,8 @@ from mcp_agent_cloud.config import settings
 from mcp_agent_cloud.core.api_client import UnauthenticatedError
 from mcp_agent_cloud.core.constants import ENV_API_BASE_URL, ENV_API_KEY
 from mcp_agent_cloud.core.utils import run_async
-from mcp_agent_cloud.ux import console, print_error
+from mcp_agent_cloud.exceptions import CLIError
+from mcp_agent_cloud.ux import console
 from mcp_agent_cloud.workflows.api_client import (
     WorkflowAPIClient,
     WorkflowInfo,
@@ -39,10 +40,9 @@ def get_workflow_status(
     effective_api_key = api_key or settings.API_KEY or load_api_key_credentials()
 
     if not effective_api_key:
-        print_error(
+        raise CLIError(
             "Must be logged in to get workflow status. Run 'mcp-agent login', set MCP_API_KEY environment variable or specify --api-key option."
         )
-        raise typer.Exit(1)
 
     api_url = (
         api_url or settings.API_BASE_URL
@@ -50,28 +50,24 @@ def get_workflow_status(
     client = WorkflowAPIClient(api_url=api_url, api_key=effective_api_key)
 
     if not workflow_id:
-        print_error("You must provide a workflow ID to get its status.")
-        raise typer.Exit(1)
+        raise CLIError("You must provide a workflow ID to get its status.")
 
     try:
         workflow_info = run_async(client.get_workflow(workflow_id))
 
         if not workflow_info:
-            print_error(f"Workflow with ID '{workflow_id}' not found.")
-            raise typer.Exit(1)
+            raise CLIError(f"Workflow with ID '{workflow_id}' not found.")
 
         print_workflow_info(workflow_info)
 
     except UnauthenticatedError as e:
-        print_error(
+        raise CLIError(
             "Invalid API key. Run 'mcp-agent login' or set MCP_API_KEY environment variable with new API key."
-        )
-        raise typer.Exit(1) from e
+        ) from e
     except Exception as e:
-        print_error(
+        raise CLIError(
             f"Error getting status for workflow with ID {workflow_id}: {str(e)}"
-        )
-        raise typer.Exit(1)
+        ) from e
 
 
 def print_workflow_info(workflow_info: WorkflowInfo) -> None:

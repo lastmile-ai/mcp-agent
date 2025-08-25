@@ -19,6 +19,7 @@ from mcp_agent_cloud.core.constants import (
     ENV_API_KEY,
 )
 from mcp_agent_cloud.core.utils import run_async
+from mcp_agent_cloud.exceptions import CLIError
 from mcp_agent_cloud.mcp_app.api_client import AppServerInfo, MCPAppClient
 from mcp_agent_cloud.mcp_app.mcp_client import (
     MCPClientSession,
@@ -26,7 +27,6 @@ from mcp_agent_cloud.mcp_app.mcp_client import (
 )
 from mcp_agent_cloud.ux import (
     console,
-    print_error,
 )
 
 
@@ -54,31 +54,27 @@ def get_app_status(
     effective_api_key = api_key or settings.API_KEY or load_api_key_credentials()
 
     if not effective_api_key:
-        print_error(
+        raise CLIError(
             "Must be logged in to get app status. Run 'mcp-agent login', set MCP_API_KEY environment variable or specify --api-key option."
         )
-        raise typer.Exit(1)
 
     client = MCPAppClient(
         api_url=api_url or DEFAULT_API_BASE_URL, api_key=effective_api_key
     )
 
     if not app_id_or_url:
-        print_error("You must provide an app ID or server URL to get its status.")
-        raise typer.Exit(1)
+        raise CLIError("You must provide an app ID or server URL to get its status.")
 
     try:
         app_or_config = run_async(client.get_app_or_config(app_id_or_url))
 
         if not app_or_config:
-            print_error(f"App or config with ID or URL '{app_id_or_url}' not found.")
-            raise typer.Exit(1)
+            raise CLIError(f"App or config with ID or URL '{app_id_or_url}' not found.")
 
         if not app_or_config.appServerInfo:
-            print_error(
+            raise CLIError(
                 f"App or config with ID or URL '{app_id_or_url}' has no server info available."
             )
-            raise typer.Exit(1)
 
         print_server_info(app_or_config.appServerInfo)
 
@@ -90,18 +86,17 @@ def get_app_status(
                 )
             )
         else:
-            print_error("No server URL available for this app.")
+            raise CLIError("No server URL available for this app.")
 
     except UnauthenticatedError as e:
-        print_error(
+        raise CLIError(
             "Invalid API key. Run 'mcp-agent login' or set MCP_API_KEY environment variable with new API key."
-        )
-        raise typer.Exit(1) from e
+        ) from e
     except Exception as e:
-        print_error(
-            f"Error getting status for app or config with ID or URL {app_id_or_url}: {str(e)}",
-        )
-        raise e
+        # Re-raise with more context - top-level CLI handler will show clean message
+        raise CLIError(
+            f"Error getting status for app or config with ID or URL {app_id_or_url}: {str(e)}"
+        ) from e
 
 
 def print_server_info(server_info: AppServerInfo) -> None:
@@ -163,8 +158,9 @@ async def print_mcp_server_details(server_url: str, api_key: str) -> None:
                 await print_server_workflows(mcp_client_session)
 
     except Exception as e:
-        print_error(f"Error connecting to MCP server at {server_url}: {str(e)}")
-        raise typer.Exit(1)
+        raise CLIError(
+            f"Error connecting to MCP server at {server_url}: {str(e)}"
+        ) from e
 
 
 async def print_server_tools(session: MCPClientSession) -> None:

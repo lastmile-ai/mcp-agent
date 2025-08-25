@@ -23,6 +23,7 @@ from mcp_agent_cloud.core.constants import (
     MCP_SECRETS_FILENAME,
 )
 from mcp_agent_cloud.core.utils import run_async
+from mcp_agent_cloud.exceptions import CLIError
 from mcp_agent_cloud.mcp_app.api_client import MCPAppClient
 from mcp_agent_cloud.mcp_app.mock_client import MockMCPAppClient
 from mcp_agent_cloud.secrets.mock_client import MockSecretsClient
@@ -140,15 +141,13 @@ def deploy_config(
 
         else:
             if not effective_api_url:
-                print_error(
+                raise CLIError(
                     "MCP_API_BASE_URL environment variable or --api-url option must be set."
                 )
-                raise typer.Exit(1)
             if not effective_api_key:
-                print_error(
+                raise CLIError(
                     "Must be logged in to deploy. Run 'mcp-agent login', set MCP_API_KEY environment variable or specify --api-key option."
                 )
-                raise typer.Exit(1)
             print_info(f"Using API at {effective_api_url}")
 
             mcp_app_client = MCPAppClient(
@@ -174,13 +173,11 @@ def deploy_config(
                     f"Found existing app with ID: {app_id} for name '{app_name}'"
                 )
         except UnauthenticatedError as e:
-            print_error(
+            raise CLIError(
                 "Invalid API key for deployment. Run 'mcp-agent login' or set MCP_API_KEY environment variable with new API key."
-            )
-            raise typer.Exit(1) from e
+            ) from e
         except Exception as e:
-            print_error(f"Error checking or creating app: {str(e)}")
-            raise typer.Exit(1)
+            raise CLIError(f"Error checking or creating app: {str(e)}")
 
         secrets_transformed_path = None
         if secrets_file:
@@ -205,10 +202,9 @@ def deploy_config(
                         )
                     )
                 except Exception as e:
-                    print_error(
+                    raise CLIError(
                         f"Error during secrets processing with mock client: {str(e)}"
-                    )
-                    raise
+                    ) from e
             else:
                 # Use the real secrets API client
                 run_async(
@@ -307,26 +303,23 @@ def get_config_files(config_dir: Path, no_secrets: bool) -> tuple[Path, Optional
 
     config_file = config_dir / MCP_CONFIG_FILENAME
     if not config_file.exists():
-        print_error(
+        raise CLIError(
             f"Configuration file '{MCP_CONFIG_FILENAME}' not found in {config_dir}"
         )
-        raise typer.Exit(1)
 
     secrets_file_path = config_dir / MCP_SECRETS_FILENAME
     secrets_file: Optional[Path] = None
 
     if no_secrets:
         if secrets_file_path.exists():
-            print_error(
+            raise CLIError(
                 f"Secrets file '{MCP_SECRETS_FILENAME}' found in {config_dir} but --no-secrets is specified. Remove the secrets file or omit --no-secrets."
             )
-            raise typer.Exit(1)
         secrets_file = None
     elif not secrets_file_path.exists():
-        print_error(
+        raise CLIError(
             f"Secrets file '{MCP_SECRETS_FILENAME}' not found in {config_dir}. Required unless --no-secrets is specified."
         )
-        raise typer.Exit(1)
     else:
         secrets_file = secrets_file_path
 

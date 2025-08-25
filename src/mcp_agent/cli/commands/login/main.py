@@ -7,8 +7,8 @@ from mcp_agent_cloud.auth import (
     save_api_key_credentials,
 )
 from mcp_agent_cloud.config import settings
+from mcp_agent_cloud.exceptions import CLIError
 from mcp_agent_cloud.ux import (
-    print_error,
     print_info,
     print_success,
     print_warning,
@@ -46,8 +46,7 @@ def login(
     if api_key:
         print_info("Using provided API key for authentication.")
         if not _is_valid_api_key(api_key):
-            print_error("Invalid API key provided.")
-            raise typer.Exit(1)
+            raise CLIError("Invalid API key provided.")
         save_api_key_credentials(api_key)
         print_success("API key set.")
         return api_key
@@ -76,8 +75,7 @@ def login(
 
         print_warning("Invalid API key provided.")
 
-    print_error("Failed to set valid API key")
-    raise typer.Exit(1)
+    raise CLIError("Failed to set valid API key")
 
 
 def _is_valid_api_key(api_key: str) -> bool:

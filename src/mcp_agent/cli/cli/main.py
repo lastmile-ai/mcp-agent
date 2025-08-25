@@ -17,6 +17,8 @@ from mcp_agent_cloud.commands import configure_app, deploy_config, login
 from mcp_agent_cloud.commands.app import delete_app, get_app_status, list_app_workflows
 from mcp_agent_cloud.commands.apps import list_apps
 from mcp_agent_cloud.commands.workflow import get_workflow_status
+from mcp_agent_cloud.exceptions import CLIError
+from mcp_agent_cloud.ux import print_error
 
 # Setup file logging
 LOG_DIR = Path.home() / ".mcp-agent" / "logs"
@@ -57,6 +59,15 @@ class HelpfulTyperGroup(TyperGroup):
             )
             console.print(error_panel)
             ctx.exit(2)
+
+    def invoke(self, ctx):
+        try:
+            return super().invoke(ctx)
+        except CLIError as e:
+            # Handle CLIError cleanly - show error message and exit
+            logging.error(f"CLI error: {str(e)}")
+            print_error(str(e))
+            ctx.exit(e.exit_code)
 
 
 # Root typer for `mcp-agent` CLI commands
@@ -146,7 +157,13 @@ def callback(
 
 def run() -> None:
     """Run the CLI application."""
-    app()
+    try:
+        app()
+    except Exception as e:
+        # Unexpected errors - log full exception and show clean error to user
+        logging.exception("Unhandled exception in CLI")
+        print_error(f"An unexpected error occurred: {str(e)}")
+        raise typer.Exit(1) from e
 
 
 if __name__ == "__main__":

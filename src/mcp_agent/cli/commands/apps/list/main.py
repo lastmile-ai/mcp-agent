@@ -15,12 +15,13 @@ from mcp_agent_cloud.core.constants import (
     ENV_API_KEY,
 )
 from mcp_agent_cloud.core.utils import run_async
+from mcp_agent_cloud.exceptions import CLIError
 from mcp_agent_cloud.mcp_app.api_client import (
     MCPApp,
     MCPAppClient,
     MCPAppConfiguration,
 )
-from mcp_agent_cloud.ux import console, print_error, print_info
+from mcp_agent_cloud.ux import console, print_info
 
 
 def list_apps(
@@ -45,10 +46,9 @@ def list_apps(
     effective_api_key = api_key or settings.API_KEY or load_api_key_credentials()
 
     if not effective_api_key:
-        print_error(
+        raise CLIError(
             "Must be logged in to list apps. Run 'mcp-agent login', set MCP_API_KEY environment variable or specify --api-key option."
         )
-        raise typer.Exit(1)
 
     client = MCPAppClient(
         api_url=api_url or DEFAULT_API_BASE_URL, api_key=effective_api_key
@@ -85,13 +85,11 @@ def list_apps(
             print_info("No configured apps found.")
 
     except UnauthenticatedError as e:
-        print_error(
+        raise CLIError(
             "Invalid API key. Run 'mcp-agent login' or set MCP_API_KEY environment variable with new API key."
-        )
-        raise typer.Exit(1) from e
+        ) from e
     except Exception as e:
-        print_error(f"Error listing apps: {str(e)}")
-        raise typer.Exit(1)
+        raise CLIError(f"Error listing apps: {str(e)}") from e
 
 
 def print_info_header() -> None:
