@@ -6,7 +6,7 @@ mcp-agent workflows and agents as MCP tools.
 import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any, Dict, List, Optional, Tuple, Type, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Set, Tuple, Type, TYPE_CHECKING
 
 from mcp.server.fastmcp import Context as MCPContext, FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
@@ -37,6 +37,12 @@ class ServerContext(ContextDependent):
         self.mcp = mcp
         self.active_agents: Dict[str, Agent] = {}
 
+        # Maintain a list of registered workflow tools to avoid re-registration
+        # when server context is recreated for the same FastMCP instance (e.g. during
+        # FastMCP sse request handling)
+        if not hasattr(self.mcp, "_registered_workflow_tools"):
+            setattr(self.mcp, "_registered_workflow_tools", set())
+
         # Initialize workflow registry if not already present
         if not self.context.workflow_registry:
             if self.context.config.execution_engine == "asyncio":
@@ -62,8 +68,11 @@ class ServerContext(ContextDependent):
         """Register a workflow class."""
         if workflow_name not in self.context.workflows:
             self.workflows[workflow_name] = workflow_cls
-            # Create tools for this workflow
-            create_workflow_specific_tools(self.mcp, workflow_name, workflow_cls)
+            # Create tools for this workflow if not already registered
+            registered_workflow_tools = _get_registered_workflow_tools(self.mcp)
+            if workflow_name not in registered_workflow_tools:
+                create_workflow_specific_tools(self.mcp, workflow_name, workflow_cls)
+                registered_workflow_tools.add(workflow_name)
 
     @property
     def app(self) -> MCPApp:
@@ -84,6 +93,11 @@ class ServerContext(ContextDependent):
 def _get_attached_app(mcp: FastMCP) -> MCPApp | None:
     """Return the MCPApp instance attached to the FastMCP server, if any."""
     return getattr(mcp, "_mcp_agent_app", None)
+
+
+def _get_registered_workflow_tools(mcp: FastMCP) -> Set[str]:
+    """Return the set of registered workflow tools for the FastMCP server, if any."""
+    return getattr(mcp, "_registered_workflow_tools", set())
 
 
 def _get_attached_server_context(mcp: FastMCP) -> ServerContext | None:
@@ -386,8 +400,14 @@ def create_workflow_tools(mcp: FastMCP, server_context: ServerContext):
         logger.warning("Server config not available for creating workflow tools")
         return
 
+    registered_workflow_tools = _get_registered_workflow_tools(mcp)
+
     for workflow_name, workflow_cls in server_context.workflows.items():
-        create_workflow_specific_tools(mcp, workflow_name, workflow_cls)
+        if workflow_name not in registered_workflow_tools:
+            create_workflow_specific_tools(mcp, workflow_name, workflow_cls)
+            registered_workflow_tools.add(workflow_name)
+
+    setattr(mcp, "_registered_workflow_tools", registered_workflow_tools)
 
 
 def create_workflow_specific_tools(
