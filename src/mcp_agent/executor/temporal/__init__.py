@@ -160,8 +160,8 @@ class TemporalExecutor(Executor):
         activity_registry = self.context.task_registry
         activity_task = activity_registry.get_activity(activity_name)
 
-        schedule_to_close = execution_metadata.get(
-            "schedule_to_close_timeout", self.config.timeout_seconds
+        schedule_to_close = self.config.timeout_seconds or execution_metadata.get(
+            "schedule_to_close_timeout"
         )
 
         if schedule_to_close is not None and not isinstance(
