@@ -11,23 +11,23 @@ from typing import Any, Dict, List, Optional, Sequence, Union
 import typer
 import yaml
 
-from mcp_agent_cloud.auth import load_api_key_credentials
-from mcp_agent_cloud.config import settings
-from mcp_agent_cloud.core.constants import (
+from mcp_agent.cli.auth import load_api_key_credentials
+from mcp_agent.cli.config import settings
+from mcp_agent.cli.core.constants import (
     DEFAULT_API_BASE_URL,
     ENV_API_BASE_URL,
     ENV_API_KEY,
     SECRET_ID_PATTERN,
     SecretType,
 )
-from mcp_agent_cloud.secrets.api_client import SecretsClient
-from mcp_agent_cloud.secrets.yaml_tags import (
+from mcp_agent.cli.secrets.api_client import SecretsClient
+from mcp_agent.cli.secrets.yaml_tags import (
     DeveloperSecret,
     UserSecret,
     dump_yaml_with_secrets,
     load_yaml_with_secrets,
 )
-from mcp_agent_cloud.ux import (
+from mcp_agent.cli.ux import (
     console,
     print_error,
     print_info,

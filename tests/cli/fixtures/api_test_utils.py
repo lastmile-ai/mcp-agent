@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 # Import the JWT generator from our utils package
-from tests.utils.jwt_generator import generate_jwt
+from ..utils.jwt_generator import generate_jwt
 
 
 class APIMode(Enum):

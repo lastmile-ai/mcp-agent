@@ -1,10 +1,10 @@
 """Tests for the SecretsResolver resolve_in_place method."""
 
 import pytest
-from mcp_agent_cloud.core.api_client import UnauthenticatedError
-from mcp_agent_cloud.core.constants import SecretType
-from mcp_agent_cloud.secrets.mock_client import MockSecretsClient
-from mcp_agent_cloud.secrets.resolver import SecretsResolver
+from mcp_agent.cli.core.api_client import UnauthenticatedError
+from mcp_agent.cli.core.constants import SecretType
+from mcp_agent.cli.secrets.mock_client import MockSecretsClient
+from mcp_agent.cli.secrets.resolver import SecretsResolver
 
 
 @pytest.fixture
@@ -388,7 +388,7 @@ database:
 
 def test_load_config_with_user_secrets(resolver, tmp_path):
     """Test loading config with user secret tags."""
-    from mcp_agent_cloud.secrets.yaml_tags import UserSecret
+    from mcp_agent.cli.secrets.yaml_tags import UserSecret
 
     config_file = tmp_path / "user_secrets.yaml"
     config_file.write_text("""
@@ -456,7 +456,7 @@ nested:
 
 def test_load_config_with_lists(resolver, tmp_path):
     """Test loading config with lists containing secrets."""
-    from mcp_agent_cloud.secrets.yaml_tags import DeveloperSecret, UserSecret
+    from mcp_agent.cli.secrets.yaml_tags import DeveloperSecret, UserSecret
 
     config_file = tmp_path / "with_lists.yaml"
     config_file.write_text("""
@@ -548,7 +548,7 @@ this is not: valid yaml
 
 def test_load_config_complex_nested_structure(resolver, tmp_path):
     """Test loading complex nested structures with secrets at various levels."""
-    from mcp_agent_cloud.secrets.yaml_tags import DeveloperSecret
+    from mcp_agent.cli.secrets.yaml_tags import DeveloperSecret
 
     config_file = tmp_path / "complex.yaml"
     config_file.write_text("""

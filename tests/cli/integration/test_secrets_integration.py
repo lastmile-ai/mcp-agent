@@ -20,7 +20,7 @@ from pathlib import Path
 import pytest
 
 # Import fixtures from conftest
-from tests.integration.conftest import FIXTURES_BASE
+from ..integration.conftest import FIXTURES_BASE
 
 # Mark all tests in this module with the integration and mock markers
 pytestmark = [pytest.mark.integration, pytest.mark.mock]
@@ -58,7 +58,7 @@ def test_cli_deploy_with_realistic_configs(mock_api_credentials, setup_test_env_
         cmd = [
             "python",
             "-m",
-            "mcp_agent_cloud.cli.main",
+            "mcp_agent.cli.cli.main",
             "deploy",
             str(config_path),
             "--secrets-file",
@@ -151,7 +151,7 @@ def test_cli_deploy_with_mixed_secrets(mock_api_credentials, setup_test_env_vars
         cmd = [
             "python",
             "-m",
-            "mcp_agent_cloud.cli.main",
+            "mcp_agent.cli.cli.main",
             "deploy",
             str(config_path),
             "--secrets-file",
@@ -251,7 +251,7 @@ test: value
         cmd = [
             "python",
             "-m",
-            "mcp_agent_cloud.cli.main",
+            "mcp_agent.cli.cli.main",
             "deploy",
             str(config_path),
             "--secrets-file",
@@ -279,7 +279,7 @@ test: value
         cmd = [
             "python",
             "-m",
-            "mcp_agent_cloud.cli.main",
+            "mcp_agent.cli.cli.main",
             "deploy",
             str(config_path),
             # No secrets-file parameter
@@ -343,7 +343,7 @@ api:
         cmd = [
             "python",
             "-m",
-            "mcp_agent_cloud.cli.main",
+            "mcp_agent.cli.cli.main",
             "deploy",
             str(config_path),
             "--secrets-file",
@@ -370,7 +370,7 @@ api:
         cmd = [
             "python",
             "-m",
-            "mcp_agent_cloud.cli.main",
+            "mcp_agent.cli.cli.main",
             "deploy",
             str(config_path),
             "--secrets-file",

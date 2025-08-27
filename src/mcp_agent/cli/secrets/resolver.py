@@ -4,8 +4,8 @@ from typing import Any, Dict
 
 from pydantic import BaseModel
 
-from mcp_agent_cloud.core.api_client import UnauthenticatedError
-from mcp_agent_cloud.core.constants import SECRET_ID_PATTERN
+from mcp_agent.cli.core.api_client import UnauthenticatedError
+from mcp_agent.cli.core.constants import SECRET_ID_PATTERN
 
 from .api_client import SecretsClient
 from .yaml_tags import DeveloperSecret, UserSecret, load_yaml_with_secrets

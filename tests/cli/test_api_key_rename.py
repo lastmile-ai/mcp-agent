@@ -3,9 +3,9 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from mcp_agent_cloud.config import settings
-from mcp_agent_cloud.core.constants import SecretType
-from mcp_agent_cloud.secrets.api_client import SecretsClient
+from mcp_agent.cli.config import settings
+from mcp_agent.cli.core.constants import SecretType
+from mcp_agent.cli.secrets.api_client import SecretsClient
 
 
 def test_api_client_init_uses_api_key():

@@ -3,8 +3,8 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from mcp_agent_cloud.commands.configure.main import configure_app
-from mcp_agent_cloud.mcp_app.mock_client import (
+from mcp_agent.cli.commands.configure.main import configure_app
+from mcp_agent.cli.mcp_app.mock_client import (
     MOCK_APP_CONFIG_ID,
     MOCK_APP_ID,
 )
@@ -36,15 +36,15 @@ def patched_configure_app(mock_mcp_client):
     def wrapped_configure_app(**kwargs):
         with (
             patch(
-                "mcp_agent_cloud.commands.configure.main.MCPAppClient",
+                "mcp_agent.cli.commands.configure.main.MCPAppClient",
                 return_value=mock_mcp_client,
             ),
             patch(
-                "mcp_agent_cloud.commands.configure.main.MockMCPAppClient",
+                "mcp_agent.cli.commands.configure.main.MockMCPAppClient",
                 return_value=mock_mcp_client,
             ),
             patch(
-                "mcp_agent_cloud.commands.configure.main.typer.Exit",
+                "mcp_agent.cli.commands.configure.main.typer.Exit",
                 side_effect=ValueError,
             ),
         ):
@@ -101,7 +101,7 @@ def test_with_required_secrets_from_file(
 
     # Mock retrieve_secrets_from_config
     with patch(
-        "mcp_agent_cloud.secrets.processor.retrieve_secrets_from_config",
+        "mcp_agent.cli.secrets.processor.retrieve_secrets_from_config",
         return_value=secret_values,
     ) as mock_retrieve:
         # Test the function
@@ -199,12 +199,12 @@ def test_missing_api_key(patched_configure_app):
     """Test with missing API key."""
 
     # Patch settings to ensure API_KEY is None
-    with patch("mcp_agent_cloud.commands.configure.main.settings") as mock_settings:
+    with patch("mcp_agent.cli.commands.configure.main.settings") as mock_settings:
         mock_settings.API_KEY = None
 
         # Patch load_api_key_credentials to return None
         with patch(
-            "mcp_agent_cloud.commands.configure.main.load_api_key_credentials",
+            "mcp_agent.cli.commands.configure.main.load_api_key_credentials",
             return_value=None,
         ):
             with pytest.raises(RuntimeError):
@@ -288,15 +288,15 @@ def test_output_secrets_file_creation(tmp_path):
     # We need multiple patches to avoid any user input prompts
     with (
         patch(
-            "mcp_agent_cloud.commands.configure.main.MCPAppClient",
+            "mcp_agent.cli.commands.configure.main.MCPAppClient",
             return_value=mock_client,
         ),
         patch(
-            "mcp_agent_cloud.commands.configure.main.configure_user_secrets",
+            "mcp_agent.cli.commands.configure.main.configure_user_secrets",
             AsyncMock(return_value=processed_secrets),
         ),
         patch(
-            "mcp_agent_cloud.commands.configure.main.typer.Exit",
+            "mcp_agent.cli.commands.configure.main.typer.Exit",
             side_effect=RuntimeError,
         ),
     ):
@@ -304,7 +304,7 @@ def test_output_secrets_file_creation(tmp_path):
         # Skip the interactive parts by using a pre-created file
         try:
             # Call the function directly
-            from mcp_agent_cloud.commands.configure.main import configure_app
+            from mcp_agent.cli.commands.configure.main import configure_app
 
             result = configure_app(
                 app_id=MOCK_APP_ID,
@@ -354,7 +354,7 @@ def test_output_secrets_file_creation(tmp_path):
 def _create_test_secrets_file(file_path, processed_secrets):
     """Helper to create a test secrets file with proper structure."""
     import yaml
-    from mcp_agent_cloud.secrets.processor import nest_keys
+    from mcp_agent.cli.secrets.processor import nest_keys
 
     # Create the nested structure
     nested_secrets = nest_keys(processed_secrets)

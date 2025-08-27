@@ -150,7 +150,7 @@ export MCP_API_KEY=your-api-key
 ### As a Library
 
 ```python
-from mcp_agent_cloud.commands import deploy_config
+from mcp_agent.cli.commands import deploy_config
 
 # Deploy a configuration
 await deploy_config(
@@ -168,8 +168,8 @@ await deploy_config(
 You can also use the secrets API client directly:
 
 ```python
-from mcp_agent_cloud.secrets.api_client import SecretsClient
-from mcp_agent_cloud.secrets.constants import SecretType
+from mcp_agent.cli.secrets.api_client import SecretsClient
+from mcp_agent.cli.secrets.constants import SecretType
 
 # Initialize client
 client = SecretsClient(
@@ -212,7 +212,7 @@ pip install "mcp-agent-cloud[cloud]"
 
 ```python
 import typer
-from mcp_agent_cloud.commands import deploy_config
+from mcp_agent.cli.commands import deploy_config
 
 app = typer.Typer()
 

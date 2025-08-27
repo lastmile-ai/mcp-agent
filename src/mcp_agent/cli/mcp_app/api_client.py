@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel
 
-from mcp_agent_cloud.core.api_client import APIClient
+from mcp_agent.cli.core.api_client import APIClient
 
 
 class AppServerInfo(BaseModel):

@@ -4,10 +4,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
-from mcp_agent_cloud.core.constants import SecretType
-from mcp_agent_cloud.secrets.api_client import SecretsClient
+from mcp_agent.cli.core.constants import SecretType
+from mcp_agent.cli.secrets.api_client import SecretsClient
 
-from tests.fixtures.test_constants import (
+from ..fixtures.test_constants import (
     BEDROCK_API_KEY_UUID,
     DATABASE_PASSWORD_UUID,
     TEST_SECRET_UUID,

@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
-from mcp_agent_cloud.core.constants import SecretType
-from mcp_agent_cloud.secrets.api_client import SecretsClient
+from mcp_agent.cli.core.constants import SecretType
+from mcp_agent.cli.secrets.api_client import SecretsClient
 
 
 @pytest.fixture

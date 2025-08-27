@@ -10,22 +10,22 @@ from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
 
-from mcp_agent_cloud.auth import load_api_key_credentials
-from mcp_agent_cloud.config import settings
-from mcp_agent_cloud.core.api_client import UnauthenticatedError
-from mcp_agent_cloud.core.constants import (
+from mcp_agent.cli.auth import load_api_key_credentials
+from mcp_agent.cli.config import settings
+from mcp_agent.cli.core.api_client import UnauthenticatedError
+from mcp_agent.cli.core.constants import (
     DEFAULT_API_BASE_URL,
     ENV_API_BASE_URL,
     ENV_API_KEY,
 )
-from mcp_agent_cloud.core.utils import run_async
-from mcp_agent_cloud.exceptions import CLIError
-from mcp_agent_cloud.mcp_app.api_client import AppServerInfo, MCPAppClient
-from mcp_agent_cloud.mcp_app.mcp_client import (
+from mcp_agent.cli.core.utils import run_async
+from mcp_agent.cli.exceptions import CLIError
+from mcp_agent.cli.mcp_app.api_client import AppServerInfo, MCPAppClient
+from mcp_agent.cli.mcp_app.mcp_client import (
     MCPClientSession,
     mcp_connection_session,
 )
-from mcp_agent_cloud.ux import (
+from mcp_agent.cli.ux import (
     console,
 )
 

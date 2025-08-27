@@ -3,12 +3,12 @@ from typing import Optional
 import typer
 from rich.prompt import Prompt
 
-from mcp_agent_cloud.auth import (
+from mcp_agent.cli.auth import (
     save_api_key_credentials,
 )
-from mcp_agent_cloud.config import settings
-from mcp_agent_cloud.exceptions import CLIError
-from mcp_agent_cloud.ux import (
+from mcp_agent.cli.config import settings
+from mcp_agent.cli.exceptions import CLIError
+from mcp_agent.cli.ux import (
     print_info,
     print_success,
     print_warning,

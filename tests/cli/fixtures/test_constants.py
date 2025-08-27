@@ -3,7 +3,7 @@
 This file contains constants that are used across multiple test files.
 """
 
-from mcp_agent_cloud.core.constants import UUID_PREFIX
+from mcp_agent.cli.core.constants import UUID_PREFIX
 
 # Test UUIDs with proper prefix pattern
 TEST_SECRET_UUID = f"{UUID_PREFIX}11111111-1111-1111-1111-111111111111"

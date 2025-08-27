@@ -3,7 +3,7 @@
 import unittest
 
 import yaml
-from mcp_agent_cloud.secrets.yaml_tags import (
+from mcp_agent.cli.secrets.yaml_tags import (
     DeveloperSecret,
     SecretYamlDumper,
     SecretYamlLoader,

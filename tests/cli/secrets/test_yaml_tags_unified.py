@@ -5,8 +5,8 @@ This file consolidates tests for YAML tag handling and validation.
 
 from unittest import TestCase
 
-from mcp_agent_cloud.core.constants import SECRET_ID_PATTERN, UUID_PREFIX
-from mcp_agent_cloud.secrets.yaml_tags import (
+from mcp_agent.cli.core.constants import SECRET_ID_PATTERN, UUID_PREFIX
+from mcp_agent.cli.secrets.yaml_tags import (
     DeveloperSecret,
     UserSecret,
     dump_yaml_with_secrets,

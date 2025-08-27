@@ -1515,6 +1515,18 @@ wheels = [
 ]
 
 [[package]]
+name = "hvac"
+version = "2.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/48/a4/c0b698a7250b7a5c2956427406560701862215c646e079a7907846608f44/hvac-2.3.0.tar.gz", hash = "sha256:1b85e3320e8642dd82f234db63253cda169a817589e823713dc5fca83119b1e2", size = 332660, upload-time = "2024-06-18T14:46:09.748Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0b/34/56facf52e2ea14ce640f434ccf00311af6f3a1df0019d4682ba28ea09948/hvac-2.3.0-py3-none-any.whl", hash = "sha256:a3afc5710760b6ee9b3571769df87a0333da45da05a5f9f963e1d3925a84be7d", size = 155860, upload-time = "2024-06-18T14:46:05.399Z" },
+]
+
+[[package]]
 name = "identify"
 version = "2.6.12"
 source = { registry = "https://pypi.org/simple" }
@@ -2070,6 +2082,14 @@ azure = [
 bedrock = [
     { name = "boto3" },
 ]
+cli = [
+    { name = "httpx" },
+    { name = "hvac" },
+    { name = "pyjwt" },
+    { name = "pytest-asyncio" },
+    { name = "rich" },
+    { name = "typer" },
+]
 cohere = [
     { name = "cohere" },
 ]
@@ -2118,6 +2138,8 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115.6" },
     { name = "google-cloud-aiplatform", marker = "extra == 'anthropic-vertex'", specifier = ">=1.101.0" },
     { name = "google-genai", marker = "extra == 'google'", specifier = ">=1.10.0" },
+    { name = "httpx", marker = "extra == 'cli'", specifier = ">=0.25.0" },
+    { name = "hvac", marker = "extra == 'cli'", specifier = ">=1.1.1" },
     { name = "instructor", specifier = ">=1.7.9" },
     { name = "jsonref", specifier = ">=1.1.0" },
     { name = "langchain-core", marker = "extra == 'langchain'", specifier = ">=0.3.64" },
@@ -2132,14 +2154,18 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.10.4" },
     { name = "pydantic-settings", specifier = ">=2.7.0" },
     { name = "pydantic-yaml", specifier = ">=1.5.1" },
+    { name = "pyjwt", marker = "extra == 'cli'", specifier = ">=2.10.1" },
+    { name = "pytest-asyncio", marker = "extra == 'cli'", specifier = ">=0.26.0" },
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "rich", specifier = ">=13.9.4" },
+    { name = "rich", marker = "extra == 'cli'", specifier = ">=13.3.5" },
     { name = "scikit-learn", specifier = ">=1.6.0" },
     { name = "temporalio", extras = ["opentelemetry"], marker = "extra == 'temporal'", specifier = ">=1.10.0" },
     { name = "typer", specifier = ">=0.15.1" },
+    { name = "typer", extras = ["all"], marker = "extra == 'cli'", specifier = ">=0.15.1" },
     { name = "websockets", specifier = ">=12.0" },
 ]
-provides-extras = ["temporal", "anthropic", "anthropic-bedrock", "anthropic-vertex", "bedrock", "openai", "azure", "google", "cohere", "langchain", "crewai"]
+provides-extras = ["temporal", "anthropic", "anthropic-bedrock", "anthropic-vertex", "bedrock", "openai", "azure", "google", "cohere", "langchain", "crewai", "cli"]
 
 [package.metadata.requires-dev]
 dev = [

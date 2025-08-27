@@ -4,7 +4,7 @@ import os
 
 from pydantic_settings import BaseSettings
 
-from mcp_agent_cloud.core.constants import (
+from mcp_agent.cli.core.constants import (
     DEFAULT_API_BASE_URL,
     DEFAULT_CACHE_DIR,
     ENV_API_BASE_URL,

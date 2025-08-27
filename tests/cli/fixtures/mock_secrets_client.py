@@ -3,7 +3,7 @@
 import uuid
 from typing import Any, Dict, List, Optional
 
-from mcp_agent_cloud.core.constants import SecretType
+from mcp_agent.cli.core.constants import SecretType
 
 
 class MockSecretsClient:

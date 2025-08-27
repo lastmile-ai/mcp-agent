@@ -7,14 +7,14 @@ from unittest.mock import patch
 
 import pytest
 import typer
-from mcp_agent_cloud.cli.main import app
-from mcp_agent_cloud.core.constants import (
+from mcp_agent.cli.cli.main import app
+from mcp_agent.cli.core.constants import (
     MCP_CONFIG_FILENAME,
     MCP_DEPLOYED_SECRETS_FILENAME,
     MCP_SECRETS_FILENAME,
 )
-from mcp_agent_cloud.mcp_app.mock_client import MOCK_APP_ID, MOCK_APP_NAME
-from mcp_agent_cloud.secrets.api_client import SecretsClient
+from mcp_agent.cli.mcp_app.mock_client import MOCK_APP_ID, MOCK_APP_NAME
+from mcp_agent.cli.secrets.api_client import SecretsClient
 from typer.testing import CliRunner
 
 
@@ -90,7 +90,7 @@ def test_deploy_command_basic(runner, temp_config_dir):
             return {"developer_secrets": [], "user_secrets": []}
 
         with patch(
-            "mcp_agent_cloud.secrets.processor.process_config_secrets",
+            "mcp_agent.cli.secrets.processor.process_config_secrets",
             side_effect=mock_process_secrets,
         ):
             # Run the deploy command
@@ -124,7 +124,7 @@ def test_deploy_command_basic(runner, temp_config_dir):
 def test_deploy_command_no_secrets(runner, temp_config_dir):
     """Test deploy command with --no-secrets flag when a secrets file DOES NOT exist."""
     # Run with --no-secrets flag and --dry-run to avoid real deployment
-    with patch("mcp_agent_cloud.commands.deploy.main.wrangler_deploy") as mock_deploy:
+    with patch("mcp_agent.cli.commands.deploy.main.wrangler_deploy") as mock_deploy:
         # Mock the wrangler deployment
         mock_deploy.return_value = None
 
@@ -155,7 +155,7 @@ def test_deploy_command_no_secrets(runner, temp_config_dir):
 def test_deploy_command_no_secrets_with_existing_secrets(runner, temp_config_dir):
     """Test deploy command with --no-secrets flag when a secrets file DOES exist."""
     # Run with --no-secrets flag and --dry-run to avoid real deployment
-    with patch("mcp_agent_cloud.commands.deploy.main.wrangler_deploy") as mock_deploy:
+    with patch("mcp_agent.cli.commands.deploy.main.wrangler_deploy") as mock_deploy:
         # Mock the wrangler deployment
         mock_deploy.return_value = None
 
@@ -206,7 +206,7 @@ server:
 
         # Call deploy_config with wrangler_deploy mocked
         with patch(
-            "mcp_agent_cloud.commands.deploy.main.wrangler_deploy"
+            "mcp_agent.cli.commands.deploy.main.wrangler_deploy"
         ) as mock_deploy:
             # Mock wrangler_deploy to prevent actual deployment
             mock_deploy.return_value = None
@@ -214,7 +214,7 @@ server:
             # Set a test env var
             with patch.dict(os.environ, {"API_KEY": "test-key"}):
                 # Use the real deploy_config function
-                from mcp_agent_cloud.commands.deploy import deploy_config
+                from mcp_agent.cli.commands.deploy import deploy_config
 
                 # Run the deploy command
                 result = deploy_config(
@@ -260,7 +260,7 @@ def test_deploy_with_missing_env_vars():
             f.write("server:\n  api_key: !developer_secret MISSING_ENV_VAR\n")
 
         # Call the deploy_config function directly with missing env var
-        from mcp_agent_cloud.commands.deploy import deploy_config
+        from mcp_agent.cli.commands.deploy import deploy_config
 
         # Call with non_interactive=True, which should fail with typer.Exit
         with pytest.raises(typer.Exit):
@@ -283,14 +283,14 @@ def test_rollback_secrets_file(temp_config_dir):
         pre_deploy_secrets_content = f.read()
 
     # Call deploy_config with wrangler_deploy mocked
-    with patch("mcp_agent_cloud.commands.deploy.main.wrangler_deploy") as mock_deploy:
+    with patch("mcp_agent.cli.commands.deploy.main.wrangler_deploy") as mock_deploy:
         # Mock wrangler_deploy to prevent actual deployment
         mock_deploy.side_effect = Exception("Deployment failed")
 
         # Set a test env var
         with patch.dict(os.environ, {"SERVER_API_KEY": "test-key"}):
             # Use the real deploy_config function
-            from mcp_agent_cloud.commands.deploy import deploy_config
+            from mcp_agent.cli.commands.deploy import deploy_config
 
             # Run the deploy command
             deploy_config(

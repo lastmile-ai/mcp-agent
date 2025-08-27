@@ -10,7 +10,7 @@ export MCP_API_BASE_URL="http://localhost:3000/api"
 export MCP_API_KEY="your-api-key"
 
 # Run deploy with secrets file (dry run mode)
-python -m mcp_agent_cloud.cli.main deploy \
+python -m mcp_agent.cli.cli.main deploy \
   --dry-run \
   tests/fixtures/example_config.yaml \
   --secrets-file tests/fixtures/example_secrets.yaml \

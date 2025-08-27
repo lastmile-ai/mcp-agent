@@ -13,8 +13,8 @@ import os
 import uuid
 
 import pytest
-from mcp_agent_cloud.core.constants import SecretType
-from mcp_agent_cloud.secrets.api_client import SecretsClient
+from mcp_agent.cli.core.constants import SecretType
+from mcp_agent.cli.secrets.api_client import SecretsClient
 
 # Mark all tests in this module as requiring API integration
 pytestmark = pytest.mark.integration
@@ -24,8 +24,8 @@ pytestmark = pytest.mark.integration
 def api_client():
     """Create a SecretsClient connected to the web app."""
     # Decide whether to use a mock or real client based on markers
-    from tests.fixtures.mock_secrets_client import MockSecretsClient
-    from tests.fixtures.test_jwt_generator import generate_test_token
+    from ..fixtures.mock_secrets_client import MockSecretsClient
+    from ..fixtures.test_jwt_generator import generate_test_token
 
     # Default to using the mock for reliability
     use_mock = True
@@ -68,7 +68,7 @@ async def test_create_and_get_secret(api_client):
 
     # API now returns standard UUID handles
     # We validate against the UUID pattern
-    from mcp_agent_cloud.core.constants import SECRET_ID_PATTERN
+    from mcp_agent.cli.core.constants import SECRET_ID_PATTERN
 
     assert SECRET_ID_PATTERN.match(handle), (
         f"Handle format '{handle}' doesn't match expected UUID pattern"
@@ -112,7 +112,7 @@ async def test_update_secret_value(api_client):
 
         # API returns standard UUID handles
         # We validate against the UUID pattern
-        from mcp_agent_cloud.core.constants import SECRET_ID_PATTERN
+        from mcp_agent.cli.core.constants import SECRET_ID_PATTERN
 
         assert SECRET_ID_PATTERN.match(handle), (
             f"Handle format '{handle}' doesn't match expected UUID pattern"

@@ -20,9 +20,9 @@ from pathlib import Path
 
 import pytest
 import yaml
-from mcp_agent_cloud.secrets.processor import DeveloperSecret, UserSecret
+from mcp_agent.cli.secrets.processor import DeveloperSecret, UserSecret
 
-from tests.fixtures.api_test_utils import APIMode, setup_api_for_testing
+from ..fixtures.api_test_utils import APIMode, setup_api_for_testing
 
 # Mark all tests in this module with the integration marker
 pytestmark = pytest.mark.integration
@@ -81,7 +81,7 @@ database:
         cmd = [
             "python",
             "-m",
-            "mcp_agent_cloud.cli.main",
+            "mcp_agent.cli.cli.main",
             "deploy",
             config_path,
             "--secrets-file",
@@ -188,7 +188,7 @@ def test_cli_deploy_with_env_var_secret(api_credentials):
         cmd = [
             "python",
             "-m",
-            "mcp_agent_cloud.cli.main",
+            "mcp_agent.cli.cli.main",
             "deploy",
             config_path,
             "--secrets-file",
@@ -275,7 +275,7 @@ def test_cli_error_handling(api_credentials):
         cmd = [
             "python",
             "-m",
-            "mcp_agent_cloud.cli.main",
+            "mcp_agent.cli.cli.main",
             "deploy",
             config_path,
             "--secrets-file",
@@ -300,7 +300,7 @@ def test_cli_error_handling(api_credentials):
         cmd = [
             "python",
             "-m",
-            "mcp_agent_cloud.cli.main",
+            "mcp_agent.cli.cli.main",
             "deploy",
             config_path,
             # No secrets file specified
@@ -355,7 +355,7 @@ def test_developer_secret_validation(api_credentials):
         cmd = [
             "python",
             "-m",
-            "mcp_agent_cloud.cli.main",
+            "mcp_agent.cli.cli.main",
             "deploy",
             config_path,
             "--secrets-file",
@@ -394,7 +394,7 @@ def test_developer_secret_validation(api_credentials):
         cmd = [
             "python",
             "-m",
-            "mcp_agent_cloud.cli.main",
+            "mcp_agent.cli.cli.main",
             "deploy",
             config_path,
             "--secrets-file",

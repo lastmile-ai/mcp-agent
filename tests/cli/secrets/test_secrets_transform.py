@@ -7,18 +7,18 @@ into deployment-ready configurations with secret handles.
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from mcp_agent_cloud.core.constants import (
+from mcp_agent.cli.core.constants import (
     MCP_DEPLOYED_SECRETS_FILENAME,
     MCP_SECRETS_FILENAME,
     UUID_PREFIX,
     SecretType,
 )
-from mcp_agent_cloud.secrets.processor import (
+from mcp_agent.cli.secrets.processor import (
     process_config_secrets,
     process_secrets_in_config_str,
     transform_config_recursive,
 )
-from mcp_agent_cloud.secrets.yaml_tags import (
+from mcp_agent.cli.secrets.yaml_tags import (
     DeveloperSecret,
     UserSecret,
     load_yaml_with_secrets,
@@ -274,7 +274,7 @@ class TestProcessConfigSecrets:
         with (
             patch("typer.prompt", return_value="test-value"),
             patch.dict("os.environ", {}, clear=True),
-            patch("mcp_agent_cloud.secrets.processor.print_secret_summary"),
+            patch("mcp_agent.cli.secrets.processor.print_secret_summary"),
         ):
             # Process the config
             result = await process_config_secrets(
@@ -342,7 +342,7 @@ class TestProcessConfigSecrets:
         with (
             patch("typer.prompt", return_value="test-value"),
             patch.dict("os.environ", {}, clear=True),
-            patch("mcp_agent_cloud.secrets.processor.print_secret_summary"),
+            patch("mcp_agent.cli.secrets.processor.print_secret_summary"),
         ):
             # Process the config with existing output
             result = await process_config_secrets(

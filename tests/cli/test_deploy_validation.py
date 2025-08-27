@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from mcp_agent_cloud.commands.deploy.validation import (
+from mcp_agent.cli.commands.deploy.validation import (
     validate_entrypoint,
     validate_project,
 )
@@ -20,7 +20,7 @@ class TestValidateProject:
             project_dir = Path(temp_dir)
             main_py = project_dir / "main.py"
             main_py.write_text("""
-from mcp_agent_cloud import MCPApp
+from mcp_agent.cli import MCPApp
 
 app = MCPApp(name="test-app")
 """)
@@ -55,7 +55,7 @@ app = MCPApp(name="test-app")
             main_py.write_text("app = MCPApp()")
 
             with patch(
-                "mcp_agent_cloud.commands.deploy.validation.validate_entrypoint"
+                "mcp_agent.cli.commands.deploy.validation.validate_entrypoint"
             ) as mock_validate:
                 validate_project(project_dir)
                 mock_validate.assert_called_once_with(main_py)
@@ -77,7 +77,7 @@ class TestValidateEntrypoint:
         """Test validation of a multiline MCPApp definition."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             f.write("""
-from mcp_agent_cloud import MCPApp
+from mcp_agent.cli import MCPApp
 
 my_app = MCPApp(
     name="test-app",
@@ -152,7 +152,7 @@ def main():
                 ):
                     validate_entrypoint(Path(f.name))
 
-    @patch("mcp_agent_cloud.commands.deploy.validation.print_warning")
+    @patch("mcp_agent.cli.commands.deploy.validation.print_warning")
     def test_validate_entrypoint_warns_about_main_block(self, mock_print_warning):
         """Test that validation warns about __main__ entrypoint."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
@@ -170,7 +170,7 @@ if __name__ == "__main__":
                 "Found a __main__ entrypoint in main.py. This will be ignored in the deployment."
             )
 
-    @patch("mcp_agent_cloud.commands.deploy.validation.print_warning")
+    @patch("mcp_agent.cli.commands.deploy.validation.print_warning")
     def test_validate_entrypoint_warns_about_main_block_variations(
         self, mock_print_warning
     ):
@@ -192,7 +192,7 @@ if __name__ == "__main__":
                 validate_entrypoint(Path(f.name))
                 mock_print_warning.assert_called_once()
 
-    @patch("mcp_agent_cloud.commands.deploy.validation.print_warning")
+    @patch("mcp_agent.cli.commands.deploy.validation.print_warning")
     def test_validate_entrypoint_no_warning_without_main_block(
         self, mock_print_warning
     ):
@@ -210,7 +210,7 @@ if __name__ == "__main__":
             f.write("""
 import os
 from pathlib import Path
-from mcp_agent_cloud import MCPApp
+from mcp_agent.cli import MCPApp
 
 # Configuration
 CONFIG_PATH = Path(__file__).parent / "config.yaml"

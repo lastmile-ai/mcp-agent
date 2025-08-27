@@ -12,13 +12,13 @@ from rich.console import Console
 from rich.panel import Panel
 from typer.core import TyperGroup
 
-from mcp_agent_cloud import __version__
-from mcp_agent_cloud.commands import configure_app, deploy_config, login
-from mcp_agent_cloud.commands.app import delete_app, get_app_status, list_app_workflows
-from mcp_agent_cloud.commands.apps import list_apps
-from mcp_agent_cloud.commands.workflow import get_workflow_status
-from mcp_agent_cloud.exceptions import CLIError
-from mcp_agent_cloud.ux import print_error
+from mcp_agent.cli import __version__
+from mcp_agent.cli.commands import configure_app, deploy_config, login
+from mcp_agent.cli.commands.app import delete_app, get_app_status, list_app_workflows
+from mcp_agent.cli.commands.apps import list_apps
+from mcp_agent.cli.commands.workflow import get_workflow_status
+from mcp_agent.cli.exceptions import CLIError
+from mcp_agent.cli.ux import print_error
 
 # Setup file logging
 LOG_DIR = Path.home() / ".mcp-agent" / "logs"

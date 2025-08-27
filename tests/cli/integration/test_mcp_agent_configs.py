@@ -17,10 +17,10 @@ from pathlib import Path
 
 import pytest
 import yaml
-from mcp_agent_cloud.cli.main import app
-from mcp_agent_cloud.core.constants import SecretType
-from mcp_agent_cloud.secrets.api_client import SecretsClient
-from mcp_agent_cloud.secrets.yaml_tags import (
+from mcp_agent.cli.cli.main import app
+from mcp_agent.cli.core.constants import SecretType
+from mcp_agent.cli.secrets.api_client import SecretsClient
+from mcp_agent.cli.secrets.yaml_tags import (
     DeveloperSecret,
     SecretYamlLoader,
     UserSecret,
@@ -28,8 +28,8 @@ from mcp_agent_cloud.secrets.yaml_tags import (
 )
 from typer.testing import CliRunner
 
-from tests.fixtures.api_test_utils import APIMode, setup_api_for_testing
-from tests.fixtures.mock_secrets_client import MockSecretsClient
+from ..fixtures.api_test_utils import APIMode, setup_api_for_testing
+from ..fixtures.mock_secrets_client import MockSecretsClient
 
 # These tests will be marked with the integration marker
 pytestmark = [
@@ -120,10 +120,10 @@ class TestMcpAgentConfigIntegration:
         assert secrets_path.exists(), f"Secrets fixture {secrets_path} does not exist"
 
         # Setup the mock SecretsClient for testing
-        from tests.fixtures.mock_secrets_client import MockSecretsClient
+        from ..fixtures.mock_secrets_client import MockSecretsClient
 
         monkeypatch.setattr(
-            "mcp_agent_cloud.secrets.processor.SecretsClient", MockSecretsClient
+            "mcp_agent.cli.secrets.processor.SecretsClient", MockSecretsClient
         )
 
         runner = CliRunner()

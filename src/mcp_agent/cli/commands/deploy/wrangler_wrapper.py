@@ -7,13 +7,13 @@ from pathlib import Path
 
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from mcp_agent_cloud.config import settings
-from mcp_agent_cloud.core.constants import (
+from mcp_agent.cli.config import settings
+from mcp_agent.cli.core.constants import (
     MCP_CONFIG_FILENAME,
     MCP_DEPLOYED_SECRETS_FILENAME,
     REQUIREMENTS_TXT_FILENAME,
 )
-from mcp_agent_cloud.ux import print_error
+from mcp_agent.cli.ux import print_error
 
 from .constants import (
     CLOUDFLARE_ACCOUNT_ID,

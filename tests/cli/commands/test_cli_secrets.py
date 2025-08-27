@@ -12,7 +12,7 @@ import uuid
 from unittest.mock import patch
 
 import pytest
-from mcp_agent_cloud.core.constants import UUID_PATTERN, UUID_PREFIX
+from mcp_agent.cli.core.constants import UUID_PATTERN, UUID_PREFIX
 
 
 @pytest.fixture(scope="module")
@@ -83,7 +83,7 @@ database:
         cmd = [
             "python",
             "-m",
-            "mcp_agent_cloud.cli.main",
+            "mcp_agent.cli.cli.main",
             "deploy",
             "Test App",
             "--config-dir",
@@ -198,7 +198,7 @@ def test_cli_deploy_with_env_var_secret(mock_api_credentials, setup_test_env_var
         cmd = [
             "python",
             "-m",
-            "mcp_agent_cloud.cli.main",
+            "mcp_agent.cli.cli.main",
             "deploy",
             "Test App",
             "--config-dir",
@@ -314,7 +314,7 @@ models:
         cmd = [
             "python",
             "-m",
-            "mcp_agent_cloud.cli.main",
+            "mcp_agent.cli.cli.main",
             "deploy",
             "Test App",
             "--config-dir",
@@ -411,7 +411,7 @@ def test_cli_error_handling(mock_api_credentials):
         cmd = [
             "python",
             "-m",
-            "mcp_agent_cloud.cli.main",
+            "mcp_agent.cli.cli.main",
             "deploy",
             "Test App",
             "--config-dir",
@@ -440,7 +440,7 @@ def test_cli_error_handling(mock_api_credentials):
         cmd = [
             "python",
             "-m",
-            "mcp_agent_cloud.cli.main",
+            "mcp_agent.cli.cli.main",
             "deploy",
             "Test App",
             "--config-dir",
@@ -503,7 +503,7 @@ api:
         cmd = [
             "python",
             "-m",
-            "mcp_agent_cloud.cli.main",
+            "mcp_agent.cli.cli.main",
             "deploy",
             "Test App",
             "--config-dir",
@@ -552,7 +552,7 @@ api:
             cmd = [
                 "python",
                 "-m",
-                "mcp_agent_cloud.cli.main",
+                "mcp_agent.cli.cli.main",
                 "deploy",
                 "Test App",
                 "--config-dir",

@@ -1,7 +1,7 @@
 import re
 from pathlib import Path
 
-from mcp_agent_cloud.ux import print_warning
+from mcp_agent.cli.ux import print_warning
 
 
 def validate_project(project_dir: Path):

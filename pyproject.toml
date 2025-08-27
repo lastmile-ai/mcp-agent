@@ -74,6 +74,14 @@ langchain = [
 crewai = [
     "crewai>=0.126.0",
 ]
+cli = [
+    "hvac>=1.1.1",
+    "httpx>=0.25.0",
+    "pyjwt>=2.10.1",
+    "pytest-asyncio>=0.26.0",
+    "typer[all]>=0.15.1",
+    "rich>=13.3.5",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -95,10 +103,10 @@ dev = [
 ]
 
 [project.scripts]
-mcp-agent = "mcp_agent.cli.__main__:app"
-mcp_agent = "mcp_agent.cli.__main__:app"
-mcpagent = "mcp_agent.cli.__main__:app"
-silsila = "mcp_agent.cli.__main__:app"
+mcp-agent = "mcp_agent.cli.cli.main:run"
+mcp_agent = "mcp_agent.cli.cli.main:run"
+mcpagent = "mcp_agent.cli.cli.main:run"
+silsila = "mcp_agent.cli.cli.main:run"
 prompt-server = "mcp_agent.mcp.prompts.__main__:main"
 
 [tool.setuptools.packages.find]

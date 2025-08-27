@@ -8,10 +8,10 @@ import os
 from pathlib import Path
 
 import pytest
-from mcp_agent_cloud.secrets.api_client import SecretsClient
-from mcp_agent_cloud.secrets.mock_client import MockSecretsClient
+from mcp_agent.cli.secrets.api_client import SecretsClient
+from mcp_agent.cli.secrets.mock_client import MockSecretsClient
 
-from tests.fixtures.api_test_utils import APIMode, setup_api_for_testing
+from ..fixtures.api_test_utils import APIMode, setup_api_for_testing
 
 # Base path for realistic test fixtures
 FIXTURES_BASE = Path(__file__).parent.parent / "fixtures" / "realistic_mcp_configs"
@@ -61,7 +61,7 @@ def real_secrets_client():
                 # Get the API token from environment
                 api_token = os.environ.get("MCP_API_KEY")
                 if not api_token:
-                    from tests.utils.jwt_generator import generate_jwt
+                    from ..utils.jwt_generator import generate_jwt
 
                     # Generate a test token
                     nextauth_secret = os.environ.get(

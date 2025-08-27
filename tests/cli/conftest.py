@@ -4,7 +4,7 @@ import os
 from typing import Any, Dict
 
 import pytest
-from mcp_agent_cloud.core.constants import (
+from mcp_agent.cli.core.constants import (
     MCP_CONFIG_FILENAME,
     MCP_SECRETS_FILENAME,
 )
