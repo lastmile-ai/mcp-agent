@@ -393,6 +393,12 @@ class TemporalSettings(BaseModel):
     max_concurrent_activities: int | None = None
     timeout_seconds: int | None = 60
     rpc_metadata: Dict[str, str] | None = None
+    id_reuse_policy: Literal[
+        "allow_duplicate",
+        "allow_duplicate_failed_only",
+        "reject_duplicate",
+        "terminate_if_running",
+    ] = "allow_duplicate"
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 

@@ -1,5 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import timedelta
+from temporalio.common import WorkflowIDReusePolicy
 from mcp_agent.executor.temporal import TemporalExecutor, TemporalExecutorConfig
 
 
@@ -216,3 +218,113 @@ async def test_terminate_workflow(executor):
         workflow_id="workflow-id", run_id="run-id"
     )
     mock_handle.terminate.assert_awaited_once_with(reason="Termination reason")
+
+
+@pytest.mark.asyncio
+async def test_id_reuse_policy_from_config(mock_context):
+    """Test that id_reuse_policy from config is correctly mapped to temporal enum"""
+    config = TemporalExecutorConfig(
+        host="localhost:7233",
+        namespace="test-namespace",
+        task_queue="test-queue",
+        id_reuse_policy="allow_duplicate_failed_only",
+    )
+    executor = TemporalExecutor(config=config, client=AsyncMock(), context=mock_context)
+
+    class DummyWorkflow:
+        @staticmethod
+        async def run():
+            return "ok"
+
+    mock_context.app.workflows.get.return_value = DummyWorkflow
+    executor.client.start_workflow = AsyncMock(return_value=AsyncMock())
+
+    await executor.start_workflow("test_workflow", wait_for_result=False)
+
+    call_args = executor.client.start_workflow.call_args
+    assert (
+        call_args.kwargs["id_reuse_policy"]
+        == WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY
+    )
+
+
+@pytest.mark.asyncio
+@patch("temporalio.workflow._Runtime.current", return_value=MagicMock())
+@patch("temporalio.workflow.execute_activity")
+async def test_timeout_seconds_prioritized_over_metadata(
+    mock_execute_activity, mock_runtime, mock_context
+):
+    """Test that config.timeout_seconds takes priority over execution_metadata schedule_to_close_timeout"""
+    config = TemporalExecutorConfig(
+        host="localhost:7233",
+        namespace="test-namespace",
+        task_queue="test-queue",
+        timeout_seconds=30,  # Config timeout
+    )
+    executor = TemporalExecutor(config=config, client=AsyncMock(), context=mock_context)
+
+    # Mock a workflow task with metadata timeout
+    def mock_task():
+        return "result"
+
+    mock_task.func = mock_task
+    mock_task.is_workflow_task = True
+    mock_task.execution_metadata = {
+        "activity_name": "test_activity",
+        "schedule_to_close_timeout": 60,  # Metadata timeout should be overridden
+    }
+
+    # Mock the activity registry
+    mock_activity = MagicMock()
+    mock_context.task_registry.get_activity.return_value = mock_activity
+
+    mock_execute_activity.return_value = "activity_result"
+
+    result = await executor._execute_task(mock_task)
+
+    # Verify execute_activity was called with config timeout (30s), not metadata timeout (60s)
+    mock_execute_activity.assert_called_once()
+    call_args = mock_execute_activity.call_args
+    assert call_args.kwargs["schedule_to_close_timeout"] == timedelta(seconds=30)
+    assert result == "activity_result"
+
+
+@pytest.mark.asyncio
+@patch("temporalio.workflow._Runtime.current", return_value=MagicMock())
+@patch("temporalio.workflow.execute_activity")
+async def test_metadata_timeout_used_when_no_config_timeout(
+    mock_execute_activity, mock_runtime, mock_context
+):
+    """Test that metadata timeout is used when config.timeout_seconds is None"""
+    config = TemporalExecutorConfig(
+        host="localhost:7233",
+        namespace="test-namespace",
+        task_queue="test-queue",
+        # No config timeout
+    )
+    executor = TemporalExecutor(config=config, client=AsyncMock(), context=mock_context)
+
+    # Mock a workflow task with metadata timeout
+    def mock_task():
+        return "result"
+
+    mock_task.func = mock_task
+    mock_task.is_workflow_task = True
+    mock_task.execution_metadata = {
+        "activity_name": "test_activity",
+        "schedule_to_close_timeout": 60,  # Metadata timeout should be used
+    }
+
+    # Mock the activity registry
+    mock_activity = MagicMock()
+    mock_context.task_registry.get_activity.return_value = mock_activity
+
+    mock_execute_activity.return_value = "activity_result"
+
+    result = await executor._execute_task(mock_task)
+
+    # Verify execute_activity was called with metadata timeout (60s)
+    mock_execute_activity.assert_called_once()
+    call_args = mock_execute_activity.call_args
+    assert call_args.kwargs["schedule_to_close_timeout"] == timedelta(seconds=60)
+    assert result == "activity_result"
