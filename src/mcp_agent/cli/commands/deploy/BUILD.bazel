@@ -1,0 +1,24 @@
+load("@pip//:requirements.bzl", "requirement")
+load("@rules_python//python:defs.bzl", "py_library")
+
+py_library(
+    name = "deploy",
+    srcs = glob(["*.py"]),
+    imports = ["../../.."],
+    tags = ["typecheck"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//mcp-agent-cloud/py/sdk-cloud/src/mcp_agent_cloud:ux",
+        "//mcp-agent-cloud/py/sdk-cloud/src/mcp_agent_cloud/auth",
+        "//mcp-agent-cloud/py/sdk-cloud/src/mcp_agent_cloud/config",
+        "//mcp-agent-cloud/py/sdk-cloud/src/mcp_agent_cloud/core",
+        "//mcp-agent-cloud/py/sdk-cloud/src/mcp_agent_cloud/mcp_app",
+        "//mcp-agent-cloud/py/sdk-cloud/src/mcp_agent_cloud/secrets",
+        requirement("httpx"),
+        requirement("pydantic"),
+        requirement("pydantic-settings"),
+        requirement("pyyaml"),
+        requirement("rich"),
+        requirement("typer"),
+    ],
+)
