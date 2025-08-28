@@ -62,7 +62,7 @@ def test_deploy_command_help(runner):
     assert result.exit_code == 0
 
     # remove all lines, dashes, etc
-    ascii_text = re.sub(r'[^A-z0-9 .,-]+', ' ', result.stdout)
+    ascii_text = re.sub(r'[^A-z0-9.,-]+', '', result.stdout)
     # remove any remnants of colour codes
     without_escape_codes = re.sub(r'\[[0-9 ]+m', '', ascii_text)
     # normalize spaces and convert to lower case
