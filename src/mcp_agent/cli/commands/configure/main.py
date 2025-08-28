@@ -129,6 +129,7 @@ def configure_app(
         app_server_url = app_id_or_url
 
     try:
+        app = client.get_app(app_id=app_id, server_url=app_server_url)
         app = run_async(client.get_app(app_id=app_id, server_url=app_server_url))
 
         if not app:

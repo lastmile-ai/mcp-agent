@@ -3,7 +3,7 @@
 import os
 import tempfile
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 import pytest
 import typer
@@ -217,6 +217,7 @@ server:
 
                 # Run the deploy command
                 result = deploy_config(
+                    ctx=MagicMock(),
                     app_name=MOCK_APP_NAME,
                     app_description="A test MCP Agent app",
                     config_dir=temp_path,
@@ -264,6 +265,7 @@ def test_deploy_with_missing_env_vars():
         # Call with non_interactive=True, which should fail with typer.Exit
         with pytest.raises(typer.Exit):
             deploy_config(
+                ctx=MagicMock(),
                 app_name=MOCK_APP_NAME,
                 app_description="A test MCP Agent app",
                 config_dir=temp_path,
@@ -293,6 +295,7 @@ def test_rollback_secrets_file(temp_config_dir):
 
             # Run the deploy command
             deploy_config(
+                ctx=MagicMock(),
                 app_name=MOCK_APP_NAME,
                 app_description="A test MCP Agent app",
                 config_dir=temp_config_dir,

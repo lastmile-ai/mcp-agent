@@ -195,5 +195,16 @@ def main():
     print(token)
 
 
+def generate_test_token():
+    return generate_jwt(
+        user_id="user_id",
+        email="email",
+        name="name",
+        api_token=True,
+        prefix=True,
+        nextauth_secret="nextauthsecret",
+        expiry_days=365,
+    )
+
 if __name__ == "__main__":
     main()

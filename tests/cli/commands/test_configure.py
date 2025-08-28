@@ -4,16 +4,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from mcp_agent.cli.commands.configure.main import configure_app
+from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.mcp_app.mock_client import (
     MOCK_APP_CONFIG_ID,
-    MOCK_APP_ID,
+    MOCK_APP_ID, MockMCPAppClient,
 )
 
 
 @pytest.fixture
 def mock_mcp_client():
     """Create a mock MCP app client."""
-    client = MagicMock()
+    client = MockMCPAppClient()
     client.list_config_params = AsyncMock(return_value=[])
 
     mock_config = MagicMock()
@@ -63,7 +64,7 @@ def test_no_required_secrets(patched_configure_app, mock_mcp_client):
 
     # Test the function
     result = patched_configure_app(
-        app_id=MOCK_APP_ID,
+        app_id_or_url=MOCK_APP_ID,
         secrets_file=None,
         secrets_output_file=None,
         dry_run=False,
@@ -106,7 +107,7 @@ def test_with_required_secrets_from_file(
     ) as mock_retrieve:
         # Test the function
         result = patched_configure_app(
-            app_id=MOCK_APP_ID,
+            app_id_or_url=MOCK_APP_ID,
             secrets_file=secrets_file,
             secrets_output_file=None,
             dry_run=False,
@@ -128,9 +129,9 @@ def test_missing_app_id(patched_configure_app):
     """Test with missing app_id."""
 
     # Test with empty app_id
-    with pytest.raises(RuntimeError):
+    with pytest.raises(CLIError):
         patched_configure_app(
-            app_id="",
+            app_id_or_url="",
             secrets_file=None,
             secrets_output_file=None,
             dry_run=False,
@@ -138,9 +139,9 @@ def test_missing_app_id(patched_configure_app):
         )
 
     # Test with None app_id
-    with pytest.raises(RuntimeError):
+    with pytest.raises(CLIError):
         patched_configure_app(
-            app_id=None,
+            app_id_or_url=None,
             secrets_file=None,
             secrets_output_file=None,
             dry_run=False,
@@ -155,9 +156,9 @@ def test_invalid_file_types(patched_configure_app, tmp_path):
     invalid_secrets_file = tmp_path / "invalid_secrets.txt"
     invalid_secrets_file.touch()
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(CLIError):
         patched_configure_app(
-            app_id=MOCK_APP_ID,
+            app_id_or_url=MOCK_APP_ID,
             secrets_file=invalid_secrets_file,
             secrets_output_file=None,
             dry_run=False,
@@ -167,9 +168,9 @@ def test_invalid_file_types(patched_configure_app, tmp_path):
     # Test with non-yaml secrets_output_file
     invalid_output_file = tmp_path / "invalid_output.txt"
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(CLIError):
         patched_configure_app(
-            app_id=MOCK_APP_ID,
+            app_id_or_url=MOCK_APP_ID,
             secrets_file=None,
             secrets_output_file=invalid_output_file,
             dry_run=False,
@@ -185,9 +186,9 @@ def test_both_input_output_files(patched_configure_app, tmp_path):
 
     secrets_output_file = tmp_path / "output.yaml"
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(CLIError):
         patched_configure_app(
-            app_id=MOCK_APP_ID,
+            app_id_or_url=MOCK_APP_ID,
             secrets_file=secrets_file,
             secrets_output_file=secrets_output_file,
             dry_run=False,
@@ -207,9 +208,9 @@ def test_missing_api_key(patched_configure_app):
             "mcp_agent.cli.commands.configure.main.load_api_key_credentials",
             return_value=None,
         ):
-            with pytest.raises(RuntimeError):
+            with pytest.raises(CLIError):
                 patched_configure_app(
-                    app_id=MOCK_APP_ID,
+                    app_id_or_url=MOCK_APP_ID,
                     secrets_file=None,
                     secrets_output_file=None,
                     dry_run=False,
@@ -224,9 +225,9 @@ def test_list_config_params_error(patched_configure_app, mock_mcp_client):
     # Mock client to raise exception
     mock_mcp_client.list_config_params = AsyncMock(side_effect=Exception("API error"))
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(CLIError):
         patched_configure_app(
-            app_id=MOCK_APP_ID,
+            app_id_or_url=MOCK_APP_ID,
             secrets_file=None,
             secrets_output_file=None,
             dry_run=False,
@@ -246,9 +247,9 @@ def test_no_secrets_with_secrets_file(patched_configure_app, mock_mcp_client, tm
     secrets_file = tmp_path / "test_secrets.yaml"
     secrets_file.touch()
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(CLIError):
         patched_configure_app(
-            app_id=MOCK_APP_ID,
+            app_id_or_url=MOCK_APP_ID,
             secrets_file=secrets_file,
             secrets_output_file=None,
             dry_run=False,
@@ -269,7 +270,7 @@ def test_output_secrets_file_creation(tmp_path):
     }
 
     # Create mock client
-    mock_client = MagicMock()
+    mock_client = MockMCPAppClient()
     mock_client.list_config_params = AsyncMock(return_value=required_secrets)
 
     # Mock app configuration response
@@ -307,7 +308,7 @@ def test_output_secrets_file_creation(tmp_path):
             from mcp_agent.cli.commands.configure.main import configure_app
 
             result = configure_app(
-                app_id=MOCK_APP_ID,
+                app_id_or_url=MOCK_APP_ID,
                 secrets_file=None,
                 secrets_output_file=secrets_output_file,
                 dry_run=False,

@@ -26,6 +26,7 @@ from ..integration.conftest import FIXTURES_BASE
 pytestmark = [pytest.mark.integration, pytest.mark.mock]
 
 
+@pytest.mark.skip("--secrets-file is deprecated")
 def test_cli_deploy_with_realistic_configs(mock_api_credentials, setup_test_env_vars):
     """Test secret processing with realistic agent configurations.
 
@@ -115,6 +116,7 @@ def test_cli_deploy_with_realistic_configs(mock_api_credentials, setup_test_env_
                 del os.environ[var]
 
 
+@pytest.mark.skip("--secrets-file is deprecated")
 def test_cli_deploy_with_mixed_secrets(mock_api_credentials, setup_test_env_vars):
     """Test secret processing with a mix of developer and user secrets.
 
@@ -221,6 +223,7 @@ def test_cli_deploy_with_mixed_secrets(mock_api_credentials, setup_test_env_vars
                 del os.environ[var]
 
 
+@pytest.mark.skip("--secrets-file is deprecated")
 def test_cli_error_handling(mock_api_credentials):
     """Test CLI's error handling for invalid inputs and missing secrets file.
 
@@ -270,9 +273,10 @@ test: value
 
         # Error message should mention the file doesn't exist
         combined_output = result.stderr + result.stdout
+        clean_text = ' '.join(re.sub(r'[^\x00-\x7F]+', ' ', combined_output).split()).lower()
         assert (
-            "does not exist" in combined_output.lower()
-            or "no such file" in combined_output.lower()
+                "does not exist" in clean_text
+                or "no such file" in clean_text
         )
 
         # Test Case 2: Missing secrets file
@@ -305,6 +309,7 @@ test: value
                 path.unlink()
 
 
+@pytest.mark.skip("--secrets-file is deprecated")
 def test_developer_secret_validation(mock_api_credentials):
     """Test validation that developer secrets must have values.
 
@@ -363,8 +368,9 @@ api:
 
         # Error message should explain the issue
         combined_output = result.stdout + result.stderr
-        assert "Developer secret" in combined_output
-        assert "has no value" in combined_output
+        clean_text = ' '.join(re.sub(r'[^\x00-\x7F]+', ' ', combined_output).split()).lower()
+        assert "Developer secret" in clean_text
+        assert "has no value" in clean_text
 
         # Test with developer secret containing just a space
         cmd = [

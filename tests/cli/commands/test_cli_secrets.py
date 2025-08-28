@@ -430,9 +430,10 @@ def test_cli_error_handling(mock_api_credentials):
 
         # Error message should mention the file doesn't exist
         combined_output = result.stderr + result.stdout
+        clean_text = ' '.join(re.sub(r'[^\x00-\x7F]+', ' ', combined_output).split()).lower()
         assert (
-            "does not exist" in combined_output.lower()
-            or "no such file" in combined_output.lower()
+            "does not exist" in clean_text
+            or "no such file" in clean_text
         )
 
         # Test with the secret value not having a tag

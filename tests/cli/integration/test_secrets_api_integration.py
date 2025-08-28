@@ -25,7 +25,7 @@ def api_client():
     """Create a SecretsClient connected to the web app."""
     # Decide whether to use a mock or real client based on markers
     from ..fixtures.mock_secrets_client import MockSecretsClient
-    from ..fixtures.test_jwt_generator import generate_test_token
+    from ..utils.jwt_generator import generate_test_token
 
     # Default to using the mock for reliability
     use_mock = True
