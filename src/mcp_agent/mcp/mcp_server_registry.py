@@ -9,7 +9,7 @@ server initialization.
 
 from contextlib import asynccontextmanager
 from datetime import timedelta
-from typing import Callable, Dict, AsyncGenerator, TYPE_CHECKING
+from typing import Callable, Dict, AsyncGenerator
 
 
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
@@ -34,9 +34,6 @@ from mcp_agent.logging.logger import get_logger
 from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
 from mcp_agent.mcp.mcp_connection_manager import MCPConnectionManager
 from mcp.server.session import ServerSession
-
-if TYPE_CHECKING:
-    from mcp_agent.core.context import Context
 
 logger = get_logger(__name__)
 
