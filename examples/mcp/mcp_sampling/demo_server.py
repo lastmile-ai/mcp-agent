@@ -78,7 +78,6 @@ class HaikuWorkflow(Workflow[str]):
         """
 
         logger = app.logger
-        context = app.context
 
         haiku_agent = Agent(
             name="poet",
@@ -108,9 +107,6 @@ async def main():
             logger.info(f"  - {workflow_id}")
 
         # Create the MCP server that exposes both workflows and agent configurations
-        fast_mcp_settings = (
-            {"host": "localhost", "port": 8001, "debug": True, "log_level": "DEBUG"}
-        )
         mcp_server = create_mcp_server_for_app(agent_app, **({}))
         logger.info(f"MCP Server settings: {mcp_server.settings}")
 
