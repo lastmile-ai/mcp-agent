@@ -1,6 +1,7 @@
 """Tests for the deploy command functionality in the CLI."""
 
 import os
+import re
 import tempfile
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -61,12 +62,13 @@ def test_deploy_command_help(runner):
     assert result.exit_code == 0
 
     # Expected options from the updated CLAUDE.md spec
-    assert "--config-dir" in result.stdout or "-c" in result.stdout
-    assert "--api-url" in result.stdout
-    assert "--api-key" in result.stdout
-    assert "--non-interactive" in result.stdout
-    assert "--dry-run" in result.stdout
-    assert "--no-secrets" in result.stdout
+    stdout = ' '.join(re.sub(r'[^A-z0-9 .,-]+', ' ', result.stdout).split()).lower()
+    assert "--config-dir" in stdout or "-c" in stdout
+    assert "--api-url" in stdout
+    assert "--api-key" in stdout
+    assert "--non-interactive" in stdout
+    assert "--dry-run" in stdout
+    assert "--no-secrets" in stdout
 
 
 def test_deploy_command_basic(runner, temp_config_dir):
