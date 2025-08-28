@@ -433,7 +433,7 @@ def test_cli_error_handling(mock_api_credentials):
         # remove all lines, dashes, etc
         ascii_text = re.sub(r'[^A-z0-9 .,-]+', ' ', combined_output)
         # remove any remnants of colour codes
-        without_escape_codes = re.sub(r'\[\d+', ' ', ascii_text)
+        without_escape_codes = re.sub(r'\[\d+m', ' ', ascii_text)
         # normalize spaces and convert to lower case
         clean_text = ' '.join(without_escape_codes.split()).lower()
         assert (
