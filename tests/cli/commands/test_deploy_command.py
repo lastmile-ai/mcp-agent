@@ -14,7 +14,6 @@ from mcp_agent.cli.core.constants import (
     MCP_SECRETS_FILENAME,
 )
 from mcp_agent.cli.mcp_app.mock_client import MOCK_APP_ID, MOCK_APP_NAME
-from mcp_agent.cli.secrets.api_client import SecretsClient
 from typer.testing import CliRunner
 
 

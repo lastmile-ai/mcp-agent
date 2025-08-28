@@ -1,12 +1,10 @@
 """Utilities for API integration tests."""
 
 import os
-import subprocess
-import time
 import uuid
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Tuple
 
 # Import the JWT generator from our utils package
 from ..utils.jwt_generator import generate_jwt
@@ -126,7 +124,7 @@ class APITestManager:
                                     nextauth_secret = secret
                                     # Save in environment
                                     os.environ["NEXTAUTH_SECRET"] = nextauth_secret
-                                    print(f"Found NEXTAUTH_SECRET in .env file")
+                                    print("Found NEXTAUTH_SECRET in .env file")
                                     break
 
             # If still not found, use the hardcoded value from the .env file
@@ -176,20 +174,20 @@ class APITestManager:
                             f"The provided API key '{api_key}' is not valid for the running web app. "
                             f"Use an appropriate test token for this environment."
                         )
-                except:
+                except Exception:
                     # Ignore connection errors here
                     pass
 
                 if response.status_code == 500:
                     if "Can't resolve '@mcpac/proto" in response.text:
                         raise RuntimeError(
-                            f"API is running but returning 500 errors. "
-                            f"Missing proto files. Please generate the proto files first."
+                            "API is running but returning 500 errors. "
+                            "Missing proto files. Please generate the proto files first."
                         )
                     else:
                         raise RuntimeError(
-                            f"API is running but returning 500 errors. "
-                            f"Check the web app logs for details."
+                            "API is running but returning 500 errors. "
+                            "Check the web app logs for details."
                         )
             except httpx.ConnectError:
                 # If we can't connect at all, it's likely that the web app isn't running

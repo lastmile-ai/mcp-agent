@@ -3,7 +3,6 @@
 from unittest.mock import AsyncMock
 
 import pytest
-from mcp_agent.cli.core.constants import SecretType
 from mcp_agent.cli.secrets.api_client import SecretsClient
 from mcp_agent.cli.secrets.processor import transform_config_recursive
 from mcp_agent.cli.secrets.yaml_tags import DeveloperSecret

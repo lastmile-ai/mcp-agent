@@ -9,20 +9,17 @@ To run these tests:
        pytest -m integration
 """
 
-import asyncio
 import os
 import tempfile
 import uuid
 from pathlib import Path
 
 import pytest
-import yaml
 from mcp_agent.cli.cli.main import app
 from mcp_agent.cli.core.constants import SecretType
 from mcp_agent.cli.secrets.api_client import SecretsClient
 from mcp_agent.cli.secrets.yaml_tags import (
     DeveloperSecret,
-    SecretYamlLoader,
     UserSecret,
     load_yaml_with_secrets,
 )

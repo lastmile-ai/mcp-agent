@@ -88,9 +88,9 @@ def real_secrets_client():
                 )
                 if "Error decoding API token" in secrets_response.text:
                     pytest.skip(
-                        f"API token validation error. "
-                        f"The test token is not valid for the running web app. "
-                        f"Please provide a valid token for this environment."
+                        "API token validation error. "
+                        "The test token is not valid for the running web app. "
+                        "Please provide a valid token for this environment."
                     )
             except Exception:
                 # Ignore connection errors here
@@ -107,7 +107,7 @@ def real_secrets_client():
                     pytest.skip(
                         f"API health endpoint is returning 500 error: {response.status_code}"
                     )
-        except Exception as e:
+        except Exception:
             pass  # Let the regular API setup handle connection errors
 
         # Proceed with normal API setup

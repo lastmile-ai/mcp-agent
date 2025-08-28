@@ -9,7 +9,6 @@ import re
 import subprocess
 import tempfile
 import uuid
-from unittest.mock import patch
 
 import pytest
 from mcp_agent.cli.core.constants import UUID_PATTERN, UUID_PREFIX
@@ -123,7 +122,7 @@ database:
         dev_secret_pattern = r"key:\s+(" + UUID_PATTERN.strip("^$") + ")"
         dev_match = re.search(dev_secret_pattern, transformed_yaml_text)
         assert dev_match is not None, (
-            f"Developer secret with production UUID pattern not found in file"
+            "Developer secret with production UUID pattern not found in file"
         )
 
         # Validate the UUID format
@@ -146,7 +145,7 @@ database:
         # Verify the user secret was NOT transformed and still has its tag
         user_secret_pattern = r"password:\s+!user_secret"
         user_match = re.search(user_secret_pattern, transformed_yaml_text)
-        assert user_match is not None, f"User secret tag pattern not found in file"
+        assert user_match is not None, "User secret tag pattern not found in file"
 
     finally:
         # Clean up temp directory and all contents
@@ -155,7 +154,7 @@ database:
 
             if os.path.exists(test_dir):
                 shutil.rmtree(test_dir)
-        except:
+        except Exception:
             pass
 
 
@@ -248,7 +247,7 @@ def test_cli_deploy_with_env_var_secret(mock_api_credentials, setup_test_env_var
 
             if os.path.exists(test_dir):
                 shutil.rmtree(test_dir)
-        except:
+        except Exception:
             pass
 
         # Remove test environment variable
@@ -376,7 +375,7 @@ models:
 
             if os.path.exists(test_dir):
                 shutil.rmtree(test_dir)
-        except:
+        except Exception:
             pass
 
         # Clean up environment variables
@@ -471,7 +470,7 @@ def test_cli_error_handling(mock_api_credentials):
 
             if os.path.exists(test_dir):
                 shutil.rmtree(test_dir)
-        except:
+        except Exception:
             pass
 
 
@@ -601,7 +600,7 @@ api:
 
                 if os.path.exists(valid_test_dir):
                     shutil.rmtree(valid_test_dir)
-            except:
+            except Exception:
                 pass
 
             if "TEST_API_KEY" in os.environ:
@@ -614,5 +613,5 @@ api:
 
             if os.path.exists(test_dir):
                 shutil.rmtree(test_dir)
-        except:
+        except Exception:
             pass

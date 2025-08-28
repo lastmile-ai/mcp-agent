@@ -5,6 +5,7 @@ from mcp_agent.cli.core.api_client import UnauthenticatedError
 from mcp_agent.cli.core.constants import SecretType
 from mcp_agent.cli.secrets.mock_client import MockSecretsClient
 from mcp_agent.cli.secrets.resolver import SecretsResolver
+from mcp_agent.cli.secrets.yaml_tags import UserSecret
 
 
 @pytest.fixture
@@ -388,7 +389,6 @@ database:
 
 def test_load_config_with_user_secrets(resolver, tmp_path):
     """Test loading config with user secret tags."""
-    from mcp_agent.cli.secrets.yaml_tags import UserSecret
 
     config_file = tmp_path / "user_secrets.yaml"
     config_file.write_text("""
@@ -569,7 +569,6 @@ level1:
     result = resolver.load_config(str(config_file))
 
     # Debug: print the actual config structure
-    import json
 
     def serialize_for_debug(obj):
         if isinstance(obj, (DeveloperSecret, UserSecret)):

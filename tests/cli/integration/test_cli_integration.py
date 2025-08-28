@@ -10,17 +10,14 @@ Prerequisites:
 Run with: pytest -m integration
 """
 
-import json
 import os
 import re
 import subprocess
 import tempfile
 import uuid
-from pathlib import Path
 
 import pytest
 import yaml
-from mcp_agent.cli.secrets.processor import DeveloperSecret, UserSecret
 
 from ..fixtures.api_test_utils import APIMode, setup_api_for_testing
 
@@ -51,7 +48,7 @@ def test_cli_deploy_with_secrets(mock_api_credentials):
 
     # Create a temporary config file (without secrets)
     with tempfile.NamedTemporaryFile(
-        suffix=".yaml", mode="w+", delete=False
+            suffix=".yaml", mode="w+", delete=False
     ) as config_file:
         # Generate a unique test name
         test_name = f"test-cli-{uuid.uuid4().hex[:8]}"
@@ -120,7 +117,7 @@ database:
         # Use regex to check the format of the developer secret
         dev_secret_pattern = r"key:\s+([a-f0-9-]+)"
         dev_match = re.search(dev_secret_pattern, transformed_yaml_text)
-        assert dev_match is not None, f"Developer secret UUID pattern not found in file"
+        assert dev_match is not None, "Developer secret UUID pattern not found in file"
 
         # Try to parse the extracted UUID to verify format
         dev_uuid_str = dev_match.group(1)
@@ -134,7 +131,7 @@ database:
         # Verify the user secret was NOT transformed and still has its tag
         user_secret_pattern = r"password:\s+!user_secret"
         user_match = re.search(user_secret_pattern, transformed_yaml_text)
-        assert user_match is not None, f"User secret tag pattern not found in file"
+        assert user_match is not None, "User secret tag pattern not found in file"
 
         # Verify the original config is unchanged
         with open(config_path, "r") as f:
@@ -148,7 +145,7 @@ database:
             try:
                 if os.path.exists(path):
                     os.unlink(path)
-            except:
+            except Exception:
                 pass
 
 
@@ -162,7 +159,7 @@ def test_cli_deploy_with_env_var_secret(api_credentials):
 
     # Create a temporary main config file (without secrets)
     with tempfile.NamedTemporaryFile(
-        suffix=".yaml", mode="w+", delete=False
+            suffix=".yaml", mode="w+", delete=False
     ) as config_file:
         # Create a basic config file
         main_config = {"app": {"name": "env-var-test", "port": 9000}}
@@ -210,7 +207,7 @@ def test_cli_deploy_with_env_var_secret(api_credentials):
 
         # Check for expected success messages in output
         assert (
-            "Loaded secret value for api.key from environment variable" in result.stdout
+                "Loaded secret value for api.key from environment variable" in result.stdout
         )
         assert "Secrets file processed successfully" in result.stdout
 
@@ -245,7 +242,7 @@ def test_cli_deploy_with_env_var_secret(api_credentials):
             try:
                 if os.path.exists(path):
                     os.unlink(path)
-            except:
+            except Exception:
                 pass
 
         # Remove test environment variable
@@ -259,13 +256,13 @@ def test_cli_error_handling(api_credentials):
 
     # Create both config and secrets files
     with tempfile.NamedTemporaryFile(
-        suffix=".yaml", mode="w+", delete=False
+            suffix=".yaml", mode="w+", delete=False
     ) as config_file:
         yaml.dump({"test": "config"}, config_file)
         config_path = config_file.name
 
     with tempfile.NamedTemporaryFile(
-        suffix=".yaml", mode="w+", delete=False
+            suffix=".yaml", mode="w+", delete=False
     ) as secrets_file:
         yaml.dump({"test": "secrets"}, secrets_file)
         secrets_path = secrets_file.name
@@ -326,7 +323,7 @@ def test_cli_error_handling(api_credentials):
             try:
                 if os.path.exists(path):
                     os.unlink(path)
-            except:
+            except Exception:
                 pass
 
 
@@ -336,7 +333,7 @@ def test_developer_secret_validation(api_credentials):
 
     # Create a basic config file
     with tempfile.NamedTemporaryFile(
-        suffix=".yaml", mode="w+", delete=False
+            suffix=".yaml", mode="w+", delete=False
     ) as config_file:
         yaml.dump({"app": "test"}, config_file)
         config_path = config_file.name
@@ -428,5 +425,5 @@ def test_developer_secret_validation(api_credentials):
             try:
                 if os.path.exists(path):
                     os.unlink(path)
-            except:
+            except Exception:
                 pass
