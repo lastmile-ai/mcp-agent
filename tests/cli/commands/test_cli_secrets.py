@@ -430,7 +430,12 @@ def test_cli_error_handling(mock_api_credentials):
 
         # Error message should mention the file doesn't exist
         combined_output = result.stderr + result.stdout
-        clean_text = ' '.join(re.sub(r'[^A-z0-9 .,-]+', ' ', combined_output).split()).lower()
+        # remove all lines, dashes, etc
+        ascii_text = re.sub(r'[^A-z0-9 .,-]+', ' ', combined_output)
+        # remove any remnants of colour codes
+        without_escape_codes = re.sub(r'\[\d+', ' ', ascii_text)
+        # normalize spaces and convert to lower case
+        clean_text = ' '.join(without_escape_codes.split()).lower()
         assert (
             "does not exist" in clean_text
             or "no such file" in clean_text

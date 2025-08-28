@@ -61,14 +61,20 @@ def test_deploy_command_help(runner):
     # Command should succeed
     assert result.exit_code == 0
 
+    # remove all lines, dashes, etc
+    ascii_text = re.sub(r'[^A-z0-9 .,-]+', ' ', result.stdout)
+    # remove any remnants of colour codes
+    without_escape_codes = re.sub(r'\[\d+', ' ', ascii_text)
+    # normalize spaces and convert to lower case
+    clean_text = ' '.join(without_escape_codes.split()).lower()
+
     # Expected options from the updated CLAUDE.md spec
-    stdout = ' '.join(re.sub(r'[^A-z0-9 .,-]+', ' ', result.stdout).split()).lower()
-    assert "--config-dir" in stdout or "-c" in stdout
-    assert "--api-url" in stdout
-    assert "--api-key" in stdout
-    assert "--non-interactive" in stdout
-    assert "--dry-run" in stdout
-    assert "--no-secrets" in stdout
+    assert "--config-dir" in clean_text or "-c" in clean_text
+    assert "--api-url" in clean_text
+    assert "--api-key" in clean_text
+    assert "--non-interactive" in clean_text
+    assert "--dry-run" in clean_text
+    assert "--no-secrets" in clean_text
 
 
 def test_deploy_command_basic(runner, temp_config_dir):
