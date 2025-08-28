@@ -190,6 +190,18 @@ class Agent(BaseModel):
                 if value is not None:
                     span.set_attribute(f"llm.{attr}", value)
 
+            # Ensure a context exists before updating active LLM
+            if self.context is None:
+                # Fall back to global context for convenience; callers can also set agent.context explicitly
+                from mcp_agent.core.context import get_current_context
+                self.context = get_current_context()
+
+            # Prefer a helper if/when Context switches to task-local binding
+            if hasattr(self.context, "set_active_llm"):
+                self.context.set_active_llm(self.llm)
+            else:
+                self.context.active_llm = self.llm
+
             self.context.active_llm = self.llm
             return self.llm
 

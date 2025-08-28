@@ -27,8 +27,8 @@ def get_users():
         json.dumps(
             [
                 {"id": 1, "friend": "Alice"},
-            ],
-        ),
+            ]
+        )
     )
 
 

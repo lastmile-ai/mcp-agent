@@ -116,7 +116,7 @@ def _resolve_workflows_and_context(
         # global context
         ctx = copy.deepcopy(app.context)
         ctx.upstream_session = mcp_context.session
-        return app.workflows, app.context
+        return app.workflows, ctx
 
     return None, None
 
@@ -407,7 +407,10 @@ def create_workflow_specific_tools(
     # a value for it
     if "self" in run_fn_tool.parameters["properties"]:
         del(run_fn_tool.parameters["properties"]["self"])
-        run_fn_tool.parameters["required"].remove("self")
+        req = run_fn_tool.parameters.get("required", [])
+        if "self" in req:
+            req.remove("self")
+            run_fn_tool.parameters["required"] = req
     run_fn_tool_params = json.dumps(run_fn_tool.parameters, indent=2)
 
     @mcp.tool(

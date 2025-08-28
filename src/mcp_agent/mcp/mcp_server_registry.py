@@ -9,7 +9,8 @@ server initialization.
 
 from contextlib import asynccontextmanager
 from datetime import timedelta
-from typing import Callable, Dict, AsyncGenerator
+from typing import Callable, Dict, AsyncGenerator, TYPE_CHECKING
+
 
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from mcp import ClientSession
@@ -33,7 +34,9 @@ from mcp_agent.logging.logger import get_logger
 from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
 from mcp_agent.mcp.mcp_connection_manager import MCPConnectionManager
 from mcp.server.session import ServerSession
-from mcp_agent.core.context import Context
+
+if TYPE_CHECKING:
+    from mcp_agent.core.context import Context
 
 logger = get_logger(__name__)
 
@@ -137,6 +140,10 @@ class ServerRegistry:
             else None
         )
 
+        # Record the upstream session (if any) in the context
+        from mcp_agent.core.context import Context
+        ctx_with_session = Context(upstream_session=upstream_session)
+
         if config.transport == "stdio":
             if not config.command and not config.args:
                 raise ValueError(
@@ -149,15 +156,12 @@ class ServerRegistry:
                 env={**get_default_environment(), **(config.env or {})},
             )
 
-            # Record the upstream session (if any) in the context
-            ctx = Context(upstream_session=upstream_session)
-
             async with stdio_client(server_params) as (read_stream, write_stream):
                 session = client_session_factory(
                     read_stream,
                     write_stream,
-                    read_timeout_seconds=read_timeout_seconds,
-                    context=ctx,
+                    read_timeout_seconds,
+                    ctx_with_session,
                 )
                 async with session:
                     logger.info(
@@ -211,6 +215,7 @@ class ServerRegistry:
                     read_stream,
                     write_stream,
                     read_timeout_seconds,
+                    ctx_with_session
                 )
 
                 if session_id_callback and isinstance(session, MCPAgentClientSession):
@@ -250,6 +255,7 @@ class ServerRegistry:
                     read_stream,
                     write_stream,
                     read_timeout_seconds,
+                    ctx_with_session
                 )
                 async with session:
                     logger.info(
@@ -274,6 +280,7 @@ class ServerRegistry:
                     read_stream,
                     write_stream,
                     read_timeout_seconds,
+                    ctx_with_session
                 )
                 async with session:
                     logger.info(
