@@ -10,7 +10,7 @@ from mcp.client.sse import sse_client
 from mcp.client.streamable_http import streamablehttp_client
 from pydantic import AnyUrl, BaseModel
 
-from mcp_agent.cli.ux import (
+from mcp_agent.cli.utils.ux import (
     console,
     print_error,
     print_success,

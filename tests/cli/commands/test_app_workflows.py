@@ -3,7 +3,7 @@ import datetime
 from unittest.mock import AsyncMock, MagicMock, patch, Mock
 
 import pytest
-from mcp_agent.cli.commands.app.workflows.main import list_app_workflows
+from mcp_agent.cli.cloud.commands.app import list_app_workflows
 from mcp_agent.cli.config import settings
 from mcp_agent.cli.core.constants import DEFAULT_API_BASE_URL
 from mcp_agent.cli.exceptions import CLIError
@@ -38,11 +38,11 @@ def patched_workflows_app(mock_mcp_client):
     def wrapped_workflows_app(**kwargs):
         with (
             patch(
-                "mcp_agent.cli.commands.app.workflows.main.MCPAppClient",
+                "mcp_agent.cli.cloud.commands.app.workflows.main.MCPAppClient",
                 return_value=mock_mcp_client,
             ),
             patch(
-                "mcp_agent.cli.commands.app.workflows.main.typer.Exit",
+                "mcp_agent.cli.cloud.commands.app.workflows.main.typer.Exit",
                 side_effect=ValueError,
             ),
         ):
@@ -74,7 +74,7 @@ def test_status_app(patched_workflows_app, mock_mcp_client):
 
     mock_mcp_print_mcp_server_workflow_details = Mock()
     with patch(
-            "mcp_agent.cli.commands.app.workflows.main.print_mcp_server_workflow_details",
+            "mcp_agent.cli.cloud.commands.app.workflows.main.print_mcp_server_workflow_details",
             side_effect=mock_mcp_print_mcp_server_workflow_details
     ) as mocked_function:
         mock_mcp_print_mcp_server_workflow_details.return_value = None
@@ -103,7 +103,7 @@ def test_status_app_config(patched_workflows_app, mock_mcp_client):
 
     mock_mcp_print_mcp_server_workflow_details = Mock()
     with patch(
-            "mcp_agent.cli.commands.app.workflows.main.print_mcp_server_workflow_details",
+            "mcp_agent.cli.cloud.commands.app.workflows.main.print_mcp_server_workflow_details",
             side_effect=mock_mcp_print_mcp_server_workflow_details
     ) as mocked_function:
         mock_mcp_print_mcp_server_workflow_details.return_value = None
@@ -136,12 +136,12 @@ def test_missing_api_key(patched_workflows_app):
     """Test with missing API key."""
 
     # Patch settings to ensure API_KEY is None
-    with patch("mcp_agent.cli.commands.configure.main.settings") as mock_settings:
+    with patch("mcp_agent.cli.cloud.commands.configure.main.settings") as mock_settings:
         mock_settings.API_KEY = None
 
         # Patch load_api_key_credentials to return None
         with patch(
-                "mcp_agent.cli.commands.configure.main.load_api_key_credentials",
+                "mcp_agent.cli.cloud.commands.configure.main.load_api_key_credentials",
                 return_value=None,
         ):
             with pytest.raises(CLIError):

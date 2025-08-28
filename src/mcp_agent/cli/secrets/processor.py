@@ -27,7 +27,7 @@ from mcp_agent.cli.secrets.yaml_tags import (
     dump_yaml_with_secrets,
     load_yaml_with_secrets,
 )
-from mcp_agent.cli.ux import (
+from mcp_agent.cli.utils.ux import (
     console,
     print_error,
     print_info,

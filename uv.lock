@@ -2040,7 +2040,7 @@ wheels = [
 
 [[package]]
 name = "mcp-agent"
-version = "0.1.13"
+version = "0.1.14"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
@@ -2086,7 +2086,6 @@ cli = [
     { name = "httpx" },
     { name = "hvac" },
     { name = "pyjwt" },
-    { name = "pytest-asyncio" },
     { name = "rich" },
     { name = "typer" },
 ]
@@ -2155,7 +2154,6 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.7.0" },
     { name = "pydantic-yaml", specifier = ">=1.5.1" },
     { name = "pyjwt", marker = "extra == 'cli'", specifier = ">=2.10.1" },
-    { name = "pytest-asyncio", marker = "extra == 'cli'", specifier = ">=0.26.0" },
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "rich", specifier = ">=13.9.4" },
     { name = "rich", marker = "extra == 'cli'", specifier = ">=13.3.5" },

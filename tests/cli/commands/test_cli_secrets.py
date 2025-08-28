@@ -52,7 +52,7 @@ def test_cli_deploy_with_secrets(mock_api_credentials, setup_test_env_vars):
     test_dir = tempfile.mkdtemp()
 
     # Generate a unique test name
-    test_name = f"test-cli-{uuid.uuid4().hex[:8]}"
+    test_name = f"test-cloud-{uuid.uuid4().hex[:8]}"
 
     # Create a test config without secrets
     main_config = {
@@ -82,7 +82,7 @@ database:
         cmd = [
             "python",
             "-m",
-            "mcp_agent.cli.cli.main",
+            "mcp_agent.cli.cloud.main",
             "deploy",
             "Test App",
             "--config-dir",
@@ -197,7 +197,7 @@ def test_cli_deploy_with_env_var_secret(mock_api_credentials, setup_test_env_var
         cmd = [
             "python",
             "-m",
-            "mcp_agent.cli.cli.main",
+            "mcp_agent.cli.cloud.main",
             "deploy",
             "Test App",
             "--config-dir",
@@ -313,7 +313,7 @@ models:
         cmd = [
             "python",
             "-m",
-            "mcp_agent.cli.cli.main",
+            "mcp_agent.cli.cloud.main",
             "deploy",
             "Test App",
             "--config-dir",
@@ -410,7 +410,7 @@ def test_cli_error_handling(mock_api_credentials):
         cmd = [
             "python",
             "-m",
-            "mcp_agent.cli.cli.main",
+            "mcp_agent.cli.cloud.main",
             "deploy",
             "Test App",
             "--config-dir",
@@ -440,7 +440,7 @@ def test_cli_error_handling(mock_api_credentials):
         cmd = [
             "python",
             "-m",
-            "mcp_agent.cli.cli.main",
+            "mcp_agent.cli.cloud.main",
             "deploy",
             "Test App",
             "--config-dir",
@@ -459,9 +459,10 @@ def test_cli_error_handling(mock_api_credentials):
 
         # It should mention using the tags
         combined_output = result.stderr + result.stdout
+        clean_text = ' '.join(re.sub(r'[^\x00-\x7F]+', ' ', combined_output).split()).lower()
         assert (
             "secrets must be tagged with !developer_secret or !user_secret"
-            in combined_output.lower()
+            in clean_text
         )
 
     finally:
@@ -503,7 +504,7 @@ api:
         cmd = [
             "python",
             "-m",
-            "mcp_agent.cli.cli.main",
+            "mcp_agent.cli.cloud.main",
             "deploy",
             "Test App",
             "--config-dir",
@@ -552,7 +553,7 @@ api:
             cmd = [
                 "python",
                 "-m",
-                "mcp_agent.cli.cli.main",
+                "mcp_agent.cli.cloud.main",
                 "deploy",
                 "Test App",
                 "--config-dir",

@@ -3,7 +3,7 @@ import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from mcp_agent.cli.commands.app.delete.main import delete_app
+from mcp_agent.cli.cloud.commands.app.delete.main import delete_app
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.mcp_app.api_client import MCPApp, MCPAppConfiguration
 from mcp_agent.cli.mcp_app.mock_client import (
@@ -39,11 +39,11 @@ def patched_delete_app(mock_mcp_client):
     def wrapped_delete_app(**kwargs):
         with (
             patch(
-                "mcp_agent.cli.commands.app.delete.main.MCPAppClient",
+                "mcp_agent.cli.cloud.commands.app.delete.main.MCPAppClient",
                 return_value=mock_mcp_client,
             ),
             patch(
-                "mcp_agent.cli.commands.app.delete.main.typer.Exit",
+                "mcp_agent.cli.cloud.commands.app.delete.main.typer.Exit",
                 side_effect=ValueError,
             ),
         ):
@@ -117,12 +117,12 @@ def test_missing_api_key(patched_delete_app):
     """Test with missing API key."""
 
     # Patch settings to ensure API_KEY is None
-    with patch("mcp_agent.cli.commands.configure.main.settings") as mock_settings:
+    with patch("mcp_agent.cli.cloud.commands.configure.main.settings") as mock_settings:
         mock_settings.API_KEY = None
 
         # Patch load_api_key_credentials to return None
         with patch(
-                "mcp_agent.cli.commands.configure.main.load_api_key_credentials",
+                "mcp_agent.cli.cloud.commands.configure.main.load_api_key_credentials",
                 return_value=None,
         ):
             with pytest.raises(CLIError):

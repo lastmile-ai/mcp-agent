@@ -16,19 +16,19 @@ MCP_SECRETS_FILENAME = "mcp_agent.secrets.yaml"
 REQUIREMENTS_TXT_FILENAME = "requirements.txt"
 
 # Cache and deployment settings
-DEFAULT_CACHE_DIR = "~/.mcp_agent/cloud"  # Moved from commands/deploy/constants.py
+DEFAULT_CACHE_DIR = "~/.mcp_agent/cloud"
 
 # Environment variable names
-ENV_API_BASE_URL = "MCP_API_BASE_URL"  # Moved from secrets/constants.py
-ENV_API_KEY = "MCP_API_KEY"  # Moved from secrets/constants.py
-ENV_VERBOSE = "MCP_VERBOSE"  # Moved from settings.py usage
+ENV_API_BASE_URL = "MCP_API_BASE_URL"
+ENV_API_KEY = "MCP_API_KEY"
+ENV_VERBOSE = "MCP_VERBOSE"
 
 # API defaults
-DEFAULT_API_BASE_URL = "https://mcp-agent.com/api"  # Moved from secrets/constants.py
+DEFAULT_API_BASE_URL = "https://mcp-agent.com/api"
 
 # Secret types (string constants)
-SECRET_TYPE_DEVELOPER = "dev"  # Value from SecretType.DEVELOPER
-SECRET_TYPE_USER = "usr"  # Value from SecretType.USER
+SECRET_TYPE_DEVELOPER = "dev"
+SECRET_TYPE_USER = "usr"
 
 
 # SecretType Enum for backwards compatibility
