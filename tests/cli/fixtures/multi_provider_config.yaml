@@ -1,0 +1,24 @@
+$schema: ../../../../mcp-agent/schema/mcp-agent.config.schema.json
+
+execution_engine: asyncio
+logger:
+  transports: [console, file]
+  level: debug
+
+# Multiple model providers with API keys
+openai:
+  default_model: gpt-4o
+  api_key: !developer_secret OPENAI_API_KEY
+
+anthropic:
+  default_model: claude-3-opus-20240229
+  api_key: !developer_secret ANTHROPIC_API_KEY
+
+google:
+  default_model: gemini-2.0-flash
+  api_key: !developer_secret GOOGLE_API_KEY
+
+azure:
+  default_model: gpt-4o-mini
+  api_key: !developer_secret AZURE_API_KEY
+  endpoint: !developer_secret AZURE_ENDPOINT

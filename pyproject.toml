@@ -1,6 +1,6 @@
 [project]
 name = "mcp-agent"
-version = "0.1.13"
+version = "0.1.14"
 description = "Build effective agents with Model Context Protocol (MCP) using simple, composable patterns."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -74,6 +74,12 @@ langchain = [
 crewai = [
     "crewai>=0.126.0",
 ]
+cli = [
+    "hvac>=1.1.1",
+    "httpx>=0.28.1",
+    "pyjwt>=2.10.1",
+    "typer[all]>=0.15.1",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -95,10 +101,10 @@ dev = [
 ]
 
 [project.scripts]
-mcp-agent = "mcp_agent.cli.__main__:app"
-mcp_agent = "mcp_agent.cli.__main__:app"
-mcpagent = "mcp_agent.cli.__main__:app"
-silsila = "mcp_agent.cli.__main__:app"
+mcp-agent = "mcp_agent.cli.cloud.main:run"
+mcp_agent = "mcp_agent.cli.cloud.main:run"
+mcpagent = "mcp_agent.cli.cloud.main:run"
+silsila = "mcp_agent.cli.cloud.main:run"
 prompt-server = "mcp_agent.mcp.prompts.__main__:main"
 
 [tool.setuptools.packages.find]
