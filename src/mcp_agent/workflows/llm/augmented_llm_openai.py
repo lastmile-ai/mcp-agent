@@ -917,7 +917,7 @@ class OpenAICompletionTasks:
         ) as async_client:
             client = instructor.from_openai(
                 async_client,
-                mode=instructor.Mode.TOOLS_STRICT,
+                mode=instructor.Mode.TOOLS,
             )
 
             try:
