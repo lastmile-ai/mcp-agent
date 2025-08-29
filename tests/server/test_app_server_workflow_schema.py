@@ -1,4 +1,3 @@
-import json
 import pytest
 from types import SimpleNamespace
 
@@ -42,7 +41,7 @@ async def test_workflow_run_schema_strips_self_and_uses_param_annotations():
 
     # Find the "workflows-MyWF-run" tool and inspect its parameters schema via FastMCP
     names = [name for name, *_ in mcp.decorated]
-    assert f"workflows-MyWF-run" in names
+    assert "workflows-MyWF-run" in names
 
     # We can’t call FastTool.from_function here since the tool is already created inside create_workflow_tools,
     # but we can at least ensure that the schema text embedded in the description JSON includes our parameters (q, flag)

@@ -7,7 +7,8 @@ from mcp_agent.cli.cloud.commands import configure_app
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.mcp_app.mock_client import (
     MOCK_APP_CONFIG_ID,
-    MOCK_APP_ID, MockMCPAppClient,
+    MOCK_APP_ID,
+    MockMCPAppClient,
 )
 
 

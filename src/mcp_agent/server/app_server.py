@@ -629,9 +629,9 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
                 registered.add(status_tool_name)
 
         elif mode == "async":
-            # Create only named aliases for async: <name>-async-run and <name>-async-get_status
+            # Create named aliases for async: <name>-async-run and <name>-get_status
             run_tool_name = f"{name}-async-run"
-            status_tool_name = f"{name}-async-get_status"
+            status_tool_name = f"{name}-get_status"
 
             if run_tool_name not in registered:
 

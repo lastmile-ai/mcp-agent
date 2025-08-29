@@ -130,7 +130,7 @@ async def test_app_async_tool_registers_aliases_and_workflow_tools():
 
     # async aliases only (we suppress workflows-* for async auto tools)
     assert "long-async-run" in decorated_names
-    assert "long-async-get_status" in decorated_names
+    assert "long-get_status" in decorated_names
 
 
 @pytest.mark.asyncio
