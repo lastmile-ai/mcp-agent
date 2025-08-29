@@ -160,8 +160,8 @@ class TemporalExecutor(Executor):
         activity_registry = self.context.task_registry
         activity_task = activity_registry.get_activity(activity_name)
 
-        schedule_to_close = execution_metadata.get(
-            "schedule_to_close_timeout", self.config.timeout_seconds
+        schedule_to_close = self.config.timeout_seconds or execution_metadata.get(
+            "schedule_to_close_timeout"
         )
 
         if schedule_to_close is not None and not isinstance(
@@ -345,6 +345,14 @@ class TemporalExecutor(Executor):
         if task_queue is None:
             task_queue = self.config.task_queue
 
+        # Get the id reuse policy from the config, mapped to temporal enum
+        id_reuse_policy = {
+            "allow_duplicate": WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+            "allow_duplicate_failed_only": WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
+            "reject_duplicate": WorkflowIDReusePolicy.REJECT_DUPLICATE,
+            "terminate_if_running": WorkflowIDReusePolicy.TERMINATE_IF_RUNNING,
+        }.get(self.config.id_reuse_policy, WorkflowIDReusePolicy.ALLOW_DUPLICATE)
+
         # Start the workflow
         if input_arg is not None:
             handle: WorkflowHandle = await self.client.start_workflow(
@@ -352,7 +360,7 @@ class TemporalExecutor(Executor):
                 input_arg,
                 id=workflow_id,
                 task_queue=task_queue,
-                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+                id_reuse_policy=id_reuse_policy,
                 rpc_metadata=self.config.rpc_metadata or {},
             )
         else:
@@ -360,7 +368,7 @@ class TemporalExecutor(Executor):
                 wf,
                 id=workflow_id,
                 task_queue=task_queue,
-                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+                id_reuse_policy=id_reuse_policy,
                 rpc_metadata=self.config.rpc_metadata or {},
             )
 

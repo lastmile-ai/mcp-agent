@@ -1,0 +1,45 @@
+$schema: ../../../../mcp-agent/schema/mcp-agent.config.schema.json
+
+execution_engine: asyncio
+logger:
+  transports: [console, file]
+  level: info
+
+# Complex configuration with nested secrets
+mcp:
+  servers:
+    # Slack configuration
+    slack:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-slack"]
+      env:
+        SLACK_BOT_TOKEN: !developer_secret ${oc.env:SLACK_BOT_TOKEN}
+        SLACK_TEAM_ID: !developer_secret ${oc.env:SLACK_TEAM_ID}
+    
+    # GitHub configuration
+    github:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-github"]
+      env:
+        GITHUB_PERSONAL_ACCESS_TOKEN: !developer_secret ${oc.env:GITHUB_PAT}
+    
+    # Fetch server
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+
+# OpenAI for model provider
+openai:
+  default_model: gpt-4o
+  api_key: !developer_secret ${oc.env:OPENAI_API_KEY}
+  organization_id: !user_secret
+
+# Database configuration
+database:
+  host: localhost
+  port: 5432
+  database: mydb
+  user: !developer_secret db-user
+  password: !developer_secret ${oc.env:DB_PASSWORD}
+  ssl: true
+  ssl_cert: !user_secret

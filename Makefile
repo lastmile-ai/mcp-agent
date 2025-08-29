@@ -18,7 +18,7 @@ tests:
 
 .PHONY: coverage
 coverage:
-	uv run coverage run -m pytest tests
+	uv run coverage run -m pytest tests -m "not integration"
 	uv run coverage xml -o coverage.xml
 	uv run coverage report -m --fail-under=80
 
