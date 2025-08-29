@@ -21,6 +21,7 @@ from mcp_agent.executor.workflow_registry import (
     InMemoryWorkflowRegistry,
 )
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.logging.logger import LoggingConfig
 from mcp_agent.mcp.mcp_server_registry import ServerRegistry
 
 if TYPE_CHECKING:
@@ -249,6 +250,25 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         # Store the server on the app so it's discoverable and can be extended further
         app.mcp = mcp
         setattr(mcp, "_mcp_agent_app", app)
+
+    # Register logging/setLevel handler so client can adjust verbosity dynamically
+    # This enables MCP logging capability in InitializeResult.capabilities.logging
+    lowlevel_server = getattr(mcp, "_mcp_server", None)
+    try:
+        if lowlevel_server is not None:
+
+            @lowlevel_server.set_logging_level()
+            async def _set_level(
+                level: str,
+            ) -> None:  # mcp.types.LoggingLevel is a Literal[str]
+                try:
+                    LoggingConfig.set_min_level(level)
+                except Exception:
+                    # Best-effort, do not crash server on invalid level
+                    pass
+    except Exception:
+        # If handler registration fails, continue without dynamic level updates
+        pass
 
     # region Workflow Tools
 

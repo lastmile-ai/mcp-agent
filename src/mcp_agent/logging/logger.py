@@ -11,7 +11,7 @@ import asyncio
 import threading
 import time
 
-from typing import Any, Dict
+from typing import Any, Dict, Final
 
 from contextlib import asynccontextmanager, contextmanager
 
@@ -212,7 +212,8 @@ async def async_event_context(
 class LoggingConfig:
     """Global configuration for the logging system."""
 
-    _initialized = False
+    _initialized: bool = False
+    _event_filter_ref: EventFilter | None = None
 
     @classmethod
     async def configure(
@@ -237,6 +238,8 @@ class LoggingConfig:
             return
 
         bus = AsyncEventBus.get(transport=transport)
+        # Keep a reference to the provided filter so we can update at runtime
+        cls._event_filter_ref = event_filter
 
         # Add standard listeners
         if "logging" not in bus.listeners:
@@ -259,6 +262,25 @@ class LoggingConfig:
                 ),
             )
 
+        # Forward logs upstream via MCP notifications if upstream_session is configured
+        # Avoid duplicate registration by checking existing instances, not key name.
+        try:
+            from mcp_agent.logging.listeners import MCPUpstreamLoggingListener
+
+            has_upstream_listener = any(
+                isinstance(listener, MCPUpstreamLoggingListener)
+                for listener in bus.listeners.values()
+            )
+            if not has_upstream_listener:
+                MCP_UPSTREAM_LISTENER_NAME: Final[str] = "mcp_upstream"
+                bus.add_listener(
+                    MCP_UPSTREAM_LISTENER_NAME,
+                    MCPUpstreamLoggingListener(event_filter=event_filter),
+                )
+        except Exception:
+            # Non-fatal if import fails
+            pass
+
         await bus.start()
         cls._initialized = True
 
@@ -270,6 +292,31 @@ class LoggingConfig:
         bus = AsyncEventBus.get()
         await bus.stop()
         cls._initialized = False
+
+    @classmethod
+    def set_min_level(cls, level: EventType | str) -> None:
+        """Update the minimum logging level on the shared event filter, if available."""
+        if cls._event_filter_ref is None:
+            return
+        # Normalize level
+        normalized = str(level).lower()
+        # Map synonyms to our EventType scale
+        mapping: Dict[str, EventType] = {
+            "debug": "debug",
+            "info": "info",
+            "notice": "info",
+            "warning": "warning",
+            "warn": "warning",
+            "error": "error",
+            "critical": "error",
+            "alert": "error",
+            "emergency": "error",
+        }
+        cls._event_filter_ref.min_level = mapping.get(normalized, "info")
+
+    @classmethod
+    def get_event_filter(cls) -> EventFilter | None:
+        return cls._event_filter_ref
 
     @classmethod
     @asynccontextmanager
