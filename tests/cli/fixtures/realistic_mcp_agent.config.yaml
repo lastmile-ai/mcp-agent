@@ -1,0 +1,48 @@
+$schema: ../../../../mcp-agent/schema/mcp-agent.config.schema.json
+
+execution_engine: asyncio
+logger:
+  transports: [console, file]
+  level: debug
+  progress_display: true
+  path_settings:
+    path_pattern: "logs/mcp-agent-{unique_id}.jsonl"
+    unique_id: "timestamp"
+    timestamp_format: "%Y%m%d_%H%M%S"
+
+mcp:
+  servers:
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+    filesystem:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-filesystem"]
+    # Slack configuration with nested secrets
+    slack:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-slack"]
+      env:
+        SLACK_BOT_TOKEN: !developer_secret ${oc.env:SLACK_BOT_TOKEN}
+        SLACK_TEAM_ID: !developer_secret ${oc.env:SLACK_TEAM_ID}
+
+# Model provider settings (no secrets here)
+openai:
+  default_model: "gpt-4o"
+  max_tokens: 4000
+  temperature: 0.7
+
+anthropic:
+  default_model: "claude-3-opus-20240229"
+  max_tokens: 4000
+  temperature: 0.7
+
+# Database configuration with secrets
+database:
+  host: localhost
+  port: 5432
+  database: mcp_agent_db
+  user: !developer_secret ${oc.env:DB_USER}
+  password: !developer_secret ${oc.env:DB_PASSWORD}
+  ssl: true
+  ssl_cert: !user_secret
