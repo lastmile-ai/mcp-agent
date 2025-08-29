@@ -247,20 +247,40 @@ class MCPUpstreamLoggingListener(FilteredListener):
 
     async def handle_matched_event(self, event: Event) -> None:
         # Resolve upstream session from the global/app context when available
+        upstream_session: Optional[UpstreamServerSessionProtocol] = None
         try:
             # Import inline to avoid import cycles at module load
             from mcp_agent.core.context import get_current_context
-        except Exception:
-            return
 
-        try:
-            ctx = get_current_context()
+            try:
+                ctx = get_current_context()
+                upstream_session = getattr(ctx, "upstream_session", None)
+            except Exception:
+                upstream_session = None
         except Exception:
-            return
+            upstream_session = None
 
-        upstream_session: Optional[UpstreamServerSessionProtocol] = getattr(
-            ctx, "upstream_session", None
-        )
+        # First fallback: Event may carry upstream_session injected by logger
+        if upstream_session is None:
+            candidate = getattr(event, "upstream_session", None)
+            if candidate is not None:
+                upstream_session = candidate  # type: ignore[assignment]
+
+        # Second fallback: if within an MCP request handling context, use the low-level server RequestContext
+        if upstream_session is None:
+            try:
+                from mcp.server.lowlevel.server import (
+                    request_ctx as _lowlevel_request_ctx,
+                )
+
+                try:
+                    req_ctx = _lowlevel_request_ctx.get()
+                    upstream_session = getattr(req_ctx, "session", None)
+                except LookupError:
+                    upstream_session = None
+            except Exception:
+                upstream_session = None
+
         if upstream_session is None:
             return
 
@@ -304,6 +324,8 @@ class MCPUpstreamLoggingListener(FilteredListener):
                 data=data,
                 logger=logger_name,
             )
-        except Exception:
+        except Exception as e:
             # Avoid raising inside listener; best-effort delivery
-            pass
+            import sys
+
+            print(f"[mcp_agent] upstream log send failed: {e}", file=sys.stderr)

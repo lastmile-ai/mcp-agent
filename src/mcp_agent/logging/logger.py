@@ -92,6 +92,22 @@ class Logger:
             elif context.session_id is None:
                 context.session_id = self.session_id
 
+        # Attach upstream_session from active MCP request context if available so
+        # listeners can forward logs upstream even from background tasks
+        extra_event_fields: Dict[str, Any] = {}
+        try:
+            from mcp.server.lowlevel.server import request_ctx as _lowlevel_request_ctx  # type: ignore
+
+            try:
+                req_ctx = _lowlevel_request_ctx.get()
+                extra_event_fields["upstream_session"] = getattr(
+                    req_ctx, "session", None
+                )
+            except LookupError:
+                pass
+        except Exception:
+            pass
+
         evt = Event(
             type=etype,
             name=ename,
@@ -99,6 +115,7 @@ class Logger:
             message=message,
             context=context,
             data=data,
+            **extra_event_fields,
         )
         self._emit_event(evt)
 

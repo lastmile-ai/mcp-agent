@@ -624,6 +624,12 @@ class MCPApp:
 
             return fn
 
+        # Support bare usage: @app.tool without parentheses
+        if callable(name) and description is None and structured_output is None:
+            fn = name  # type: ignore[assignment]
+            name = None
+            return decorator(fn)  # type: ignore[arg-type]
+
         return decorator
 
     def async_tool(
@@ -660,6 +666,12 @@ class MCPApp:
                 }
             )
             return fn
+
+        # Support bare usage: @app.async_tool without parentheses
+        if callable(name) and description is None:
+            fn = name  # type: ignore[assignment]
+            name = None
+            return decorator(fn)  # type: ignore[arg-type]
 
         return decorator
 
