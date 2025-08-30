@@ -4,6 +4,7 @@ mcp-agent workflows and agents as MCP tools.
 """
 
 import json
+import copy
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional, Set, Tuple, Type, TYPE_CHECKING
@@ -124,7 +125,12 @@ def _resolve_workflows_and_context(
     # Fall back to app attached to FastMCP
     app: MCPApp | None = _get_attached_app(ctx.fastmcp)
     if app is not None:
-        return app.workflows, app.context
+        mcp_context = ctx
+        # Create a copy of the app context, since we don't want to attach this session to the
+        # global context
+        ctx = copy.deepcopy(app.context)
+        ctx.upstream_session = mcp_context.session
+        return app.workflows, ctx
 
     return None, None
 
@@ -416,6 +422,15 @@ def create_workflow_specific_tools(
     """Create specific tools for a given workflow."""
 
     run_fn_tool = FastTool.from_function(workflow_cls.run)
+
+    # for class methods, remove the "self" parameter from the list. We don't want the LLM to provide
+    # a value for it
+    if "self" in run_fn_tool.parameters["properties"]:
+        del(run_fn_tool.parameters["properties"]["self"])
+        req = run_fn_tool.parameters.get("required", [])
+        if "self" in req:
+            req.remove("self")
+            run_fn_tool.parameters["required"] = req
     run_fn_tool_params = json.dumps(run_fn_tool.parameters, indent=2)
 
     @mcp.tool(

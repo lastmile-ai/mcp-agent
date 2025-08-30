@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from datetime import timedelta
 from typing import Callable, Dict, AsyncGenerator
 
+
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from mcp import ClientSession
 from mcp.client.stdio import (
@@ -32,6 +33,7 @@ from mcp_agent.config import (
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
 from mcp_agent.mcp.mcp_connection_manager import MCPConnectionManager
+from mcp.server.session import ServerSession
 
 logger = get_logger(__name__)
 
@@ -86,7 +88,7 @@ class ServerRegistry:
         self.connection_manager = MCPConnectionManager(self)
 
     def load_registry_from_file(
-        self, config_path: str | None = None
+            self, config_path: str | None = None
     ) -> Dict[str, MCPServerSettings]:
         """
         Load the YAML configuration file and validate it.
@@ -103,13 +105,14 @@ class ServerRegistry:
 
     @asynccontextmanager
     async def start_server(
-        self,
-        server_name: str,
-        client_session_factory: Callable[
-            [MemoryObjectReceiveStream, MemoryObjectSendStream, timedelta | None],
-            ClientSession,
-        ] = ClientSession,
-        session_id: str | None = None,
+            self,
+            server_name: str,
+            client_session_factory: Callable[
+                [MemoryObjectReceiveStream, MemoryObjectSendStream, timedelta | None, ServerSession | None],
+                ClientSession,
+            ] = ClientSession,
+            session_id: str | None = None,
+            upstream_session: ServerSession | None = None,
     ) -> AsyncGenerator[ClientSession, None]:
         """
         Starts the server process based on its configuration. To initialize, call initialize_server
@@ -134,6 +137,10 @@ class ServerRegistry:
             else None
         )
 
+        # Record the upstream session (if any) in the context
+        from mcp_agent.core.context import Context
+        ctx_with_session = Context(upstream_session=upstream_session)
+
         if config.transport == "stdio":
             if not config.command and not config.args:
                 raise ValueError(
@@ -151,6 +158,7 @@ class ServerRegistry:
                     read_stream,
                     write_stream,
                     read_timeout_seconds,
+                    ctx_with_session,
                 )
                 async with session:
                     logger.info(
@@ -198,12 +206,13 @@ class ServerRegistry:
 
             # For Streamable HTTP, we get an additional callback for session ID
             async with streamablehttp_client(
-                **kwargs,
+                    **kwargs,
             ) as (read_stream, write_stream, session_id_callback):
                 session = client_session_factory(
                     read_stream,
                     write_stream,
                     read_timeout_seconds,
+                    ctx_with_session
                 )
 
                 if session_id_callback and isinstance(session, MCPAgentClientSession):
@@ -236,13 +245,14 @@ class ServerRegistry:
 
             # Use sse_client to get the read and write streams
             async with sse_client(**kwargs) as (
-                read_stream,
-                write_stream,
+                    read_stream,
+                    write_stream,
             ):
                 session = client_session_factory(
                     read_stream,
                     write_stream,
                     read_timeout_seconds,
+                    ctx_with_session
                 )
                 async with session:
                     logger.info(
@@ -260,13 +270,14 @@ class ServerRegistry:
                 )
 
             async with websocket_client(url=config.url) as (  # pylint: disable=W0135
-                read_stream,
-                write_stream,
+                    read_stream,
+                    write_stream,
             ):
                 session = client_session_factory(
                     read_stream,
                     write_stream,
                     read_timeout_seconds,
+                    ctx_with_session
                 )
                 async with session:
                     logger.info(
@@ -282,14 +293,15 @@ class ServerRegistry:
 
     @asynccontextmanager
     async def initialize_server(
-        self,
-        server_name: str,
-        client_session_factory: Callable[
-            [MemoryObjectReceiveStream, MemoryObjectSendStream, timedelta | None],
-            ClientSession,
-        ] = ClientSession,
-        init_hook: InitHookCallable = None,
-        session_id: str | None = None,
+            self,
+            server_name: str,
+            client_session_factory: Callable[
+                [MemoryObjectReceiveStream, MemoryObjectSendStream, timedelta, ServerSession],
+                ClientSession,
+            ] = ClientSession,
+            init_hook: InitHookCallable = None,
+            session_id: str | None = None,
+            upstream_session: ServerSession | None = None,
     ) -> AsyncGenerator[ClientSession, None]:
         """
         Initialize a server based on its configuration.
@@ -312,9 +324,10 @@ class ServerRegistry:
         config = self.registry[server_name]
 
         async with self.start_server(
-            server_name,
-            client_session_factory=client_session_factory,
-            session_id=session_id,
+                server_name,
+                client_session_factory=client_session_factory,
+                session_id=session_id,
+                upstream_session=upstream_session,
         ) as session:
             try:
                 logger.info(f"{server_name}: Initializing server...")
