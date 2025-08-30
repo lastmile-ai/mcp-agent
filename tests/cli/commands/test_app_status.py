@@ -1,4 +1,5 @@
 """Tests for the configure command."""
+
 import datetime
 from unittest.mock import AsyncMock, MagicMock, patch, Mock
 
@@ -10,7 +11,8 @@ from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.mcp_app.api_client import MCPApp, MCPAppConfiguration, AppServerInfo
 from mcp_agent.cli.mcp_app.mock_client import (
     MOCK_APP_CONFIG_ID,
-    MOCK_APP_ID, MockMCPAppClient,
+    MOCK_APP_ID,
+    MockMCPAppClient,
 )
 
 
@@ -68,14 +70,14 @@ def test_status_app(patched_status_app, mock_mcp_client):
         creatorId="creatorId",
         createdAt=datetime.datetime.now(),
         updatedAt=datetime.datetime.now(),
-        appServerInfo=app_server_info
+        appServerInfo=app_server_info,
     )
     mock_mcp_client.get_app_or_config = AsyncMock(return_value=app)
 
     mock_mcp_print_server_details = Mock()
     with patch(
-            "mcp_agent.cli.cloud.commands.app.status.main.print_mcp_server_details",
-            side_effect=mock_mcp_print_server_details
+        "mcp_agent.cli.cloud.commands.app.status.main.print_mcp_server_details",
+        side_effect=mock_mcp_print_server_details,
     ) as mocked_function:
         mock_mcp_print_server_details.return_value = None
 
@@ -85,7 +87,9 @@ def test_status_app(patched_status_app, mock_mcp_client):
             api_key=settings.API_KEY,
         )
 
-        mocked_function.assert_called_once_with(server_url=server_url, api_key=settings.API_KEY)
+        mocked_function.assert_called_once_with(
+            server_url=server_url, api_key=settings.API_KEY
+        )
 
 
 def test_status_app_config(patched_status_app, mock_mcp_client):
@@ -97,14 +101,14 @@ def test_status_app_config(patched_status_app, mock_mcp_client):
     app_config = MCPAppConfiguration(
         appConfigurationId=MOCK_APP_CONFIG_ID,
         creatorId="creator",
-        appServerInfo=app_server_info
+        appServerInfo=app_server_info,
     )
     mock_mcp_client.get_app_or_config = AsyncMock(return_value=app_config)
 
     mock_mcp_print_server_details = Mock()
     with patch(
-            "mcp_agent.cli.cloud.commands.app.status.main.print_mcp_server_details",
-            side_effect=mock_mcp_print_server_details
+        "mcp_agent.cli.cloud.commands.app.status.main.print_mcp_server_details",
+        side_effect=mock_mcp_print_server_details,
     ) as mocked_function:
         mock_mcp_print_server_details.return_value = None
 
@@ -114,7 +118,10 @@ def test_status_app_config(patched_status_app, mock_mcp_client):
             api_key=settings.API_KEY,
         )
 
-        mocked_function.assert_called_once_with(server_url=server_url, api_key=settings.API_KEY)
+        mocked_function.assert_called_once_with(
+            server_url=server_url, api_key=settings.API_KEY
+        )
+
 
 def test_missing_app_id(patched_status_app):
     """Test with missing app_id."""
@@ -141,8 +148,8 @@ def test_missing_api_key(patched_status_app):
 
         # Patch load_api_key_credentials to return None
         with patch(
-                "mcp_agent.cli.cloud.commands.configure.main.load_api_key_credentials",
-                return_value=None,
+            "mcp_agent.cli.cloud.commands.configure.main.load_api_key_credentials",
+            return_value=None,
         ):
             with pytest.raises(CLIError):
                 patched_status_app(

@@ -206,5 +206,6 @@ def generate_test_token():
         expiry_days=365,
     )
 
+
 if __name__ == "__main__":
     main()

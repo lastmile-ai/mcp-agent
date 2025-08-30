@@ -132,6 +132,12 @@ def _resolve_workflows_and_context(
 def _resolve_workflow_registry(ctx: MCPContext) -> WorkflowRegistry | None:
     """Resolve the workflow registry regardless of startup mode."""
     lifespan_ctx = getattr(ctx.request_context, "lifespan_context", None)
+    # Prefer the underlying app context's registry if available
+    if lifespan_ctx is not None and hasattr(lifespan_ctx, "context"):
+        ctx_inner = getattr(lifespan_ctx, "context", None)
+        if ctx_inner is not None and hasattr(ctx_inner, "workflow_registry"):
+            return ctx_inner.workflow_registry
+    # Fallback: top-level lifespan registry if present
     if lifespan_ctx is not None and hasattr(lifespan_ctx, "workflow_registry"):
         return lifespan_ctx.workflow_registry
 
@@ -140,6 +146,43 @@ def _resolve_workflow_registry(ctx: MCPContext) -> WorkflowRegistry | None:
         return app.context.workflow_registry
 
     return None
+
+
+def _get_param_source_function_from_workflow(workflow_cls: Type["Workflow"]):
+    """Return the function to use for parameter schema for a workflow's run.
+
+    For auto-generated workflows from @app.tool/@app.async_tool, prefer the original
+    function that defined the parameters if available; fall back to the class run.
+    """
+    return getattr(workflow_cls, "__mcp_agent_param_source_fn__", None) or getattr(
+        workflow_cls, "run"
+    )
+
+
+def _build_run_param_tool(workflow_cls: Type["Workflow"]) -> FastTool:
+    """Return a FastTool built from the proper parameter source, skipping 'self'."""
+    param_source = _get_param_source_function_from_workflow(workflow_cls)
+    import inspect as _inspect
+
+    if param_source is getattr(workflow_cls, "run"):
+
+        def _schema_fn_proxy(*args, **kwargs):
+            return None
+
+        sig = _inspect.signature(param_source)
+        params = list(sig.parameters.values())
+        if params and params[0].name == "self":
+            params = params[1:]
+        _schema_fn_proxy.__annotations__ = dict(
+            getattr(param_source, "__annotations__", {})
+        )
+        if "self" in _schema_fn_proxy.__annotations__:
+            _schema_fn_proxy.__annotations__.pop("self", None)
+        _schema_fn_proxy.__signature__ = _inspect.Signature(
+            parameters=params, return_annotation=sig.return_annotation
+        )
+        return FastTool.from_function(_schema_fn_proxy)
+    return FastTool.from_function(param_source)
 
 
 def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
@@ -166,6 +209,8 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
 
         # Register initial workflow tools when running with our managed lifespan
         create_workflow_tools(mcp, server_context)
+        # Register function-declared tools (from @app.tool/@app.async_tool)
+        create_declared_function_tools(mcp, server_context)
 
         try:
             yield server_context
@@ -189,6 +234,8 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
 
         # Register per-workflow tools
         create_workflow_tools(mcp, server_context)
+        # Register function-declared tools (from @app.tool/@app.async_tool)
+        create_declared_function_tools(mcp, server_context)
     else:
         mcp = FastMCP(
             name=app.name or "mcp_agent_server",
@@ -403,6 +450,11 @@ def create_workflow_tools(mcp: FastMCP, server_context: ServerContext):
     registered_workflow_tools = _get_registered_workflow_tools(mcp)
 
     for workflow_name, workflow_cls in server_context.workflows.items():
+        # Skip creating generic workflows-* tools for sync/async auto tools
+        if getattr(workflow_cls, "__mcp_agent_sync_tool__", False):
+            continue
+        if getattr(workflow_cls, "__mcp_agent_async_tool__", False):
+            continue
         if workflow_name not in registered_workflow_tools:
             create_workflow_specific_tools(mcp, workflow_name, workflow_cls)
             registered_workflow_tools.add(workflow_name)
@@ -410,12 +462,229 @@ def create_workflow_tools(mcp: FastMCP, server_context: ServerContext):
     setattr(mcp, "_registered_workflow_tools", registered_workflow_tools)
 
 
+def _get_registered_function_tools(mcp: FastMCP) -> Set[str]:
+    return getattr(mcp, "_registered_function_tools", set())
+
+
+def _set_registered_function_tools(mcp: FastMCP, tools: Set[str]):
+    setattr(mcp, "_registered_function_tools", tools)
+
+
+def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
+    """
+    Register tools declared via @app.tool/@app.async_tool on the attached app.
+    - @app.tool registers a synchronous tool with the same signature as the function
+      that runs the auto-generated workflow and waits for completion.
+    - @app.async_tool registers alias tools <name>-run and <name>-get_status
+      that proxy to the workflow run/status utilities.
+    """
+    app = _get_attached_app(mcp)
+    if app is None:
+        # Fallbacks for tests or externally provided contexts
+        app = getattr(server_context, "app", None)
+        if app is None:
+            ctx = getattr(server_context, "context", None)
+            if ctx is not None:
+                app = getattr(ctx, "app", None)
+    if app is None:
+        return
+
+    declared = getattr(app, "_declared_tools", []) or []
+    if not declared:
+        return
+
+    registered = _get_registered_function_tools(mcp)
+
+    # Utility: build a wrapper function with the same signature and return annotation
+    import inspect
+    import asyncio
+
+    async def _wait_for_completion(
+        ctx: MCPContext, run_id: str, timeout: float | None = None
+    ):
+        registry = _resolve_workflow_registry(ctx)
+        if not registry:
+            raise ToolError("Workflow registry not found for MCPApp Server.")
+        # Try to get the workflow and wait on its task if available
+        start = asyncio.get_event_loop().time()
+        # Ensure the workflow is registered locally to retrieve the task
+        try:
+            wf = await registry.get_workflow(run_id)
+            if wf is None and hasattr(registry, "register"):
+                # Best-effort: some registries need explicit register; try to find by status
+                # and skip if unavailable. This is a no-op for InMemory which registers at run_async.
+                pass
+        except Exception:
+            pass
+        while True:
+            wf = await registry.get_workflow(run_id)
+            if wf is not None:
+                task = getattr(wf, "_run_task", None)
+                if isinstance(task, asyncio.Task):
+                    return await asyncio.wait_for(task, timeout=timeout)
+                # Fallback to polling the status
+                status = await wf.get_status()
+                if status.get("completed"):
+                    return status.get("result")
+            if (
+                timeout is not None
+                and (asyncio.get_event_loop().time() - start) > timeout
+            ):
+                raise ToolError("Timed out waiting for workflow completion")
+            await asyncio.sleep(0.1)
+
+    for decl in declared:
+        name = decl["name"]
+        if name in registered:
+            continue
+        mode = decl["mode"]
+        workflow_name = decl["workflow_name"]
+        fn = decl.get("source_fn")
+        description = decl.get("description")
+        structured_output = decl.get("structured_output")
+
+        if mode == "sync" and fn is not None:
+            sig = inspect.signature(fn)
+            return_ann = sig.return_annotation
+
+            async def _wrapper(**kwargs):
+                # Context will be injected by FastMCP using the special annotation below
+                ctx: MCPContext = kwargs.pop(
+                    "__context__"
+                )  # placeholder, reassigned below via signature name
+                # Start workflow and wait for completion
+                result_ids = await _workflow_run(ctx, workflow_name, kwargs)
+                run_id = result_ids["run_id"]
+                result = await _wait_for_completion(ctx, run_id)
+                # Unwrap WorkflowResult to match the original function's return type
+                try:
+                    from mcp_agent.executor.workflow import WorkflowResult as _WFRes
+                except Exception:
+                    _WFRes = None  # type: ignore
+                if _WFRes is not None and isinstance(result, _WFRes):
+                    return getattr(result, "value", None)
+                # If get_status returned dict/str, pass through; otherwise return model
+                return result
+
+            # Attach introspection metadata to match the original function
+            ann = dict(getattr(fn, "__annotations__", {}))
+
+            # Choose a context kwarg name unlikely to clash with user params
+            ctx_param_name = "ctx"
+            from mcp.server.fastmcp import Context as _Ctx
+
+            ann[ctx_param_name] = _Ctx
+            ann["return"] = getattr(fn, "__annotations__", {}).get("return", return_ann)
+            _wrapper.__annotations__ = ann
+            _wrapper.__name__ = name
+            _wrapper.__doc__ = description or (fn.__doc__ or "")
+
+            # Build a fake signature containing original params plus context kwarg
+            params = list(sig.parameters.values())
+            ctx_param = inspect.Parameter(
+                ctx_param_name,
+                kind=inspect.Parameter.KEYWORD_ONLY,
+                annotation=_Ctx,
+            )
+            _wrapper.__signature__ = inspect.Signature(
+                parameters=params + [ctx_param], return_annotation=return_ann
+            )
+
+            # FastMCP expects the actual kwarg name for context; it detects it by annotation
+            # We need to map the injected kwarg inside the wrapper body. Achieve this by
+            # creating a thin adapter that renames the injected context kwarg.
+            async def _adapter(**kw):
+                # Receive validated args plus injected context kwarg
+                if ctx_param_name not in kw:
+                    raise ToolError("Context not provided")
+                # Rename to the placeholder expected by _wrapper
+                kw["__context__"] = kw.pop(ctx_param_name)
+                return await _wrapper(**kw)
+
+            # Copy the visible signature/annotations to adapter for correct schema
+            _adapter.__annotations__ = _wrapper.__annotations__
+            _adapter.__name__ = _wrapper.__name__
+            _adapter.__doc__ = _wrapper.__doc__
+            _adapter.__signature__ = _wrapper.__signature__
+
+            # Register the main tool with the same signature as original
+            mcp.add_tool(
+                _adapter,
+                name=name,
+                description=description or (fn.__doc__ or ""),
+                structured_output=structured_output,
+            )
+            registered.add(name)
+
+            # Also register a per-run status tool: <tool-name>-get_status
+            status_tool_name = f"{name}-get_status"
+            if status_tool_name not in registered:
+
+                @mcp.tool(name=status_tool_name)
+                async def _sync_status(ctx: MCPContext, run_id: str) -> Dict[str, Any]:
+                    return await _workflow_status(
+                        ctx, run_id=run_id, workflow_name=workflow_name
+                    )
+
+                registered.add(status_tool_name)
+
+        elif mode == "async":
+            # Create named aliases for async: <name>-async-run and <name>-get_status
+            run_tool_name = f"{name}-async-run"
+            status_tool_name = f"{name}-get_status"
+
+            if run_tool_name not in registered:
+
+                @mcp.tool(name=run_tool_name)
+                async def _alias_run(
+                    ctx: MCPContext, run_parameters: Dict[str, Any] | None = None
+                ) -> Dict[str, str]:
+                    return await _workflow_run(ctx, workflow_name, run_parameters or {})
+
+                registered.add(run_tool_name)
+
+            if status_tool_name not in registered:
+
+                @mcp.tool(name=status_tool_name)
+                async def _alias_status(ctx: MCPContext, run_id: str) -> Dict[str, Any]:
+                    return await _workflow_status(
+                        ctx, run_id=run_id, workflow_name=workflow_name
+                    )
+
+                registered.add(status_tool_name)
+
+    _set_registered_function_tools(mcp, registered)
+
+
 def create_workflow_specific_tools(
     mcp: FastMCP, workflow_name: str, workflow_cls: Type["Workflow"]
 ):
     """Create specific tools for a given workflow."""
+    param_source = _get_param_source_function_from_workflow(workflow_cls)
+    # Ensure we don't include 'self' in tool schema; FastMCP will ignore Context but not 'self'
+    import inspect as _inspect
 
-    run_fn_tool = FastTool.from_function(workflow_cls.run)
+    if param_source is getattr(workflow_cls, "run"):
+        # Wrap to drop the first positional param (self) for schema purposes
+        def _schema_fn_proxy(*args, **kwargs):
+            return None
+
+        sig = _inspect.signature(param_source)
+        params = list(sig.parameters.values())
+        # remove leading 'self' if present
+        if params and params[0].name == "self":
+            params = params[1:]
+        _schema_fn_proxy.__annotations__ = dict(
+            getattr(param_source, "__annotations__", {})
+        )
+        if "self" in _schema_fn_proxy.__annotations__:
+            _schema_fn_proxy.__annotations__.pop("self", None)
+        _schema_fn_proxy.__signature__ = _inspect.Signature(
+            parameters=params, return_annotation=sig.return_annotation
+        )
+        run_fn_tool = FastTool.from_function(_schema_fn_proxy)
+    else:
+        run_fn_tool = FastTool.from_function(param_source)
     run_fn_tool_params = json.dumps(run_fn_tool.parameters, indent=2)
 
     @mcp.tool(

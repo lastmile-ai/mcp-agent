@@ -431,15 +431,12 @@ def test_cli_error_handling(mock_api_credentials):
         # Error message should mention the file doesn't exist
         combined_output = result.stderr + result.stdout
         # remove all lines, dashes, etc
-        ascii_text = re.sub(r'[^A-z0-9 .,-]+', ' ', combined_output)
+        ascii_text = re.sub(r"[^A-z0-9 .,-]+", " ", combined_output)
         # remove any remnants of colour codes
-        without_escape_codes = re.sub(r'\[\d+m', ' ', ascii_text)
+        without_escape_codes = re.sub(r"\[\d+m", " ", ascii_text)
         # normalize spaces and convert to lower case
-        clean_text = ' '.join(without_escape_codes.split()).lower()
-        assert (
-            "does not exist" in clean_text
-            or "no such file" in clean_text
-        )
+        clean_text = " ".join(without_escape_codes.split()).lower()
+        assert "does not exist" in clean_text or "no such file" in clean_text
 
         # Test with the secret value not having a tag
         cmd = [
@@ -464,7 +461,9 @@ def test_cli_error_handling(mock_api_credentials):
 
         # It should mention using the tags
         combined_output = result.stderr + result.stdout
-        clean_text = ' '.join(re.sub(r'[^\x00-\x7F]+', ' ', combined_output).split()).lower()
+        clean_text = " ".join(
+            re.sub(r"[^\x00-\x7F]+", " ", combined_output).split()
+        ).lower()
         assert (
             "secrets must be tagged with !developer_secret or !user_secret"
             in clean_text
