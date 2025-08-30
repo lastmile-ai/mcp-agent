@@ -325,7 +325,15 @@ class AsyncEventBus:
             # Signal shutdown
             cls._instance._running = False
             if hasattr(cls._instance, "_stop_event"):
-                cls._instance._stop_event.set()
+                try:
+                    # _stop_event.set() schedules on the event's loop; this can fail if
+                    # the loop is already closed in test teardown. Swallow to ensure
+                    # reset never raises in those cases.
+                    cls._instance._stop_event.set()
+                except RuntimeError:
+                    pass
+                except Exception:
+                    pass
 
             # Clear the singleton instance
             cls._instance = None

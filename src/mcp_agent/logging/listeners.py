@@ -246,27 +246,17 @@ class MCPUpstreamLoggingListener(FilteredListener):
         super().__init__(event_filter=event_filter)
 
     async def handle_matched_event(self, event: Event) -> None:
-        # Resolve upstream session from the global/app context when available
+        # Prefer an upstream session bound directly to this event (most precise)
         upstream_session: Optional[UpstreamServerSessionProtocol] = None
-        try:
-            # Import inline to avoid import cycles at module load
-            from mcp_agent.core.context import get_current_context
+        resolved_via: str | None = None
+        candidate = getattr(event, "upstream_session", None)
+        if candidate is not None:
+            upstream_session = candidate  # type: ignore[assignment]
+            resolved_via = "event"
 
-            try:
-                ctx = get_current_context()
-                upstream_session = getattr(ctx, "upstream_session", None)
-            except Exception:
-                upstream_session = None
-        except Exception:
-            upstream_session = None
+        # No fallback to global get_current_context() to avoid unsafe globals
 
-        # First fallback: Event may carry upstream_session injected by logger
-        if upstream_session is None:
-            candidate = getattr(event, "upstream_session", None)
-            if candidate is not None:
-                upstream_session = candidate  # type: ignore[assignment]
-
-        # Second fallback: if within an MCP request handling context, use the low-level server RequestContext
+        # Finally, try the low-level request contextvar if in a request handler
         if upstream_session is None:
             try:
                 from mcp.server.lowlevel.server import (
@@ -276,12 +266,15 @@ class MCPUpstreamLoggingListener(FilteredListener):
                 try:
                     req_ctx = _lowlevel_request_ctx.get()
                     upstream_session = getattr(req_ctx, "session", None)
+                    if upstream_session is not None:
+                        resolved_via = "request_ctx"
                 except LookupError:
                     upstream_session = None
             except Exception:
                 upstream_session = None
 
         if upstream_session is None:
+            # No upstream_session available, event cannot be forwarded
             return
 
         # Map our EventType to MCP LoggingLevel; fold progress -> info
@@ -324,6 +317,16 @@ class MCPUpstreamLoggingListener(FilteredListener):
                 data=data,
                 logger=logger_name,
             )
+            # Diagnostic path for success
+            try:
+                import sys
+
+                print(
+                    f"[mcp_agent] forwarded event via {resolved_via or 'unknown'} (namespace={event.namespace}, name={event.name})",
+                    file=sys.stderr,
+                )
+            except Exception:
+                pass
         except Exception as e:
             # Avoid raising inside listener; best-effort delivery
             import sys

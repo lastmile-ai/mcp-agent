@@ -106,6 +106,103 @@ def _get_attached_server_context(mcp: FastMCP) -> ServerContext | None:
     return getattr(mcp, "_mcp_agent_server_context", None)
 
 
+def _set_upstream_from_request_ctx_if_available(ctx: MCPContext) -> None:
+    """Attach the low-level server session to the app context for upstream log forwarding.
+
+    This ensures logs emitted from background workflow tasks are forwarded to the client
+    even when the low-level request contextvar is not available in those tasks.
+    """
+    # First, try to use the session property from the FastMCP Context
+    session = None
+    try:
+        session = (
+            ctx.session
+        )  # This accesses the property which returns ctx.request_context.session
+    except (AttributeError, ValueError):
+        # ctx.session property might raise ValueError if context not available
+        pass
+
+    if session is not None:
+        app: MCPApp | None = _get_attached_app(ctx.fastmcp)
+        if app is not None and getattr(app, "context", None) is not None:
+            # Set on global app context so the logger can access it
+            old_session = app.context.upstream_session
+            # Use direct assignment for Pydantic model
+            app.context.upstream_session = session
+            import sys
+
+            # Verify it was actually set
+            actual_value = app.context.upstream_session
+            # Check via model_dump to see what Pydantic thinks
+            if hasattr(app.context, "model_dump"):
+                model_data = app.context.model_dump(exclude_none=False)
+                us_from_dump = model_data.get("upstream_session")
+                print(
+                    f"[DEBUG] Set upstream_session on app.context for {app.name}, old={old_session is not None}, new={session is not None}, actual_after_set={actual_value is not None}, from_model_dump={us_from_dump is not None}, context_id={id(app.context)}",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    f"[DEBUG] Set upstream_session on app.context for {app.name}, old={old_session is not None}, new={session is not None}, actual_after_set={actual_value is not None}, context_id={id(app.context)}",
+                    file=sys.stderr,
+                )
+            try:
+                logger.debug(
+                    f"Set upstream_session on app.context for {app.name}",
+                    data={
+                        "server": getattr(ctx.fastmcp, "name", None),
+                        "has_session": session is not None,
+                        "app_name": app.name,
+                        "old_session": old_session is not None,
+                    },
+                )
+            except Exception:
+                pass
+            return
+        else:
+            import sys
+
+            print(
+                f"[DEBUG] Could not set upstream_session - app={app is not None}, context={app.context is not None if app else False}",
+                file=sys.stderr,
+            )
+            logger.debug(
+                "Could not set upstream_session - no app or context",
+                data={
+                    "has_app": app is not None,
+                    "has_context": app.context if app else None,
+                },
+            )
+
+    # Fallback: try the low-level request_ctx contextvar
+    try:
+        from mcp.server.lowlevel.server import request_ctx as _lowlevel_request_ctx  # type: ignore
+
+        try:
+            req_ctx = _lowlevel_request_ctx.get()
+        except LookupError:
+            return
+
+        session = getattr(req_ctx, "session", None)
+        if session is None:
+            return
+
+        app: MCPApp | None = _get_attached_app(ctx.fastmcp)
+        if app is not None and getattr(app, "context", None) is not None:
+            # Set on global app context; listeners read from get_current_context()
+            app.context.upstream_session = session
+            try:
+                logger.debug(
+                    "Attached upstream_session via lowlevel request_ctx",
+                    data={"server": getattr(ctx.fastmcp, "name", None)},
+                )
+            except Exception:
+                pass
+    except Exception:
+        # Best-effort only
+        pass
+
+
 def _resolve_workflows_and_context(
     ctx: MCPContext,
 ) -> Tuple[Dict[str, Type["Workflow"]] | None, Optional["Context"]]:
@@ -124,7 +221,13 @@ def _resolve_workflows_and_context(
 
     # Fall back to app attached to FastMCP
     app: MCPApp | None = _get_attached_app(ctx.fastmcp)
+
     if app is not None:
+        # Ensure the app context has the current request's session set so background logs forward
+        try:
+            _set_upstream_from_request_ctx_if_available(ctx)
+        except Exception:
+            pass
         return app.workflows, app.context
 
     return None, None
@@ -279,18 +382,34 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         Returns information about each workflow type including name, description, and parameters.
         This helps in making an informed decision about which workflow to run.
         """
+        # Ensure upstream session is set for any logs emitted during this call
+        try:
+            _set_upstream_from_request_ctx_if_available(ctx)
+        except Exception:
+            pass
         result: Dict[str, Dict[str, Any]] = {}
         workflows, _ = _resolve_workflows_and_context(ctx)
         workflows = workflows or {}
         for workflow_name, workflow_cls in workflows.items():
-            # Get workflow documentation
-            run_fn_tool = FastTool.from_function(workflow_cls.run)
+            # Determine parameter schema (strip self / prefer original function)
+            run_fn_tool = _build_run_param_tool(workflow_cls)
 
-            # Define common endpoints for all workflows
-            endpoints = [
-                f"workflows-{workflow_name}-run",
-                f"workflows-{workflow_name}-get_status",
-            ]
+            # Determine endpoints based on whether this is an auto sync/async tool
+            if getattr(workflow_cls, "__mcp_agent_sync_tool__", False):
+                endpoints = [
+                    f"{workflow_name}",
+                    f"{workflow_name}-get_status",
+                ]
+            elif getattr(workflow_cls, "__mcp_agent_async_tool__", False):
+                endpoints = [
+                    f"{workflow_name}-async-run",
+                    f"{workflow_name}-get_status",
+                ]
+            else:
+                endpoints = [
+                    f"workflows-{workflow_name}-run",
+                    f"workflows-{workflow_name}-get_status",
+                ]
 
             result[workflow_name] = {
                 "name": workflow_name,
@@ -314,6 +433,12 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         Returns:
             A dictionary mapping workflow instance IDs to their detailed status information.
         """
+        # Ensure upstream session is set for any logs emitted during this call
+        try:
+            _set_upstream_from_request_ctx_if_available(ctx)
+        except Exception:
+            pass
+
         server_context = getattr(
             ctx.request_context, "lifespan_context", None
         ) or _get_attached_server_context(ctx.fastmcp)
@@ -346,6 +471,11 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             A dict with workflow_id and run_id for the started workflow run, can be passed to
             workflows/get_status, workflows/resume, and workflows/cancel.
         """
+        # Ensure upstream session is set before starting the workflow
+        try:
+            _set_upstream_from_request_ctx_if_available(ctx)
+        except Exception:
+            pass
         return await _workflow_run(ctx, workflow_name, run_parameters, **kwargs)
 
     @mcp.tool(name="workflows-get_status")
@@ -366,6 +496,11 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         Returns:
             A dictionary with comprehensive information about the workflow status.
         """
+        # Ensure upstream session is available for any status-related logs
+        try:
+            _set_upstream_from_request_ctx_if_available(ctx)
+        except Exception:
+            pass
         return await _workflow_status(ctx, run_id, workflow_name)
 
     @mcp.tool(name="workflows-resume")
@@ -393,6 +528,11 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         Returns:
             True if the workflow was resumed, False otherwise.
         """
+        # Ensure upstream session is available for any status-related logs
+        try:
+            _set_upstream_from_request_ctx_if_available(ctx)
+        except Exception:
+            pass
         server_context: ServerContext = ctx.request_context.lifespan_context
         workflow_registry = server_context.workflow_registry
 
@@ -435,6 +575,11 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         Returns:
             True if the workflow was cancelled, False otherwise.
         """
+        # Ensure upstream session is available for any status-related logs
+        try:
+            _set_upstream_from_request_ctx_if_available(ctx)
+        except Exception:
+            pass
         server_context: ServerContext = ctx.request_context.lifespan_context
         workflow_registry = server_context.workflow_registry
 
@@ -563,114 +708,172 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
         description = decl.get("description")
         structured_output = decl.get("structured_output")
 
+        # Capture loop variables for closures (avoid late-binding bugs)
+        _wname = workflow_name
+        _tname = name
+
         if mode == "sync" and fn is not None:
             sig = inspect.signature(fn)
             return_ann = sig.return_annotation
 
-            async def _wrapper(**kwargs):
-                # Context will be injected by FastMCP using the special annotation below
-                ctx: MCPContext = kwargs.pop(
-                    "__context__"
-                )  # placeholder, reassigned below via signature name
-                # Start workflow and wait for completion
-                result_ids = await _workflow_run(ctx, workflow_name, kwargs)
-                run_id = result_ids["run_id"]
-                result = await _wait_for_completion(ctx, run_id)
-                # Unwrap WorkflowResult to match the original function's return type
-                try:
-                    from mcp_agent.executor.workflow import WorkflowResult as _WFRes
-                except Exception:
-                    _WFRes = None  # type: ignore
-                if _WFRes is not None and isinstance(result, _WFRes):
-                    return getattr(result, "value", None)
-                # If get_status returned dict/str, pass through; otherwise return model
-                return result
+            # Build a per-tool wrapper bound to this workflow name
+            def _make_wrapper(bound_wname: str):
+                async def _wrapper(**kwargs):
+                    # Context will be injected by FastMCP using the special annotation below
+                    ctx: MCPContext = kwargs.pop("__context__")
+                    # Start workflow and wait for completion
+                    result_ids = await _workflow_run(ctx, bound_wname, kwargs)
+                    run_id = result_ids["run_id"]
+                    result = await _wait_for_completion(ctx, run_id)
+                    # Unwrap WorkflowResult to match the original function's return type
+                    try:
+                        from mcp_agent.executor.workflow import WorkflowResult as _WFRes
+                    except Exception:
+                        _WFRes = None  # type: ignore
+                    if _WFRes is not None and isinstance(result, _WFRes):
+                        return getattr(result, "value", None)
+                    # If get_status returned dict/str, pass through; otherwise return model
+                    return result
 
-            # Attach introspection metadata to match the original function
-            ann = dict(getattr(fn, "__annotations__", {}))
+                return _wrapper
 
-            # Choose a context kwarg name unlikely to clash with user params
-            ctx_param_name = "ctx"
-            from mcp.server.fastmcp import Context as _Ctx
+            _wrapper = _make_wrapper(_wname)
 
-            ann[ctx_param_name] = _Ctx
-            ann["return"] = getattr(fn, "__annotations__", {}).get("return", return_ann)
-            _wrapper.__annotations__ = ann
-            _wrapper.__name__ = name
-            _wrapper.__doc__ = description or (fn.__doc__ or "")
+            # Create adapter that removes app_ctx from the exposed signature
+            # but still passes it through when the workflow runs
 
-            # Build a fake signature containing original params plus context kwarg
-            params = list(sig.parameters.values())
-            ctx_param = inspect.Parameter(
-                ctx_param_name,
-                kind=inspect.Parameter.KEYWORD_ONLY,
-                annotation=_Ctx,
+            # Filter out app_ctx from the signature since it's internal
+            filtered_params = []
+            filtered_annotations = {}
+            orig_annotations = getattr(fn, "__annotations__", {})
+
+            for param in sig.parameters.values():
+                # Skip app_ctx parameter - it will be injected by the workflow
+                if param.name == "app_ctx":
+                    continue
+                filtered_params.append(param)
+                if param.name in orig_annotations:
+                    filtered_annotations[param.name] = orig_annotations[param.name]
+
+            # Add return annotation if present
+            if "return" in orig_annotations:
+                filtered_annotations["return"] = orig_annotations["return"]
+
+            # Create filtered signature for FastMCP, but include a keyword-only
+            # 'ctx' param annotated as MCPContext so FastMCP can inject it.
+            try:
+                ctx_param = inspect.Parameter(
+                    name="ctx",
+                    kind=inspect.Parameter.KEYWORD_ONLY,
+                    default=None,
+                    annotation=MCPContext,
+                )
+                params_for_schema = filtered_params + [ctx_param]
+                filtered_annotations["ctx"] = MCPContext
+            except Exception:
+                params_for_schema = filtered_params
+            filtered_sig = inspect.Signature(
+                parameters=params_for_schema, return_annotation=sig.return_annotation
             )
-            _wrapper.__signature__ = inspect.Signature(
-                parameters=params + [ctx_param], return_annotation=return_ann
-            )
 
-            # FastMCP expects the actual kwarg name for context; it detects it by annotation
-            # We need to map the injected kwarg inside the wrapper body. Achieve this by
-            # creating a thin adapter that renames the injected context kwarg.
-            async def _adapter(**kw):
-                # Receive validated args plus injected context kwarg
-                if ctx_param_name not in kw:
-                    raise ToolError("Context not provided")
-                # Rename to the placeholder expected by _wrapper
-                kw["__context__"] = kw.pop(ctx_param_name)
+            async def _adapter(
+                ctx: MCPContext | None = None,
+                context: MCPContext | None = None,
+                **kw,
+            ):
+                # Prefer explicit ctx; some FastMCP versions may use 'context'
+                ctx_obj = ctx or context
+                if ctx_obj is not None:
+                    try:
+                        _set_upstream_from_request_ctx_if_available(ctx_obj)
+                    except Exception:
+                        pass
+                    kw["__context__"] = ctx_obj
+                else:
+                    kw["__context__"] = None
                 return await _wrapper(**kw)
 
-            # Copy the visible signature/annotations to adapter for correct schema
-            _adapter.__annotations__ = _wrapper.__annotations__
-            _adapter.__name__ = _wrapper.__name__
-            _adapter.__doc__ = _wrapper.__doc__
-            _adapter.__signature__ = _wrapper.__signature__
+            # Expose a filtered signature (no app_ctx/ctx/context/**kw) for schema,
+            # but keep actual parameters (ctx/context/**kw) to receive FastMCP Context.
+            _adapter.__name__ = _tname
+            _adapter.__doc__ = description or (fn.__doc__ or "")
+            _adapter.__signature__ = filtered_sig
+            _adapter.__annotations__ = filtered_annotations
 
             # Register the main tool with the same signature as original
             mcp.add_tool(
                 _adapter,
-                name=name,
+                name=_tname,
                 description=description or (fn.__doc__ or ""),
                 structured_output=structured_output,
             )
-            registered.add(name)
+            registered.add(_tname)
 
             # Also register a per-run status tool: <tool-name>-get_status
-            status_tool_name = f"{name}-get_status"
+            status_tool_name = f"{_tname}-get_status"
             if status_tool_name not in registered:
 
-                @mcp.tool(name=status_tool_name)
-                async def _sync_status(ctx: MCPContext, run_id: str) -> Dict[str, Any]:
-                    return await _workflow_status(
-                        ctx, run_id=run_id, workflow_name=workflow_name
-                    )
+                def _make_sync_status(bound_wname: str):
+                    @mcp.tool(name=status_tool_name)
+                    async def _sync_status(
+                        ctx: MCPContext, run_id: str
+                    ) -> Dict[str, Any]:
+                        try:
+                            _set_upstream_from_request_ctx_if_available(ctx)
+                        except Exception:
+                            pass
+                        return await _workflow_status(
+                            ctx, run_id=run_id, workflow_name=bound_wname
+                        )
 
+                    return _sync_status
+
+                _make_sync_status(_wname)
                 registered.add(status_tool_name)
 
         elif mode == "async":
             # Create named aliases for async: <name>-async-run and <name>-get_status
-            run_tool_name = f"{name}-async-run"
-            status_tool_name = f"{name}-get_status"
+            run_tool_name = f"{_tname}-async-run"
+            status_tool_name = f"{_tname}-get_status"
 
             if run_tool_name not in registered:
 
-                @mcp.tool(name=run_tool_name)
-                async def _alias_run(
-                    ctx: MCPContext, run_parameters: Dict[str, Any] | None = None
-                ) -> Dict[str, str]:
-                    return await _workflow_run(ctx, workflow_name, run_parameters or {})
+                def _make_alias_run(bound_wname: str):
+                    @mcp.tool(name=run_tool_name)
+                    async def _alias_run(
+                        ctx: MCPContext, run_parameters: Dict[str, Any] | None = None
+                    ) -> Dict[str, str]:
+                        try:
+                            _set_upstream_from_request_ctx_if_available(ctx)
+                        except Exception:
+                            pass
+                        return await _workflow_run(
+                            ctx, bound_wname, run_parameters or {}
+                        )
 
+                    return _alias_run
+
+                _make_alias_run(_wname)
                 registered.add(run_tool_name)
 
             if status_tool_name not in registered:
 
-                @mcp.tool(name=status_tool_name)
-                async def _alias_status(ctx: MCPContext, run_id: str) -> Dict[str, Any]:
-                    return await _workflow_status(
-                        ctx, run_id=run_id, workflow_name=workflow_name
-                    )
+                def _make_alias_status(bound_wname: str):
+                    @mcp.tool(name=status_tool_name)
+                    async def _alias_status(
+                        ctx: MCPContext, run_id: str
+                    ) -> Dict[str, Any]:
+                        try:
+                            _set_upstream_from_request_ctx_if_available(ctx)
+                        except Exception:
+                            pass
+                        return await _workflow_status(
+                            ctx, run_id=run_id, workflow_name=bound_wname
+                        )
 
+                    return _alias_status
+
+                _make_alias_status(_wname)
                 registered.add(status_tool_name)
 
     _set_registered_function_tools(mcp, registered)
@@ -725,6 +928,7 @@ def create_workflow_specific_tools(
         ctx: MCPContext,
         run_parameters: Dict[str, Any] | None = None,
     ) -> Dict[str, str]:
+        _set_upstream_from_request_ctx_if_available(ctx)
         return await _workflow_run(ctx, workflow_name, run_parameters)
 
     @mcp.tool(
@@ -737,6 +941,7 @@ def create_workflow_specific_tools(
         """,
     )
     async def get_status(ctx: MCPContext, run_id: str) -> Dict[str, Any]:
+        _set_upstream_from_request_ctx_if_available(ctx)
         return await _workflow_status(ctx, run_id=run_id, workflow_name=workflow_name)
 
 
@@ -792,6 +997,7 @@ async def _workflow_run(
     **kwargs: Any,
 ) -> Dict[str, str]:
     # Resolve workflows and app context irrespective of startup mode
+    # This now returns a context with upstream_session already set
     workflows_dict, app_context = _resolve_workflows_and_context(ctx)
     if not workflows_dict or not app_context:
         raise ToolError("Server context not available for MCPApp Server.")
@@ -802,9 +1008,20 @@ async def _workflow_run(
     # Get the workflow class
     workflow_cls = workflows_dict[workflow_name]
 
+    # Bind the app-level logger (cached) to this per-request context so logs
+    # emitted from AutoWorkflow path forward upstream even outside request_ctx.
+    try:
+        app = _get_attached_app(ctx.fastmcp)
+        if app is not None and getattr(app, "name", None):
+            from mcp_agent.logging.logger import get_logger as _get_logger
+
+            _get_logger(f"mcp_agent.{app.name}", context=app_context)
+    except Exception:
+        pass
+
     # Create and initialize the workflow instance using the factory method
     try:
-        # Create workflow instance
+        # Create workflow instance with context that has upstream_session
         workflow = await workflow_cls.create(name=workflow_name, context=app_context)
 
         run_parameters = run_parameters or {}
@@ -839,6 +1056,11 @@ async def _workflow_run(
 async def _workflow_status(
     ctx: MCPContext, run_id: str, workflow_name: str | None = None
 ) -> Dict[str, Any]:
+    # Ensure upstream session so status-related logs are forwarded
+    try:
+        _set_upstream_from_request_ctx_if_available(ctx)
+    except Exception:
+        pass
     workflow_registry: WorkflowRegistry | None = _resolve_workflow_registry(ctx)
 
     if not workflow_registry:

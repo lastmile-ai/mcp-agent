@@ -189,7 +189,13 @@ class MCPApp:
     def logger(self):
         if self._logger is None:
             session_id = self._context.session_id if self._context else None
-            self._logger = get_logger(f"mcp_agent.{self.name}", session_id=session_id)
+            self._logger = get_logger(
+                f"mcp_agent.{self.name}", session_id=session_id, context=self._context
+            )
+        else:
+            # Update the logger's bound context in case upstream_session was set after logger creation
+            if self._context and hasattr(self._logger, '_bound_context'):
+                self._logger._bound_context = self._context
         return self._logger
 
     async def initialize(self):
@@ -541,11 +547,112 @@ class MCPApp:
         """
 
         import asyncio as _asyncio
+        import inspect as _inspect
         from mcp_agent.executor.workflow import Workflow as _Workflow
 
-        async def _invoke_target(*args, **kwargs):
+        # Determine if the function requests a FastMCP Context param; if so, shim it out
+        _has_ctx_param = False
+        try:
+            sig = _inspect.signature(fn)
+            params = list(sig.parameters.values())
+            # A param is considered a context param if it's annotated as FastMCP Context
+            try:
+                from mcp.server.fastmcp import Context as _Ctx  # type: ignore
+            except Exception:
+                _Ctx = None  # type: ignore
+            for p in params:
+                if (
+                    p.annotation is not _inspect._empty
+                    and _Ctx is not None
+                    and p.annotation is _Ctx
+                ):
+                    _has_ctx_param = True
+                    break
+                if p.name == "ctx":
+                    _has_ctx_param = True
+                    break
+        except Exception:
+            _has_ctx_param = False
+
+        async def _invoke_target(workflow_self, *args, **kwargs):
+            # The workflow_self is the fresh instance created by Workflow.create()
             # Support both async and sync callables
-            res = fn(*args, **kwargs)
+            call_kwargs = dict(kwargs)
+
+            # Check if the function expects an app context parameter
+            # Look for parameters named 'app_ctx' or with mcp_agent.core.context.Context type annotation
+            import inspect as _inspect
+
+            sig = _inspect.signature(fn)
+            app_context_param_name = None
+
+            for param_name, param in sig.parameters.items():
+                # Check if parameter is named app_ctx
+                if param_name == "app_ctx":
+                    app_context_param_name = param_name
+                    break
+                # Check if parameter has mcp_agent Context type annotation (not FastMCP Context)
+                if param.annotation != _inspect.Parameter.empty:
+                    annotation_str = str(param.annotation)
+                    # Look for mcp_agent.core.context.Context specifically
+                    if "mcp_agent.core.context.Context" in annotation_str or (
+                        "Context" in annotation_str and param_name == "app_ctx"
+                    ):
+                        app_context_param_name = param_name
+                        break
+
+            # If function expects app context, provide the workflow's context
+            if app_context_param_name and workflow_self._context:
+                import sys
+
+                print(
+                    f"[DEBUG] _invoke_target: Passing workflow context to parameter '{app_context_param_name}'",
+                    file=sys.stderr,
+                )
+                print(
+                    f"[DEBUG] _invoke_target: Context has upstream_session: {workflow_self._context.upstream_session is not None}",
+                    file=sys.stderr,
+                )
+                print(
+                    f"[DEBUG] _invoke_target: Context.app: {workflow_self._context.app}",
+                    file=sys.stderr,
+                )
+                if workflow_self._context.app:
+                    print(
+                        f"[DEBUG] _invoke_target: App.name: {workflow_self._context.app.name}",
+                        file=sys.stderr,
+                    )
+                    print(
+                        f"[DEBUG] _invoke_target: App.context.upstream_session: {workflow_self._context.app.context.upstream_session is not None}",
+                        file=sys.stderr,
+                    )
+                call_kwargs[app_context_param_name] = workflow_self._context
+
+            # Handle FastMCP ctx parameter separately (for backward compatibility)
+            if _has_ctx_param and "ctx" not in call_kwargs:
+                # FastMCP ctx parameter (set to None during workflow run)
+                call_kwargs["ctx"] = None
+
+            # Emit a high-signal log from inside AutoWorkflow before calling the target
+            try:
+                _app_for_log = getattr(workflow_self, "_context", None)
+                _app_for_log = getattr(_app_for_log, "app", None)
+                if _app_for_log and getattr(_app_for_log, "logger", None):
+                    _app_for_log.logger.info(
+                        f"AutoWorkflow[{workflow_name}]: invoking tool function",
+                        data={
+                            "has_upstream_session": bool(
+                                _app_for_log.context.upstream_session
+                            )
+                            if getattr(_app_for_log, "context", None)
+                            else None
+                        },
+                    )
+            except Exception:
+                pass
+
+            res = fn(*args, **call_kwargs)
+
             if _asyncio.iscoroutine(res):
                 res = await res
 
@@ -562,16 +669,83 @@ class MCPApp:
             return res
 
         async def _run(self, *args, **kwargs):  # type: ignore[no-redef]
-            return await _invoke_target(*args, **kwargs)
+            # The 'self' here is the fresh workflow instance created by Workflow.create()
+            # For AutoWorkflow to behave like BasicAgentWorkflow, we need to ensure
+            # the workflow instance's context is properly set up
+
+            # Debug: log the workflow instance and its context
+            import sys
+
+            print(
+                f"[DEBUG AutoWorkflow] Running AutoWorkflow_{workflow_name}",
+                file=sys.stderr,
+            )
+            print(
+                f"[DEBUG AutoWorkflow] self._context: {self._context}", file=sys.stderr
+            )
+            if self._context:
+                print(
+                    f"[DEBUG AutoWorkflow] Context has upstream_session: {self._context.upstream_session is not None}",
+                    file=sys.stderr,
+                )
+                print(
+                    f"[DEBUG AutoWorkflow] Context.app: {self._context.app}",
+                    file=sys.stderr,
+                )
+
+            # Emit a high-signal log from AutoWorkflow.run start
+            try:
+                _app_for_log = getattr(self, "_context", None)
+                _app_for_log = getattr(_app_for_log, "app", None)
+                if _app_for_log and getattr(_app_for_log, "logger", None):
+                    _app_for_log.logger.info(
+                        f"AutoWorkflow[{workflow_name}]: run starting",
+                        data={
+                            "has_upstream_session": bool(
+                                _app_for_log.context.upstream_session
+                            )
+                            if getattr(_app_for_log, "context", None)
+                            else None
+                        },
+                    )
+            except Exception:
+                pass
+
+            # Now invoke the original function with the workflow instance
+            return await _invoke_target(self, *args, **kwargs)
 
         # Decorate run with engine-specific decorator
         decorated_run = self.workflow_run(_run)
 
         # Build the Workflow subclass dynamically
+        # Build a param-source proxy for schema generation that removes any FastMCP Context parameter
+        def _make_param_source_proxy(original):
+            try:
+                sig = _inspect.signature(original)
+                params = [p for p in sig.parameters.values() if p.name != "ctx"]
+                proxy_params = params
+
+                def _proxy(*args, **kwargs):
+                    return None
+
+                # Copy annotations sans ctx
+                ann = dict(getattr(original, "__annotations__", {}))
+                if "ctx" in ann:
+                    ann.pop("ctx", None)
+                _proxy.__annotations__ = ann
+                _proxy.__signature__ = _inspect.Signature(
+                    parameters=proxy_params, return_annotation=sig.return_annotation
+                )
+                return _proxy
+            except Exception:
+                return original
+
+        param_source_proxy = _make_param_source_proxy(fn)
+
         cls_dict: Dict[str, Any] = {
             "__doc__": description or (fn.__doc__ or ""),
             "run": decorated_run,
-            "__mcp_agent_param_source_fn__": fn,
+            "__mcp_agent_param_source_fn__": param_source_proxy,
         }
         if mark_sync_tool:
             cls_dict["__mcp_agent_sync_tool__"] = True
