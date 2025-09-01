@@ -22,6 +22,7 @@ from mcp_agent.executor.temporal.workflow_signal import (
 )
 from mcp_agent.executor.workflow_signal import Signal
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.mcp.client_proxy import log_via_proxy, ask_via_proxy
 
 if TYPE_CHECKING:
     from temporalio.client import WorkflowHandle
@@ -246,6 +247,13 @@ class Workflow(ABC, Generic[T], ContextDependent):
             f"Workflow started with workflow ID: {self._workflow_id}, run ID: {self._run_id}"
         )
 
+        # Hint the logger with the current run_id for Temporal proxy fallback
+        try:
+            if self.context.config.execution_engine == "temporal":
+                setattr(self._logger, "_temporal_run_id", self._run_id)
+        except Exception:
+            pass
+
         # Define the workflow execution function
         async def _execute_workflow():
             try:
@@ -358,6 +366,61 @@ class Workflow(ABC, Generic[T], ContextDependent):
             run_id=self._run_id,
             workflow_id=self._workflow_id,
         )
+
+    # Engine-aware helpers to unify upstream interactions
+    async def log_upstream(
+        self,
+        level: str,
+        namespace: str,
+        message: str,
+        data: Dict[str, Any] | None = None,
+    ):
+        if self.context.config.execution_engine == "temporal":
+            try:
+                await log_via_proxy(
+                    self.context.server_registry,
+                    run_id=self._run_id or "",
+                    level=level,
+                    namespace=namespace,
+                    message=message,
+                    data=data or {},
+                )
+            except Exception:
+                pass
+        else:
+            # asyncio: use local logger
+            if level == "debug":
+                self._logger.debug(message, **(data or {}))
+            elif level == "warning":
+                self._logger.warning(message, **(data or {}))
+            elif level == "error":
+                self._logger.error(message, **(data or {}))
+            else:
+                self._logger.info(message, **(data or {}))
+
+    async def ask_user(
+        self, prompt: str, metadata: Dict[str, Any] | None = None
+    ) -> Any:
+        if self.context.config.execution_engine == "temporal":
+            try:
+                res = await ask_via_proxy(
+                    self.context.server_registry,
+                    run_id=self._run_id or "",
+                    prompt=prompt,
+                    metadata=metadata or {},
+                )
+                if isinstance(res, dict):
+                    return res.get("result") if "result" in res else res
+                return res
+            except Exception as e:
+                return {"error": str(e)}
+        else:
+            handler = getattr(self.context, "human_input_handler", None)
+            if not handler:
+                return None
+            if asyncio.iscoroutinefunction(handler):  # type: ignore[arg-type]
+                return await handler({"prompt": prompt, "metadata": metadata or {}})
+            return handler({"prompt": prompt, "metadata": metadata or {}})
 
     async def resume(
         self, signal_name: str | None = "resume", payload: str | None = None

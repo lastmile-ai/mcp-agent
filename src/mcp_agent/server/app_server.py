@@ -7,6 +7,7 @@ import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional, Set, Tuple, Type, TYPE_CHECKING
+import asyncio
 
 from mcp.server.fastmcp import Context as MCPContext, FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
@@ -28,6 +29,25 @@ if TYPE_CHECKING:
     from mcp_agent.core.context import Context
 
 logger = get_logger(__name__)
+# Simple in-memory registry mapping workflow run_id -> upstream session handle.
+# Allows external workers (e.g., Temporal) to relay logs/prompts through MCPApp.
+_RUN_SESSION_REGISTRY: Dict[str, Any] = {}
+_RUN_SESSION_LOCK = asyncio.Lock()
+
+
+async def _register_run_session(run_id: str, session: Any) -> None:
+    async with _RUN_SESSION_LOCK:
+        _RUN_SESSION_REGISTRY[run_id] = session
+
+
+async def _unregister_run_session(run_id: str) -> None:
+    async with _RUN_SESSION_LOCK:
+        _RUN_SESSION_REGISTRY.pop(run_id, None)
+
+
+async def _get_run_session(run_id: str) -> Any | None:
+    async with _RUN_SESSION_LOCK:
+        return _RUN_SESSION_REGISTRY.get(run_id)
 
 
 class ServerContext(ContextDependent):
@@ -529,6 +549,61 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         else:
             logger.error(f"Failed to cancel workflow {workflow_name} with ID {run_id}")
 
+    # region Proxy tools for external runners (e.g., Temporal workers)
+
+    @mcp.tool(name="workflows-proxy-log")
+    async def proxy_log(
+        run_id: str,
+        level: str,
+        namespace: str,
+        message: str,
+        data: Dict[str, Any] | None = None,
+    ) -> bool:
+        session = await _get_run_session(run_id)
+        if not session:
+            return False
+        lvl = str(level).lower()
+        if lvl not in ("debug", "info", "warning", "error"):
+            lvl = "info"
+        try:
+            await session.send_log_message(
+                level=lvl,  # type: ignore[arg-type]
+                data={
+                    "message": message,
+                    "namespace": namespace,
+                    "data": data or {},
+                },
+                logger=namespace,
+            )
+            return True
+        except Exception:
+            return False
+
+    @mcp.tool(name="workflows-proxy-ask")
+    async def proxy_ask(
+        run_id: str,
+        prompt: str,
+        metadata: Dict[str, Any] | None = None,
+    ) -> Dict[str, Any]:
+        app = _get_attached_app(mcp)
+        if app is None or not getattr(app.context, "human_input_handler", None):
+            return {"error": "human_input not available"}
+        handler = app.context.human_input_handler
+        try:
+            if asyncio.iscoroutinefunction(handler):  # type: ignore[arg-type]
+                result = await handler(
+                    {"prompt": prompt, "metadata": metadata or {}, "run_id": run_id}
+                )
+            else:
+                result = handler(
+                    {"prompt": prompt, "metadata": metadata or {}, "run_id": run_id}
+                )
+            return {"result": result}
+        except Exception as e:
+            return {"error": str(e)}
+
+    # endregion
+
     # endregion
 
     return mcp
@@ -977,6 +1052,15 @@ async def _workflow_run(
             f"Workflow {workflow_name} started with workflow ID {execution.workflow_id} and run ID {execution.run_id}. Parameters: {run_parameters}"
         )
 
+        # Register upstream session for this run so external workers can proxy logs/prompts
+        try:
+            if execution.run_id is not None:
+                await _register_run_session(
+                    execution.run_id, getattr(ctx, "session", None)
+                )
+        except Exception:
+            pass
+
         return {
             "workflow_id": execution.workflow_id,
             "run_id": execution.run_id,
@@ -1006,6 +1090,14 @@ async def _workflow_status(
     status = await workflow_registry.get_workflow_status(
         run_id=run_id, workflow_id=workflow_id
     )
+
+    # Cleanup run registry on terminal states
+    try:
+        state = str(status.get("status", "")).lower()
+        if state in ("completed", "error", "cancelled"):
+            await _unregister_run_session(run_id)
+    except Exception:
+        pass
 
     return status
 

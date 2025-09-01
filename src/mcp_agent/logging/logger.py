@@ -129,6 +129,39 @@ class Logger:
             data=data,
             **extra_event_fields,
         )
+        # If we are running under Temporal (logger tagged with a run_id) and we
+        # don't yet have an upstream session, opportunistically relay via proxy
+        # to keep the user-facing code unchanged.
+        try:
+            if (
+                extra_event_fields.get("upstream_session") is None
+                and getattr(self, "_temporal_run_id", None)
+                and getattr(self, "_bound_context", None) is not None
+            ):
+                from mcp_agent.mcp.client_proxy import (
+                    log_via_proxy as _log_proxy,
+                )  # lazy import
+
+                server_registry = getattr(self._bound_context, "server_registry", None)
+                run_id = getattr(self, "_temporal_run_id", "")
+                if server_registry and run_id:
+                    # Fire-and-forget best-effort proxy log; don't block emission
+                    try:
+                        loop = self._ensure_event_loop()
+                        loop.create_task(
+                            _log_proxy(
+                                server_registry,
+                                run_id=run_id,
+                                level=str(etype),
+                                namespace=self.namespace,
+                                message=message,
+                                data=data,
+                            )
+                        )
+                    except Exception:
+                        pass
+        except Exception:
+            pass
         self._emit_event(evt)
 
     def debug(
