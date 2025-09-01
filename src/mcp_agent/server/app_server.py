@@ -35,6 +35,7 @@ logger = get_logger(__name__)
 # Allows external workers (e.g., Temporal) to relay logs/prompts through MCPApp.
 _RUN_SESSION_REGISTRY: Dict[str, Any] = {}
 _RUN_SESSION_LOCK = asyncio.Lock()
+_PENDING_PROMPTS: Dict[str, Dict[str, Any]] = {}
 
 
 async def _register_run_session(run_id: str, session: Any) -> None:
@@ -631,18 +632,31 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
     # Removed MCP tools for internal proxying in favor of private HTTP routes
 
     @mcp.tool(name="human_input.submit")
-    async def human_input_submit(
-        request_id: str, text: str, workflow_id: str | None = None
-    ) -> Dict[str, Any]:
-        """Client replies to a human_input_request. Signal the Temporal workflow via the registry mapping.
+    async def human_input_submit(request_id: str, text: str) -> Dict[str, Any]:
+        """Client replies to a human_input_request; signal the Temporal workflow."""
+        app_ref = _get_attached_app(mcp)
+        if app_ref is None or app_ref.context is None:
+            return {"ok": False, "error": "server not ready"}
+        info = _PENDING_PROMPTS.pop(request_id, None)
+        if not info:
+            return {"ok": False, "error": "unknown request_id"}
+        try:
+            from mcp_agent.executor.temporal import TemporalExecutor
 
-        Note: For a full implementation you may want to persist request_id -> (workflow_id, run_id, signal_name),
-        but for now we only pass run_id inside client payloads if needed. This endpoint is a thin placeholder
-        that can be extended later to call TemporalClient.signal_workflow.
-        """
-        # Best-effort stub; you can wire to TemporalClient.signal_workflow here if desired.
-        # Returning ok=True helps the client UX.
-        return {"ok": True, "request_id": request_id, "text": text}
+            executor = app_ref.context.executor
+            if not isinstance(executor, TemporalExecutor):
+                return {"ok": False, "error": "temporal executor not active"}
+            client = await executor.ensure_client()
+            handle = client.get_workflow_handle(
+                workflow_id=info.get("workflow_id"), run_id=info.get("run_id")
+            )
+            await handle.signal(
+                info.get("signal_name", "human_input"),
+                {"request_id": request_id, "text": text},
+            )
+            return {"ok": True}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
 
     # endregion
 

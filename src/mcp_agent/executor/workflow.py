@@ -22,7 +22,7 @@ from mcp_agent.executor.temporal.workflow_signal import (
 )
 from mcp_agent.executor.workflow_signal import Signal
 from mcp_agent.logging.logger import get_logger
-from mcp_agent.mcp.client_proxy import log_via_proxy, ask_via_proxy
+# (Temporal path now uses activities; HTTP proxy helpers unused here)
 
 if TYPE_CHECKING:
     from temporalio.client import WorkflowHandle
@@ -376,51 +376,53 @@ class Workflow(ABC, Generic[T], ContextDependent):
         data: Dict[str, Any] | None = None,
     ):
         if self.context.config.execution_engine == "temporal":
+            # Route via Temporal activity for determinism
             try:
-                await log_via_proxy(
-                    self.context.server_registry,
-                    run_id=self._run_id or "",
-                    level=level,
-                    namespace=namespace,
-                    message=message,
-                    data=data or {},
+                act = self.context.task_registry.get_activity("mcp_forward_log")
+                await self.executor.execute(
+                    act,
+                    self._run_id or "",
+                    level,
+                    namespace,
+                    message,
+                    data or {},
                 )
             except Exception:
                 pass
+            return
+        # asyncio: use local logger
+        if level == "debug":
+            self._logger.debug(message, **(data or {}))
+        elif level == "warning":
+            self._logger.warning(message, **(data or {}))
+        elif level == "error":
+            self._logger.error(message, **(data or {}))
         else:
-            # asyncio: use local logger
-            if level == "debug":
-                self._logger.debug(message, **(data or {}))
-            elif level == "warning":
-                self._logger.warning(message, **(data or {}))
-            elif level == "error":
-                self._logger.error(message, **(data or {}))
-            else:
-                self._logger.info(message, **(data or {}))
+            self._logger.info(message, **(data or {}))
 
     async def ask_user(
         self, prompt: str, metadata: Dict[str, Any] | None = None
     ) -> Any:
         if self.context.config.execution_engine == "temporal":
+            # Route via Temporal activity for determinism; returns request_id or error
             try:
-                res = await ask_via_proxy(
-                    self.context.server_registry,
-                    run_id=self._run_id or "",
-                    prompt=prompt,
-                    metadata=metadata or {},
+                act = self.context.task_registry.get_activity("mcp_request_user_input")
+                return await self.executor.execute(
+                    act,
+                    self.context.session_id or "",
+                    self.id or self.name,
+                    self._run_id or "",
+                    prompt,
+                    (metadata or {}).get("signal_name", "human_input"),
                 )
-                if isinstance(res, dict):
-                    return res.get("result") if "result" in res else res
-                return res
             except Exception as e:
                 return {"error": str(e)}
-        else:
-            handler = getattr(self.context, "human_input_handler", None)
-            if not handler:
-                return None
-            if asyncio.iscoroutinefunction(handler):  # type: ignore[arg-type]
-                return await handler({"prompt": prompt, "metadata": metadata or {}})
-            return handler({"prompt": prompt, "metadata": metadata or {}})
+        handler = getattr(self.context, "human_input_handler", None)
+        if not handler:
+            return None
+        if asyncio.iscoroutinefunction(handler):  # type: ignore[arg-type]
+            return await handler({"prompt": prompt, "metadata": metadata or {}})
+        return handler({"prompt": prompt, "metadata": metadata or {}})
 
     async def resume(
         self, signal_name: str | None = "resume", payload: str | None = None

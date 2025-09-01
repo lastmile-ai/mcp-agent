@@ -176,7 +176,7 @@ class TemporalExecutor(Executor):
         try:
             result = await workflow.execute_activity(
                 activity_task,
-                args=args,
+                *args,
                 task_queue=self.config.task_queue,
                 schedule_to_close_timeout=schedule_to_close,
                 retry_policy=retry_policy,
