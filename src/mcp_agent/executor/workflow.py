@@ -200,6 +200,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
                 Special kwargs that are extracted and not passed to run():
                 - __mcp_agent_workflow_id: Optional workflow ID to use (instead of auto-generating)
                 - __mcp_agent_task_queue: Optional task queue to use (instead of default from config)
+                - __mcp_agent_upstream_session: Optional session to use for LLM calls
 
         Returns:
             WorkflowExecution: The execution details including run ID and workflow ID
@@ -214,6 +215,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
         # Using __mcp_agent_ prefix to avoid conflicts with user parameters
         provided_workflow_id = kwargs.pop("__mcp_agent_workflow_id", None)
         provided_task_queue = kwargs.pop("__mcp_agent_task_queue", None)
+        provided_upstream_session = kwargs.pop("__mcp_agent_upstream_session", None)
 
         self.update_status("scheduled")
 
@@ -274,6 +276,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
                     # TODO: jerron - cancel task not working for temporal
                     tasks.append(run_task)
                 else:
+                    self.context.upstream_session.set(provided_upstream_session)
                     run_task = asyncio.create_task(self.run(*args, **kwargs))
                     cancel_task = asyncio.create_task(self._cancel_task())
                     tasks.extend([run_task, cancel_task])

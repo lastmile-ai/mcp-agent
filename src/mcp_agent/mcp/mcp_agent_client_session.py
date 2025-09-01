@@ -11,6 +11,7 @@ from opentelemetry.propagate import inject
 
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from mcp import ClientNotification, ClientRequest, ClientSession
+from mcp.server.session import ServerSession
 from mcp.shared.session import (
     ReceiveResultT,
     ReceiveNotificationT,
@@ -92,8 +93,10 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
         message_handler: MessageHandlerFnT | None = None,
         client_info: Implementation | None = None,
         context: Optional["Context"] = None,
+        upstream_session: Optional[ServerSession] = None,
     ):
         ContextDependent.__init__(self, context=context)
+        self.context.upstream_session.set(upstream_session)
 
         if sampling_callback is None:
             sampling_callback = self._handle_sampling_callback
@@ -336,7 +339,7 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
         params: CreateMessageRequestParams,
     ) -> CreateMessageResult | ErrorData:
         logger.info(f"Handling sampling request: {params}")
-        server_session = self.context.upstream_session
+        server_session = self.context.upstream_session.get()
         if server_session is None:
             # Enhanced sampling with human approval workflow
             return await self._sampling_handler.handle_sampling_with_human_approval(params)

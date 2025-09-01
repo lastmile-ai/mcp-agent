@@ -4,7 +4,6 @@ mcp-agent workflows and agents as MCP tools.
 """
 
 import json
-import copy
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional, Set, Tuple, Type, TYPE_CHECKING
@@ -12,6 +11,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Type, TYPE_CHECKING
 from mcp.server.fastmcp import Context as MCPContext, FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.fastmcp.tools import Tool as FastTool
+from mcp.server.session import ServerSession
 
 from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
@@ -125,12 +125,7 @@ def _resolve_workflows_and_context(
     # Fall back to app attached to FastMCP
     app: MCPApp | None = _get_attached_app(ctx.fastmcp)
     if app is not None:
-        mcp_context = ctx
-        # Create a copy of the app context, since we don't want to attach this session to the
-        # global context
-        ctx = copy.deepcopy(app.context)
-        ctx.upstream_session = mcp_context.session
-        return app.workflows, ctx
+        return app.workflows, app.context
 
     return None, None
 
@@ -285,7 +280,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             A dict with workflow_id and run_id for the started workflow run, can be passed to
             workflows/get_status, workflows/resume, and workflows/cancel.
         """
-        return await _workflow_run(ctx, workflow_name, run_parameters, **kwargs)
+        return await _workflow_run(ctx, workflow_name, run_parameters, ctx.session, **kwargs)
 
     @mcp.tool(name="workflows-get_status")
     async def get_workflow_status(
@@ -451,7 +446,7 @@ def create_workflow_specific_tools(
         ctx: MCPContext,
         run_parameters: Dict[str, Any] | None = None,
     ) -> Dict[str, str]:
-        return await _workflow_run(ctx, workflow_name, run_parameters)
+        return await _workflow_run(ctx, workflow_name, run_parameters, ctx.session)
 
     @mcp.tool(
         name=f"workflows-{workflow_name}-get_status",
@@ -515,6 +510,7 @@ async def _workflow_run(
     ctx: MCPContext,
     workflow_name: str,
     run_parameters: Dict[str, Any] | None = None,
+    upstream_session: ServerSession | None = None,
     **kwargs: Any,
 ) -> Dict[str, str]:
     # Resolve workflows and app context irrespective of startup mode
@@ -544,6 +540,8 @@ async def _workflow_run(
             run_parameters["__mcp_agent_workflow_id"] = workflow_id
         if task_queue:
             run_parameters["__mcp_agent_task_queue"] = task_queue
+        if upstream_session:
+            run_parameters["__mcp_agent_upstream_session"] = upstream_session
 
         # Run the workflow asynchronously and get its ID
         execution = await workflow.run_async(**run_parameters)

@@ -58,7 +58,6 @@ app = MCPApp(
     settings=settings
 )
 
-
 @app.workflow
 class HaikuWorkflow(Workflow[str]):
     """
@@ -81,8 +80,7 @@ class HaikuWorkflow(Workflow[str]):
 
         haiku_agent = Agent(
             name="poet",
-            instruction="""You are an agent with access to a tool that helps you write
-            haikus.""",
+            instruction="""You are an agent with access to a tool that helps you write haikus.""",
             server_names=["haiku_server"],
         )
 

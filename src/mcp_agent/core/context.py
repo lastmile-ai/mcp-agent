@@ -6,11 +6,12 @@ import asyncio
 import concurrent.futures
 from typing import Any, List, Optional, TYPE_CHECKING
 import warnings
+from contextvars import ContextVar
 
 from pydantic import BaseModel, ConfigDict
 
-from mcp import ServerSession
 from mcp.server.fastmcp import FastMCP
+from mcp.server.session import ServerSession
 
 from opentelemetry import trace
 
@@ -65,7 +66,6 @@ class Context(BaseModel):
     human_input_handler: Optional[HumanInputCallback] = None
     elicitation_handler: Optional[ElicitationCallback] = None
     signal_notification: Optional[SignalWaitCallback] = None
-    upstream_session: Optional[ServerSession] = None  # TODO: saqadri - figure this out
     model_selector: Optional[ModelSelector] = None
     session_id: str | None = None
     app: Optional["MCPApp"] = None
@@ -89,8 +89,10 @@ class Context(BaseModel):
     # Token counting and cost tracking
     token_counter: Optional[TokenCounter] = None
 
-    # Store the currently active LLM instance for MCP sampling callbacks
-    active_llm: Optional[Any] = None  # AugmentedLLM instance
+    # Use a ContextVar to store the upstream session, so different invocations do not clash
+    upstream_session: ContextVar[ServerSession | None] = ContextVar(
+        "upstream_session", default=None
+    )
 
     model_config = ConfigDict(
         extra="allow",

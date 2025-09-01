@@ -137,10 +137,6 @@ class ServerRegistry:
             else None
         )
 
-        # Record the upstream session (if any) in the context
-        from mcp_agent.core.context import Context
-        ctx_with_session = Context(upstream_session=upstream_session)
-
         if config.transport == "stdio":
             if not config.command and not config.args:
                 raise ValueError(
@@ -158,7 +154,7 @@ class ServerRegistry:
                     read_stream,
                     write_stream,
                     read_timeout_seconds,
-                    ctx_with_session,
+                    upstream_session=upstream_session,
                 )
                 async with session:
                     logger.info(
@@ -212,7 +208,7 @@ class ServerRegistry:
                     read_stream,
                     write_stream,
                     read_timeout_seconds,
-                    ctx_with_session
+                    upstream_session=upstream_session,
                 )
 
                 if session_id_callback and isinstance(session, MCPAgentClientSession):
@@ -252,7 +248,7 @@ class ServerRegistry:
                     read_stream,
                     write_stream,
                     read_timeout_seconds,
-                    ctx_with_session
+                    upstream_session=upstream_session,
                 )
                 async with session:
                     logger.info(
@@ -277,7 +273,7 @@ class ServerRegistry:
                     read_stream,
                     write_stream,
                     read_timeout_seconds,
-                    ctx_with_session
+                    upstream_session=upstream_session,
                 )
                 async with session:
                     logger.info(

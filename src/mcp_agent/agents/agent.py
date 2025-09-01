@@ -196,13 +196,6 @@ class Agent(BaseModel):
                 from mcp_agent.core.context import get_current_context
                 self.context = get_current_context()
 
-            # Prefer a helper if/when Context switches to task-local binding
-            if hasattr(self.context, "set_active_llm"):
-                self.context.set_active_llm(self.llm)
-            else:
-                self.context.active_llm = self.llm
-
-            self.context.active_llm = self.llm
             return self.llm
 
     async def get_token_node(self, return_all_matches: bool = False):

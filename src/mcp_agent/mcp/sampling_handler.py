@@ -16,6 +16,7 @@ from mcp.types import (
     ImageContent,
     SamplingMessage,
 )
+from mcp.server.fastmcp.exceptions import ToolError
 
 from mcp_agent.core.context_dependent import ContextDependent
 from mcp_agent.logging.logger import get_logger
@@ -23,6 +24,7 @@ from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     RequestParams as LLMRequestParams,
 )
+from mcp_agent.workflows.llm.llm_selector import ModelSelector
 
 if TYPE_CHECKING:
     from mcp_agent.core.context import Context
@@ -77,7 +79,7 @@ class SamplingHandler(ContextDependent):
         try:
             if not self.context.human_input_handler:
                 logger.warning(
-                    "No human input handler available, auto-approving request"
+                    f"No human input handler available, auto-approving request"
                 )
                 return params, ""
 
@@ -153,41 +155,28 @@ Respond with:
     async def _generate_with_active_llm_provider(
         self, params: CreateMessageRequestParams
     ) -> CreateMessageResult | None:
-        """Generate using active LLM's provider with improved error handling"""
-        try:
-            active_llm = self.context.active_llm
-            if not active_llm:
-                logger.error("No active LLM provider available")
-                return None
-
-            provider_class = active_llm.__class__
-            if not provider_class:
-                logger.error(
-                    f"No provider class found for active LLM provider: {getattr(active_llm, 'provider', 'unknown')}"
-                )
-                return None
-
-            return await self._call_provider_directly(provider_class, params)
-
-        except AttributeError as e:
-            logger.error(f"Failed to access active LLM provider: {e}")
-            return None
-        except Exception as e:
-            logger.error(f"Unexpected error in LLM provider generation: {e}")
-            return None
-
-    async def _call_provider_directly(
-        self,
-        provider_class: type[AugmentedLLM],
-        params: CreateMessageRequestParams,
-    ) -> CreateMessageResult | None:
-        """Call provider API directly without tool execution to avoid recursion"""
-        provider_name = getattr(provider_class, "__name__", "Unknown")
+        """Generate response using the active LLM provider directly to avoid recursion"""
 
         try:
-            llm = self._create_provider_instance(provider_class)
-            if not llm:
-                return None
+            # use the active model selector from context or fall back to the defaults
+            model_selector = self.context.model_selector or ModelSelector()
+            if params.modelPreferences:
+                model_info = model_selector.select_best_model(params.modelPreferences)
+                logger.info(f"Selected model based on preferences {model_info}")
+
+                # break circular dependency by importing here
+                from mcp_agent.workflows.factory import create_llm
+                llm = create_llm(agent_name="sampling",
+                                 server_names=[],
+                                 instruction=None,
+                                 provider=model_info.provider,
+                                 model=model_info.name,
+                                 request_params=None,
+                                 context=None)
+            else:
+                # fall back to default
+                raise ToolError("Model preferences must be provided for sampling requests")
+
 
             messages = self._extract_message_content(params.messages)
             request_params = self._build_llm_request_params(params)
@@ -196,7 +185,7 @@ Respond with:
                 message=messages, request_params=request_params
             )
 
-            logger.info(f"Successfully generated response with {provider_name}")
+            logger.info(f"Successfully generated response")
             final_request_params = llm.get_request_params(
                 self._build_llm_request_params(params)
             )
@@ -207,17 +196,10 @@ Respond with:
                 model=model_name or "unknown",
             )
 
-        except ImportError as e:
-            logger.error(f"Provider {provider_name} dependencies not available: {e}")
-            return None
-        except AttributeError as e:
-            logger.error(f"Provider {provider_name} missing required methods: {e}")
-            return None
-        except ValueError as e:
-            logger.error(f"Invalid parameters for provider {provider_name}: {e}")
-            return None
         except Exception as e:
-            logger.error(f"Unexpected error calling provider {provider_name}: {e}")
+            import traceback
+            logger.info(traceback.format_exc())
+            logger.error(f"Unexpected error calling LLM: {e}")
             return None
 
     def _create_provider_instance(
