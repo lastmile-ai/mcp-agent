@@ -79,7 +79,7 @@ class SamplingHandler(ContextDependent):
         try:
             if not self.context.human_input_handler:
                 logger.warning(
-                    f"No human input handler available, auto-approving request"
+                    "No human input handler available, auto-approving request"
                 )
                 return params, ""
 
@@ -185,7 +185,7 @@ Respond with:
                 message=messages, request_params=request_params
             )
 
-            logger.info(f"Successfully generated response")
+            logger.info("Successfully generated response")
             final_request_params = llm.get_request_params(
                 self._build_llm_request_params(params)
             )
