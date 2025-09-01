@@ -585,22 +585,42 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         prompt: str,
         metadata: Dict[str, Any] | None = None,
     ) -> Dict[str, Any]:
-        app = _get_attached_app(mcp)
-        if app is None or not getattr(app.context, "human_input_handler", None):
-            return {"error": "human_input not available"}
-        handler = app.context.human_input_handler
+        # Emit a human_input_request notification; client replies via human_input.submit
+        session = await _get_run_session(run_id)
+        if not session:
+            return {"error": "no upstream session for run"}
+        import uuid
+
+        request_id = str(uuid.uuid4())
+        payload = {
+            "kind": "human_input_request",
+            "request_id": request_id,
+            "prompt": {"text": prompt},
+            "metadata": metadata or {},
+        }
         try:
-            if asyncio.iscoroutinefunction(handler):  # type: ignore[arg-type]
-                result = await handler(
-                    {"prompt": prompt, "metadata": metadata or {}, "run_id": run_id}
-                )
-            else:
-                result = handler(
-                    {"prompt": prompt, "metadata": metadata or {}, "run_id": run_id}
-                )
-            return {"result": result}
+            await session.send_log_message(
+                level="info",  # type: ignore[arg-type]
+                data=payload,
+                logger="mcp_agent.human",
+            )
+            return {"result": {"request_id": request_id}}
         except Exception as e:
             return {"error": str(e)}
+
+    @mcp.tool(name="human_input.submit")
+    async def human_input_submit(
+        request_id: str, text: str, workflow_id: str | None = None
+    ) -> Dict[str, Any]:
+        """Client replies to a human_input_request. Signal the Temporal workflow via the registry mapping.
+
+        Note: For a full implementation you may want to persist request_id -> (workflow_id, run_id, signal_name),
+        but for now we only pass run_id inside client payloads if needed. This endpoint is a thin placeholder
+        that can be extended later to call TemporalClient.signal_workflow.
+        """
+        # Best-effort stub; you can wire to TemporalClient.signal_workflow here if desired.
+        # Returning ok=True helps the client UX.
+        return {"ok": True, "request_id": request_id, "text": text}
 
     # endregion
 

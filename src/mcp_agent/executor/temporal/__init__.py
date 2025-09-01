@@ -36,6 +36,7 @@ from mcp_agent.executor.temporal.workflow_signal import TemporalSignalHandler
 from mcp_agent.executor.workflow_signal import SignalHandler
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.utils.common import unwrap
+from mcp_agent.executor.temporal.system_activities import SystemActivities
 
 if TYPE_CHECKING:
     from mcp_agent.app import MCPApp
@@ -489,6 +490,11 @@ async def create_temporal_worker_for_app(app: "MCPApp"):
 
         # Collect activities from the global registry
         activity_registry = running_app.context.task_registry
+
+        # Register system activities (logging, human input proxy)
+        sys_acts = SystemActivities(context=running_app.context)
+        app.workflow_task()(sys_acts.forward_log)
+        app.workflow_task()(sys_acts.request_user_input)
 
         for name in activity_registry.list_activities():
             activities.append(activity_registry.get_activity(name))
