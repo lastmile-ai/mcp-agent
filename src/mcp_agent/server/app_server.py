@@ -10,6 +10,8 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Type, TYPE_CHECKING
 import asyncio
 
 from mcp.server.fastmcp import Context as MCPContext, FastMCP
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.fastmcp.tools import Tool as FastTool
 
@@ -276,6 +278,71 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             # Don't clean up the MCPApp here - let the caller handle that
             pass
 
+    # Helper: install internal HTTP routes (not MCP tools)
+    def _install_internal_routes(mcp_server: FastMCP) -> None:
+        @mcp_server.custom_route(
+            "/internal/workflows/log", methods=["POST"], include_in_schema=False
+        )
+        async def _internal_workflows_log(request: Request):
+            body = await request.json()
+            run_id = body.get("run_id")
+            level = str(body.get("level", "info")).lower()
+            namespace = body.get("namespace") or "mcp_agent"
+            message = body.get("message") or ""
+            data = body.get("data") or {}
+
+            session = await _get_run_session(run_id)
+            if not session:
+                return JSONResponse(
+                    {"ok": False, "error": "no session for run"}, status_code=404
+                )
+            if level not in ("debug", "info", "warning", "error"):
+                level = "info"
+            try:
+                await session.send_log_message(
+                    level=level,  # type: ignore[arg-type]
+                    data={
+                        "message": message,
+                        "namespace": namespace,
+                        "data": data,
+                    },
+                    logger=namespace,
+                )
+                return JSONResponse({"ok": True})
+            except Exception as e:
+                return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+        @mcp_server.custom_route(
+            "/internal/human/prompts", methods=["POST"], include_in_schema=False
+        )
+        async def _internal_human_prompts(request: Request):
+            body = await request.json()
+            run_id = body.get("run_id")
+            prompt = body.get("prompt") or {}
+            metadata = body.get("metadata") or {}
+
+            session = await _get_run_session(run_id)
+            if not session:
+                return JSONResponse({"error": "no session for run"}, status_code=404)
+            import uuid
+
+            request_id = str(uuid.uuid4())
+            payload = {
+                "kind": "human_input_request",
+                "request_id": request_id,
+                "prompt": prompt if isinstance(prompt, dict) else {"text": str(prompt)},
+                "metadata": metadata,
+            }
+            try:
+                await session.send_log_message(
+                    level="info",  # type: ignore[arg-type]
+                    data=payload,
+                    logger="mcp_agent.human",
+                )
+                return JSONResponse({"request_id": request_id})
+            except Exception as e:
+                return JSONResponse({"error": str(e)}, status_code=500)
+
     # Create or attach FastMCP server
     if app.mcp:
         # Using an externally provided FastMCP instance: attach app and context
@@ -294,6 +361,11 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         create_workflow_tools(mcp, server_context)
         # Register function-declared tools (from @app.tool/@app.async_tool)
         create_declared_function_tools(mcp, server_context)
+        # Install internal HTTP routes
+        try:
+            _install_internal_routes(mcp)
+        except Exception:
+            pass
     else:
         mcp = FastMCP(
             name=app.name or "mcp_agent_server",
@@ -307,6 +379,11 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         # Store the server on the app so it's discoverable and can be extended further
         app.mcp = mcp
         setattr(mcp, "_mcp_agent_app", app)
+        # Install internal HTTP routes
+        try:
+            _install_internal_routes(mcp)
+        except Exception:
+            pass
 
     # Register logging/setLevel handler so client can adjust verbosity dynamically
     # This enables MCP logging capability in InitializeResult.capabilities.logging
@@ -551,62 +628,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
 
     # region Proxy tools for external runners (e.g., Temporal workers)
 
-    @mcp.tool(name="workflows-proxy-log")
-    async def proxy_log(
-        run_id: str,
-        level: str,
-        namespace: str,
-        message: str,
-        data: Dict[str, Any] | None = None,
-    ) -> bool:
-        session = await _get_run_session(run_id)
-        if not session:
-            return False
-        lvl = str(level).lower()
-        if lvl not in ("debug", "info", "warning", "error"):
-            lvl = "info"
-        try:
-            await session.send_log_message(
-                level=lvl,  # type: ignore[arg-type]
-                data={
-                    "message": message,
-                    "namespace": namespace,
-                    "data": data or {},
-                },
-                logger=namespace,
-            )
-            return True
-        except Exception:
-            return False
-
-    @mcp.tool(name="workflows-proxy-ask")
-    async def proxy_ask(
-        run_id: str,
-        prompt: str,
-        metadata: Dict[str, Any] | None = None,
-    ) -> Dict[str, Any]:
-        # Emit a human_input_request notification; client replies via human_input.submit
-        session = await _get_run_session(run_id)
-        if not session:
-            return {"error": "no upstream session for run"}
-        import uuid
-
-        request_id = str(uuid.uuid4())
-        payload = {
-            "kind": "human_input_request",
-            "request_id": request_id,
-            "prompt": {"text": prompt},
-            "metadata": metadata or {},
-        }
-        try:
-            await session.send_log_message(
-                level="info",  # type: ignore[arg-type]
-                data=payload,
-                logger="mcp_agent.human",
-            )
-            return {"result": {"request_id": request_id}}
-        except Exception as e:
-            return {"error": str(e)}
+    # Removed MCP tools for internal proxying in favor of private HTTP routes
 
     @mcp.tool(name="human_input.submit")
     async def human_input_submit(
