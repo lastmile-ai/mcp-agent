@@ -1,10 +1,5 @@
 """
-Workflow MCP Server Example
-
-This example demonstrates three approaches to creating agents and workflows:
-1. Traditional workflow-based approach with manual agent creation
-2. Programmatic agent configuration using AgentConfig
-3. Declarative agent configuration using FastMCPApp decorators
+A simple workflow server which generates haikus on request using a tool.
 """
 
 import asyncio
