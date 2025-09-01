@@ -126,81 +126,15 @@ def _set_upstream_from_request_ctx_if_available(ctx: MCPContext) -> None:
         app: MCPApp | None = _get_attached_app(ctx.fastmcp)
         if app is not None and getattr(app, "context", None) is not None:
             # Set on global app context so the logger can access it
-            old_session = app.context.upstream_session
+            # Previously captured; no need to keep old value
             # Use direct assignment for Pydantic model
             app.context.upstream_session = session
-            import sys
-
-            # Verify it was actually set
-            actual_value = app.context.upstream_session
-            # Check via model_dump to see what Pydantic thinks
-            if hasattr(app.context, "model_dump"):
-                model_data = app.context.model_dump(exclude_none=False)
-                us_from_dump = model_data.get("upstream_session")
-                print(
-                    f"[DEBUG] Set upstream_session on app.context for {app.name}, old={old_session is not None}, new={session is not None}, actual_after_set={actual_value is not None}, from_model_dump={us_from_dump is not None}, context_id={id(app.context)}",
-                    file=sys.stderr,
-                )
-            else:
-                print(
-                    f"[DEBUG] Set upstream_session on app.context for {app.name}, old={old_session is not None}, new={session is not None}, actual_after_set={actual_value is not None}, context_id={id(app.context)}",
-                    file=sys.stderr,
-                )
-            try:
-                logger.debug(
-                    f"Set upstream_session on app.context for {app.name}",
-                    data={
-                        "server": getattr(ctx.fastmcp, "name", None),
-                        "has_session": session is not None,
-                        "app_name": app.name,
-                        "old_session": old_session is not None,
-                    },
-                )
-            except Exception:
-                pass
+            # Minimal, no diagnostics
             return
         else:
-            import sys
-
-            print(
-                f"[DEBUG] Could not set upstream_session - app={app is not None}, context={app.context is not None if app else False}",
-                file=sys.stderr,
-            )
-            logger.debug(
-                "Could not set upstream_session - no app or context",
-                data={
-                    "has_app": app is not None,
-                    "has_context": app.context if app else None,
-                },
-            )
-
-    # Fallback: try the low-level request_ctx contextvar
-    try:
-        from mcp.server.lowlevel.server import request_ctx as _lowlevel_request_ctx  # type: ignore
-
-        try:
-            req_ctx = _lowlevel_request_ctx.get()
-        except LookupError:
             return
 
-        session = getattr(req_ctx, "session", None)
-        if session is None:
-            return
-
-        app: MCPApp | None = _get_attached_app(ctx.fastmcp)
-        if app is not None and getattr(app, "context", None) is not None:
-            # Set on global app context; listeners read from get_current_context()
-            app.context.upstream_session = session
-            try:
-                logger.debug(
-                    "Attached upstream_session via lowlevel request_ctx",
-                    data={"server": getattr(ctx.fastmcp, "name", None)},
-                )
-            except Exception:
-                pass
-    except Exception:
-        # Best-effort only
-        pass
+    # No low-level request_ctx fallback: upstream_session must come from app context
 
 
 def _resolve_workflows_and_context(
@@ -714,7 +648,7 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
 
         if mode == "sync" and fn is not None:
             sig = inspect.signature(fn)
-            return_ann = sig.return_annotation
+            # Preserve original return annotation implicitly via FastMCP tool
 
             # Build a per-tool wrapper bound to this workflow name
             def _make_wrapper(bound_wname: str):

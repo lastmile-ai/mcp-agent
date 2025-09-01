@@ -194,7 +194,7 @@ class MCPApp:
             )
         else:
             # Update the logger's bound context in case upstream_session was set after logger creation
-            if self._context and hasattr(self._logger, '_bound_context'):
+            if self._context and hasattr(self._logger, "_bound_context"):
                 self._logger._bound_context = self._context
         return self._logger
 

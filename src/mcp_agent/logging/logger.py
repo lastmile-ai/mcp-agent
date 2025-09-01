@@ -118,22 +118,7 @@ class Logger:
         except Exception:
             pass
 
-        # 2) Fallback to low-level request_ctx if available (in-request logs)
-        if "upstream_session" not in extra_event_fields:
-            try:
-                from mcp.server.lowlevel.server import (
-                    request_ctx as _lowlevel_request_ctx,
-                )  # type: ignore
-
-                try:
-                    req_ctx = _lowlevel_request_ctx.get()
-                    extra_event_fields["upstream_session"] = getattr(
-                        req_ctx, "session", None
-                    )
-                except LookupError:
-                    pass
-            except Exception:
-                pass
+        # No further fallback: rely solely on the bound context for upstream_session
 
         evt = Event(
             type=etype,
