@@ -62,11 +62,11 @@ def test_deploy_command_help(runner):
     assert result.exit_code == 0
 
     # remove all lines, dashes, etc
-    ascii_text = re.sub(r'[^A-z0-9.,-]+', '', result.stdout)
+    ascii_text = re.sub(r"[^A-z0-9.,-]+", "", result.stdout)
     # remove any remnants of colour codes
-    without_escape_codes = re.sub(r'\[[0-9 ]+m', '', ascii_text)
+    without_escape_codes = re.sub(r"\[[0-9 ]+m", "", ascii_text)
     # normalize spaces and convert to lower case
-    clean_text = ' '.join(without_escape_codes.split()).lower()
+    clean_text = " ".join(without_escape_codes.split()).lower()
 
     # Expected options from the updated CLAUDE.md spec
     assert "--config-dir" in clean_text or "-c" in clean_text
@@ -131,7 +131,9 @@ def test_deploy_command_basic(runner, temp_config_dir):
 def test_deploy_command_no_secrets(runner, temp_config_dir):
     """Test deploy command with --no-secrets flag when a secrets file DOES NOT exist."""
     # Run with --no-secrets flag and --dry-run to avoid real deployment
-    with patch("mcp_agent.cli.cloud.commands.deploy.main.wrangler_deploy") as mock_deploy:
+    with patch(
+        "mcp_agent.cli.cloud.commands.deploy.main.wrangler_deploy"
+    ) as mock_deploy:
         # Mock the wrangler deployment
         mock_deploy.return_value = None
 
@@ -162,7 +164,9 @@ def test_deploy_command_no_secrets(runner, temp_config_dir):
 def test_deploy_command_no_secrets_with_existing_secrets(runner, temp_config_dir):
     """Test deploy command with --no-secrets flag when a secrets file DOES exist."""
     # Run with --no-secrets flag and --dry-run to avoid real deployment
-    with patch("mcp_agent.cli.cloud.commands.deploy.main.wrangler_deploy") as mock_deploy:
+    with patch(
+        "mcp_agent.cli.cloud.commands.deploy.main.wrangler_deploy"
+    ) as mock_deploy:
         # Mock the wrangler deployment
         mock_deploy.return_value = None
 
@@ -292,7 +296,9 @@ def test_rollback_secrets_file(temp_config_dir):
         pre_deploy_secrets_content = f.read()
 
     # Call deploy_config with wrangler_deploy mocked
-    with patch("mcp_agent.cli.cloud.commands.deploy.main.wrangler_deploy") as mock_deploy:
+    with patch(
+        "mcp_agent.cli.cloud.commands.deploy.main.wrangler_deploy"
+    ) as mock_deploy:
         # Mock wrangler_deploy to prevent actual deployment
         mock_deploy.side_effect = Exception("Deployment failed")
 

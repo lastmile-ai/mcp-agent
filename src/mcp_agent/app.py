@@ -115,6 +115,17 @@ class MCPApp:
         self._model_selector = model_selector
 
         self._workflows: Dict[str, Type["Workflow"]] = {}  # id to workflow class
+        # Deferred tool declarations to register with MCP server when available
+        # Each entry: {
+        #   "name": str,
+        #   "mode": "sync" | "async",
+        #   "workflow_name": str,
+        #   "workflow_cls": Type[Workflow],
+        #   "tool_wrapper": Callable | None,
+        #   "structured_output": bool | None,
+        #   "description": str | None,
+        # }
+        self._declared_tools: list[dict[str, Any]] = []
 
         self._logger = None
         self._context: Optional[Context] = None
@@ -511,6 +522,146 @@ class MCPApp:
             return await fn(*args, **kwargs)
 
         return wrapper
+
+    def _create_workflow_from_function(
+        self,
+        fn: Callable[..., Any],
+        *,
+        workflow_name: str,
+        description: str | None = None,
+        mark_sync_tool: bool = False,
+    ) -> Type:
+        """
+        Create a Workflow subclass dynamically from a plain function.
+
+        The generated workflow class will:
+        - Have `run` implemented to call the provided function
+        - Be decorated with engine-specific run decorators via workflow_run
+        - Expose the original function for parameter schema generation
+        """
+
+        import asyncio as _asyncio
+        from mcp_agent.executor.workflow import Workflow as _Workflow
+
+        async def _invoke_target(*args, **kwargs):
+            # Support both async and sync callables
+            res = fn(*args, **kwargs)
+            if _asyncio.iscoroutine(res):
+                res = await res
+
+            # Ensure WorkflowResult return type
+            try:
+                from mcp_agent.executor.workflow import (
+                    WorkflowResult as _WorkflowResult,
+                )
+            except Exception:
+                _WorkflowResult = None  # type: ignore[assignment]
+
+            if _WorkflowResult is not None and not isinstance(res, _WorkflowResult):
+                return _WorkflowResult(value=res)
+            return res
+
+        async def _run(self, *args, **kwargs):  # type: ignore[no-redef]
+            return await _invoke_target(*args, **kwargs)
+
+        # Decorate run with engine-specific decorator
+        decorated_run = self.workflow_run(_run)
+
+        # Build the Workflow subclass dynamically
+        cls_dict: Dict[str, Any] = {
+            "__doc__": description or (fn.__doc__ or ""),
+            "run": decorated_run,
+            "__mcp_agent_param_source_fn__": fn,
+        }
+        if mark_sync_tool:
+            cls_dict["__mcp_agent_sync_tool__"] = True
+        else:
+            cls_dict["__mcp_agent_async_tool__"] = True
+
+        auto_cls = type(f"AutoWorkflow_{workflow_name}", (_Workflow,), cls_dict)
+
+        # Register with app (and apply engine-specific workflow decorator)
+        self.workflow(auto_cls, workflow_id=workflow_name)
+        return auto_cls
+
+    def tool(
+        self,
+        name: str | None = None,
+        *,
+        description: str | None = None,
+        structured_output: bool | None = None,
+    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+        """
+        Decorator to declare a synchronous MCP tool that runs via an auto-generated
+        Workflow and waits for completion before returning.
+
+        Also registers an async Workflow under the same name so that run/get_status
+        endpoints are available.
+        """
+
+        def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
+            tool_name = name or fn.__name__
+            # Construct the workflow from function
+            workflow_cls = self._create_workflow_from_function(
+                fn,
+                workflow_name=tool_name,
+                description=description,
+                mark_sync_tool=True,
+            )
+
+            # Defer tool registration until the MCP server is created
+            self._declared_tools.append(
+                {
+                    "name": tool_name,
+                    "mode": "sync",
+                    "workflow_name": tool_name,
+                    "workflow_cls": workflow_cls,
+                    "source_fn": fn,
+                    "structured_output": structured_output,
+                    "description": description or (fn.__doc__ or ""),
+                }
+            )
+
+            return fn
+
+        return decorator
+
+    def async_tool(
+        self,
+        name: str | None = None,
+        *,
+        description: str | None = None,
+    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+        """
+        Decorator to declare an asynchronous MCP tool.
+
+        Creates a Workflow class from the function and registers it so that
+        the standard per-workflow tools (run/get_status) are exposed by the server.
+        """
+
+        def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
+            workflow_name = name or fn.__name__
+            workflow_cls = self._create_workflow_from_function(
+                fn,
+                workflow_name=workflow_name,
+                description=description,
+                mark_sync_tool=False,
+            )
+            # Defer alias tool registration for run/get_status
+            self._declared_tools.append(
+                {
+                    "name": workflow_name,
+                    "mode": "async",
+                    "workflow_name": workflow_name,
+                    "workflow_cls": workflow_cls,
+                    "source_fn": fn,
+                    "structured_output": None,
+                    "description": description or (fn.__doc__ or ""),
+                }
+            )
+            return fn
+
+        return decorator
 
     def workflow_task(
         self,
