@@ -357,12 +357,10 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             if getattr(workflow_cls, "__mcp_agent_sync_tool__", False):
                 endpoints = [
                     f"{workflow_name}",
-                    f"{workflow_name}-get_status",
                 ]
             elif getattr(workflow_cls, "__mcp_agent_async_tool__", False):
                 endpoints = [
                     f"{workflow_name}",
-                    f"{workflow_name}-get_status",
                 ]
             else:
                 endpoints = [
@@ -439,7 +437,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
 
     @mcp.tool(name="workflows-get_status")
     async def get_workflow_status(
-        ctx: MCPContext, workflow_name: str, run_id: str
+        ctx: MCPContext, run_id: str, workflow_id: str | None = None
     ) -> Dict[str, Any]:
         """
         Get the status of a running workflow.
@@ -448,8 +446,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         whether it's running or completed, and any results or errors encountered.
 
         Args:
-            workflow_name: The name of the workflow to check.
-            run_id: The ID of the workflow instance to check,
+            run_id: The run ID of the workflow to check.
+            workflow_id: Optional workflow identifier (usually the tool/workflow name).
+                If omitted, the server will infer it from the run metadata when possible.
                 received from workflows/run or workflows/runs/list.
 
         Returns:
@@ -460,7 +459,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             _set_upstream_from_request_ctx_if_available(ctx)
         except Exception:
             pass
-        return await _workflow_status(ctx, run_id, workflow_name)
+        return await _workflow_status(ctx, run_id=run_id, workflow_name=workflow_id)
 
     @mcp.tool(name="workflows-resume")
     async def resume_workflow(
@@ -782,35 +781,9 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
             )
             registered.add(name_local)
 
-            status_tool_name = f"{name_local}-get_status"
-            if status_tool_name not in registered:
-
-                def _make_sync_status(bound_wname: str):
-                    status_doc = (
-                        f"Get the status of a running '{bound_wname}' workflow.\n\n"
-                        "Provide the 'run_id' returned by the run tool; the response "
-                        "includes status (running/completed/error/cancelled) and, when completed, "
-                        "the result or error details."
-                    )
-
-                    @mcp.tool(name=status_tool_name, description=status_doc)
-                    async def _sync_status(
-                        ctx: MCPContext, run_id: str
-                    ) -> Dict[str, Any]:
-                        return await _workflow_status(
-                            ctx, run_id=run_id, workflow_name=bound_wname
-                        )
-
-                    _sync_status.__doc__ = status_doc
-                    return _sync_status
-
-                _make_sync_status(wname_local)
-                registered.add(status_tool_name)
-
         elif mode == "async":
-            # Use the declared name as the async run endpoint, plus a get_status endpoint
+            # Use the declared name as the async run endpoint
             run_tool_name = f"{name_local}"
-            status_tool_name = f"{name_local}-get_status"
 
             if run_tool_name not in registered:
                 # Build a wrapper mirroring original function params (excluding app_ctx/ctx)
@@ -843,8 +816,9 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
                 base_desc = description or (fn.__doc__ or "")
                 async_note = (
                     f"\n\nThis tool starts the '{wname_local}' workflow asynchronously and returns "
-                    "'workflow_id' and 'run_id'. Use the corresponding "
-                    f"'{status_tool_name}' tool to retrieve status/results."
+                    "'workflow_id' and 'run_id'. Use the 'workflows-get_status' tool "
+                    "with the returned 'workflow_id' and the returned "
+                    "'run_id' to retrieve status/results."
                 )
                 full_desc = (base_desc or "").strip() + async_note
                 _async_wrapper.__doc__ = full_desc
@@ -915,24 +889,6 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
                     structured_output=False,
                 )
                 registered.add(run_tool_name)
-
-            if status_tool_name not in registered:
-                # Create a get_status tool with a descriptive docstring
-                status_doc = (
-                    f"Get the status of a running '{wname_local}' workflow.\n\n"
-                    "Provide the 'run_id' returned by the async run tool; the response "
-                    "includes status (running/completed/error/cancelled) and, when completed, "
-                    "the result or error details."
-                )
-
-                @mcp.tool(name=status_tool_name)
-                async def _alias_status(ctx: MCPContext, run_id: str) -> Dict[str, Any]:
-                    return await _workflow_status(
-                        ctx, run_id=run_id, workflow_name=wname_local
-                    )
-
-                _alias_status.__doc__ = status_doc
-                registered.add(status_tool_name)
 
     _set_registered_function_tools(mcp, registered)
 
