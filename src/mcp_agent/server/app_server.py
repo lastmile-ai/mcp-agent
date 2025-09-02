@@ -724,6 +724,12 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
                         _WFRes = None  # type: ignore
                     if _WFRes is not None and isinstance(result, _WFRes):
                         return getattr(result, "value", None)
+                    # If status payload returned a dict that looks like WorkflowResult, unwrap safely via 'kind'
+                    if (
+                        isinstance(result, dict)
+                        and result.get("kind") == "workflow_result"
+                    ):
+                        return result.get("value")
                     return result
 
                 return _wrapper

@@ -10,10 +10,9 @@ This example demonstrates three approaches to creating agents and workflows:
 import argparse
 import asyncio
 import os
-import logging
 from typing import Dict, Any, Optional
 
-from mcp.server.fastmcp import FastMCP, Context as MCPContext
+from mcp.server.fastmcp import FastMCP
 from mcp_agent.core.context import Context as AppContext
 
 from mcp_agent.app import MCPApp
@@ -120,7 +119,7 @@ async def grade_story(story: str, app_ctx: Optional[AppContext] = None) -> str:
     - Fact Checker: Verifies the factual consistency within the story.
     - Style Enforcer: Analyzes the story for adherence to style guidelines.
     - Grader: Compiles the feedback from the other agents into a structured report.
-    
+
     Args:
         story: The student's short story to grade
         app_ctx: Optional MCPApp context for accessing app resources and logging
@@ -128,7 +127,7 @@ async def grade_story(story: str, app_ctx: Optional[AppContext] = None) -> str:
     # Use the context's app if available for proper logging with upstream_session
     _app = app_ctx.app if app_ctx else app
     # Ensure the app's logger is bound to the current context with upstream_session
-    if _app._logger and hasattr(_app._logger, '_bound_context'):
+    if _app._logger and hasattr(_app._logger, "_bound_context"):
         _app._logger._bound_context = app_ctx
     logger = _app.logger
     logger.info(f"grade_story: Received input: {story}")
@@ -189,7 +188,7 @@ async def grade_story(story: str, app_ctx: Optional[AppContext] = None) -> str:
 async def grade_story_async(story: str, app_ctx: Optional[AppContext] = None) -> str:
     """
     Async variant of grade_story that starts a workflow run and returns IDs.
-    
+
     Args:
         story: The student's short story to grade
         app_ctx: Optional MCPApp context for accessing app resources and logging
@@ -198,7 +197,7 @@ async def grade_story_async(story: str, app_ctx: Optional[AppContext] = None) ->
     # Use the context's app if available for proper logging with upstream_session
     _app = app_ctx.app if app_ctx else app
     # Ensure the app's logger is bound to the current context with upstream_session
-    if _app._logger and hasattr(_app._logger, '_bound_context'):
+    if _app._logger and hasattr(_app._logger, "_bound_context"):
         _app._logger._bound_context = app_ctx
     logger = _app.logger
     logger.info(f"grade_story_async: Received input: {story}")

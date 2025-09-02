@@ -7,6 +7,7 @@ from typing import (
     Any,
     Dict,
     Generic,
+    Literal,
     Optional,
     TypeVar,
     TYPE_CHECKING,
@@ -53,6 +54,8 @@ class WorkflowState(BaseModel):
 
 
 class WorkflowResult(BaseModel, Generic[T]):
+    # Discriminator to disambiguate from arbitrary dicts
+    kind: Literal["workflow_result"] = "workflow_result"
     value: Optional[T] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
     start_time: float | None = None

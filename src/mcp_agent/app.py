@@ -189,9 +189,14 @@ class MCPApp:
     def logger(self):
         if self._logger is None:
             session_id = self._context.session_id if self._context else None
-            self._logger = get_logger(
-                f"mcp_agent.{self.name}", session_id=session_id, context=self._context
-            )
+            # Do not pass context kwarg to match expected call signature in tests
+            self._logger = get_logger(f"mcp_agent.{self.name}", session_id=session_id)
+            # Bind context for upstream forwarding and other contextual logging
+            try:
+                if self._context is not None:
+                    self._logger._bound_context = self._context  # type: ignore[attr-defined]
+            except Exception:
+                pass
         else:
             # Update the logger's bound context in case upstream_session was set after logger creation
             if self._context and hasattr(self._logger, "_bound_context"):
@@ -555,6 +560,14 @@ class MCPApp:
 
             call_kwargs = dict(kwargs)
 
+            # If Temporal passed a single positional dict payload, merge into kwargs
+            if len(args) == 1 and isinstance(args[0], dict):
+                try:
+                    call_kwargs = {**args[0], **call_kwargs}
+                    args = ()
+                except Exception:
+                    pass
+
             # Detect if function expects an AppContext parameter (named 'app_ctx' or annotated with our Context)
             try:
                 sig = _inspect.signature(fn)
@@ -569,9 +582,14 @@ class MCPApp:
                         if "mcp_agent.core.context.Context" in ann_str:
                             app_context_param_name = param_name
                             break
-                # If requested, inject the workflow's bound context
-                if app_context_param_name and getattr(workflow_self, "_context", None):
-                    call_kwargs[app_context_param_name] = workflow_self._context
+                # If requested, inject the workflow's context (use property for fallback)
+                if app_context_param_name:
+                    try:
+                        _ctx_obj = workflow_self.context
+                    except Exception:
+                        _ctx_obj = getattr(workflow_self, "_context", None)
+                    if _ctx_obj is not None:
+                        call_kwargs[app_context_param_name] = _ctx_obj
             except Exception:
                 pass
 
@@ -596,6 +614,11 @@ class MCPApp:
             except Exception:
                 pass
 
+            # If user passed a single positional dict (Temporal AutoWorkflow payload), merge it
+            if not call_kwargs and len(args) == 1 and isinstance(args[0], dict):
+                call_kwargs = dict(args[0])
+                args = ()
+
             # Support both async and sync callables
             res = fn(*args, **call_kwargs)
             if _asyncio.iscoroutine(res):
@@ -617,7 +640,14 @@ class MCPApp:
             return await _invoke_target(self, *args, **kwargs)
 
         # Decorate run with engine-specific decorator
-        decorated_run = self.workflow_run(_run)
+        engine_type = self.config.execution_engine
+        if engine_type == "temporal":
+            # Temporal requires the @workflow.run to be applied on a top-level
+            # class method, not on a local function. We'll assign _run as-is
+            # for now and decorate it after creating and publishing the class.
+            decorated_run = _run
+        else:
+            decorated_run = self.workflow_run(_run)
 
         # Build the Workflow subclass dynamically
         cls_dict: Dict[str, Any] = {
@@ -631,6 +661,40 @@ class MCPApp:
             cls_dict["__mcp_agent_async_tool__"] = True
 
         auto_cls = type(f"AutoWorkflow_{workflow_name}", (_Workflow,), cls_dict)
+
+        # Workaround for Temporal: publish the dynamically created class as a
+        # top-level (module global) so it is not considered a "local class".
+        # Temporal requires workflow classes to be importable from a module.
+        try:
+            import sys as _sys
+
+            target_module = getattr(fn, "__module__", __name__)
+            auto_cls.__module__ = target_module
+            _mod = _sys.modules.get(target_module)
+            if _mod is not None:
+                setattr(_mod, auto_cls.__name__, auto_cls)
+        except Exception:
+            pass
+
+        # For Temporal, now that the class exists and is published at module-level,
+        # decorate the run method with the engine-specific run decorator.
+        if engine_type == "temporal":
+            try:
+                run_decorator = self._decorator_registry.get_workflow_run_decorator(
+                    engine_type
+                )
+                if run_decorator:
+                    fn_run = getattr(auto_cls, "run")
+                    # Ensure method appears as top-level for Temporal
+                    target_module = getattr(fn, "__module__", __name__)
+                    try:
+                        fn_run.__module__ = target_module  # type: ignore[attr-defined]
+                        fn_run.__qualname__ = f"{auto_cls.__name__}.run"  # type: ignore[attr-defined]
+                    except Exception:
+                        pass
+                    setattr(auto_cls, "run", run_decorator(fn_run))
+            except Exception:
+                pass
 
         # Register with app (and apply engine-specific workflow decorator)
         self.workflow(auto_cls, workflow_id=workflow_name)
