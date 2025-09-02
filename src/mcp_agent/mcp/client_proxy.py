@@ -43,7 +43,12 @@ async def log_via_proxy(
 ) -> bool:
     base = _resolve_gateway_url(server_registry, server_name, gateway_url)
     url = f"{base}/internal/workflows/log"
-    async with httpx.AsyncClient(timeout=10) as client:
+    headers: Dict[str, str] = {}
+    tok = os.environ.get("MCP_GATEWAY_TOKEN")
+    if tok:
+        headers["X-MCP-Gateway-Token"] = tok
+    timeout = float(os.environ.get("MCP_GATEWAY_TIMEOUT", "10"))
+    async with httpx.AsyncClient(timeout=timeout) as client:
         r = await client.post(
             url,
             json={
@@ -53,6 +58,7 @@ async def log_via_proxy(
                 "message": message,
                 "data": data or {},
             },
+            headers=headers,
         )
         if r.status_code >= 400:
             return False
@@ -71,7 +77,12 @@ async def ask_via_proxy(
 ) -> Dict[str, Any]:
     base = _resolve_gateway_url(server_registry, server_name, gateway_url)
     url = f"{base}/internal/human/prompts"
-    async with httpx.AsyncClient(timeout=10) as client:
+    headers: Dict[str, str] = {}
+    tok = os.environ.get("MCP_GATEWAY_TOKEN")
+    if tok:
+        headers["X-MCP-Gateway-Token"] = tok
+    timeout = float(os.environ.get("MCP_GATEWAY_TIMEOUT", "10"))
+    async with httpx.AsyncClient(timeout=timeout) as client:
         r = await client.post(
             url,
             json={
@@ -79,6 +90,7 @@ async def ask_via_proxy(
                 "prompt": {"text": prompt},
                 "metadata": metadata or {},
             },
+            headers=headers,
         )
         if r.status_code >= 400:
             return {"error": r.text}
@@ -96,8 +108,15 @@ async def notify_via_proxy(
 ) -> bool:
     base = _resolve_gateway_url(server_registry, server_name, gateway_url)
     url = f"{base}/internal/session/by-run/{run_id}/notify"
-    async with httpx.AsyncClient(timeout=10) as client:
-        r = await client.post(url, json={"method": method, "params": params or {}})
+    headers: Dict[str, str] = {}
+    tok = os.environ.get("MCP_GATEWAY_TOKEN")
+    if tok:
+        headers["X-MCP-Gateway-Token"] = tok
+    timeout = float(os.environ.get("MCP_GATEWAY_TIMEOUT", "10"))
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        r = await client.post(
+            url, json={"method": method, "params": params or {}}, headers=headers
+        )
         if r.status_code >= 400:
             return False
         resp = r.json() if r.content else {"ok": True}
@@ -115,8 +134,15 @@ async def request_via_proxy(
 ) -> Dict[str, Any]:
     base = _resolve_gateway_url(server_registry, server_name, gateway_url)
     url = f"{base}/internal/session/by-run/{run_id}/request"
-    async with httpx.AsyncClient(timeout=20) as client:
-        r = await client.post(url, json={"method": method, "params": params or {}})
+    headers: Dict[str, str] = {}
+    tok = os.environ.get("MCP_GATEWAY_TOKEN")
+    if tok:
+        headers["X-MCP-Gateway-Token"] = tok
+    timeout = float(os.environ.get("MCP_GATEWAY_TIMEOUT", "20"))
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        r = await client.post(
+            url, json={"method": method, "params": params or {}}, headers=headers
+        )
         if r.status_code >= 400:
             return {"error": r.text}
         return r.json()

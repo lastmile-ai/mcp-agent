@@ -343,18 +343,16 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         total=total,
                         message=message,
                     )
-                elif method == "notifications/resources/list_changed":
-                    await session.send_resource_list_changed()  # type: ignore[attr-defined]
-                elif method == "notifications/tools/list_changed":
-                    await session.send_tool_list_changed()  # type: ignore[attr-defined]
-                elif method == "notifications/prompts/list_changed":
-                    await session.send_prompt_list_changed()  # type: ignore[attr-defined]
                 else:
-                    # Unsupported generic notification at this layer
-                    return JSONResponse(
-                        {"ok": False, "error": f"unsupported method: {method}"},
-                        status_code=400,
-                    )
+                    # Generic passthrough using low-level RPC if available
+                    rpc = getattr(session, "rpc", None)
+                    if rpc and hasattr(rpc, "notify"):
+                        await rpc.notify(method, params)
+                    else:
+                        return JSONResponse(
+                            {"ok": False, "error": f"unsupported method: {method}"},
+                            status_code=400,
+                        )
 
                 return JSONResponse({"ok": True})
             except Exception as e:
@@ -390,7 +388,12 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                 return JSONResponse({"error": "session_not_available"}, status_code=503)
 
             try:
-                # Map a small set of supported server->client requests
+                # Prefer generic request passthrough if available
+                rpc = getattr(session, "rpc", None)
+                if rpc and hasattr(rpc, "request"):
+                    result = await rpc.request(method, params)
+                    return JSONResponse(result)
+                # Fallback: Map a small set of supported server->client requests
                 if method == "sampling/createMessage":
                     req = ServerRequest(
                         CreateMessageRequest(
@@ -455,6 +458,13 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             message = body.get("message") or ""
             data = body.get("data") or {}
 
+            # Optional shared-secret auth
+            gw_token = os.environ.get("MCP_GATEWAY_TOKEN")
+            if gw_token and request.headers.get("X-MCP-Gateway-Token") != gw_token:
+                return JSONResponse(
+                    {"ok": False, "error": "unauthorized"}, status_code=401
+                )
+
             session = await _get_run_session(run_id)
             if not session:
                 return JSONResponse(
@@ -484,6 +494,10 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             run_id = body.get("run_id")
             prompt = body.get("prompt") or {}
             metadata = body.get("metadata") or {}
+            # Optional shared-secret auth
+            gw_token = os.environ.get("MCP_GATEWAY_TOKEN")
+            if gw_token and request.headers.get("X-MCP-Gateway-Token") != gw_token:
+                return JSONResponse({"error": "unauthorized"}, status_code=401)
 
             session = await _get_run_session(run_id)
             if not session:

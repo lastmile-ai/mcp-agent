@@ -491,10 +491,12 @@ async def create_temporal_worker_for_app(app: "MCPApp"):
         # Collect activities from the global registry
         activity_registry = running_app.context.task_registry
 
-        # Register system activities (logging, human input proxy)
+        # Register system activities (logging, human input proxy, generic relays)
         sys_acts = SystemActivities(context=running_app.context)
-        app.workflow_task()(sys_acts.forward_log)
-        app.workflow_task()(sys_acts.request_user_input)
+        app.workflow_task(name="mcp_forward_log")(sys_acts.forward_log)
+        app.workflow_task(name="mcp_request_user_input")(sys_acts.request_user_input)
+        app.workflow_task(name="mcp_relay_notify")(sys_acts.relay_notify)
+        app.workflow_task(name="mcp_relay_request")(sys_acts.relay_request)
 
         for name in activity_registry.list_activities():
             activities.append(activity_registry.get_activity(name))
