@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Type, TYPE_CHECKING
 from mcp.server.fastmcp import Context as MCPContext, FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.fastmcp.tools import Tool as FastTool
+from mcp.server.session import ServerSession
 
 from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
@@ -279,7 +280,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             A dict with workflow_id and run_id for the started workflow run, can be passed to
             workflows/get_status, workflows/resume, and workflows/cancel.
         """
-        return await _workflow_run(ctx, workflow_name, run_parameters, **kwargs)
+        return await _workflow_run(ctx, workflow_name, run_parameters, ctx.session, **kwargs)
 
     @mcp.tool(name="workflows-get_status")
     async def get_workflow_status(
@@ -416,6 +417,15 @@ def create_workflow_specific_tools(
     """Create specific tools for a given workflow."""
 
     run_fn_tool = FastTool.from_function(workflow_cls.run)
+
+    # for class methods, remove the "self" parameter from the list. We don't want the LLM to provide
+    # a value for it
+    if "self" in run_fn_tool.parameters["properties"]:
+        del(run_fn_tool.parameters["properties"]["self"])
+        req = run_fn_tool.parameters.get("required", [])
+        if "self" in req:
+            req.remove("self")
+            run_fn_tool.parameters["required"] = req
     run_fn_tool_params = json.dumps(run_fn_tool.parameters, indent=2)
 
     @mcp.tool(
@@ -436,7 +446,7 @@ def create_workflow_specific_tools(
         ctx: MCPContext,
         run_parameters: Dict[str, Any] | None = None,
     ) -> Dict[str, str]:
-        return await _workflow_run(ctx, workflow_name, run_parameters)
+        return await _workflow_run(ctx, workflow_name, run_parameters, ctx.session)
 
     @mcp.tool(
         name=f"workflows-{workflow_name}-get_status",
@@ -500,6 +510,7 @@ async def _workflow_run(
     ctx: MCPContext,
     workflow_name: str,
     run_parameters: Dict[str, Any] | None = None,
+    upstream_session: ServerSession | None = None,
     **kwargs: Any,
 ) -> Dict[str, str]:
     # Resolve workflows and app context irrespective of startup mode
@@ -529,6 +540,8 @@ async def _workflow_run(
             run_parameters["__mcp_agent_workflow_id"] = workflow_id
         if task_queue:
             run_parameters["__mcp_agent_task_queue"] = task_queue
+        if upstream_session:
+            run_parameters["__mcp_agent_upstream_session"] = upstream_session
 
         # Run the workflow asynchronously and get its ID
         execution = await workflow.run_async(**run_parameters)

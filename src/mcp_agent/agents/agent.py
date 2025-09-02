@@ -189,6 +189,13 @@ class Agent(BaseModel):
                 value = getattr(self.llm, attr, None)
                 if value is not None:
                     span.set_attribute(f"llm.{attr}", value)
+
+            # Ensure a context exists before updating active LLM
+            if self.context is None:
+                # Fall back to global context for convenience; callers can also set agent.context explicitly
+                from mcp_agent.core.context import get_current_context
+                self.context = get_current_context()
+
             return self.llm
 
     async def get_token_node(self, return_all_matches: bool = False):

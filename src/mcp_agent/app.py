@@ -8,7 +8,6 @@ from typing import Any, Dict, Optional, Type, TypeVar, Callable, TYPE_CHECKING
 from datetime import timedelta
 from contextlib import asynccontextmanager
 
-from mcp import ServerSession
 from mcp.server.fastmcp import FastMCP
 from mcp_agent.core.context import Context, initialize_context, cleanup_context
 from mcp_agent.config import Settings, get_settings
@@ -67,7 +66,6 @@ class MCPApp:
         human_input_callback: HumanInputCallback | None = None,
         elicitation_callback: ElicitationCallback | None = None,
         signal_notification: SignalWaitCallback | None = None,
-        upstream_session: Optional["ServerSession"] = None,
         model_selector: ModelSelector | None = None,
     ):
         """
@@ -83,7 +81,6 @@ class MCPApp:
                 If provided, the MCPApp will add tools to the provided server instance.
             human_input_callback: Callback for handling human input
             signal_notification: Callback for getting notified on workflow signals/events.
-            upstream_session: Upstream session if the MCPApp is running as a server to an MCP client.
             initialize_model_selector: Initializes the built-in ModelSelector to help with model selection. Defaults to False.
         """
         self.name = name
@@ -111,7 +108,6 @@ class MCPApp:
         self._human_input_callback = human_input_callback
         self._elicitation_callback = elicitation_callback
         self._signal_notification = signal_notification
-        self._upstream_session = upstream_session
         self._model_selector = model_selector
 
         self._workflows: Dict[str, Type["Workflow"]] = {}  # id to workflow class
@@ -155,14 +151,6 @@ class MCPApp:
         return self.executor.execution_engine
 
     @property
-    def upstream_session(self):
-        return self._context.upstream_session
-
-    @upstream_session.setter
-    def upstream_session(self, value):
-        self._context.upstream_session = value
-
-    @property
     def workflows(self):
         return self._workflows
 
@@ -203,7 +191,6 @@ class MCPApp:
         self._context.human_input_handler = self._human_input_callback
         self._context.elicitation_handler = self._elicitation_callback
         self._context.signal_notification = self._signal_notification
-        self._context.upstream_session = self._upstream_session
         self._context.model_selector = self._model_selector
 
         # Store a reference to this app instance in the context for easier access

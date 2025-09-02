@@ -11,6 +11,8 @@ from mcp_agent.config import (
 )
 from mcp_agent.agents.agent import Agent
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
+from mcp_agent.human_input.handler import console_input_callback
+
 
 settings = Settings(
     execution_engine="asyncio",
@@ -30,7 +32,9 @@ settings = Settings(
 
 # Settings can either be specified programmatically,
 # or loaded from mcp_agent.config.yaml/mcp_agent.secrets.yaml
-app = MCPApp(name="mcp_basic_agent")  # settings=settings)
+app = MCPApp(
+    name="mcp_basic_agent", human_input_callback=console_input_callback
+)  # settings=settings)
 
 
 async def example_usage():
@@ -71,13 +75,16 @@ async def example_usage():
             )
 
             llm = await agent.attach_llm(OpenAIAugmentedLLM)
-            res = await llm.generate_str(
+            summary = await llm.generate_str(
                 [
                     "Summarise what are my prompts and resources?",
                     *combined_messages,
                 ]
             )
-            logger.info(f"Summary: {res}")
+            logger.info(f"Summary: {summary}")
+
+            haiku = await llm.generate_str("Write me a haiku")
+            logger.info(f"Haiku: {haiku}")
 
 
 if __name__ == "__main__":
