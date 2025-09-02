@@ -77,6 +77,7 @@ class RequestStructuredCompletionRequest(BaseModel):
     response_str: str
     model: str
     user: str | None = None
+    strict: bool = False
 
 
 class OpenAIAugmentedLLM(
@@ -478,6 +479,7 @@ class OpenAIAugmentedLLM(
                     model=model,
                     user=params.user
                     or getattr(self.context.config.openai, "user", None),
+                    strict=getattr(params, "strict", False),
                 ),
             )
             # TODO: saqadri (MAC) - fix request_structured_completion_task to return ensure_serializable
@@ -917,7 +919,9 @@ class OpenAICompletionTasks:
         ) as async_client:
             client = instructor.from_openai(
                 async_client,
-                mode=instructor.Mode.TOOLS_STRICT,
+                mode=instructor.Mode.TOOLS_STRICT
+                if request.strict
+                else instructor.Mode.TOOLS,
             )
 
             try:
