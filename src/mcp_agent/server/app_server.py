@@ -347,11 +347,6 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         Returns information about each workflow type including name, description, and parameters.
         This helps in making an informed decision about which workflow to run.
         """
-        # Ensure upstream session is set for any logs emitted during this call
-        try:
-            _set_upstream_from_request_ctx_if_available(ctx)
-        except Exception:
-            pass
         result: Dict[str, Dict[str, Any]] = {}
         workflows, _ = _resolve_workflows_and_context(ctx)
         workflows = workflows or {}
@@ -396,12 +391,6 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         Returns:
             A dictionary mapping workflow instance IDs to their detailed status information.
         """
-        # Ensure upstream session is set for any logs emitted during this call
-        try:
-            _set_upstream_from_request_ctx_if_available(ctx)
-        except Exception:
-            pass
-
         server_context = getattr(
             ctx.request_context, "lifespan_context", None
         ) or _get_attached_server_context(ctx.fastmcp)
@@ -434,11 +423,6 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             A dict with workflow_id and run_id for the started workflow run, can be passed to
             workflows/get_status, workflows/resume, and workflows/cancel.
         """
-        # Ensure upstream session is set before starting the workflow
-        try:
-            _set_upstream_from_request_ctx_if_available(ctx)
-        except Exception:
-            pass
         return await _workflow_run(ctx, workflow_name, run_parameters, **kwargs)
 
     @mcp.tool(name="workflows-get_status")
@@ -487,11 +471,6 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         Returns:
             True if the workflow was resumed, False otherwise.
         """
-        # Ensure upstream session is available for any status-related logs
-        try:
-            _set_upstream_from_request_ctx_if_available(ctx)
-        except Exception:
-            pass
         server_context: ServerContext = ctx.request_context.lifespan_context
         workflow_registry = server_context.workflow_registry
 
@@ -534,11 +513,6 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         Returns:
             True if the workflow was cancelled, False otherwise.
         """
-        # Ensure upstream session is available for any status-related logs
-        try:
-            _set_upstream_from_request_ctx_if_available(ctx)
-        except Exception:
-            pass
         server_context: ServerContext = ctx.request_context.lifespan_context
         workflow_registry = server_context.workflow_registry
 
@@ -936,7 +910,6 @@ def create_workflow_specific_tools(
         ctx: MCPContext,
         run_parameters: Dict[str, Any] | None = None,
     ) -> Dict[str, str]:
-        _set_upstream_from_request_ctx_if_available(ctx)
         return await _workflow_run(ctx, workflow_name, run_parameters)
 
     @mcp.tool(
@@ -949,7 +922,6 @@ def create_workflow_specific_tools(
         """,
     )
     async def get_status(ctx: MCPContext, run_id: str) -> Dict[str, Any]:
-        _set_upstream_from_request_ctx_if_available(ctx)
         return await _workflow_status(ctx, run_id=run_id, workflow_name=workflow_name)
 
 
@@ -1065,10 +1037,6 @@ async def _workflow_status(
     ctx: MCPContext, run_id: str, workflow_name: str | None = None
 ) -> Dict[str, Any]:
     # Ensure upstream session so status-related logs are forwarded
-    try:
-        _set_upstream_from_request_ctx_if_available(ctx)
-    except Exception:
-        pass
     workflow_registry: WorkflowRegistry | None = _resolve_workflow_registry(ctx)
 
     if not workflow_registry:
