@@ -1,3 +1,4 @@
+import os
 import re
 from pathlib import Path
 
@@ -21,6 +22,27 @@ def validate_project(project_dir: Path):
             )
 
     validate_entrypoint(project_dir / "main.py")
+
+    has_requirements = os.path.exists(os.path.join(project_dir, "requirements.txt"))
+    has_poetry_lock = os.path.exists(os.path.join(project_dir, "poetry.lock"))
+    has_uv_lock = os.path.exists(os.path.join(project_dir, "uv.lock"))
+
+    # Make sure only one python project dependency management is used
+    # pyproject.toml is allowed alongside lock/requirements files
+    if sum([has_requirements, has_poetry_lock, has_uv_lock]) > 1:
+        raise ValueError(
+            "Multiple Python project dependency management files found. Expected only one of: requirements.txt, poetry.lock, uv.lock"
+        )
+
+    has_pyproject = os.path.exists(os.path.join(project_dir, "pyproject.toml"))
+    if has_uv_lock and not has_pyproject:
+        raise ValueError(
+            "Invalid uv project: uv.lock found without corresponding pyproject.toml"
+        )
+    if has_poetry_lock and not has_pyproject:
+        raise ValueError(
+            "Invalid poetry project: poetry.lock found without corresponding pyproject.toml"
+        )
 
 
 def validate_entrypoint(entrypoint_path: Path):
