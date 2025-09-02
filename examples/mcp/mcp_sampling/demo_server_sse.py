@@ -30,14 +30,13 @@ if secrets_file and secrets_file.exists():
         yaml_secrets = yaml.safe_load(f) or {}
         openai_secret = yaml_secrets["openai"]
 
-
 settings = Settings(
     execution_engine="asyncio",
     logger=LoggerSettings(
         type="file",
         level="debug",
         path_settings=LogPathSettings(
-            path_pattern="logs/demo_server-{unique_id}.jsonl",
+            path_pattern="logs/demo_server_sse-{unique_id}.jsonl",
             unique_id="timestamp",
             timestamp_format="%Y%m%d_%H%M%S"),
     ),
@@ -112,7 +111,7 @@ async def main():
         logger.info(f"MCP Server settings: {mcp_server.settings}")
 
         # Run the server
-        await mcp_server.run_stdio_async()
+        await mcp_server.run_sse_async()
 
 
 if __name__ == "__main__":

@@ -2,11 +2,16 @@
 MCPAgentServer - Exposes MCPApp as MCP server, and
 mcp-agent workflows and agents as MCP tools.
 """
-
+import asyncio
 import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional, Set, Tuple, Type, TYPE_CHECKING
+from starlette.requests import Request
+from starlette.responses import PlainTextResponse
+from pydantic import BaseModel
+from pydantic_core import from_json
+from pydantic_core._pydantic_core import ValidationError
 
 from mcp.server.fastmcp import Context as MCPContext, FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
@@ -21,6 +26,7 @@ from mcp_agent.executor.workflow_registry import (
     WorkflowRegistry,
     InMemoryWorkflowRegistry,
 )
+from mcp.types import ModelPreferences, SamplingMessage, TextContent
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.mcp.mcp_server_registry import ServerRegistry
 
@@ -37,6 +43,7 @@ class ServerContext(ContextDependent):
         super().__init__(context=context, **kwargs)
         self.mcp = mcp
         self.active_agents: Dict[str, Agent] = {}
+        self.upstream_sessions: Dict[str, ServerSession] = {}
 
         # Maintain a list of registered workflow tools to avoid re-registration
         # when server context is recreated for the same FastMCP instance (e.g. during
@@ -89,6 +96,16 @@ class ServerContext(ContextDependent):
     def workflow_registry(self) -> WorkflowRegistry:
         """Get the workflow registry for this server context."""
         return self.context.workflow_registry
+
+    def register_upstream_session(self, run_id: str, session: ServerSession):
+        """Register an upstream session for a given workflow run ID."""
+        logger.info(f"Registering {type(session)} upstream session for run ID {run_id}")
+        self.upstream_sessions[run_id] = session
+
+    def get_upstream_session(self, run_id: str) -> Optional[ServerSession]:
+        """Get the upstream session for a given workflow run ID."""
+        logger.info(f"Retrieving upstream session for run ID {run_id}: {type(self.upstream_sessions.get(run_id))}")
+        return self.upstream_sessions.get(run_id)
 
 
 def _get_attached_app(mcp: FastMCP) -> MCPApp | None:
@@ -204,6 +221,8 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         app.mcp = mcp
         setattr(mcp, "_mcp_agent_app", app)
 
+    logger.info(f"{mcp.settings.host}:{mcp.settings.port}")
+
     # region Workflow Tools
 
     @mcp.tool(name="workflows-list")
@@ -280,7 +299,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             A dict with workflow_id and run_id for the started workflow run, can be passed to
             workflows/get_status, workflows/resume, and workflows/cancel.
         """
-        return await _workflow_run(ctx, workflow_name, run_parameters, ctx.session, **kwargs)
+        return await _workflow_run(ctx, workflow_name, run_parameters, **kwargs)
 
     @mcp.tool(name="workflows-get_status")
     async def get_workflow_status(
@@ -386,6 +405,82 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
 
     # endregion
 
+    logger.info("Creating custom routes")
+
+    @mcp.custom_route("/health", methods=["GET"])
+    async def health_route(request: Request) -> PlainTextResponse:
+        """
+        Health check route for the MCPApp server.
+
+        This route can be used by monitoring systems to check if the server is running.
+
+        Returns:
+            A plain text response indicating the server is healthy.
+        """
+        if "name" in request.query_params:
+            return PlainTextResponse(f"OK {request.query_params['name']}")
+        else:
+            return PlainTextResponse("OK")
+
+    @mcp.custom_route("/sampling", methods=["POST"])
+    async def sampling_route(request: Request) -> PlainTextResponse:
+        """
+        Custom route for sampling from the MCPApp's context.
+
+        Returns:
+            A dictionary containing sampled data from the app's context.
+        """
+        class SamplingRequest(BaseModel):
+            run_id: str
+            messages: List[SamplingMessage]=[]
+            system_prompt: str = "You are a helpful assistant."
+            model_preferences: ModelPreferences
+            max_tokens: int = 100
+            temperature: float = 0.7
+
+        body = await request.body()
+
+        server_context = _get_attached_server_context(mcp)
+        if not server_context:
+            return PlainTextResponse("Server context not found", status_code=500)
+
+        try:
+            req = SamplingRequest.model_validate(from_json(body))
+            run_id = req.run_id
+            messages = req.messages
+            system_prompt = req.system_prompt
+            model_preferences = req.model_preferences
+            max_tokens = req.max_tokens
+            temperature = req.temperature
+        except ValidationError as e:
+            return PlainTextResponse(f"Invalid request format: {str(e)}", status_code=400)
+
+        if not run_id:
+            return PlainTextResponse("Missing run_id in request", status_code=400)
+
+        upstream_session = server_context.get_upstream_session(run_id)
+        # if not upstream_session:
+        #     return PlainTextResponse(f"No upstream session found for run_id {run_id}", status_code=404)
+
+        async def task():
+            response = await upstream_session.create_message(
+                messages=messages,
+                system_prompt=system_prompt,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                model_preferences=model_preferences
+            )
+
+            logger.info(f"Sampling response: {response.content}")
+            if isinstance(response.content, TextContent):
+                return response.content.text
+            else:
+                return f"Sampling failed, unexpected content type '{type(response.content)}'."
+
+        # asyncio.create_task(task())
+
+        return PlainTextResponse(await task())
+
     return mcp
 
 
@@ -446,7 +541,7 @@ def create_workflow_specific_tools(
         ctx: MCPContext,
         run_parameters: Dict[str, Any] | None = None,
     ) -> Dict[str, str]:
-        return await _workflow_run(ctx, workflow_name, run_parameters, ctx.session)
+        return await _workflow_run(ctx, workflow_name, run_parameters)
 
     @mcp.tool(
         name=f"workflows-{workflow_name}-get_status",
@@ -510,7 +605,6 @@ async def _workflow_run(
     ctx: MCPContext,
     workflow_name: str,
     run_parameters: Dict[str, Any] | None = None,
-    upstream_session: ServerSession | None = None,
     **kwargs: Any,
 ) -> Dict[str, str]:
     # Resolve workflows and app context irrespective of startup mode
@@ -540,8 +634,7 @@ async def _workflow_run(
             run_parameters["__mcp_agent_workflow_id"] = workflow_id
         if task_queue:
             run_parameters["__mcp_agent_task_queue"] = task_queue
-        if upstream_session:
-            run_parameters["__mcp_agent_upstream_session"] = upstream_session
+        run_parameters["__mcp_agent_upstream_session"] = ctx.session
 
         # Run the workflow asynchronously and get its ID
         execution = await workflow.run_async(**run_parameters)
@@ -550,6 +643,10 @@ async def _workflow_run(
             f"Workflow {workflow_name} started with workflow ID {execution.workflow_id} and run ID {execution.run_id}. Parameters: {run_parameters}"
         )
 
+        # register the session
+        _get_attached_server_context(ctx.fastmcp).register_upstream_session(
+            execution.run_id, ctx.session
+        )
         return {
             "workflow_id": execution.workflow_id,
             "run_id": execution.run_id,
@@ -574,6 +671,8 @@ async def _workflow_status(
     status = await workflow_registry.get_workflow_status(
         run_id=run_id, workflow_id=workflow_id
     )
+
+    # TODO (Roman): remove run_id -> mcp mapping if status is no longer running
 
     return status
 

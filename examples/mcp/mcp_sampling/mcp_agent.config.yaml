@@ -12,6 +12,9 @@ logger:
 
 mcp:
   servers:
+    demo_server_sse:
+      transport: sse
+      url: http://localhost:8000/sse
     demo_server:
       command: "uv"
       args: ["run", "demo_server.py"]

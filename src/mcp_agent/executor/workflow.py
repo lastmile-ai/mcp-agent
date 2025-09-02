@@ -276,6 +276,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
                     # TODO: jerron - cancel task not working for temporal
                     tasks.append(run_task)
                 else:
+                    self._logger.info("Recording upstream session")
                     self.context.upstream_session.set(provided_upstream_session)
                     run_task = asyncio.create_task(self.run(*args, **kwargs))
                     cancel_task = asyncio.create_task(self._cancel_task())

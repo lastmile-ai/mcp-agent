@@ -1,11 +1,25 @@
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ModelPreferences, ModelHint, SamplingMessage, TextContent
 from mcp_agent.app import MCPApp
+from mcp_agent.config import Settings, LoggerSettings, LogPathSettings
 
 mcp = FastMCP("Haiku demo server")
 
+settings = Settings(
+    execution_engine="asyncio",
+    logger=LoggerSettings(
+        type="file",
+        level="debug",
+        path_settings=LogPathSettings(
+            path_pattern="logs/nested_server-{unique_id}.jsonl",
+            unique_id="timestamp",
+            timestamp_format="%Y%m%d_%H%M%S"),
+    ),
+)
+
 app = MCPApp(
-    name="haiku_agent"
+    name="haiku_agent",
+    settings=settings,
 )
 
 
