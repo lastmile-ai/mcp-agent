@@ -33,7 +33,6 @@ from mcp_agent.cli.secrets.processor import (
 from mcp_agent.cli.utils.ux import (
     console,
     print_deployment_header,
-    print_error,
     print_info,
     print_success,
 )

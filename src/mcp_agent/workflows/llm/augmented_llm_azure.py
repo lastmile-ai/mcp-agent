@@ -194,7 +194,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
                     "stop": params.stopSequences,
                     "tools": tools,
                 }
-                
+
                 # Add user parameter if present in params or config
                 user = params.user or getattr(self.context.config.azure, "user", None)
                 if user:
