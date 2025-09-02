@@ -19,21 +19,6 @@ class WorkflowInfo(BaseModel):
     executionStatus: Optional[str] = None
 
 
-WORKFLOW_ID_PREFIX = "wf_"
-
-
-def is_valid_workflow_id_format(workflow_id: str) -> bool:
-    """Check if the given workflow ID has a valid format.
-
-    Args:
-        workflow_id: The workflow ID to validate
-
-    Returns:
-        bool: True if the workflow ID is a valid format, False otherwise
-    """
-    return workflow_id.startswith(WORKFLOW_ID_PREFIX)
-
-
 class WorkflowAPIClient(APIClient):
     """Client for interacting with the Workflow API service over HTTP."""
 
@@ -48,13 +33,10 @@ class WorkflowAPIClient(APIClient):
             WorkflowInfo: The retrieved Workflow information
 
         Raises:
-            ValueError: If the workflow_id is invalid
+            ValueError: If the API response is invalid
             httpx.HTTPStatusError: If the API returns an error (e.g., 404, 403)
             httpx.HTTPError: If the request fails
         """
-
-        if not is_valid_workflow_id_format(workflow_id):
-            raise ValueError(f"Invalid workflow ID format: {workflow_id}")
 
         response = await self.post("/workflow/get", {"workflowId": workflow_id})
 
