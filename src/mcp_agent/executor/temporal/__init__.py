@@ -304,20 +304,22 @@ class TemporalExecutor(Executor):
 
         # Inspect the `run(self, …)` signature
         sig = inspect.signature(wf.run)
+        # Work with a signature that excludes any leading 'self' for binding/validation
         params = [p for p in sig.parameters.values() if p.name != "self"]
         has_var_positional = any(
             p.kind == inspect.Parameter.VAR_POSITIONAL for p in params
         )
         has_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params)
+        sig_no_self = inspect.Signature(parameters=params)
 
         # Determine what to pass to the start_workflow function
         # If the workflow run is varargs/kwargs (AutoWorkflow), pass kwargs as a single payload
         if has_var_keyword or has_var_positional:
             input_arg = kwargs if kwargs else (args[0] if args else None)
         else:
-            # Bind provided args/kwargs to validate and order them (use dummy self)
+            # Bind provided args/kwargs to validate and order them against signature without 'self'
             try:
-                bound = sig.bind_partial(None, *args, **kwargs)
+                bound = sig_no_self.bind_partial(*args, **kwargs)
             except TypeError as e:
                 raise ValueError(str(e))
 
