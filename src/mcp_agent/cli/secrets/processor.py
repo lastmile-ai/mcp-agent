@@ -199,6 +199,10 @@ async def process_secrets_in_config_str(
             print_warning(f"Failed to parse existing secrets YAML: {str(e)}")
             existing_config = None
 
+    # Make sure the existing config secrets are actually valid for the user
+    if existing_config:
+        await validate_config_secrets(existing_config, client)
+
     # Transform the config recursively, passing existing config for reuse
     transformed_config = await transform_config_recursive(
         input_config,
@@ -210,6 +214,23 @@ async def process_secrets_in_config_str(
     )
 
     return transformed_config
+
+
+async def validate_config_secrets(config: Dict[str, Any], client: SecretsClient):
+    """Validate the secrets in the configuration against the SecretsClient with current API key
+    to ensure they can be resolved.
+    """
+    for value in config.values():
+        if isinstance(value, str) and SECRET_ID_PATTERN.match(value):
+            # Check if the secret can be accessed
+            try:
+                if not await client.get_secret_value(value):
+                    raise ValueError(f"Unable to resolve secret: {value}")
+            except Exception as e:
+                raise ValueError(f"Error resolving secret '{value}': {str(e)}")
+        elif isinstance(value, dict):
+            # Recursively validate nested dictionaries
+            await validate_config_secrets(value, client)
 
 
 async def transform_config_recursive(

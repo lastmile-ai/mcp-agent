@@ -4,18 +4,23 @@ import os
 import re
 import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
-import typer
+from mcp_agent.cli.cloud.commands.deploy.validation import (
+    validate_entrypoint,
+    validate_project,
+)
+from typer.testing import CliRunner
+
 from mcp_agent.cli.cloud.main import app
 from mcp_agent.cli.core.constants import (
     MCP_CONFIG_FILENAME,
     MCP_DEPLOYED_SECRETS_FILENAME,
     MCP_SECRETS_FILENAME,
 )
+from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.mcp_app.mock_client import MOCK_APP_ID, MOCK_APP_NAME
-from typer.testing import CliRunner
 
 
 @pytest.fixture
@@ -274,8 +279,8 @@ def test_deploy_with_missing_env_vars():
         # Call the deploy_config function directly with missing env var
         from mcp_agent.cli.cloud.commands import deploy_config
 
-        # Call with non_interactive=True, which should fail with typer.Exit
-        with pytest.raises(typer.Exit):
+        # Call with non_interactive=True, which should fail with CLIError
+        with pytest.raises(CLIError):
             deploy_config(
                 ctx=MagicMock(),
                 app_name=MOCK_APP_NAME,
@@ -326,3 +331,305 @@ def test_rollback_secrets_file(temp_config_dir):
             assert content == pre_deploy_secrets_content, (
                 "Output file content should match original secrets"
             )
+
+
+# Wrangler Wrapper Validation Tests
+
+
+@pytest.fixture
+def valid_project_dir():
+    """Create a temporary directory with valid project structure."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        project_path = Path(temp_dir)
+
+        # Create a valid main.py with MCPApp definition
+        main_py_content = """from mcp_agent_cloud import MCPApp
+
+app = MCPApp(
+    name="test-app",
+    description="A test MCP Agent"
+)
+"""
+        main_py_path = project_path / "main.py"
+        main_py_path.write_text(main_py_content)
+
+        yield project_path
+
+
+@pytest.fixture
+def project_with_requirements():
+    """Create a temporary directory with requirements.txt."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        project_path = Path(temp_dir)
+
+        # Create main.py
+        main_py_content = """from mcp_agent_cloud import MCPApp
+
+app = MCPApp(name="test-app")
+"""
+        (project_path / "main.py").write_text(main_py_content)
+
+        # Create requirements.txt
+        (project_path / "requirements.txt").write_text(
+            "requests==2.31.0\nnumpy==1.24.0"
+        )
+
+        yield project_path
+
+
+@pytest.fixture
+def project_with_poetry():
+    """Create a temporary directory with poetry configuration."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        project_path = Path(temp_dir)
+
+        # Create main.py
+        main_py_content = """from mcp_agent_cloud import MCPApp
+
+app = MCPApp(name="test-app")
+"""
+        (project_path / "main.py").write_text(main_py_content)
+
+        # Create pyproject.toml
+        pyproject_content = """[tool.poetry]
+name = "test-app"
+version = "0.1.0"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+"""
+        (project_path / "pyproject.toml").write_text(pyproject_content)
+
+        # Create poetry.lock
+        (project_path / "poetry.lock").write_text("# Poetry lock file content")
+
+        yield project_path
+
+
+@pytest.fixture
+def project_with_uv():
+    """Create a temporary directory with uv configuration."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        project_path = Path(temp_dir)
+
+        # Create main.py
+        main_py_content = """from mcp_agent_cloud import MCPApp
+
+app = MCPApp(name="test-app")
+"""
+        (project_path / "main.py").write_text(main_py_content)
+
+        # Create pyproject.toml
+        pyproject_content = """[project]
+name = "test-app"
+version = "0.1.0"
+"""
+        (project_path / "pyproject.toml").write_text(pyproject_content)
+
+        # Create uv.lock
+        (project_path / "uv.lock").write_text("# UV lock file content")
+
+        yield project_path
+
+
+def test_validate_project_success(valid_project_dir):
+    """Test validate_project with a valid project structure."""
+    # Should not raise any exceptions
+    validate_project(valid_project_dir)
+
+
+def test_validate_project_missing_directory():
+    """Test validate_project with non-existent directory."""
+    with pytest.raises(FileNotFoundError, match="Project directory .* does not exist"):
+        validate_project(Path("/non/existent/path"))
+
+
+def test_validate_project_missing_main_py():
+    """Test validate_project with missing main.py."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        project_path = Path(temp_dir)
+
+        with pytest.raises(FileNotFoundError, match="Required file main.py is missing"):
+            validate_project(project_path)
+
+
+def test_validate_project_with_requirements_txt(project_with_requirements):
+    """Test validate_project with requirements.txt dependency management."""
+    # Should not raise any exceptions
+    validate_project(project_with_requirements)
+
+
+def test_validate_project_with_poetry(project_with_poetry):
+    """Test validate_project with poetry dependency management."""
+    # Should not raise any exceptions
+    validate_project(project_with_poetry)
+
+
+def test_validate_project_with_uv(project_with_uv):
+    """Test validate_project with uv dependency management."""
+    # Should not raise any exceptions
+    validate_project(project_with_uv)
+
+
+def test_validate_project_multiple_dependency_managers():
+    """Test validate_project with multiple dependency management files."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        project_path = Path(temp_dir)
+
+        # Create main.py
+        main_py_content = """from mcp_agent_cloud import MCPApp
+
+app = MCPApp(name="test-app")
+"""
+        (project_path / "main.py").write_text(main_py_content)
+
+        # Create multiple dependency files
+        (project_path / "requirements.txt").write_text("requests==2.31.0")
+        (project_path / "poetry.lock").write_text("# Poetry lock")
+
+        with pytest.raises(
+            ValueError,
+            match="Multiple Python project dependency management files found",
+        ):
+            validate_project(project_path)
+
+
+def test_validate_project_uv_without_pyproject():
+    """Test validate_project with uv.lock but no pyproject.toml."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        project_path = Path(temp_dir)
+
+        # Create main.py
+        main_py_content = """from mcp_agent_cloud import MCPApp
+
+app = MCPApp(name="test-app")
+"""
+        (project_path / "main.py").write_text(main_py_content)
+
+        # Create uv.lock without pyproject.toml
+        (project_path / "uv.lock").write_text("# UV lock file")
+
+        with pytest.raises(
+            ValueError,
+            match="Invalid uv project: uv.lock found without corresponding pyproject.toml",
+        ):
+            validate_project(project_path)
+
+
+def test_validate_project_poetry_without_pyproject():
+    """Test validate_project with poetry.lock but no pyproject.toml."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        project_path = Path(temp_dir)
+
+        # Create main.py
+        main_py_content = """from mcp_agent_cloud import MCPApp
+
+app = MCPApp(name="test-app")
+"""
+        (project_path / "main.py").write_text(main_py_content)
+
+        # Create poetry.lock without pyproject.toml
+        (project_path / "poetry.lock").write_text("# Poetry lock file")
+
+        with pytest.raises(
+            ValueError,
+            match="Invalid poetry project: poetry.lock found without corresponding pyproject.toml",
+        ):
+            validate_project(project_path)
+
+
+def test_validate_entrypoint_success(valid_project_dir):
+    """Test validate_entrypoint with valid MCPApp definition."""
+    entrypoint_path = valid_project_dir / "main.py"
+    # Should not raise any exceptions
+    validate_entrypoint(entrypoint_path)
+
+
+def test_validate_entrypoint_missing_file():
+    """Test validate_entrypoint with non-existent file."""
+    with pytest.raises(FileNotFoundError, match="Entrypoint file .* does not exist"):
+        validate_entrypoint(Path("/non/existent/main.py"))
+
+
+def test_validate_entrypoint_no_mcp_app():
+    """Test validate_entrypoint without MCPApp definition."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        main_py_path = Path(temp_dir) / "main.py"
+
+        # Create main.py without MCPApp
+        main_py_content = """
+def main():
+    print("Hello, world!")
+
+if __name__ == "__main__":
+    main()
+"""
+        main_py_path.write_text(main_py_content)
+
+        with pytest.raises(ValueError, match="No MCPApp definition found in main.py"):
+            validate_entrypoint(main_py_path)
+
+
+def test_validate_entrypoint_with_main_block_warning(capsys):
+    """Test validate_entrypoint with __main__ block shows warning."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        main_py_path = Path(temp_dir) / "main.py"
+
+        # Create main.py with MCPApp and __main__ block
+        main_py_content = """from mcp_agent_cloud import MCPApp
+
+app = MCPApp(name="test-app")
+
+if __name__ == "__main__":
+    print("This will be ignored")
+"""
+        main_py_path.write_text(main_py_content)
+
+        # Should not raise exception but should print warning
+        validate_entrypoint(main_py_path)
+
+        # Check if warning was printed to stderr
+        captured = capsys.readouterr()
+        assert (
+            "Found a __main__ entrypoint in main.py. This will be ignored"
+            in captured.err
+            or "Found a __main__ entrypoint in main.py. This will be ignored"
+            in captured.out
+        )
+
+
+def test_validate_entrypoint_multiline_mcp_app():
+    """Test validate_entrypoint with multiline MCPApp definition."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        main_py_path = Path(temp_dir) / "main.py"
+
+        # Create main.py with multiline MCPApp
+        main_py_content = """from mcp_agent_cloud import MCPApp
+
+my_app = MCPApp(
+    name="test-app",
+    description="A test application",
+    version="1.0.0"
+)
+"""
+        main_py_path.write_text(main_py_content)
+
+        # Should not raise any exceptions
+        validate_entrypoint(main_py_path)
+
+
+def test_validate_entrypoint_different_variable_names():
+    """Test validate_entrypoint with different variable names for MCPApp."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        main_py_path = Path(temp_dir) / "main.py"
+
+        # Test various variable names
+        for var_name in ["app", "my_app", "application", "mcp_app"]:
+            main_py_content = f"""from mcp_agent_cloud import MCPApp
+
+{var_name} = MCPApp(name="test-app")
+"""
+            main_py_path.write_text(main_py_content)
+
+            # Should not raise any exceptions
+            validate_entrypoint(main_py_path)

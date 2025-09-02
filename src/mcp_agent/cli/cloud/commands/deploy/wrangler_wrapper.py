@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -13,7 +14,7 @@ from mcp_agent.cli.core.constants import (
     MCP_DEPLOYED_SECRETS_FILENAME,
     REQUIREMENTS_TXT_FILENAME,
 )
-from mcp_agent.cli.utils.ux import print_error
+from mcp_agent.cli.utils.ux import console, print_error, print_warning
 
 from .constants import (
     CLOUDFLARE_ACCOUNT_ID,
@@ -31,6 +32,65 @@ _WELL_KNOWN_CONFIG_FILES = [
     "pyproject.toml",
     REQUIREMENTS_TXT_FILENAME,
 ]
+
+
+def _handle_wrangler_error(e: subprocess.CalledProcessError) -> None:
+    """Parse and present Wrangler errors in a clean format."""
+    error_output = e.stderr or e.stdout or "No error output available"
+
+    # Clean up ANSI escape sequences for better parsing
+    clean_output = re.sub(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])", "", error_output)
+    console.print("\n")
+
+    # Check for authentication issues first
+    if "Unauthorized 401" in clean_output or "401" in clean_output:
+        print_error(
+            "Authentication failed: Invalid or expired API key for bundling. Run 'mcp-agent login' or set MCP_API_KEY environment variable with new API key."
+        )
+        return
+
+    # Extract key error messages
+    lines = clean_output.strip().split("\n")
+
+    # Look for the main error message (usually starts with ERROR or has [ERROR] tag)
+    main_errors = []
+    warnings = []
+
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+
+        # Match error patterns
+        if re.search(r"^\[ERROR\]|^✘.*\[ERROR\]", line):
+            # Extract the actual error message
+            error_match = re.search(r"(?:\[ERROR\]|\[97mERROR\[.*?\])\s*(.*)", line)
+            if error_match:
+                main_errors.append(error_match.group(1).strip())
+            else:
+                main_errors.append(line)
+        elif re.search(r"^\[WARNING\]|^▲.*\[WARNING\]", line):
+            # Extract warning message
+            warning_match = re.search(
+                r"(?:\[WARNING\]|\[30mWARNING\[.*?\])\s*(.*)", line
+            )
+            if warning_match:
+                warnings.append(warning_match.group(1).strip())
+        elif line.startswith("ERROR:") or line.startswith("Error:"):
+            main_errors.append(line)
+
+    # Present cleaned up errors
+    if warnings:
+        for warning in warnings:
+            print_warning(warning)
+
+    if main_errors:
+        for error in main_errors:
+            print_error(error)
+    else:
+        # Fallback to raw output if we can't parse it
+        print_error("Bundling failed with error:")
+        print_error(clean_output)
 
 
 def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
@@ -153,8 +213,7 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
 
             except subprocess.CalledProcessError as e:
                 progress.update(task, description="❌ Bundling failed")
-                print_error("Error output:")
-                print_error(e.stderr or "No error output.")
+                _handle_wrangler_error(e)
                 raise
 
     finally:
