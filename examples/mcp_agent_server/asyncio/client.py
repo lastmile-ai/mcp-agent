@@ -239,8 +239,8 @@ async def main():
             # Call the async tool 'grade_story_async': start then poll status
             try:
                 async_run_result = await server.call_tool(
-                    "grade_story_async-async",
-                    arguments={"run_parameters": {"story": "This is a test story."}},
+                    "grade_story_async",
+                    arguments={"story": "This is a test story."},
                 )
                 async_ids = (
                     (getattr(async_run_result, "structuredContent", {}) or {}).get(
@@ -257,7 +257,7 @@ async def main():
                 # Poll status until completion
                 while True:
                     async_status = await server.call_tool(
-                        "grade_story_async-get_status",
+                        "workflows-get_status",
                         arguments={"run_id": async_run_id},
                     )
                     async_status_json = (
