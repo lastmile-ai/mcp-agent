@@ -278,16 +278,15 @@ def deploy_config(
                 return app_id
 
             except Exception as e:
-                progress.update(task, description=f"❌ Deployment failed: {str(e)}")
-                raise typer.Exit(1)
+                progress.update(task, description="❌ Deployment failed")
+                raise e
 
     except Exception as e:
-        print_error(f"{str(e)}")
         if settings.VERBOSE:
             import traceback
 
             typer.echo(traceback.format_exc())
-        raise typer.Exit(1)
+        raise CLIError(f"Deployment failed: {str(e)}") from e
 
 
 def get_config_files(config_dir: Path, no_secrets: bool) -> tuple[Path, Optional[Path]]:
