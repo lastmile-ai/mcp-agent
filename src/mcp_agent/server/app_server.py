@@ -140,6 +140,7 @@ def _resolve_workflows_and_context(
     """Resolve the workflows mapping and underlying app context regardless of startup mode.
 
     Tries lifespan ServerContext first (including compatible mocks), then attached app.
+    Also ensures the app context is updated with the current upstream session once per request.
     """
     # Try lifespan-provided ServerContext first
     lifespan_ctx = getattr(ctx.request_context, "lifespan_context", None)
@@ -148,6 +149,11 @@ def _resolve_workflows_and_context(
         and hasattr(lifespan_ctx, "workflows")
         and hasattr(lifespan_ctx, "context")
     ):
+        # Ensure upstream session once at resolution time
+        try:
+            _set_upstream_from_request_ctx_if_available(ctx)
+        except Exception:
+            pass
         return lifespan_ctx.workflows, lifespan_ctx.context
 
     # Fall back to app attached to FastMCP
@@ -341,11 +347,6 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         Returns information about each workflow type including name, description, and parameters.
         This helps in making an informed decision about which workflow to run.
         """
-        # Ensure upstream session is set for any logs emitted during this call
-        try:
-            _set_upstream_from_request_ctx_if_available(ctx)
-        except Exception:
-            pass
         result: Dict[str, Dict[str, Any]] = {}
         workflows, _ = _resolve_workflows_and_context(ctx)
         workflows = workflows or {}
@@ -390,12 +391,6 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         Returns:
             A dictionary mapping workflow instance IDs to their detailed status information.
         """
-        # Ensure upstream session is set for any logs emitted during this call
-        try:
-            _set_upstream_from_request_ctx_if_available(ctx)
-        except Exception:
-            pass
-
         server_context = getattr(
             ctx.request_context, "lifespan_context", None
         ) or _get_attached_server_context(ctx.fastmcp)
@@ -428,11 +423,6 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             A dict with workflow_id and run_id for the started workflow run, can be passed to
             workflows/get_status, workflows/resume, and workflows/cancel.
         """
-        # Ensure upstream session is set before starting the workflow
-        try:
-            _set_upstream_from_request_ctx_if_available(ctx)
-        except Exception:
-            pass
         return await _workflow_run(ctx, workflow_name, run_parameters, **kwargs)
 
     @mcp.tool(name="workflows-get_status")
@@ -454,11 +444,6 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         Returns:
             A dictionary with comprehensive information about the workflow status.
         """
-        # Ensure upstream session is available for any status-related logs
-        try:
-            _set_upstream_from_request_ctx_if_available(ctx)
-        except Exception:
-            pass
         return await _workflow_status(ctx, run_id=run_id, workflow_name=workflow_id)
 
     @mcp.tool(name="workflows-resume")
@@ -486,11 +471,6 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         Returns:
             True if the workflow was resumed, False otherwise.
         """
-        # Ensure upstream session is available for any status-related logs
-        try:
-            _set_upstream_from_request_ctx_if_available(ctx)
-        except Exception:
-            pass
         server_context: ServerContext = ctx.request_context.lifespan_context
         workflow_registry = server_context.workflow_registry
 
@@ -533,11 +513,6 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         Returns:
             True if the workflow was cancelled, False otherwise.
         """
-        # Ensure upstream session is available for any status-related logs
-        try:
-            _set_upstream_from_request_ctx_if_available(ctx)
-        except Exception:
-            pass
         server_context: ServerContext = ctx.request_context.lifespan_context
         workflow_registry = server_context.workflow_registry
 
@@ -597,7 +572,6 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
     """
     Register tools declared via @app.tool/@app.async_tool on the attached app.
     - @app.tool registers a synchronous tool with the same signature as the function
-      that runs the auto-generated workflow and waits for completion.
     - @app.async_tool registers alias tools <name>-run and <name>-get_status
       that proxy to the workflow run/status utilities.
     """
@@ -762,12 +736,6 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
                 async def _adapter(**kw):
                     if context_param_name not in kw:
                         raise ToolError("Context not provided")
-                    _ctx_obj = kw.get(context_param_name)
-                    if _ctx_obj is not None:
-                        try:
-                            _set_upstream_from_request_ctx_if_available(_ctx_obj)
-                        except Exception:
-                            pass
                     kw["__context__"] = kw.pop(context_param_name)
                     return await inner_wrapper(**kw)
 
@@ -865,17 +833,11 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
                     parameters=params + [ctx_param], return_annotation=ann.get("return")
                 )
 
-                # Adapter to map injected FastMCP context kwarg and set upstream
+                # Adapter to map injected FastMCP context kwarg without additional propagation
                 def _make_async_adapter(context_param_name: str, inner_wrapper):
                     async def _adapter(**kw):
                         if context_param_name not in kw:
                             raise ToolError("Context not provided")
-                        _ctx_obj = kw.get(context_param_name)
-                        if _ctx_obj is not None:
-                            try:
-                                _set_upstream_from_request_ctx_if_available(_ctx_obj)
-                            except Exception:
-                                pass
                         kw["__context__"] = kw.pop(context_param_name)
                         return await inner_wrapper(**kw)
 
@@ -948,7 +910,6 @@ def create_workflow_specific_tools(
         ctx: MCPContext,
         run_parameters: Dict[str, Any] | None = None,
     ) -> Dict[str, str]:
-        _set_upstream_from_request_ctx_if_available(ctx)
         return await _workflow_run(ctx, workflow_name, run_parameters)
 
     @mcp.tool(
@@ -961,7 +922,6 @@ def create_workflow_specific_tools(
         """,
     )
     async def get_status(ctx: MCPContext, run_id: str) -> Dict[str, Any]:
-        _set_upstream_from_request_ctx_if_available(ctx)
         return await _workflow_status(ctx, run_id=run_id, workflow_name=workflow_name)
 
 
@@ -1077,10 +1037,6 @@ async def _workflow_status(
     ctx: MCPContext, run_id: str, workflow_name: str | None = None
 ) -> Dict[str, Any]:
     # Ensure upstream session so status-related logs are forwarded
-    try:
-        _set_upstream_from_request_ctx_if_available(ctx)
-    except Exception:
-        pass
     workflow_registry: WorkflowRegistry | None = _resolve_workflow_registry(ctx)
 
     if not workflow_registry:
