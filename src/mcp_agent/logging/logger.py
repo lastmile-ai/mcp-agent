@@ -118,7 +118,24 @@ class Logger:
         except Exception:
             pass
 
-        # No further fallback: rely solely on the bound context for upstream_session
+        # Fallback: if not provided via bound context, attempt to read from the
+        # low-level FastMCP request context for this task so server-side logs are
+        # forwarded upstream during request handling.
+        if "upstream_session" not in extra_event_fields:
+            try:
+                from mcp.server.lowlevel.server import (
+                    request_ctx as _lowlevel_request_ctx,
+                )  # type: ignore
+
+                try:
+                    req_ctx = _lowlevel_request_ctx.get()
+                    extra_event_fields["upstream_session"] = getattr(
+                        req_ctx, "session", None
+                    )
+                except LookupError:
+                    pass
+            except Exception:
+                pass
 
         evt = Event(
             type=etype,

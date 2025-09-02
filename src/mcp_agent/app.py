@@ -549,9 +549,51 @@ class MCPApp:
         import asyncio as _asyncio
         from mcp_agent.executor.workflow import Workflow as _Workflow
 
-        async def _invoke_target(*args, **kwargs):
+        async def _invoke_target(workflow_self, *args, **kwargs):
+            # Inject app_ctx (AppContext) and shim ctx (FastMCP Context) if requested by the function
+            import inspect as _inspect
+
+            call_kwargs = dict(kwargs)
+
+            # Detect if function expects an AppContext parameter (named 'app_ctx' or annotated with our Context)
+            try:
+                sig = _inspect.signature(fn)
+                app_context_param_name = None
+
+                for param_name, param in sig.parameters.items():
+                    if param_name == "app_ctx":
+                        app_context_param_name = param_name
+                        break
+                    if param.annotation != _inspect.Parameter.empty:
+                        ann_str = str(param.annotation)
+                        if "mcp_agent.core.context.Context" in ann_str:
+                            app_context_param_name = param_name
+                            break
+                # If requested, inject the workflow's bound context
+                if app_context_param_name and getattr(workflow_self, "_context", None):
+                    call_kwargs[app_context_param_name] = workflow_self._context
+            except Exception:
+                pass
+
+            # If the function expects a FastMCP Context (ctx/context), ensure it's present (None inside workflow)
+            try:
+                from mcp.server.fastmcp import Context as _Ctx  # type: ignore
+            except Exception:
+                _Ctx = None  # type: ignore
+
+            try:
+                sig = sig if 'sig' in locals() else _inspect.signature(fn)
+                for p in sig.parameters.values():
+                    if p.annotation is not _inspect._empty and _Ctx is not None and p.annotation is _Ctx:
+                        if p.name not in call_kwargs:
+                            call_kwargs[p.name] = None
+                    if p.name in ("ctx", "context") and p.name not in call_kwargs:
+                        call_kwargs[p.name] = None
+            except Exception:
+                pass
+
             # Support both async and sync callables
-            res = fn(*args, **kwargs)
+            res = fn(*args, **call_kwargs)
             if _asyncio.iscoroutine(res):
                 res = await res
 
@@ -568,7 +610,7 @@ class MCPApp:
             return res
 
         async def _run(self, *args, **kwargs):  # type: ignore[no-redef]
-            return await _invoke_target(*args, **kwargs)
+            return await _invoke_target(self, *args, **kwargs)
 
         # Decorate run with engine-specific decorator
         decorated_run = self.workflow_run(_run)
