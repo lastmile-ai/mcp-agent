@@ -7,6 +7,7 @@ from typing import (
     Any,
     Dict,
     Generic,
+    Literal,
     Optional,
     TypeVar,
     TYPE_CHECKING,
@@ -53,6 +54,8 @@ class WorkflowState(BaseModel):
 
 
 class WorkflowResult(BaseModel, Generic[T]):
+    # Discriminator to disambiguate from arbitrary dicts
+    kind: Literal["workflow_result"] = "workflow_result"
     value: Optional[T] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
     start_time: float | None = None
@@ -94,7 +97,9 @@ class Workflow(ABC, Generic[T], ContextDependent):
         ContextDependent.__init__(self, context=context)
 
         self.name = name or self.__class__.__name__
-        self._logger = get_logger(f"workflow.{self.name}")
+        # Bind workflow logger to the provided context so events can carry
+        # the current upstream_session even when emitted from background tasks.
+        self._logger = get_logger(f"workflow.{self.name}", context=context)
         self._initialized = False
         self._workflow_id = None  # Will be set during run_async
         self._run_id = None  # Will be set during run_async

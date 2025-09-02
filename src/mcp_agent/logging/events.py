@@ -50,6 +50,10 @@ class Event(BaseModel):
     data: Dict[str, Any] = Field(default_factory=dict)
     context: EventContext | None = None
 
+    # Runtime-only handle for upstream forwarding. Present for listeners to
+    # use, explicitly excluded from any serialization/dumps.
+    upstream_session: Any | None = Field(default=None, exclude=True)
+
     # For distributed tracing
     span_id: str | None = None
     trace_id: str | None = None

@@ -27,6 +27,7 @@ This directory includes two implementations of the MCP Agent Server pattern:
 ### [Asyncio](./asyncio)
 
 The asyncio implementation provides:
+
 - In-memory execution with minimal setup
 - Simple deployment with no external dependencies
 - Fast startup and execution
@@ -35,6 +36,7 @@ The asyncio implementation provides:
 ### [Temporal](./temporal)
 
 The Temporal implementation provides:
+
 - Durable execution of workflows using Temporal as the orchestration engine
 - Pause/resume capabilities via Temporal signals
 - Automatic retry and recovery from failures
@@ -50,20 +52,48 @@ Each implementation demonstrates:
 
 ## Key MCP Agent Server Advantages
 
-| Capability | Description |
-|------------|-------------|
-| **Protocol Standardization** | Agents communicate via standardized MCP protocol, ensuring interoperability |
-| **Workflow Encapsulation** | Complex agent workflows are exposed as simple MCP tools |
-| **Execution Flexibility** | Choose between in-memory (asyncio) or durable (Temporal) execution |
-| **Client Independence** | Connect from any MCP client: Claude, VSCode, Cursor, MCP Inspector, or custom apps |
-| **Multi-Agent Ecosystems** | Build systems where multiple agents can interact and collaborate |
+| Capability                   | Description                                                                        |
+| ---------------------------- | ---------------------------------------------------------------------------------- |
+| **Protocol Standardization** | Agents communicate via standardized MCP protocol, ensuring interoperability        |
+| **Workflow Encapsulation**   | Complex agent workflows are exposed as simple MCP tools                            |
+| **Execution Flexibility**    | Choose between in-memory (asyncio) or durable (Temporal) execution                 |
+| **Client Independence**      | Connect from any MCP client: Claude, VSCode, Cursor, MCP Inspector, or custom apps |
+| **Multi-Agent Ecosystems**   | Build systems where multiple agents can interact and collaborate                   |
 
 ## Getting Started
 
-Each implementation directory contains its own README with detailed instructions:
+Each implementation directory contains its own README with detailed instructions. Prefer the decorator-based tool definition (`@app.tool` / `@app.async_tool`) for the simplest developer experience:
 
 - [Asyncio Implementation](./asyncio/README.md)
 - [Temporal Implementation](./temporal/README.md)
+
+### Preferred: Declare tools with decorators
+
+Instead of only defining workflow classes, you can expose tools directly from functions:
+
+```python
+from mcp_agent.app import MCPApp
+
+app = MCPApp(name="my_agent_server")
+
+@app.tool
+async def do_something(arg: str) -> str:
+    """Do something synchronously and return the final result."""
+    return "done"
+
+@app.async_tool(name="do_something_async")
+async def do_something_async(arg: str) -> str:
+    """
+    Start work asynchronously.
+
+    Returns 'workflow_id' and 'run_id'. Use 'workflows-get_status' with the returned
+    IDs to retrieve status and results.
+    """
+    return "started"
+```
+
+- Sync tool returns the final result; no status polling needed.
+- Async tool returns IDs for polling via the generic `workflows-get_status` endpoint.
 
 ## Multi-Agent Interaction Pattern
 
@@ -88,6 +118,7 @@ One of the most powerful capabilities enabled by the MCP Agent Server pattern is
 ```
 
 In this example:
+
 1. Claude Desktop can use both agent servers
 2. The Writing Agent can also use the Research Agent as a tool
 3. All communication happens via the MCP protocol
