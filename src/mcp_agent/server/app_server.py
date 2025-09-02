@@ -133,8 +133,6 @@ def _set_upstream_from_request_ctx_if_available(ctx: MCPContext) -> None:
         else:
             return
 
-    # No low-level request_ctx fallback: upstream_session must come from app context
-
 
 def _resolve_workflows_and_context(
     ctx: MCPContext,
@@ -363,7 +361,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                 ]
             elif getattr(workflow_cls, "__mcp_agent_async_tool__", False):
                 endpoints = [
-                    f"{workflow_name}-async-run",
+                    f"{workflow_name}",
                     f"{workflow_name}-get_status",
                 ]
             else:
@@ -705,46 +703,46 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
         description = decl.get("description")
         structured_output = decl.get("structured_output")
 
+        # Bind per-iteration values to avoid late-binding closure bugs
+        name_local = name
+        wname_local = workflow_name
+
         if mode == "sync" and fn is not None:
             sig = inspect.signature(fn)
             return_ann = sig.return_annotation
 
-            async def _wrapper(**kwargs):
-                # Context will be injected by FastMCP using the special annotation below
-                ctx: MCPContext = kwargs.pop(
-                    "__context__"
-                )  # placeholder, reassigned below via signature name
-                # Start workflow and wait for completion
-                result_ids = await _workflow_run(ctx, workflow_name, kwargs)
-                run_id = result_ids["run_id"]
-                result = await _wait_for_completion(
-                    ctx, run_id, workflow_name=workflow_name
-                )
-                # Unwrap WorkflowResult to match the original function's return type
-                try:
-                    from mcp_agent.executor.workflow import WorkflowResult as _WFRes
-                except Exception:
-                    _WFRes = None  # type: ignore
-                if _WFRes is not None and isinstance(result, _WFRes):
-                    return getattr(result, "value", None)
-                # If get_status returned dict/str, pass through; otherwise return model
-                return result
+            def _make_wrapper(bound_wname: str):
+                async def _wrapper(**kwargs):
+                    ctx: MCPContext = kwargs.pop("__context__")
+                    result_ids = await _workflow_run(ctx, bound_wname, kwargs)
+                    run_id = result_ids["run_id"]
+                    result = await _wait_for_completion(
+                        ctx, run_id, workflow_name=bound_wname
+                    )
+                    try:
+                        from mcp_agent.executor.workflow import WorkflowResult as _WFRes
+                    except Exception:
+                        _WFRes = None  # type: ignore
+                    if _WFRes is not None and isinstance(result, _WFRes):
+                        return getattr(result, "value", None)
+                    return result
 
-            # Attach introspection metadata to match the original function
+                return _wrapper
+
+            _wrapper = _make_wrapper(wname_local)
+
             ann = dict(getattr(fn, "__annotations__", {}))
             ann.pop("app_ctx", None)
 
-            # Choose a context kwarg name unlikely to clash with user params
             ctx_param_name = "ctx"
             from mcp.server.fastmcp import Context as _Ctx
 
             ann[ctx_param_name] = _Ctx
             ann["return"] = getattr(fn, "__annotations__", {}).get("return", return_ann)
             _wrapper.__annotations__ = ann
-            _wrapper.__name__ = name
+            _wrapper.__name__ = name_local
             _wrapper.__doc__ = description or (fn.__doc__ or "")
 
-            # Build a fake signature containing original params plus context kwarg
             params = [p for p in sig.parameters.values() if p.name != "app_ctx"]
             ctx_param = inspect.Parameter(
                 ctx_param_name,
@@ -755,67 +753,185 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
                 parameters=params + [ctx_param], return_annotation=return_ann
             )
 
-            # FastMCP expects the actual kwarg name for context; it detects it by annotation
-            # We need to map the injected kwarg inside the wrapper body. Achieve this by
-            # creating a thin adapter that renames the injected context kwarg.
-            async def _adapter(**kw):
-                # Receive validated args plus injected context kwarg
-                if ctx_param_name not in kw:
-                    raise ToolError("Context not provided")
-                # Rename to the placeholder expected by _wrapper
-                kw["__context__"] = kw.pop(ctx_param_name)
-                return await _wrapper(**kw)
+            def _make_adapter(context_param_name: str, inner_wrapper):
+                async def _adapter(**kw):
+                    if context_param_name not in kw:
+                        raise ToolError("Context not provided")
+                    _ctx_obj = kw.get(context_param_name)
+                    if _ctx_obj is not None:
+                        try:
+                            _set_upstream_from_request_ctx_if_available(_ctx_obj)
+                        except Exception:
+                            pass
+                    kw["__context__"] = kw.pop(context_param_name)
+                    return await inner_wrapper(**kw)
 
-            # Copy the visible signature/annotations to adapter for correct schema
-            _adapter.__annotations__ = _wrapper.__annotations__
-            _adapter.__name__ = _wrapper.__name__
-            _adapter.__doc__ = _wrapper.__doc__
-            _adapter.__signature__ = _wrapper.__signature__
+                _adapter.__annotations__ = _wrapper.__annotations__
+                _adapter.__name__ = _wrapper.__name__
+                _adapter.__doc__ = _wrapper.__doc__
+                _adapter.__signature__ = _wrapper.__signature__
+                return _adapter
 
-            # Register the main tool with the same signature as original
+            _adapter = _make_adapter(ctx_param_name, _wrapper)
+
             mcp.add_tool(
                 _adapter,
-                name=name,
+                name=name_local,
                 description=description or (fn.__doc__ or ""),
                 structured_output=structured_output,
             )
-            registered.add(name)
+            registered.add(name_local)
 
-            # Also register a per-run status tool: <tool-name>-get_status
-            status_tool_name = f"{name}-get_status"
+            status_tool_name = f"{name_local}-get_status"
             if status_tool_name not in registered:
 
-                @mcp.tool(name=status_tool_name)
-                async def _sync_status(ctx: MCPContext, run_id: str) -> Dict[str, Any]:
-                    return await _workflow_status(
-                        ctx, run_id=run_id, workflow_name=workflow_name
+                def _make_sync_status(bound_wname: str):
+                    status_doc = (
+                        f"Get the status of a running '{bound_wname}' workflow.\n\n"
+                        "Provide the 'run_id' returned by the run tool; the response "
+                        "includes status (running/completed/error/cancelled) and, when completed, "
+                        "the result or error details."
                     )
 
+                    @mcp.tool(name=status_tool_name, description=status_doc)
+                    async def _sync_status(
+                        ctx: MCPContext, run_id: str
+                    ) -> Dict[str, Any]:
+                        return await _workflow_status(
+                            ctx, run_id=run_id, workflow_name=bound_wname
+                        )
+
+                    _sync_status.__doc__ = status_doc
+                    return _sync_status
+
+                _make_sync_status(wname_local)
                 registered.add(status_tool_name)
 
         elif mode == "async":
-            # Create named aliases for async: <name>-async-run and <name>-get_status
-            run_tool_name = f"{name}-async-run"
-            status_tool_name = f"{name}-get_status"
+            # Use the declared name as the async run endpoint, plus a get_status endpoint
+            run_tool_name = f"{name_local}"
+            status_tool_name = f"{name_local}-get_status"
 
             if run_tool_name not in registered:
+                # Build a wrapper mirroring original function params (excluding app_ctx/ctx)
+                async def _async_wrapper(**kwargs):
+                    ctx: MCPContext = kwargs.pop("__context__")
+                    # Start workflow and return workflow_id/run_id (do not wait)
+                    return await _workflow_run(ctx, wname_local, kwargs)
 
-                @mcp.tool(name=run_tool_name)
-                async def _alias_run(
-                    ctx: MCPContext, run_parameters: Dict[str, Any] | None = None
-                ) -> Dict[str, str]:
-                    return await _workflow_run(ctx, workflow_name, run_parameters or {})
+                # Mirror original signature and annotations similar to sync path
+                ann = dict(getattr(fn, "__annotations__", {}))
+                ann.pop("app_ctx", None)
+                try:
+                    from mcp.server.fastmcp import Context as _Ctx
+                except Exception:
+                    _Ctx = None  # type: ignore
 
+                # Choose context kw-only parameter
+                ctx_param_name = "ctx"
+                if _Ctx is not None:
+                    ann[ctx_param_name] = _Ctx
+
+                # Async run returns workflow_id/run_id
+                from typing import Dict as _Dict  # type: ignore
+
+                ann["return"] = _Dict[str, str]
+                _async_wrapper.__annotations__ = ann
+                _async_wrapper.__name__ = run_tool_name
+
+                # Description: original docstring + async note
+                base_desc = description or (fn.__doc__ or "")
+                async_note = (
+                    f"\n\nThis tool starts the '{wname_local}' workflow asynchronously and returns "
+                    "'workflow_id' and 'run_id'. Use the corresponding "
+                    f"'{status_tool_name}' tool to retrieve status/results."
+                )
+                full_desc = (base_desc or "").strip() + async_note
+                _async_wrapper.__doc__ = full_desc
+
+                # Build mirrored signature: drop app_ctx and any FastMCP Context params
+                params = []
+                try:
+                    sig_async = inspect.signature(fn)
+                    for p in sig_async.parameters.values():
+                        if p.name == "app_ctx":
+                            continue
+                        if p.name in ("ctx", "context"):
+                            continue
+                        if (
+                            _Ctx is not None
+                            and p.annotation is not inspect._empty
+                            and p.annotation is _Ctx
+                        ):
+                            continue
+                        params.append(p)
+                except Exception:
+                    params = []
+
+                # Append kw-only context param
+                if _Ctx is not None:
+                    ctx_param = inspect.Parameter(
+                        ctx_param_name,
+                        kind=inspect.Parameter.KEYWORD_ONLY,
+                        annotation=_Ctx,
+                    )
+                else:
+                    ctx_param = inspect.Parameter(
+                        ctx_param_name,
+                        kind=inspect.Parameter.KEYWORD_ONLY,
+                    )
+
+                _async_wrapper.__signature__ = inspect.Signature(
+                    parameters=params + [ctx_param], return_annotation=ann.get("return")
+                )
+
+                # Adapter to map injected FastMCP context kwarg and set upstream
+                def _make_async_adapter(context_param_name: str, inner_wrapper):
+                    async def _adapter(**kw):
+                        if context_param_name not in kw:
+                            raise ToolError("Context not provided")
+                        _ctx_obj = kw.get(context_param_name)
+                        if _ctx_obj is not None:
+                            try:
+                                _set_upstream_from_request_ctx_if_available(_ctx_obj)
+                            except Exception:
+                                pass
+                        kw["__context__"] = kw.pop(context_param_name)
+                        return await inner_wrapper(**kw)
+
+                    _adapter.__annotations__ = _async_wrapper.__annotations__
+                    _adapter.__name__ = _async_wrapper.__name__
+                    _adapter.__doc__ = _async_wrapper.__doc__
+                    _adapter.__signature__ = _async_wrapper.__signature__
+                    return _adapter
+
+                _async_adapter = _make_async_adapter(ctx_param_name, _async_wrapper)
+
+                # Register the async run tool
+                mcp.add_tool(
+                    _async_adapter,
+                    name=run_tool_name,
+                    description=full_desc,
+                    structured_output=False,
+                )
                 registered.add(run_tool_name)
 
             if status_tool_name not in registered:
+                # Create a get_status tool with a descriptive docstring
+                status_doc = (
+                    f"Get the status of a running '{wname_local}' workflow.\n\n"
+                    "Provide the 'run_id' returned by the async run tool; the response "
+                    "includes status (running/completed/error/cancelled) and, when completed, "
+                    "the result or error details."
+                )
 
                 @mcp.tool(name=status_tool_name)
                 async def _alias_status(ctx: MCPContext, run_id: str) -> Dict[str, Any]:
                     return await _workflow_status(
-                        ctx, run_id=run_id, workflow_name=workflow_name
+                        ctx, run_id=run_id, workflow_name=wname_local
                     )
 
+                _alias_status.__doc__ = status_doc
                 registered.add(status_tool_name)
 
     _set_registered_function_tools(mcp, registered)

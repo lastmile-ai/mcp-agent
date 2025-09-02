@@ -216,6 +216,8 @@ async def main():
             # Display the token usage summary
             print(token_usage_result.structuredContent)
 
+            await asyncio.sleep(5)
+
             # Call the sync tool 'grade_story' separately (no run/status loop)
             try:
                 grade_result = await server.call_tool(
@@ -237,7 +239,7 @@ async def main():
             # Call the async tool 'grade_story_async': start then poll status
             try:
                 async_run_result = await server.call_tool(
-                    "grade_story_async-async-run",
+                    "grade_story_async-async",
                     arguments={"run_parameters": {"story": "This is a test story."}},
                 )
                 async_ids = (

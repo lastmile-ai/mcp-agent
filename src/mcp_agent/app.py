@@ -582,9 +582,13 @@ class MCPApp:
                 _Ctx = None  # type: ignore
 
             try:
-                sig = sig if 'sig' in locals() else _inspect.signature(fn)
+                sig = sig if "sig" in locals() else _inspect.signature(fn)
                 for p in sig.parameters.values():
-                    if p.annotation is not _inspect._empty and _Ctx is not None and p.annotation is _Ctx:
+                    if (
+                        p.annotation is not _inspect._empty
+                        and _Ctx is not None
+                        and p.annotation is _Ctx
+                    ):
                         if p.name not in call_kwargs:
                             call_kwargs[p.name] = None
                     if p.name in ("ctx", "context") and p.name not in call_kwargs:
