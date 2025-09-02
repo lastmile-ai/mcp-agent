@@ -2,7 +2,12 @@ from typing import Any, Dict
 
 from temporalio import activity
 
-from mcp_agent.mcp.client_proxy import log_via_proxy, ask_via_proxy
+from mcp_agent.mcp.client_proxy import (
+    log_via_proxy,
+    ask_via_proxy,
+    notify_via_proxy,
+    request_via_proxy,
+)
 from mcp_agent.core.context_dependent import ContextDependent
 
 
@@ -48,4 +53,22 @@ class SystemActivities(ContextDependent):
                 "workflow_id": workflow_id,
                 "signal_name": signal_name,
             },
+        )
+
+    @activity.defn(name="mcp_relay_notify")
+    async def relay_notify(
+        self, run_id: str, method: str, params: Dict[str, Any] | None = None
+    ) -> bool:
+        registry = self.context.server_registry
+        return await notify_via_proxy(
+            registry, run_id=run_id, method=method, params=params or {}
+        )
+
+    @activity.defn(name="mcp_relay_request")
+    async def relay_request(
+        self, run_id: str, method: str, params: Dict[str, Any] | None = None
+    ) -> Dict[str, Any]:
+        registry = self.context.server_registry
+        return await request_via_proxy(
+            registry, run_id=run_id, method=method, params=params or {}
         )

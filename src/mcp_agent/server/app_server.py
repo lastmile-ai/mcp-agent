@@ -7,6 +7,7 @@ import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional, Set, Tuple, Type, TYPE_CHECKING
+import os
 import asyncio
 
 from mcp.server.fastmcp import Context as MCPContext, FastMCP
@@ -36,6 +37,9 @@ logger = get_logger(__name__)
 _RUN_SESSION_REGISTRY: Dict[str, Any] = {}
 _RUN_SESSION_LOCK = asyncio.Lock()
 _PENDING_PROMPTS: Dict[str, Dict[str, Any]] = {}
+_PENDING_PROMPTS_LOCK = asyncio.Lock()
+_IDEMPOTENCY_KEYS_SEEN: Dict[str, Set[str]] = {}
+_IDEMPOTENCY_KEYS_LOCK = asyncio.Lock()
 
 
 async def _register_run_session(run_id: str, session: Any) -> None:
@@ -282,6 +286,165 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
     # Helper: install internal HTTP routes (not MCP tools)
     def _install_internal_routes(mcp_server: FastMCP) -> None:
         @mcp_server.custom_route(
+            "/internal/session/by-run/{run_id}/notify",
+            methods=["POST"],
+            include_in_schema=False,
+        )
+        async def _relay_notify(request: Request):
+            body = await request.json()
+            run_id = request.path_params.get("run_id")
+            method = body.get("method")
+            params = body.get("params") or {}
+
+            # Optional shared-secret auth
+            gw_token = os.environ.get("MCP_GATEWAY_TOKEN")
+            if gw_token and request.headers.get("X-MCP-Gateway-Token") != gw_token:
+                return JSONResponse(
+                    {"ok": False, "error": "unauthorized"}, status_code=401
+                )
+
+            # Optional idempotency handling
+            idempotency_key = params.get("idempotency_key")
+            if idempotency_key:
+                async with _IDEMPOTENCY_KEYS_LOCK:
+                    seen = _IDEMPOTENCY_KEYS_SEEN.setdefault(run_id or "", set())
+                    if idempotency_key in seen:
+                        return JSONResponse({"ok": True, "idempotent": True})
+                    seen.add(idempotency_key)
+
+            session = await _get_run_session(run_id)
+            if not session:
+                return JSONResponse(
+                    {"ok": False, "error": "session_not_available"}, status_code=503
+                )
+
+            try:
+                # Special-case the common logging notification helper
+                if method == "notifications/message":
+                    level = str(params.get("level", "info"))
+                    data = params.get("data")
+                    logger_name = params.get("logger")
+                    related_request_id = params.get("related_request_id")
+                    await session.send_log_message(  # type: ignore[attr-defined]
+                        level=level,  # type: ignore[arg-type]
+                        data=data,
+                        logger=logger_name,
+                        related_request_id=related_request_id,
+                    )
+                elif method == "notifications/progress":
+                    # Minimal support for progress relay
+                    progress_token = params.get("progressToken")
+                    progress = params.get("progress")
+                    total = params.get("total")
+                    message = params.get("message")
+                    await session.send_progress_notification(  # type: ignore[attr-defined]
+                        progress_token=progress_token,
+                        progress=progress,
+                        total=total,
+                        message=message,
+                    )
+                elif method == "notifications/resources/list_changed":
+                    await session.send_resource_list_changed()  # type: ignore[attr-defined]
+                elif method == "notifications/tools/list_changed":
+                    await session.send_tool_list_changed()  # type: ignore[attr-defined]
+                elif method == "notifications/prompts/list_changed":
+                    await session.send_prompt_list_changed()  # type: ignore[attr-defined]
+                else:
+                    # Unsupported generic notification at this layer
+                    return JSONResponse(
+                        {"ok": False, "error": f"unsupported method: {method}"},
+                        status_code=400,
+                    )
+
+                return JSONResponse({"ok": True})
+            except Exception as e:
+                return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+        @mcp_server.custom_route(
+            "/internal/session/by-run/{run_id}/request",
+            methods=["POST"],
+            include_in_schema=False,
+        )
+        async def _relay_request(request: Request):
+            from mcp.types import (
+                CreateMessageRequest,
+                CreateMessageRequestParams,
+                CreateMessageResult,
+                ElicitRequest,
+                ElicitRequestParams,
+                ElicitResult,
+                ListRootsRequest,
+                ListRootsResult,
+                PingRequest,
+                EmptyResult,
+                ServerRequest,
+            )
+
+            body = await request.json()
+            run_id = request.path_params.get("run_id")
+            method = body.get("method")
+            params = body.get("params") or {}
+
+            session = await _get_run_session(run_id)
+            if not session:
+                return JSONResponse({"error": "session_not_available"}, status_code=503)
+
+            try:
+                # Map a small set of supported server->client requests
+                if method == "sampling/createMessage":
+                    req = ServerRequest(
+                        CreateMessageRequest(
+                            method="sampling/createMessage",
+                            params=CreateMessageRequestParams(**params),
+                        )
+                    )
+                    result = await session.send_request(  # type: ignore[attr-defined]
+                        request=req,
+                        result_type=CreateMessageResult,
+                    )
+                    return JSONResponse(
+                        result.model_dump(by_alias=True, mode="json", exclude_none=True)
+                    )
+                elif method == "elicitation/create":
+                    req = ServerRequest(
+                        ElicitRequest(
+                            method="elicitation/create",
+                            params=ElicitRequestParams(**params),
+                        )
+                    )
+                    result = await session.send_request(  # type: ignore[attr-defined]
+                        request=req,
+                        result_type=ElicitResult,
+                    )
+                    return JSONResponse(
+                        result.model_dump(by_alias=True, mode="json", exclude_none=True)
+                    )
+                elif method == "roots/list":
+                    req = ServerRequest(ListRootsRequest(method="roots/list"))
+                    result = await session.send_request(  # type: ignore[attr-defined]
+                        request=req,
+                        result_type=ListRootsResult,
+                    )
+                    return JSONResponse(
+                        result.model_dump(by_alias=True, mode="json", exclude_none=True)
+                    )
+                elif method == "ping":
+                    req = ServerRequest(PingRequest(method="ping"))
+                    result = await session.send_request(  # type: ignore[attr-defined]
+                        request=req,
+                        result_type=EmptyResult,
+                    )
+                    return JSONResponse(
+                        result.model_dump(by_alias=True, mode="json", exclude_none=True)
+                    )
+                else:
+                    return JSONResponse(
+                        {"error": f"unsupported method: {method}"}, status_code=400
+                    )
+            except Exception as e:
+                return JSONResponse({"error": str(e)}, status_code=500)
+
+        @mcp_server.custom_route(
             "/internal/workflows/log", methods=["POST"], include_in_schema=False
         )
         async def _internal_workflows_log(request: Request):
@@ -295,7 +458,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             session = await _get_run_session(run_id)
             if not session:
                 return JSONResponse(
-                    {"ok": False, "error": "no session for run"}, status_code=404
+                    {"ok": False, "error": "session_not_available"}, status_code=503
                 )
             if level not in ("debug", "info", "warning", "error"):
                 level = "info"
@@ -324,7 +487,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
 
             session = await _get_run_session(run_id)
             if not session:
-                return JSONResponse({"error": "no session for run"}, status_code=404)
+                return JSONResponse({"error": "session_not_available"}, status_code=503)
             import uuid
 
             request_id = str(uuid.uuid4())
@@ -335,6 +498,14 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                 "metadata": metadata,
             }
             try:
+                # Store pending prompt correlation for submit tool
+                async with _PENDING_PROMPTS_LOCK:
+                    _PENDING_PROMPTS[request_id] = {
+                        "workflow_id": metadata.get("workflow_id"),
+                        "run_id": run_id,
+                        "signal_name": metadata.get("signal_name", "human_input"),
+                        "session_id": metadata.get("session_id"),
+                    }
                 await session.send_log_message(
                     level="info",  # type: ignore[arg-type]
                     data=payload,
@@ -637,7 +808,8 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         app_ref = _get_attached_app(mcp)
         if app_ref is None or app_ref.context is None:
             return {"ok": False, "error": "server not ready"}
-        info = _PENDING_PROMPTS.pop(request_id, None)
+        async with _PENDING_PROMPTS_LOCK:
+            info = _PENDING_PROMPTS.pop(request_id, None)
         if not info:
             return {"ok": False, "error": "unknown request_id"}
         try:

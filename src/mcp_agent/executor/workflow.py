@@ -20,6 +20,7 @@ from mcp_agent.executor.temporal.workflow_signal import (
     SignalMailbox,
     TemporalSignalHandler,
 )
+from mcp_agent.executor.temporal.session_proxy import SessionProxy
 from mcp_agent.executor.workflow_signal import Signal
 from mcp_agent.logging.logger import get_logger
 # (Temporal path now uses activities; HTTP proxy helpers unused here)
@@ -251,6 +252,17 @@ class Workflow(ABC, Generic[T], ContextDependent):
         try:
             if self.context.config.execution_engine == "temporal":
                 setattr(self._logger, "_temporal_run_id", self._run_id)
+                # Ensure upstream_session is a passthrough SessionProxy bound to this run
+                if (
+                    getattr(self.context, "upstream_session", None) is None
+                    and self._run_id
+                ):
+                    try:
+                        self.context.upstream_session = SessionProxy(
+                            executor=self.executor, run_id=self._run_id
+                        )
+                    except Exception:
+                        pass
         except Exception:
             pass
 
@@ -789,6 +801,20 @@ class Workflow(ABC, Generic[T], ContextDependent):
                 self._logger.warning(
                     "Signal handler not attached: executor.signal_bus is not a TemporalSignalHandler"
                 )
+
+            # Expose a virtual upstream session (passthrough) bound to this run via activities
+            # This lets any code use context.upstream_session like a real session.
+            try:
+                if (
+                    getattr(self.context, "upstream_session", None) is None
+                    and self._run_id
+                ):
+                    self.context.upstream_session = SessionProxy(
+                        executor=self.executor, run_id=self._run_id
+                    )
+            except Exception:
+                # Non-fatal if context is immutable early; will be set after run_id assignment in run_async
+                pass
 
         self._initialized = True
         self.state.updated_at = datetime.now(timezone.utc).timestamp()
