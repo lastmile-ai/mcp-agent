@@ -7,10 +7,23 @@ import logging
 import time
 
 from abc import ABC, abstractmethod
-from typing import Dict, List
+from typing import Any, Dict, List, Optional, Protocol, TYPE_CHECKING
 
 from mcp_agent.logging.events import Event, EventFilter, EventType
 from mcp_agent.logging.event_progress import convert_log_event
+
+if TYPE_CHECKING:  # pragma: no cover - for type checking only
+    from mcp.types import LoggingLevel
+
+
+class UpstreamServerSessionProtocol(Protocol):
+    async def send_log_message(
+        self,
+        level: "LoggingLevel",
+        data: Dict[str, Any],
+        logger: str | None = None,
+        related_request_id: str | None = None,
+    ) -> None: ...
 
 
 class EventListener(ABC):
@@ -217,3 +230,68 @@ class BatchingListener(FilteredListener):
 
     async def _process_batch(self, events: List[Event]):
         pass
+
+
+class MCPUpstreamLoggingListener(FilteredListener):
+    """
+    Sends matched log events to the connected MCP client via the upstream_session
+    carried on each Event (runtime-only field). If no upstream_session is present,
+    the event is skipped.
+    """
+
+    def __init__(self, event_filter: EventFilter | None = None) -> None:
+        super().__init__(event_filter=event_filter)
+
+    async def handle_matched_event(self, event: Event) -> None:
+        # Use upstream session provided on the event
+        upstream_session: Optional[UpstreamServerSessionProtocol] = getattr(
+            event, "upstream_session", None
+        )
+
+        if upstream_session is None:
+            # No upstream_session available, event cannot be forwarded
+            return
+
+        # Map our EventType to MCP LoggingLevel; fold progress -> info
+        mcp_level_map: Dict[str, str] = {
+            "debug": "debug",
+            "info": "info",
+            "warning": "warning",
+            "error": "error",
+            "progress": "info",
+        }
+        # Use string type to avoid hard dependency; annotated for type checkers
+        mcp_level: "LoggingLevel" = mcp_level_map.get(event.type, "info")  # type: ignore[assignment]
+
+        # Build structured data payload
+        data: Dict[str, Any] = {
+            "message": event.message,
+            "namespace": event.namespace,
+            "name": event.name,
+            "timestamp": event.timestamp.isoformat(),
+        }
+        if event.data:
+            # Merge user-provided event data under 'data'
+            data["data"] = event.data
+        if event.trace_id or event.span_id:
+            data["trace"] = {"trace_id": event.trace_id, "span_id": event.span_id}
+        if event.context is not None:
+            try:
+                data["context"] = event.context.dict()
+            except Exception:
+                pass
+
+        # Determine logger name (namespace + optional name)
+        logger_name: str = (
+            event.namespace if not event.name else f"{event.namespace}.{event.name}"
+        )
+
+        try:
+            await upstream_session.send_log_message(
+                level=mcp_level,  # type: ignore[arg-type]
+                data=data,
+                logger=logger_name,
+            )
+        except Exception as e:
+            # Avoid raising inside listener; best-effort delivery
+            _ = e

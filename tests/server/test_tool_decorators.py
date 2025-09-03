@@ -75,13 +75,12 @@ async def test_app_tool_registers_and_executes_sync_tool():
     create_workflow_tools(mcp, server_context)
     create_declared_function_tools(mcp, server_context)
 
-    # Verify tool names: sync tool and its status tool
-    decorated_names = {name for name, _ in mcp.decorated_tools}
+    # Verify tool names: only the sync tool endpoint is added
+    _decorated_names = {name for name, _ in mcp.decorated_tools}
     added_names = {name for name, *_ in mcp.added_tools}
 
-    # No workflows-* for sync tools; check echo and echo-get_status
+    # No workflows-* or per-tool get_status aliases for sync tools; check only echo
     assert "echo" in added_names  # synchronous tool
-    assert "echo-get_status" in decorated_names
 
     # Execute the synchronous tool function and ensure it returns unwrapped value
     # Find the registered sync tool function
@@ -127,10 +126,13 @@ async def test_app_async_tool_registers_aliases_and_workflow_tools():
     create_declared_function_tools(mcp, server_context)
 
     decorated_names = {name for name, _ in mcp.decorated_tools}
+    added_names = {name for name, *_ in mcp.added_tools}
 
-    # async aliases only (we suppress workflows-* for async auto tools)
-    assert "long-async-run" in decorated_names
-    assert "long-get_status" in decorated_names
+    # We register the async tool under its given name via add_tool
+    assert "long" in added_names
+    # And we suppress workflows-* for async auto tools
+    assert "workflows-long-run" not in decorated_names
+    assert "workflows-long-get_status" not in decorated_names
 
 
 @pytest.mark.asyncio
