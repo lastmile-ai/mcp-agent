@@ -40,11 +40,12 @@ async def log_via_proxy(
     *,
     server_name: Optional[str] = None,
     gateway_url: Optional[str] = None,
+    gateway_token: Optional[str] = None,
 ) -> bool:
     base = _resolve_gateway_url(server_registry, server_name, gateway_url)
     url = f"{base}/internal/workflows/log"
     headers: Dict[str, str] = {}
-    tok = os.environ.get("MCP_GATEWAY_TOKEN")
+    tok = gateway_token or os.environ.get("MCP_GATEWAY_TOKEN")
     if tok:
         headers["X-MCP-Gateway-Token"] = tok
     timeout = float(os.environ.get("MCP_GATEWAY_TIMEOUT", "10"))
@@ -74,11 +75,12 @@ async def ask_via_proxy(
     *,
     server_name: Optional[str] = None,
     gateway_url: Optional[str] = None,
+    gateway_token: Optional[str] = None,
 ) -> Dict[str, Any]:
     base = _resolve_gateway_url(server_registry, server_name, gateway_url)
     url = f"{base}/internal/human/prompts"
     headers: Dict[str, str] = {}
-    tok = os.environ.get("MCP_GATEWAY_TOKEN")
+    tok = gateway_token or os.environ.get("MCP_GATEWAY_TOKEN")
     if tok:
         headers["X-MCP-Gateway-Token"] = tok
     timeout = float(os.environ.get("MCP_GATEWAY_TIMEOUT", "10"))
@@ -105,11 +107,12 @@ async def notify_via_proxy(
     *,
     server_name: Optional[str] = None,
     gateway_url: Optional[str] = None,
+    gateway_token: Optional[str] = None,
 ) -> bool:
     base = _resolve_gateway_url(server_registry, server_name, gateway_url)
     url = f"{base}/internal/session/by-run/{run_id}/notify"
     headers: Dict[str, str] = {}
-    tok = os.environ.get("MCP_GATEWAY_TOKEN")
+    tok = gateway_token or os.environ.get("MCP_GATEWAY_TOKEN")
     if tok:
         headers["X-MCP-Gateway-Token"] = tok
     timeout = float(os.environ.get("MCP_GATEWAY_TIMEOUT", "10"))
@@ -131,11 +134,12 @@ async def request_via_proxy(
     *,
     server_name: Optional[str] = None,
     gateway_url: Optional[str] = None,
+    gateway_token: Optional[str] = None,
 ) -> Dict[str, Any]:
     base = _resolve_gateway_url(server_registry, server_name, gateway_url)
     url = f"{base}/internal/session/by-run/{run_id}/request"
     headers: Dict[str, str] = {}
-    tok = os.environ.get("MCP_GATEWAY_TOKEN")
+    tok = gateway_token or os.environ.get("MCP_GATEWAY_TOKEN")
     if tok:
         headers["X-MCP-Gateway-Token"] = tok
     timeout = float(os.environ.get("MCP_GATEWAY_TIMEOUT", "20"))

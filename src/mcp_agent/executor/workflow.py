@@ -218,6 +218,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
         # Using __mcp_agent_ prefix to avoid conflicts with user parameters
         provided_workflow_id = kwargs.pop("__mcp_agent_workflow_id", None)
         provided_task_queue = kwargs.pop("__mcp_agent_task_queue", None)
+        workflow_memo = kwargs.pop("__mcp_agent_workflow_memo", None)
 
         self.update_status("scheduled")
 
@@ -235,6 +236,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
                 *args,
                 workflow_id=provided_workflow_id,
                 task_queue=provided_task_queue,
+                workflow_memo=workflow_memo,
                 **kwargs,
             )
             self._workflow_id = handle.id
@@ -801,6 +803,39 @@ class Workflow(ABC, Generic[T], ContextDependent):
                 self._logger.warning(
                     "Signal handler not attached: executor.signal_bus is not a TemporalSignalHandler"
                 )
+
+            # Read memo (if any) and set gateway overrides on context for activities
+            try:
+                from temporalio import workflow as _twf
+
+                # Preferred API: direct memo mapping from Temporal runtime
+                memo_map = None
+                try:
+                    memo_map = _twf.memo()
+                except Exception:
+                    # Fallback to info().memo if available
+                    try:
+                        _info = _twf.info()
+                        memo_map = getattr(_info, "memo", None)
+                    except Exception:
+                        memo_map = None
+
+                if isinstance(memo_map, dict):
+                    gw = memo_map.get("gateway_url")
+                    gt = memo_map.get("gateway_token")
+                    if gw:
+                        try:
+                            self.context.gateway_url = gw
+                        except Exception:
+                            pass
+                    if gt:
+                        try:
+                            self.context.gateway_token = gt
+                        except Exception:
+                            pass
+            except Exception:
+                # Safe to ignore if called outside workflow sandbox or memo unavailable
+                pass
 
             # Expose a virtual upstream session (passthrough) bound to this run via activities
             # This lets any code use context.upstream_session like a real session.

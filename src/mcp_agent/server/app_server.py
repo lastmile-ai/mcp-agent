@@ -1287,8 +1287,55 @@ async def _workflow_run(
         if task_queue:
             run_parameters["__mcp_agent_task_queue"] = task_queue
 
+        # Build memo for Temporal runs if gateway info is available
+        workflow_memo = None
+        try:
+            # Prefer explicit kwargs, else infer from request headers/environment
+            # FastMCP keeps raw request under ctx.request_context.request if available
+            gateway_url = kwargs.get("gateway_url")
+            gateway_token = kwargs.get("gateway_token")
+
+            if gateway_url is None:
+                try:
+                    req = getattr(ctx.request_context, "request", None)
+                    if req is not None:
+                        # Custom header if present
+                        h = req.headers
+                        gateway_url = (
+                            h.get("X-MCP-Gateway-URL")
+                            or h.get("X-Forwarded-Url")
+                            or h.get("X-Forwarded-Proto")
+                        )
+                        # Best-effort reconstruction if only proto/host provided
+                        if gateway_url is None:
+                            proto = h.get("X-Forwarded-Proto") or "http"
+                            host = h.get("X-Forwarded-Host") or h.get("Host")
+                            if host:
+                                gateway_url = f"{proto}://{host}"
+                except Exception:
+                    pass
+
+            if gateway_token is None:
+                try:
+                    req = getattr(ctx.request_context, "request", None)
+                    if req is not None:
+                        gateway_token = req.headers.get("X-MCP-Gateway-Token")
+                except Exception:
+                    pass
+
+            if gateway_url or gateway_token:
+                workflow_memo = {
+                    "gateway_url": gateway_url,
+                    "gateway_token": gateway_token,
+                }
+        except Exception:
+            workflow_memo = None
+
         # Run the workflow asynchronously and get its ID
-        execution = await workflow.run_async(**run_parameters)
+        execution = await workflow.run_async(
+            __mcp_agent_workflow_memo=workflow_memo,
+            **run_parameters,
+        )
 
         logger.info(
             f"Workflow {workflow_name} started with workflow ID {execution.workflow_id} and run ID {execution.run_id}. Parameters: {run_parameters}"

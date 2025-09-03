@@ -279,6 +279,7 @@ class TemporalExecutor(Executor):
         wait_for_result: bool = False,
         workflow_id: str | None = None,
         task_queue: str | None = None,
+        workflow_memo: Dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> WorkflowHandle:
         """
@@ -363,6 +364,7 @@ class TemporalExecutor(Executor):
                 task_queue=task_queue,
                 id_reuse_policy=id_reuse_policy,
                 rpc_metadata=self.config.rpc_metadata or {},
+                memo=workflow_memo or {},
             )
         else:
             handle: WorkflowHandle = await self.client.start_workflow(
@@ -371,6 +373,7 @@ class TemporalExecutor(Executor):
                 task_queue=task_queue,
                 id_reuse_policy=id_reuse_policy,
                 rpc_metadata=self.config.rpc_metadata or {},
+                memo=workflow_memo or {},
             )
 
         # Wait for the result if requested

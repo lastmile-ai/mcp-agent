@@ -24,6 +24,8 @@ class SystemActivities(ContextDependent):
         data: Dict[str, Any] | None = None,
     ) -> bool:
         registry = self.context.server_registry
+        gateway_url = getattr(self.context, "gateway_url", None)
+        gateway_token = getattr(self.context, "gateway_token", None)
         return await log_via_proxy(
             registry,
             run_id=run_id,
@@ -31,6 +33,8 @@ class SystemActivities(ContextDependent):
             namespace=namespace,
             message=message,
             data=data or {},
+            gateway_url=gateway_url,
+            gateway_token=gateway_token,
         )
 
     @activity.defn(name="mcp_request_user_input")
@@ -44,6 +48,8 @@ class SystemActivities(ContextDependent):
     ) -> Dict[str, Any]:
         # Reuse proxy ask API; returns {result} or {error}
         registry = self.context.server_registry
+        gateway_url = getattr(self.context, "gateway_url", None)
+        gateway_token = getattr(self.context, "gateway_token", None)
         return await ask_via_proxy(
             registry,
             run_id=run_id,
@@ -53,6 +59,8 @@ class SystemActivities(ContextDependent):
                 "workflow_id": workflow_id,
                 "signal_name": signal_name,
             },
+            gateway_url=gateway_url,
+            gateway_token=gateway_token,
         )
 
     @activity.defn(name="mcp_relay_notify")
@@ -60,8 +68,15 @@ class SystemActivities(ContextDependent):
         self, run_id: str, method: str, params: Dict[str, Any] | None = None
     ) -> bool:
         registry = self.context.server_registry
+        gateway_url = getattr(self.context, "gateway_url", None)
+        gateway_token = getattr(self.context, "gateway_token", None)
         return await notify_via_proxy(
-            registry, run_id=run_id, method=method, params=params or {}
+            registry,
+            run_id=run_id,
+            method=method,
+            params=params or {},
+            gateway_url=gateway_url,
+            gateway_token=gateway_token,
         )
 
     @activity.defn(name="mcp_relay_request")
@@ -69,6 +84,13 @@ class SystemActivities(ContextDependent):
         self, run_id: str, method: str, params: Dict[str, Any] | None = None
     ) -> Dict[str, Any]:
         registry = self.context.server_registry
+        gateway_url = getattr(self.context, "gateway_url", None)
+        gateway_token = getattr(self.context, "gateway_token", None)
         return await request_via_proxy(
-            registry, run_id=run_id, method=method, params=params or {}
+            registry,
+            run_id=run_id,
+            method=method,
+            params=params or {},
+            gateway_url=gateway_url,
+            gateway_token=gateway_token,
         )
