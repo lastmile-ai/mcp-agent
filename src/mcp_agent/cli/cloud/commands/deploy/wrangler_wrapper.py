@@ -157,7 +157,7 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
                 d
                 for d in dirs
                 if not d.startswith(".")
-                and d not in {"logs", "__pycache__", "node_modules"}
+                and d not in {"logs", "__pycache__", "node_modules", "venv"}
             ]
 
             for filename in files:
@@ -234,7 +234,7 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
             if py_file.exists():
                 if py_file.suffix == ".bak":
                     # Restore the original file by removing .bak suffix
-                    original_path = py_file.with_suffix("")
+                    original_path = Path(str(py_file).replace(".bak", ""))
                     py_file.rename(original_path)
                 else:
                     # Remove the .mcpac.py copy
