@@ -1,10 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from mcp_agent.executor.temporal.workflow_signal import (
-    TemporalSignalHandler,
-    SignalMailbox,
-)
-from mcp_agent.executor.workflow_signal import Signal
+from mcp_agent.executor.temporal.workflow_signal import TemporalSignalHandler
+from mcp_agent.executor.workflow_signal import Signal, SignalMailbox
 
 
 @pytest.fixture
