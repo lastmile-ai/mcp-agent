@@ -186,7 +186,7 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
                 copied_py_files.append(py_path)
 
                 # Hide the original file by renaming it temporarily
-                temp_original = file_path.with_suffix(f"{file_path.suffix}.bak")
+                temp_original = Path(str(file_path) + ".bak")
                 file_path.rename(temp_original)
                 copied_py_files.append(temp_original)  # Track for cleanup
 

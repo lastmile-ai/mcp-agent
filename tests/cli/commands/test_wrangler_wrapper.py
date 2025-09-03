@@ -658,3 +658,68 @@ app = MCPApp(name="test-app")
             # All special files should still exist after cleanup
             for filename in special_files:
                 assert (project_path / filename).exists()
+
+
+def test_wrangler_deploy_complex_file_extensions():
+    """Test handling of files with complex extensions (e.g., .tar.gz, .config.json)."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        project_path = Path(temp_dir)
+
+        # Create main.py
+        (project_path / "main.py").write_text("""
+from mcp_agent_cloud import MCPApp
+app = MCPApp(name="test-app")
+""")
+
+        # Create files with complex extensions that would break with .with_suffix()
+        complex_files = {
+            "archive.tar.gz": "archive content",
+            "config.json.template": "template content",
+            "data.csv.backup": "backup data",
+            "script.sh.orig": "original script",
+            "file.name.with.multiple.dots.txt": "multi-dot content",
+        }
+
+        for filename, content in complex_files.items():
+            (project_path / filename).write_text(content)
+
+        def check_complex_extensions_during_subprocess(*args, **kwargs):
+            # During subprocess, .bak files should exist and .mcpac.py files should exist
+            for filename in complex_files.keys():
+                bak_file = project_path / f"{filename}.bak"
+                mcpac_file = project_path / f"{filename}.mcpac.py"
+
+                assert bak_file.exists(), (
+                    f"{filename}.bak should exist during subprocess"
+                )
+                assert mcpac_file.exists(), (
+                    f"{filename}.mcpac.py should exist during subprocess"
+                )
+
+                # Original should not exist during subprocess
+                original_file = project_path / filename
+                assert not original_file.exists(), (
+                    f"{filename} should be hidden during subprocess"
+                )
+
+            return MagicMock(returncode=0)
+
+        with patch(
+            "subprocess.run", side_effect=check_complex_extensions_during_subprocess
+        ):
+            wrangler_deploy("test-app", "test-api-key", project_path)
+
+            # After cleanup, original files should exist with correct content
+            for filename, expected_content in complex_files.items():
+                original_file = project_path / filename
+                bak_file = project_path / f"{filename}.bak"
+                mcpac_file = project_path / f"{filename}.mcpac.py"
+
+                assert original_file.exists(), f"{filename} should be restored"
+                assert original_file.read_text() == expected_content, (
+                    f"{filename} content should be preserved"
+                )
+                assert not bak_file.exists(), f"{filename}.bak should be cleaned up"
+                assert not mcpac_file.exists(), (
+                    f"{filename}.mcpac.py should be cleaned up"
+                )
