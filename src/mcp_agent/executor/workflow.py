@@ -17,6 +17,7 @@ from typing import (
 from pydantic import BaseModel, ConfigDict, Field
 from mcp_agent.core.context_dependent import ContextDependent
 from mcp_agent.executor.temporal import TemporalExecutor
+from mcp_agent.executor.temporal.temporal_context import execution_id, proxy_url
 from mcp_agent.executor.temporal.workflow_signal import (
     SignalMailbox,
     TemporalSignalHandler,
@@ -210,6 +211,9 @@ class Workflow(ABC, Generic[T], ContextDependent):
             WorkflowExecution: The execution details including run ID and workflow ID
         """
 
+        # run_ids may chanve when temporal retries failures. Create a stable execution id.
+        my_execution_id = str(self.executor.uuid())
+
         import asyncio
         from concurrent.futures import CancelledError
 
@@ -231,6 +235,11 @@ class Workflow(ABC, Generic[T], ContextDependent):
         elif self.context.config.execution_engine == "temporal":
             # For Temporal workflows, we'll start the workflow immediately
             executor: TemporalExecutor = self.executor
+
+            execution_id.set(my_execution_id)
+            fastmcp = self.context.app.mcp
+            proxy_url.set(f"{fastmcp.settings.host}:{fastmcp.settings.port}")
+
             handle = await executor.start_workflow(
                 self.name,
                 *args,

@@ -3,7 +3,9 @@ Listeners for the logger module of MCP Agent.
 """
 
 import asyncio
+import json
 import logging
+import requests
 import time
 
 from abc import ABC, abstractmethod
@@ -11,6 +13,7 @@ from typing import Any, Dict, List, Optional, Protocol, TYPE_CHECKING
 
 from mcp_agent.logging.events import Event, EventFilter, EventType
 from mcp_agent.logging.event_progress import convert_log_event
+from mcp_agent.executor.temporal.temporal_context import execution_id, proxy_url
 
 if TYPE_CHECKING:  # pragma: no cover - for type checking only
     from mcp.types import LoggingLevel
@@ -248,10 +251,15 @@ class MCPUpstreamLoggingListener(FilteredListener):
             event, "upstream_session", None
         )
 
-        if upstream_session is None:
-            # No upstream_session available, event cannot be forwarded
-            return
+        if upstream_session:
+            # Upstream_session available, event can be forwarded
+            await self._send_event_upstream(event, upstream_session)
+        elif execution_id.get() is not None:
+            await self._send_event_via_proxy(event)
 
+        # nothing left to do. Best effort delivery
+
+    def parse_event(self, event: Event) -> tuple["LoggingLevel", Dict[str, Any], str]:
         # Map our EventType to MCP LoggingLevel; fold progress -> info
         mcp_level_map: Dict[str, str] = {
             "debug": "debug",
@@ -286,12 +294,43 @@ class MCPUpstreamLoggingListener(FilteredListener):
             event.namespace if not event.name else f"{event.namespace}.{event.name}"
         )
 
+        return (mcp_level, data, logger_name)
+
+    async def _send_event_upstream(
+        self, event: Event, upstream_session: UpstreamServerSessionProtocol
+    ) -> None:
+        (mcp_level, data, logger_name) = self.parse_event(event)
         try:
             await upstream_session.send_log_message(
                 level=mcp_level,  # type: ignore[arg-type]
                 data=data,
                 logger=logger_name,
             )
+        except Exception as e:
+            # Avoid raising inside listener; best-effort delivery
+            _ = e
+
+    async def _send_event_via_proxy(self, event: Event) -> None:
+        (mcp_level, data, logger_name) = self.parse_event(event)
+
+        run_id = execution_id.get()
+        url = proxy_url.get()
+
+        if not run_id or not url:
+            # Avoid raising inside listener; best-effort delivery
+            return
+
+        url = url + "/proxy/notification"
+
+        data = {
+            "execution_id": execution_id.get(),
+            "level": mcp_level,
+            "data": data,
+            "logger": logger_name,
+        }
+
+        try:
+            requests.post(url, data=json.dumps(data))
         except Exception as e:
             # Avoid raising inside listener; best-effort delivery
             _ = e

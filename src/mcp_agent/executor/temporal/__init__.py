@@ -32,6 +32,7 @@ from temporalio.worker import Worker
 
 from mcp_agent.config import TemporalSettings
 from mcp_agent.executor.executor import Executor, ExecutorConfig, R
+from mcp_agent.executor.temporal.context_propagation_interceptor import ContextPropagationInterceptor
 from mcp_agent.executor.temporal.workflow_signal import TemporalSignalHandler
 from mcp_agent.executor.workflow_signal import SignalHandler
 from mcp_agent.logging.logger import get_logger
@@ -263,9 +264,12 @@ class TemporalExecutor(Executor):
                 api_key=self.config.api_key,
                 tls=self.config.tls,
                 data_converter=pydantic_data_converter,
-                interceptors=[TracingInterceptor()]
+                interceptors=[
+                    TracingInterceptor(),
+                    ContextPropagatorInterceptor(),
+                ]
                 if self.context.tracing_enabled
-                else [],
+                else [ContextPropagatorInterceptor(),
                 rpc_metadata=self.config.rpc_metadata or {},
             )
 

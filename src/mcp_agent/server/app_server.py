@@ -8,9 +8,18 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional, Set, Tuple, Type, TYPE_CHECKING
 
+from starlette.requests import Request
+from starlette.responses import PlainTextResponse
+
+from pydantic import BaseModel
+from pydantic_core import from_json
+from pydantic_core._pydantic_core import ValidationError
+
 from mcp.server.fastmcp import Context as MCPContext, FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.fastmcp.tools import Tool as FastTool
+from mcp.server.session import ServerSession
+from mcp.types import LoggingLevel
 
 from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
@@ -23,6 +32,7 @@ from mcp_agent.executor.workflow_registry import (
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.logging.logger import LoggingConfig
 from mcp_agent.mcp.mcp_server_registry import ServerRegistry
+
 
 if TYPE_CHECKING:
     from mcp_agent.core.context import Context
@@ -37,6 +47,7 @@ class ServerContext(ContextDependent):
         super().__init__(context=context, **kwargs)
         self.mcp = mcp
         self.active_agents: Dict[str, Agent] = {}
+        self.upstream_sessions: Dict[str, ServerSession] = {}
 
         # Maintain a list of registered workflow tools to avoid re-registration
         # when server context is recreated for the same FastMCP instance (e.g. during
@@ -89,6 +100,14 @@ class ServerContext(ContextDependent):
     def workflow_registry(self) -> WorkflowRegistry:
         """Get the workflow registry for this server context."""
         return self.context.workflow_registry
+
+    def register_upstream_session(self, execution_id: str, session: ServerSession):
+        """Register an upstream session for a given execution id."""
+        self.upstream_sessions[execution_id] = session
+
+    def get_upstream_session(self, execution_id: str) -> Optional[ServerSession]:
+        """Get the upstream session for a given execution id."""
+        return self.upstream_sessions.get(execution_id)
 
 
 def _get_attached_app(mcp: FastMCP) -> MCPApp | None:
@@ -527,6 +546,55 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             logger.debug(f"Cancelled workflow {workflow_name} with ID {run_id}")
         else:
             logger.error(f"Failed to cancel workflow {workflow_name} with ID {run_id}")
+
+    # endregion
+
+    # region proxy
+
+    @mcp.custom_route("/proxy/notification", methods=["POST"])
+    async def notification_route(request: Request) -> PlainTextResponse:
+        """
+        Custom route for sending notifications to the upstream client
+        """
+
+        class NotificationRequest(BaseModel):
+            execution_id: str
+            level: LoggingLevel
+            data: Dict[str, Any]
+            logger_name: str
+
+        server_context = _get_attached_server_context(mcp)
+        if not server_context:
+            return PlainTextResponse("Server context not found", status_code=500)
+
+        body = await request.body()
+
+        try:
+            req = NotificationRequest.model_validate(from_json(body))
+            execution_id = req.execution_id
+            level = req.level
+            data = req.data
+            logger_name = req.logger_name
+        except ValidationError as e:
+            return PlainTextResponse(
+                f"Invalid request format: {str(e)}", status_code=400
+            )
+
+        if not execution_id:
+            return PlainTextResponse("Missing run_id in request", status_code=400)
+
+        upstream_session = server_context.get_upstream_session(execution_id)
+        if not upstream_session:
+            return PlainTextResponse(
+                f"No upstream session found for execution {execution_id}",
+                status_code=404,
+            )
+
+        await upstream_session.send_log_message(
+            level=level, data=data, logger=logger_name
+        )
+
+        return PlainTextResponse("Notification sent", status_code=200)
 
     # endregion
 
@@ -1021,6 +1089,11 @@ async def _workflow_run(
 
         logger.info(
             f"Workflow {workflow_name} started with workflow ID {execution.workflow_id} and run ID {execution.run_id}. Parameters: {run_parameters}"
+        )
+
+        # register the session
+        _get_attached_server_context(ctx.fastmcp).register_upstream_session(
+            execution.execution_id, ctx.session
         )
 
         return {
