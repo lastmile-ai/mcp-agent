@@ -6,99 +6,98 @@ decorators, and how to run it using the Temporal executor.
 
 import asyncio
 import os
+from typing import Optional
+
+from main import app
 
 from mcp_agent.agents.agent import Agent
+from mcp_agent.core.context import Context as AppContext
 from mcp_agent.executor.temporal import TemporalExecutor
-from mcp_agent.executor.workflow import Workflow, WorkflowResult
 from mcp_agent.workflows.llm.augmented_llm import RequestParams
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 from mcp_agent.workflows.orchestrator.orchestrator import Orchestrator
 
-from main import app
+"""
+A more complex example that demonstrates how to orchestrate multiple agents.
+This example uses the @app.async_tool decorator instead of traditional workflow/run definitions
+and will have a workflow created behind the scenes.
+"""
 
 
-@app.workflow
-class OrchestratorWorkflow(Workflow[str]):
+@app.async_tool(name="OrchestratorWorkflow")
+async def run_orchestrator(input: str, app_ctx: Optional[AppContext]) -> str:
     """
-    A simple workflow that demonstrates the basic structure of a Temporal workflow.
+    Run the workflow, processing the input data.
+
+    Args:
+        input_data: The data to process
+
+    Returns:
+        A WorkflowResult containing the processed data
     """
 
-    @app.workflow_run
-    async def run(self, input: str) -> WorkflowResult[str]:
-        """
-        Run the workflow, processing the input data.
+    context = app_ctx or app.context
+    context.config.mcp.servers["filesystem"].args.extend([os.getcwd()])
 
-        Args:
-            input_data: The data to process
+    finder_agent = Agent(
+        name="finder",
+        instruction="""You are an agent with access to the filesystem, 
+        as well as the ability to fetch URLs. Your job is to identify 
+        the closest match to a user's request, make the appropriate tool calls, 
+        and return the URI and CONTENTS of the closest match.""",
+        server_names=["fetch", "filesystem"],
+    )
 
-        Returns:
-            A WorkflowResult containing the processed data
-        """
+    writer_agent = Agent(
+        name="writer",
+        instruction="""You are an agent that can write to the filesystem.
+        You are tasked with taking the user's input, addressing it, and 
+        writing the result to disk in the appropriate location.""",
+        server_names=["filesystem"],
+    )
 
-        context = app.context
-        context.config.mcp.servers["filesystem"].args.extend([os.getcwd()])
+    proofreader = Agent(
+        name="proofreader",
+        instruction=""""Review the short story for grammar, spelling, and punctuation errors.
+        Identify any awkward phrasing or structural issues that could improve clarity. 
+        Provide detailed feedback on corrections.""",
+        server_names=["fetch"],
+    )
 
-        finder_agent = Agent(
-            name="finder",
-            instruction="""You are an agent with access to the filesystem, 
-            as well as the ability to fetch URLs. Your job is to identify 
-            the closest match to a user's request, make the appropriate tool calls, 
-            and return the URI and CONTENTS of the closest match.""",
-            server_names=["fetch", "filesystem"],
-        )
+    fact_checker = Agent(
+        name="fact_checker",
+        instruction="""Verify the factual consistency within the story. Identify any contradictions,
+        logical inconsistencies, or inaccuracies in the plot, character actions, or setting. 
+        Highlight potential issues with reasoning or coherence.""",
+        server_names=["fetch"],
+    )
 
-        writer_agent = Agent(
-            name="writer",
-            instruction="""You are an agent that can write to the filesystem.
-            You are tasked with taking the user's input, addressing it, and 
-            writing the result to disk in the appropriate location.""",
-            server_names=["filesystem"],
-        )
+    style_enforcer = Agent(
+        name="style_enforcer",
+        instruction="""Analyze the story for adherence to style guidelines.
+        Evaluate the narrative flow, clarity of expression, and tone. Suggest improvements to 
+        enhance storytelling, readability, and engagement.""",
+        server_names=["fetch"],
+    )
 
-        proofreader = Agent(
-            name="proofreader",
-            instruction=""""Review the short story for grammar, spelling, and punctuation errors.
-            Identify any awkward phrasing or structural issues that could improve clarity. 
-            Provide detailed feedback on corrections.""",
-            server_names=["fetch"],
-        )
+    orchestrator = Orchestrator(
+        llm_factory=OpenAIAugmentedLLM,
+        available_agents=[
+            finder_agent,
+            writer_agent,
+            proofreader,
+            fact_checker,
+            style_enforcer,
+        ],
+        # We will let the orchestrator iteratively plan the task at every step
+        plan_type="full",
+        context=app.context,
+    )
 
-        fact_checker = Agent(
-            name="fact_checker",
-            instruction="""Verify the factual consistency within the story. Identify any contradictions,
-            logical inconsistencies, or inaccuracies in the plot, character actions, or setting. 
-            Highlight potential issues with reasoning or coherence.""",
-            server_names=["fetch"],
-        )
-
-        style_enforcer = Agent(
-            name="style_enforcer",
-            instruction="""Analyze the story for adherence to style guidelines.
-            Evaluate the narrative flow, clarity of expression, and tone. Suggest improvements to 
-            enhance storytelling, readability, and engagement.""",
-            server_names=["fetch"],
-        )
-
-        orchestrator = Orchestrator(
-            llm_factory=OpenAIAugmentedLLM,
-            available_agents=[
-                finder_agent,
-                writer_agent,
-                proofreader,
-                fact_checker,
-                style_enforcer,
-            ],
-            # We will let the orchestrator iteratively plan the task at every step
-            plan_type="full",
-            context=app.context,
-        )
-
-        result = await orchestrator.generate_str(
-            message=input,
-            request_params=RequestParams(model="gpt-4o", max_iterations=100),
-        )
-
-        return WorkflowResult(value=result)
+    return await orchestrator.generate_str(
+        message=input,
+        request_params=RequestParams(model="gpt-4o", max_iterations=100),
+    )
 
 
 async def main():
