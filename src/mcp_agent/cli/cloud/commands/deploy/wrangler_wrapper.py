@@ -9,11 +9,6 @@ from pathlib import Path
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from mcp_agent.cli.config import settings
-from mcp_agent.cli.core.constants import (
-    MCP_CONFIG_FILENAME,
-    MCP_DEPLOYED_SECRETS_FILENAME,
-    REQUIREMENTS_TXT_FILENAME,
-)
 from mcp_agent.cli.utils.ux import console, print_error, print_warning
 
 from .constants import (
@@ -23,15 +18,6 @@ from .constants import (
 )
 from .settings import deployment_settings
 from .validation import validate_project
-
-_WELL_KNOWN_CONFIG_FILES = [
-    MCP_CONFIG_FILENAME,
-    MCP_DEPLOYED_SECRETS_FILENAME,
-    "uv.lock",
-    "poetry.lock",
-    "pyproject.toml",
-    REQUIREMENTS_TXT_FILENAME,
-]
 
 
 def _handle_wrangler_error(e: subprocess.CalledProcessError) -> None:
@@ -141,11 +127,6 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
     # to ensure compatibility_flags are set correctly.
     wrangler_toml_path = project_dir / "wrangler.toml"
 
-    # Rename requirements.txt if it exists
-    original_reqs = project_dir / REQUIREMENTS_TXT_FILENAME
-    temp_reqs = project_dir / ".requirements.txt.bak"
-    renamed_reqs = False
-
     # Temporarily move .venv if it exists
     original_venv = project_dir / ".venv"
     temp_venv = None
@@ -169,18 +150,45 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
             original_venv.rename(temp_venv_path)
             temp_venv = temp_dir  # keep ref to cleanup later
 
-        # Copy well-known config files with a .mcpac.py extension whenever they exist
-        for filename in _WELL_KNOWN_CONFIG_FILES:
-            file_path = project_dir / filename
-            if file_path.exists():
-                py_path = project_dir / f"{filename}.mcpac.py"
+        # Copy all files from project_dir and subdirs with a .mcpac.py extension for non-Python files
+        for root, dirs, files in os.walk(project_dir):
+            # Skip directories with dot prefixes, logs directory, and other common directories we don't want to bundle
+            dirs[:] = [
+                d
+                for d in dirs
+                if not d.startswith(".")
+                and d not in {"logs", "__pycache__", "node_modules", "venv"}
+            ]
+
+            for filename in files:
+                file_path = Path(root) / filename
+
+                # Skip temporary files and hidden files
+                if filename.startswith(".") or filename.endswith((".bak", ".tmp")):
+                    continue
+
+                # Skip wrangler.toml (we create our own)
+                if filename == "wrangler.toml":
+                    continue
+
+                # For Python files, they're already included by Wrangler
+                if filename.endswith(".py"):
+                    continue
+
+                # For non-Python files, copy with .mcpac.py extension and hide original
+                relative_path = file_path.relative_to(project_dir)
+                py_path = project_dir / f"{relative_path}.mcpac.py"
+
+                # Ensure parent directory exists
+                py_path.parent.mkdir(parents=True, exist_ok=True)
+
                 shutil.copy(file_path, py_path)
                 copied_py_files.append(py_path)
 
-                # In the special case of requirements.txt, we still have to hide the original file
-                if filename == REQUIREMENTS_TXT_FILENAME:
-                    file_path.rename(temp_reqs)
-                    renamed_reqs = True
+                # Hide the original file by renaming it temporarily
+                temp_original = Path(str(file_path) + ".bak")
+                file_path.rename(temp_original)
+                copied_py_files.append(temp_original)  # Track for cleanup
 
         wrangler_toml_path.write_text(wrangler_toml_content)
 
@@ -217,17 +225,20 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
                 raise
 
     finally:
-        if renamed_reqs and temp_reqs.exists():
-            temp_reqs.rename(original_reqs)
-
         if temp_venv is not None:
             temp_venv_path.rename(original_venv)
             temp_venv.cleanup()
 
-        # Remove all copied .py files
+        # Clean up all copied .py files and restore renamed originals
         for py_file in copied_py_files:
             if py_file.exists():
-                os.remove(py_file)
+                if py_file.suffix == ".bak":
+                    # Restore the original file by removing .bak suffix
+                    original_path = Path(str(py_file).replace(".bak", ""))
+                    py_file.rename(original_path)
+                else:
+                    # Remove the .mcpac.py copy
+                    os.remove(py_file)
 
         if wrangler_toml_path.exists():
             wrangler_toml_path.unlink()
