@@ -345,7 +345,17 @@ class MCPAggregator(ContextDependent):
             # Process tools
             async with self._tool_map_lock:
                 self._server_to_tool_map[server_name] = []
+                
+                # Get server configuration to check for tool filtering
+                server_config = self.context.server_registry.get_server_config(server_name)
+                allowed_tools = server_config.allowed_tools if server_config else None
+                
                 for tool in tools:
+                    # Apply tool filtering if configured - O(1) lookup with set
+                    if allowed_tools is not None and tool.name not in allowed_tools:
+                        logger.debug(f"Filtering out tool '{tool.name}' from server '{server_name}' (not in allowed_tools)")
+                        continue
+                        
                     namespaced_tool_name = f"{server_name}{SEP}{tool.name}"
                     namespaced_tool = NamespacedTool(
                         tool=tool,
