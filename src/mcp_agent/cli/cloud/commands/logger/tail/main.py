@@ -140,7 +140,7 @@ async def _fetch_logs(
         console=console,
         transient=True,
     ) as progress:
-        task = progress.add_task("Fetching logs...", total=None)
+        progress.add_task("Fetching logs...", total=None)
         
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
@@ -419,7 +419,7 @@ def _format_timestamp(timestamp_str: str) -> str:
             dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
             return dt.strftime('%H:%M:%S')
         return datetime.now().strftime('%H:%M:%S')
-    except:
+    except (ValueError, TypeError):
         return timestamp_str[:8] if len(timestamp_str) >= 8 else timestamp_str
 
 
