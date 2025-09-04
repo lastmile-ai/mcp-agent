@@ -30,13 +30,13 @@ async def test_upstream_logging_listener_sends_notifications(monkeypatch):
 
     dummy_session = DummyUpstreamSession()
 
-    current_context = SimpleNamespace(upstream_session=dummy_session)
-
     # Configure logging with low threshold so our event passes
     await LoggingConfig.configure(event_filter=EventFilter(min_level="debug"))
 
     try:
-        logger = get_logger("tests.logging", context=current_context)
+        # Bind a context carrying upstream_session directly to the logger
+        ctx_with_upstream = SimpleNamespace(upstream_session=dummy_session)
+        logger = get_logger("tests.logging", context=ctx_with_upstream)
         logger.info("hello world", name="unit", foo="bar")
 
         # Give the async bus a moment to process

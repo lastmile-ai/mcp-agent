@@ -13,8 +13,48 @@ https://github.com/user-attachments/assets/f651af86-222d-4df0-8241-616414df66e4
 - Creating workflows with the `Workflow` base class
 - Registering workflows with an `MCPApp`
 - Exposing workflows as MCP tools using `create_mcp_server_for_app`, optionally using custom FastMCP settings
+- Preferred: Declaring MCP tools with `@app.tool` and `@app.async_tool`
 - Connecting to an MCP server using `gen_client`
 - Running workflows remotely and monitoring their status
+
+## Preferred: Define tools with decorators
+
+You can declare tools directly from plain Python functions using `@app.tool` (sync) and `@app.async_tool` (async). This is the simplest and recommended way to expose agent logic.
+
+```python
+from mcp_agent.app import MCPApp
+from typing import Optional
+
+app = MCPApp(name="basic_agent_server")
+
+# Synchronous tool – returns the final result to the caller
+@app.tool
+async def grade_story(story: str, app_ctx: Optional[Context] = None) -> str:
+    """
+    Grade a student's short story and return a structured report.
+    """
+    # ... implement using your agents/LLMs ...
+    return "Report..."
+
+# Asynchronous tool – starts a workflow and returns IDs to poll later
+@app.async_tool(name="grade_story_async")
+async def grade_story_async(story: str, app_ctx: Optional[Context] = None) -> str:
+    """
+    Start grading the story asynchronously.
+
+    This tool starts the workflow and returns 'workflow_id' and 'run_id'. Use the
+    generic 'workflows-get_status' tool with the returned IDs to retrieve status/results.
+    """
+    # ... implement using your agents/LLMs ...
+    return "(async run)"
+```
+
+What gets exposed:
+
+- Sync tools appear as `<tool_name>` and return the final result (no status polling needed).
+- Async tools appear as `<tool_name>` and return `{"workflow_id","run_id"}`; use `workflows-get_status` to query status.
+
+These decorator-based tools are registered automatically when you call `create_mcp_server_for_app(app)`.
 
 ## Components in this Example
 
@@ -34,12 +74,16 @@ https://github.com/user-attachments/assets/f651af86-222d-4df0-8241-616414df66e4
 
 The MCP agent server exposes the following tools:
 
-- `workflows-list` - Lists all available workflows
-- `workflows-BasicAgentWorkflow-run` - Runs the BasicAgentWorkflow, returns the wf run ID
-- `workflows-BasicAgentWorkflow-get_status` - Gets the status of a running workflow
-- `workflows-ParallelWorkflow-run` - Runs the ParallelWorkflow, returns the wf run ID
-- `workflows-ParallelWorkflow-get_status` - Gets the status of a running workflow
-- `workflows-cancel` - Cancels a running workflow
+- `workflows-list` - Lists available workflows and their parameter schemas
+- `workflows-get_status` - Get status for a running workflow by `run_id` (and optional `workflow_id`)
+- `workflows-cancel` - Cancel a running workflow
+
+If you use the preferred decorator approach:
+
+- Sync tool: `grade_story` (returns final result)
+- Async tool: `grade_story_async` (returns `workflow_id/run_id`; poll with `workflows-get_status`)
+
+The workflow-based endpoints (e.g., `workflows-<Workflow>-run`) are still available when you define explicit workflow classes.
 
 ## Prerequisites
 

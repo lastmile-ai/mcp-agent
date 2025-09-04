@@ -13,7 +13,13 @@ from rich.console import Console
 from rich.panel import Panel
 from typer.core import TyperGroup
 
-from mcp_agent.cli.cloud.commands import configure_app, deploy_config, login
+from mcp_agent.cli.cloud.commands import (
+    configure_app,
+    deploy_config,
+    login,
+    logout,
+    whoami,
+)
 from mcp_agent.cli.cloud.commands.app import (
     delete_app,
     get_app_status,
@@ -105,17 +111,6 @@ file is included in the deployment bundle in place of the original secrets file.
 )(deploy_config)
 
 
-# Login command
-app.command(
-    name="login",
-    help="""
-Authenticate to MCP Agent Cloud API.\n\n
-
-Direct to the api keys page for obtaining credentials, routing through login.
-""".strip(),
-)(login)
-
-
 # Sub-typer for `mcp-agent apps` commands
 app_cmd_apps = typer.Typer(
     help="Management commands for multiple MCP Apps",
@@ -144,6 +139,45 @@ app_cmd_workflow = typer.Typer(
 )
 app_cmd_workflow.command(name="status")(get_workflow_status)
 app.add_typer(app_cmd_workflow, name="workflow", help="Manage MCP Workflows")
+
+# Sub-typer for `mcp-agent cloud` commands
+app_cmd_cloud = typer.Typer(
+    help="Cloud operations and management",
+    no_args_is_help=True,
+    cls=HelpfulTyperGroup,
+)
+# Sub-typer for `mcp-agent cloud auth` commands
+app_cmd_cloud_auth = typer.Typer(
+    help="Cloud authentication commands",
+    no_args_is_help=True,
+    cls=HelpfulTyperGroup,
+)
+# Register auth commands under cloud auth
+app_cmd_cloud_auth.command(
+    name="login",
+    help="""
+Authenticate to MCP Agent Cloud API.\n\n
+Direct to the api keys page for obtaining credentials, routing through login.
+""".strip(),
+)(login)
+app_cmd_cloud_auth.command(name="whoami", help="Print current identity and org(s).")(
+    whoami
+)
+app_cmd_cloud_auth.command(name="logout", help="Clear credentials.")(logout)
+# Add auth sub-typer to cloud
+app_cmd_cloud.add_typer(app_cmd_cloud_auth, name="auth", help="Authentication commands")
+# Register cloud commands (only containing auth for now)
+app.add_typer(app_cmd_cloud, name="cloud", help="Cloud operations and management")
+# Top-level auth commands that map to cloud auth commands
+app.command(
+    name="login",
+    help="""
+Authenticate to MCP Agent Cloud API.\n\n
+Direct to the api keys page for obtaining credentials, routing through login.
+""".strip(),
+)(login)
+app.command(name="whoami", help="Print current identity and org(s).")(whoami)
+app.command(name="logout", help="Clear credentials.")(logout)
 
 
 @app.callback(invoke_without_command=True)

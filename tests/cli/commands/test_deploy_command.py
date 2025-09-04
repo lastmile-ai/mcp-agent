@@ -4,18 +4,19 @@ import os
 import re
 import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
-import typer
+from typer.testing import CliRunner
+
 from mcp_agent.cli.cloud.main import app
 from mcp_agent.cli.core.constants import (
     MCP_CONFIG_FILENAME,
     MCP_DEPLOYED_SECRETS_FILENAME,
     MCP_SECRETS_FILENAME,
 )
+from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.mcp_app.mock_client import MOCK_APP_ID, MOCK_APP_NAME
-from typer.testing import CliRunner
 
 
 @pytest.fixture
@@ -274,8 +275,8 @@ def test_deploy_with_missing_env_vars():
         # Call the deploy_config function directly with missing env var
         from mcp_agent.cli.cloud.commands import deploy_config
 
-        # Call with non_interactive=True, which should fail with typer.Exit
-        with pytest.raises(typer.Exit):
+        # Call with non_interactive=True, which should fail with CLIError
+        with pytest.raises(CLIError):
             deploy_config(
                 ctx=MagicMock(),
                 app_name=MOCK_APP_NAME,

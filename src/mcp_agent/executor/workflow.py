@@ -7,6 +7,7 @@ from typing import (
     Any,
     Dict,
     Generic,
+    Literal,
     Optional,
     TypeVar,
     TYPE_CHECKING,
@@ -17,17 +18,17 @@ from pydantic import BaseModel, ConfigDict, Field
 from mcp_agent.core.context_dependent import ContextDependent
 from mcp_agent.executor.temporal import TemporalExecutor
 from mcp_agent.executor.temporal.workflow_signal import (
+    Signal,
     SignalMailbox,
-    TemporalSignalHandler,
 )
 from mcp_agent.executor.temporal.session_proxy import SessionProxy
-from mcp_agent.executor.workflow_signal import Signal
 from mcp_agent.logging.logger import get_logger
 # (Temporal path now uses activities; HTTP proxy helpers unused here)
 
 if TYPE_CHECKING:
     from temporalio.client import WorkflowHandle
     from mcp_agent.core.context import Context
+    from mcp_agent.executor.temporal import TemporalExecutor
 
 T = TypeVar("T")
 
@@ -55,6 +56,8 @@ class WorkflowState(BaseModel):
 
 
 class WorkflowResult(BaseModel, Generic[T]):
+    # Discriminator to disambiguate from arbitrary dicts
+    kind: Literal["workflow_result"] = "workflow_result"
     value: Optional[T] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
     start_time: float | None = None
@@ -230,7 +233,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
                 self._run_id = str(self.executor.uuid())
         elif self.context.config.execution_engine == "temporal":
             # For Temporal workflows, we'll start the workflow immediately
-            executor: TemporalExecutor = self.executor
+            executor: "TemporalExecutor" = self.executor
             handle = await executor.start_workflow(
                 self.name,
                 *args,
@@ -798,12 +801,22 @@ class Workflow(ABC, Generic[T], ContextDependent):
         self._logger.debug(f"Initializing workflow {self.name}")
 
         if self.context.config.execution_engine == "temporal":
-            if isinstance(self.executor.signal_bus, TemporalSignalHandler):
-                # Attach the signal handler to the workflow
-                self.executor.signal_bus.attach_to_workflow(self)
-            else:
+            # Lazy import to avoid requiring Temporal unless engine is set to temporal
+            try:
+                from mcp_agent.executor.temporal.workflow_signal import (
+                    TemporalSignalHandler,
+                )
+
+                if isinstance(self.executor.signal_bus, TemporalSignalHandler):
+                    # Attach the signal handler to the workflow
+                    self.executor.signal_bus.attach_to_workflow(self)
+                else:
+                    self._logger.warning(
+                        "Signal handler not attached: executor.signal_bus is not a TemporalSignalHandler"
+                    )
+            except Exception:
                 self._logger.warning(
-                    "Signal handler not attached: executor.signal_bus is not a TemporalSignalHandler"
+                    "Signal handler not attached: Temporal support unavailable"
                 )
 
             # Read memo (if any) and set gateway overrides on context for activities

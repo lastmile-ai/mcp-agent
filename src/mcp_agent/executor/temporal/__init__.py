@@ -307,38 +307,45 @@ class TemporalExecutor(Executor):
 
         # Inspect the `run(self, …)` signature
         sig = inspect.signature(wf.run)
+        # Work with a signature that excludes any leading 'self' for binding/validation
         params = [p for p in sig.parameters.values() if p.name != "self"]
-
-        # Bind args in declaration order
-        bound_args = []
-        for idx, param in enumerate(params):
-            if idx < len(args):
-                bound_args.append(args[idx])
-            elif param.name in kwargs:
-                bound_args.append(kwargs[param.name])
-            elif param.default is not inspect.Parameter.empty:
-                # optional param, skip if not provided
-                continue
-            else:
-                raise ValueError(f"Missing required workflow argument '{param.name}'")
-
-        # Too many positionals?
-        if len(args) > len(params):
-            raise ValueError(
-                f"Got {len(args)} positional args but run() only takes {len(params)}"
-            )
+        has_var_positional = any(
+            p.kind == inspect.Parameter.VAR_POSITIONAL for p in params
+        )
+        has_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params)
+        sig_no_self = inspect.Signature(parameters=params)
 
         # Determine what to pass to the start_workflow function
-        input_arg = None
-        if not bound_args:
-            # zero-arg workflow
-            pass
-        elif len(bound_args) == 1:
-            # single-arg workflow
-            input_arg = bound_args[0]
+        # If the workflow run is varargs/kwargs (AutoWorkflow), pass kwargs as a single payload
+        if has_var_keyword or has_var_positional:
+            input_arg = kwargs if kwargs else (args[0] if args else None)
         else:
-            # multi-arg workflow - pack into a sequence
-            input_arg = bound_args
+            # Bind provided args/kwargs to validate and order them against signature without 'self'
+            try:
+                bound = sig_no_self.bind_partial(*args, **kwargs)
+            except TypeError as e:
+                raise ValueError(str(e))
+
+            # Check for missing required (non-default) parameters
+            for p in params:
+                if p.default is inspect._empty and p.name not in bound.arguments:
+                    raise ValueError(f"Missing required workflow argument '{p.name}'")
+
+            bound_vals = [
+                bound.arguments.get(p.name) for p in params if p.name in bound.arguments
+            ]
+            if len(bound_vals) == 0:
+                input_arg = None
+            elif len(bound_vals) == 1:
+                input_arg = bound_vals[0]
+            else:
+                input_arg = bound_vals
+        # Too many positionals for strict (non-varargs) run signatures?
+        if not (has_var_positional or has_var_keyword):
+            if len(args) > len(params):
+                raise ValueError(
+                    f"Got {len(args)} positional args but run() only takes {len(params)}"
+                )
 
         # Use provided workflow_id or generate a unique one
         if workflow_id is None:
