@@ -6,11 +6,18 @@ for the application configuration.
 import sys
 from io import StringIO
 from pathlib import Path
-from typing import Dict, List, Literal, Optional
+from typing import Dict, List, Literal, Optional, Union, Annotated
 import threading
 import warnings
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -458,6 +465,44 @@ class TraceOTLPSettings(BaseModel):
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 
+class OTelExporterBase(BaseModel):
+    """
+    Base class for OpenTelemetry exporter configuration.
+
+    This is used as the discriminated base for exporter-specific configs.
+    """
+
+    type: Literal["console", "file", "otlp"]
+
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
+
+class OTelConsoleExporterSettings(OTelExporterBase):
+    type: Literal["console"] = "console"
+
+
+class OTelFileExporterSettings(OTelExporterBase):
+    type: Literal["file"] = "file"
+    path: str | None = None
+    path_settings: TracePathSettings | None = None
+
+
+class OTelOTLPExporterSettings(OTelExporterBase):
+    type: Literal["otlp"] = "otlp"
+    endpoint: str | None = None
+    headers: Dict[str, str] | None = None
+
+
+OTelExporterSettings = Annotated[
+    Union[
+        OTelConsoleExporterSettings,
+        OTelFileExporterSettings,
+        OTelOTLPExporterSettings,
+    ],
+    Field(discriminator="type"),
+]
+
+
 class OpenTelemetrySettings(BaseModel):
     """
     OTEL settings for the MCP Agent application.
@@ -465,8 +510,15 @@ class OpenTelemetrySettings(BaseModel):
 
     enabled: bool = False
 
-    exporters: List[Literal["console", "file", "otlp"]] = []
-    """List of exporters to use (can enable multiple simultaneously)"""
+    exporters: List[OTelExporterSettings] = []
+    """
+    Exporters to use (can enable multiple simultaneously). Each exporter has
+    its own typed configuration.
+
+    Backward compatible: a YAML list of literal strings (e.g. ["console", "otlp"]) is
+    accepted and will be transformed, sourcing settings from legacy fields
+    like `otlp_settings`, `path` and `path_settings` if present.
+    """
 
     service_name: str = "mcp-agent"
     service_instance_id: str | None = None
@@ -475,8 +527,9 @@ class OpenTelemetrySettings(BaseModel):
     sample_rate: float = 1.0
     """Sample rate for tracing (1.0 = sample everything)"""
 
+    # Deprecated: use exporters: [{ type: "otlp", ... }]
     otlp_settings: TraceOTLPSettings | None = None
-    """OTLP settings for OpenTelemetry tracing. Required if using otlp exporter."""
+    """Deprecated single OTLP settings. Prefer exporters list with type "otlp"."""
 
     path: str | None = None
     """
@@ -492,6 +545,57 @@ class OpenTelemetrySettings(BaseModel):
     """
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_exporters_schema(cls, data: Dict) -> Dict:
+        """
+        Backward compatibility shim to allow:
+          - exporters: ["console", "file", "otlp"] with legacy per-exporter fields
+          - exporters already in discriminated-union form
+        """
+        if not isinstance(data, dict):
+            return data
+
+        exporters = data.get("exporters")
+
+        # If exporters are already objects with a 'type', leave as-is
+        if isinstance(exporters, list) and all(
+            isinstance(e, dict) and "type" in e for e in exporters
+        ):
+            return data
+
+        # If exporters are literal strings, up-convert to typed configs
+        if isinstance(exporters, list) and all(isinstance(e, str) for e in exporters):
+            typed_exporters: List[Dict] = []
+            # Legacy helpers
+            legacy_otlp = data.get("otlp_settings") or {}
+            legacy_path = data.get("path")
+            legacy_path_settings = data.get("path_settings")
+
+            for name in exporters:
+                if name == "console":
+                    typed_exporters.append({"type": "console"})
+                elif name == "file":
+                    typed_exporters.append(
+                        {
+                            "type": "file",
+                            "path": legacy_path,
+                            "path_settings": legacy_path_settings,
+                        }
+                    )
+                elif name == "otlp":
+                    typed_exporters.append(
+                        {
+                            "type": "otlp",
+                            "endpoint": (legacy_otlp or {}).get("endpoint"),
+                            "headers": (legacy_otlp or {}).get("headers"),
+                        }
+                    )
+            # Overwrite with transformed list
+            data["exporters"] = typed_exporters
+
+        return data
 
 
 class LogPathSettings(BaseModel):
