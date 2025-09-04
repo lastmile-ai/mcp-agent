@@ -183,6 +183,90 @@ async def _fetch_logs(
     _display_logs(filtered_logs, title=f"Logs for {app_id or config_id}")
 
 
+async def _resolve_server_url(
+    app_id: Optional[str],
+    config_id: Optional[str], 
+    credentials: UserCredentials,
+) -> str:
+    """Resolve server URL from app ID or configuration ID."""
+    
+    api_base = DEFAULT_API_BASE_URL
+    headers = {
+        "Authorization": f"Bearer {credentials.api_key}",
+        "Content-Type": "application/json",
+    }
+    
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            if app_id:
+                # Get app info to extract server URL
+                response = await client.post(
+                    f"{api_base}/mcp_app/get_app",
+                    json={"app_id": app_id},
+                    headers=headers,
+                )
+                
+                if response.status_code == 404:
+                    raise CLIError(f"App '{app_id}' not found")
+                elif response.status_code != 200:
+                    raise CLIError(f"Failed to get app info: {response.status_code} {response.text}")
+                
+                data = response.json()
+                app_info = data.get("app", {})
+                server_info = app_info.get("appServerInfo")
+                
+                if not server_info:
+                    raise CLIError(f"App '{app_id}' is not deployed yet")
+                
+                server_url = server_info.get("serverUrl")
+                if not server_url:
+                    raise CLIError(f"No server URL found for app '{app_id}'")
+                    
+                # Check if server is online
+                status = server_info.get("status", "APP_SERVER_STATUS_UNSPECIFIED")
+                if status == "APP_SERVER_STATUS_OFFLINE":
+                    raise CLIError(f"App '{app_id}' server is offline")
+                
+                return server_url
+                
+            elif config_id:
+                # Get app configuration info to extract server URL
+                response = await client.post(
+                    f"{api_base}/mcp_app/get_app_configuration",
+                    json={"app_configuration_id": config_id},
+                    headers=headers,
+                )
+                
+                if response.status_code == 404:
+                    raise CLIError(f"App configuration '{config_id}' not found")
+                elif response.status_code != 200:
+                    raise CLIError(f"Failed to get app configuration: {response.status_code} {response.text}")
+                
+                data = response.json()
+                app_config = data.get("appConfiguration", {})
+                server_info = app_config.get("appServerInfo")
+                
+                if not server_info:
+                    raise CLIError(f"App configuration '{config_id}' is not deployed yet")
+                
+                server_url = server_info.get("serverUrl")
+                if not server_url:
+                    raise CLIError(f"No server URL found for app configuration '{config_id}'")
+                    
+                # Check if server is online
+                status = server_info.get("status", "APP_SERVER_STATUS_UNSPECIFIED")
+                if status == "APP_SERVER_STATUS_OFFLINE":
+                    raise CLIError(f"App configuration '{config_id}' server is offline")
+                
+                return server_url
+                
+            else:
+                raise CLIError("Either app_id or config_id must be provided")
+                
+    except httpx.RequestError as e:
+        raise CLIError(f"Failed to connect to API: {e}")
+
+
 async def _stream_logs(
     app_id: Optional[str],
     config_id: Optional[str],
@@ -192,35 +276,28 @@ async def _stream_logs(
 ) -> None:
     """Stream logs continuously via SSE."""
     
-    # Determine streaming endpoint
     if server_url:
-        # Extract base URL and construct logs endpoint
         parsed = urlparse(server_url)
         stream_url = f"{parsed.scheme}://{parsed.netloc}/logs"
+        hostname = parsed.hostname or ""
+        deployment_id = hostname.split('.')[0] if '.' in hostname else hostname
     else:
-        # Use deployment gateway
-        gateway_base = "https://gateway.mcpac.dev"  # Default gateway base
-        if config_id:
-            stream_url = f"{gateway_base}/logs"  # Will need routing headers
-        else:
-            stream_url = f"{gateway_base}/logs"
+        resolved_server_url = await _resolve_server_url(app_id, config_id, credentials)
+        parsed = urlparse(resolved_server_url)
+        stream_url = f"{parsed.scheme}://{parsed.netloc}/logs"
+        hostname = parsed.hostname or ""
+        deployment_id = hostname.split('.')[0] if '.' in hostname else hostname
     
     headers = {
         "Accept": "text/event-stream",
         "Cache-Control": "no-cache",
+        "X-Routing-Key": deployment_id,
     }
     
-    # Add authentication
     if credentials.api_key:
         headers["Authorization"] = f"Bearer {credentials.api_key}"
     
-    # Add routing key if needed
-    if config_id:
-        headers["X-Routing-Key"] = config_id
-    elif app_id:
-        headers["X-Routing-Key"] = app_id
-    
-    console.print(f"[blue]Streaming logs from {stream_url}... (Press Ctrl+C to stop)[/blue]")
+    console.print(f"[blue]Streaming logs from {stream_url} (Press Ctrl+C to stop)[/blue]")
     
     # Setup signal handler for graceful shutdown
     def signal_handler(signum, frame):
@@ -250,8 +327,9 @@ async def _stream_logs(
                     buffer = lines[-1]  # Keep incomplete line
                     
                     for line in lines[:-1]:
-                        if line.startswith('data: '):
-                            data_content = line[6:]  # Remove 'data: ' prefix
+                        if line.startswith('data:'):
+                            data_content = line[5:]  # Remove 'data:' prefix  
+                            
                             if data_content.strip() == '[DONE]':
                                 continue
                             
@@ -260,8 +338,16 @@ async def _stream_logs(
                                 
                                 # Extract log entry from the notification payload
                                 if 'message' in log_data:
+                                    # Convert Unix timestamp to ISO format if present
+                                    timestamp = log_data.get('time')
+                                    if timestamp:
+                                        dt = datetime.fromtimestamp(timestamp, timezone.utc)
+                                        formatted_timestamp = dt.isoformat()
+                                    else:
+                                        formatted_timestamp = datetime.now(timezone.utc).isoformat()
+                                    
                                     log_entry = {
-                                        'timestamp': log_data.get('timestamp', datetime.now(timezone.utc).isoformat()),
+                                        'timestamp': formatted_timestamp,
                                         'message': log_data['message'],
                                         'level': log_data.get('level', 'INFO')
                                     }
@@ -346,13 +432,14 @@ def _display_logs(log_entries: List[Dict[str, Any]], title: str = "Logs") -> Non
 def _display_log_entry(log_entry: Dict[str, Any]) -> None:
     """Display a single log entry for streaming."""
     timestamp = _format_timestamp(log_entry.get('timestamp', ''))
-    level = log_entry.get('level', 'INFO')
-    message = log_entry.get('message', '')
+    raw_level = log_entry.get('level', 'INFO')
+    level = _parse_log_level(raw_level)
+    message = _clean_message(log_entry.get('message', ''))
     
     level_style = _get_level_style(level)
     
     console.print(
-        f"[dim]{timestamp}[/dim] "
+        f"[bright_black not bold]{timestamp}[/bright_black not bold] "
         f"[{level_style}]{level:5}[/{level_style}] "
         f"{message}"
     )
