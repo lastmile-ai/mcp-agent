@@ -1,6 +1,5 @@
 """MCP Agent Cloud whoami command implementation."""
 
-
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table

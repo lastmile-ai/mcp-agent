@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch, AsyncMock
 from opentelemetry import trace
 
 from mcp_agent.app import MCPApp
-from mcp_agent.config import Settings, OpenTelemetrySettings
+from mcp_agent.config import Settings, OpenTelemetrySettings, FileExporterSettings
 from mcp_agent.tracing.tracer import TracingConfig
 
 
@@ -297,8 +297,7 @@ class TestTracingIsolation:
                 otel=OpenTelemetrySettings(
                     enabled=True,
                     service_name="app1-service",
-                    exporters=["file"],
-                    path=str(trace_file1),  # Direct path
+                    exporters=[FileExporterSettings(path=str(trace_file1))],
                 )
             )
 
@@ -306,8 +305,7 @@ class TestTracingIsolation:
                 otel=OpenTelemetrySettings(
                     enabled=True,
                     service_name="app2-service",
-                    exporters=["file"],
-                    path=str(trace_file2),  # Direct path
+                    exporters=[FileExporterSettings(path=str(trace_file2))],
                 )
             )
 
@@ -380,9 +378,7 @@ class TestTracingIsolation:
                 otel=OpenTelemetrySettings(
                     enabled=True,
                     service_name="path-settings-service",
-                    exporters=["file"],
-                    path_settings=path_settings,
-                    # Note: path is NOT set, so path_settings should be used
+                    exporters=[FileExporterSettings(path_settings=path_settings)],
                 )
             )
 
@@ -456,8 +452,7 @@ class TestTracingIsolation:
                     otel=OpenTelemetrySettings(
                         enabled=True,
                         service_name=f"concurrent-app-{app_num}",
-                        exporters=["file"],
-                        path=str(trace_file),
+                        exporters=[FileExporterSettings(path=str(trace_file))],
                     )
                 )
 
