@@ -9,8 +9,6 @@ progressively.
 
 from __future__ import annotations
 
-import sys
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -38,6 +36,8 @@ from mcp_agent.cli.commands import (
     logs as logs_cmd,
     doctor as doctor_cmd,
     configure as configure_cmd,
+    go as go_cmd,
+    check as check_cmd,
 )
 
 
@@ -66,12 +66,18 @@ def _print_version() -> None:
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose output"),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Enable verbose output"
+    ),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Reduce output"),
-    color: bool = typer.Option(True, "--color/--no-color", help="Enable/disable color output"),
+    color: bool = typer.Option(
+        True, "--color/--no-color", help="Enable/disable color output"
+    ),
     version: bool = typer.Option(False, "--version", help="Show version and exit"),
     format: str = typer.Option(
-        "text", "--format", help="Output format for list/describe commands",
+        "text",
+        "--format",
+        help="Output format for list/describe commands",
         show_default=True,
         case_sensitive=False,
     ),
@@ -103,15 +109,21 @@ def main(
 # Mount non-cloud command groups
 app.add_typer(init_cmd.app, name="init", help="Scaffold a new mcp-agent project")
 app.add_typer(quickstart_cmd.app, name="quickstart", help="Copy curated examples")
+app.add_typer(go_cmd.app, name="go", help="Quick interactive agent")
+app.add_typer(check_cmd.app, name="check", help="Check configuration and environment")
 app.add_typer(config_cmd.app, name="config", help="Manage and inspect configuration")
 app.add_typer(keys_cmd.app, name="keys", help="Manage provider API keys")
 app.add_typer(models_cmd.app, name="models", help="List and manage models")
 app.add_typer(chat_cmd.app, name="chat", help="Ephemeral REPL for quick iteration")
 app.add_typer(dev_cmd.app, name="dev", help="Run app locally with live reload")
-app.add_typer(invoke_cmd.app, name="invoke", help="Invoke agent/workflow programmatically")
+app.add_typer(
+    invoke_cmd.app, name="invoke", help="Invoke agent/workflow programmatically"
+)
 app.add_typer(serve_cmd.app, name="serve", help="Serve app as an MCP server")
 app.add_typer(server_cmd.app, name="server", help="Local server helpers")
-app.add_typer(build_cmd.app, name="build", help="Preflight and bundle prep for deployment")
+app.add_typer(
+    build_cmd.app, name="build", help="Preflight and bundle prep for deployment"
+)
 app.add_typer(logs_cmd.app, name="logs", help="Tail local logs")
 app.add_typer(doctor_cmd.app, name="doctor", help="Comprehensive diagnostics")
 app.add_typer(configure_cmd.app, name="configure", help="Client integration helpers")
@@ -158,5 +170,3 @@ def run() -> None:
 
 if __name__ == "__main__":
     run()
-
-

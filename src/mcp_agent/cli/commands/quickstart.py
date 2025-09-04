@@ -48,10 +48,56 @@ def overview() -> None:
 
 
 @app.command()
-def workflow(dir: Path = typer.Argument(Path(".")), force: bool = typer.Option(False, "--force", "-f")) -> None:
+def workflow(
+    dir: Path = typer.Argument(Path(".")),
+    force: bool = typer.Option(False, "--force", "-f"),
+) -> None:
     src = EXAMPLE_ROOT / "workflows"
     dst = dir.resolve() / "workflow"
     copied = _copy_tree(src, dst, force)
     console.print(f"Copied {copied} set(s) to {dst}")
 
 
+@app.command()
+def researcher(
+    dir: Path = typer.Argument(Path(".")),
+    force: bool = typer.Option(False, "--force", "-f"),
+) -> None:
+    src = EXAMPLE_ROOT / "usecases" / "mcp_researcher"
+    dst = dir.resolve() / "researcher"
+    copied = _copy_tree(src, dst, force)
+    console.print(f"Copied {copied} set(s) to {dst}")
+
+
+@app.command("elicitations")
+def elicitations_qs(
+    dir: Path = typer.Argument(Path(".")),
+    force: bool = typer.Option(False, "--force", "-f"),
+) -> None:
+    src = EXAMPLE_ROOT.parent / "mcp" / "elicitations"
+    dst = dir.resolve() / "elicitations"
+    copied = _copy_tree(src, dst, force)
+    console.print(f"Copied {copied} set(s) to {dst}")
+
+
+@app.command("state-transfer")
+def state_transfer(
+    dir: Path = typer.Argument(Path(".")),
+    force: bool = typer.Option(False, "--force", "-f"),
+) -> None:
+    src = EXAMPLE_ROOT / "workflows" / "workflow_router"
+    dst = dir.resolve() / "state-transfer"
+    copied = _copy_tree(src, dst, force)
+    console.print(f"Copied {copied} set(s) to {dst}")
+
+
+@app.command("data-analysis")
+def data_analysis(
+    dir: Path = typer.Argument(Path(".")),
+    force: bool = typer.Option(False, "--force", "-f"),
+) -> None:
+    # Map to financial analyzer example as the closest match
+    src = EXAMPLE_ROOT / "usecases" / "mcp_financial_analyzer"
+    dst = dir.resolve() / "data-analysis"
+    copied = _copy_tree(src, dst, force)
+    console.print(f"Copied {copied} set(s) to {dst}")

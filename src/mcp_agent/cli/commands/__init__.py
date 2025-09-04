@@ -5,7 +5,24 @@ Each module exposes a Typer app named `app` which is mounted by
 `mcp_agent.cli.main` under an appropriate command group.
 """
 
-from . import chat, dev, invoke, serve, init, quickstart, config, keys, models, server, build, logs, doctor, configure  # noqa: F401
+from . import (
+    chat,
+    dev,
+    invoke,
+    serve,
+    init,
+    quickstart,
+    config,
+    keys,
+    models,
+    server,
+    build,
+    logs,
+    doctor,
+    configure,
+    go,
+    check,
+)  # noqa: F401
 
 __all__ = [
     "chat",
@@ -22,6 +39,6 @@ __all__ = [
     "logs",
     "doctor",
     "configure",
+    "go",
+    "check",
 ]
-
-

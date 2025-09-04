@@ -68,12 +68,42 @@ def check() -> None:
 
     # Basic settings load (merges secrets if next to config via Settings.get)
     try:
-        settings = Settings() if cfg is None else Settings(**yaml.safe_load(cfg.read_text()))
+        settings = (
+            Settings() if cfg is None else Settings(**yaml.safe_load(cfg.read_text()))
+        )
         # Show a small summary
         table.add_row("Execution Engine", settings.execution_engine)
         if settings.logger:
             table.add_row("Logger.level", settings.logger.level)
             table.add_row("Logger.type", settings.logger.type)
+        if settings.otel and settings.otel.enabled:
+            # Summarize OTEL exporters
+            try:
+                exporters = settings.otel.exporters or []
+
+                def _fmt(e):
+                    if isinstance(e, str):
+                        return e
+                    t = getattr(e, "type", None)
+                    if t == "otlp":
+                        endpoint = getattr(e, "endpoint", None) or (
+                            settings.otel.otlp_settings.endpoint
+                            if settings.otel.otlp_settings
+                            else None
+                        )
+                        return f"otlp({endpoint or 'no-endpoint'})"
+                    if t == "file":
+                        path = getattr(e, "path", None) or settings.otel.path
+                        return f"file({path or 'auto'})"
+                    return t or str(e)
+
+                table.add_row("OTEL.enabled", "true")
+                table.add_row(
+                    "OTEL.exporters", ", ".join(_fmt(e) for e in exporters) or "(none)"
+                )
+                table.add_row("OTEL.sample_rate", str(settings.otel.sample_rate))
+            except Exception as _:
+                table.add_row("OTEL", "[red]error summarizing exporters[/red]")
         mcp_servers = list((settings.mcp.servers or {}).keys()) if settings.mcp else []
         table.add_row("MCP servers", ", ".join(mcp_servers) or "(none)")
     except Exception as e:
@@ -84,12 +114,26 @@ def check() -> None:
 
 @app.command("edit")
 def edit(secrets: bool = typer.Option(False, "--secrets", "-s")) -> None:
-    """Open config or secrets in $EDITOR (scaffold)."""
-    # Minimal scaffold: print path and exit; full EDITOR support can be added later
+    """Open config or secrets in $EDITOR, falling back to common editors."""
     target = _find_secrets_file() if secrets else _find_config_file()
     if not target:
         typer.secho("No file found", fg=typer.colors.RED, err=True)
         raise typer.Exit(2)
+
+    import os
+    import subprocess
+
+    editor = os.environ.get("EDITOR") or os.environ.get("VISUAL")
+    candidates = [editor] if editor else []
+    candidates += ["code --wait", "nano", "vi"]
+
+    for cmd in candidates:
+        if not cmd:
+            continue
+        try:
+            subprocess.run(f"{cmd} {str(target)}", shell=True, check=True)
+            return
+        except Exception:
+            continue
+    # If all fail, just print the path
     console.print(str(target))
-
-
