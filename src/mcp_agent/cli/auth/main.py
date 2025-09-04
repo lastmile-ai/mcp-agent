@@ -16,7 +16,12 @@ def save_credentials(credentials: UserCredentials) -> None:
         None
     """
     credentials_path = os.path.expanduser(DEFAULT_CREDENTIALS_PATH)
-    os.makedirs(os.path.dirname(credentials_path), exist_ok=True)
+    cred_dir = os.path.dirname(credentials_path)
+    os.makedirs(cred_dir, exist_ok=True)
+    try:
+        os.chmod(cred_dir, 0o700)
+    except OSError:
+        pass
 
     # Create file with restricted permissions (0600) to prevent leakage
     fd = os.open(credentials_path, os.O_WRONLY | os.O_CREAT, 0o600)
