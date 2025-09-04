@@ -6,19 +6,13 @@ import re
 import signal
 import sys
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Optional, Dict, Any, List
 from urllib.parse import urlparse
 
 import httpx
 import typer
-import yaml
 from rich.console import Console
-from rich.live import Live
-from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
-from rich.table import Table
-from rich.text import Text
 
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.auth import load_credentials, UserCredentials
@@ -88,6 +82,7 @@ def tail_logs(
                 server_url=server_url,
                 credentials=credentials,
                 grep_pattern=grep,
+                app_identifier=app_identifier,
             ))
         else:
             asyncio.run(_fetch_logs(
@@ -263,20 +258,17 @@ async def _stream_logs(
     server_url: Optional[str], 
     credentials: UserCredentials,
     grep_pattern: Optional[str],
+    app_identifier: str,
 ) -> None:
     """Stream logs continuously via SSE."""
     
-    if server_url:
-        parsed = urlparse(server_url)
-        stream_url = f"{parsed.scheme}://{parsed.netloc}/logs"
-        hostname = parsed.hostname or ""
-        deployment_id = hostname.split('.')[0] if '.' in hostname else hostname
-    else:
-        resolved_server_url = await _resolve_server_url(app_id, config_id, credentials)
-        parsed = urlparse(resolved_server_url)
-        stream_url = f"{parsed.scheme}://{parsed.netloc}/logs"
-        hostname = parsed.hostname or ""
-        deployment_id = hostname.split('.')[0] if '.' in hostname else hostname
+    if not server_url:
+        server_url = await _resolve_server_url(app_id, config_id, credentials)
+    
+    parsed = urlparse(server_url)
+    stream_url = f"{parsed.scheme}://{parsed.netloc}/logs"
+    hostname = parsed.hostname or ""
+    deployment_id = hostname.split('.')[0] if '.' in hostname else hostname
     
     headers = {
         "Accept": "text/event-stream",
@@ -287,7 +279,7 @@ async def _stream_logs(
     if credentials.api_key:
         headers["Authorization"] = f"Bearer {credentials.api_key}"
     
-    console.print(f"[blue]Streaming logs from {stream_url} (Press Ctrl+C to stop)[/blue]")
+    console.print(f"[blue]Streaming logs from {app_identifier} (Press Ctrl+C to stop)[/blue]")
     
     # Setup signal handler for graceful shutdown
     def signal_handler(signum, frame):
@@ -316,9 +308,7 @@ async def _stream_logs(
                     
                     for line in lines[:-1]:
                         if line.startswith('data:'):
-                            
-                            if data_content.strip() == '[DONE]':
-                                continue
+                            data_content = line.removeprefix('data:')
                             
                             try:
                                 log_data = json.loads(data_content)
@@ -401,7 +391,7 @@ def _display_logs(log_entries: List[Dict[str, Any]], title: str = "Logs") -> Non
         # Format: [timestamp] LEVEL message
         console.print(
             f"[bright_black not bold]{timestamp}[/bright_black not bold] "
-            f"[{level_style}]{level:5}[/{level_style}] "
+            f"[{level_style}]{level:7}[/{level_style}] "
             f"{message}"
         )
 
@@ -417,7 +407,7 @@ def _display_log_entry(log_entry: Dict[str, Any]) -> None:
     
     console.print(
         f"[bright_black not bold]{timestamp}[/bright_black not bold] "
-        f"[{level_style}]{level:5}[/{level_style}] "
+        f"[{level_style}]{level:7}[/{level_style}] "
         f"{message}"
     )
 
@@ -472,10 +462,3 @@ def _get_level_style(level: str) -> str:
         return "magenta"
     else:
         return "white"
-
-
-def _truncate_message(message: str, max_length: int = 100) -> str:
-    """Truncate long messages for table display."""
-    if len(message) <= max_length:
-        return message
-    return message[:max_length-3] + "..."

@@ -1,6 +1,5 @@
 """Configure OTEL endpoint and headers for logging."""
 
-import os
 from pathlib import Path
 from typing import Optional
 
