@@ -253,6 +253,31 @@ async def _resolve_server_url(
 ) -> str:
     """Resolve server URL from app ID or configuration ID."""
     
+    if not app_id and not config_id:
+        raise CLIError("Either app_id or config_id must be provided")
+    
+    # Determine the endpoint and payload based on identifier type
+    if app_id:
+        endpoint = "/mcp_app/get_app"
+        payload = {"app_id": app_id}
+        identifier = app_id
+        response_key = "app"
+        not_found_msg = f"App '{app_id}' not found"
+        not_deployed_msg = f"App '{app_id}' is not deployed yet"
+        no_url_msg = f"No server URL found for app '{app_id}'"
+        offline_msg = f"App '{app_id}' server is offline"
+        api_error_msg = f"Failed to get app info"
+    else:  # config_id
+        endpoint = "/mcp_app/get_app_configuration"
+        payload = {"app_configuration_id": config_id}
+        identifier = config_id
+        response_key = "appConfiguration"
+        not_found_msg = f"App configuration '{config_id}' not found"
+        not_deployed_msg = f"App configuration '{config_id}' is not deployed yet"
+        no_url_msg = f"No server URL found for app configuration '{config_id}'"
+        offline_msg = f"App configuration '{config_id}' server is offline"
+        api_error_msg = f"Failed to get app configuration"
+    
     api_base = DEFAULT_API_BASE_URL
     headers = {
         "Authorization": f"Bearer {credentials.api_key}",
@@ -261,66 +286,29 @@ async def _resolve_server_url(
     
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
-            if app_id:
-                response = await client.post(
-                    f"{api_base}/mcp_app/get_app",
-                    json={"app_id": app_id},
-                    headers=headers,
-                )
+            response = await client.post(f"{api_base}{endpoint}", json=payload, headers=headers)
+            
+            if response.status_code == 404:
+                raise CLIError(not_found_msg)
+            elif response.status_code != 200:
+                raise CLIError(f"{api_error_msg}: {response.status_code} {response.text}")
+            
+            data = response.json()
+            resource_info = data.get(response_key, {})
+            server_info = resource_info.get("appServerInfo")
+            
+            if not server_info:
+                raise CLIError(not_deployed_msg)
+            
+            server_url = server_info.get("serverUrl")
+            if not server_url:
+                raise CLIError(no_url_msg)
                 
-                if response.status_code == 404:
-                    raise CLIError(f"App '{app_id}' not found")
-                elif response.status_code != 200:
-                    raise CLIError(f"Failed to get app info: {response.status_code} {response.text}")
-                
-                data = response.json()
-                app_info = data.get("app", {})
-                server_info = app_info.get("appServerInfo")
-                
-                if not server_info:
-                    raise CLIError(f"App '{app_id}' is not deployed yet")
-                
-                server_url = server_info.get("serverUrl")
-                if not server_url:
-                    raise CLIError(f"No server URL found for app '{app_id}'")
-                    
-                status = server_info.get("status", "APP_SERVER_STATUS_UNSPECIFIED")
-                if status == "APP_SERVER_STATUS_OFFLINE":
-                    raise CLIError(f"App '{app_id}' server is offline")
-                
-                return server_url
-                
-            elif config_id:
-                response = await client.post(
-                    f"{api_base}/mcp_app/get_app_configuration",
-                    json={"app_configuration_id": config_id},
-                    headers=headers,
-                )
-                
-                if response.status_code == 404:
-                    raise CLIError(f"App configuration '{config_id}' not found")
-                elif response.status_code != 200:
-                    raise CLIError(f"Failed to get app configuration: {response.status_code} {response.text}")
-                
-                data = response.json()
-                app_config = data.get("appConfiguration", {})
-                server_info = app_config.get("appServerInfo")
-                
-                if not server_info:
-                    raise CLIError(f"App configuration '{config_id}' is not deployed yet")
-                
-                server_url = server_info.get("serverUrl")
-                if not server_url:
-                    raise CLIError(f"No server URL found for app configuration '{config_id}'")
-                    
-                status = server_info.get("status", "APP_SERVER_STATUS_UNSPECIFIED")
-                if status == "APP_SERVER_STATUS_OFFLINE":
-                    raise CLIError(f"App configuration '{config_id}' server is offline")
-                
-                return server_url
-                
-            else:
-                raise CLIError("Either app_id or config_id must be provided")
+            status = server_info.get("status", "APP_SERVER_STATUS_UNSPECIFIED")
+            if status == "APP_SERVER_STATUS_OFFLINE":
+                raise CLIError(offline_msg)
+            
+            return server_url
                 
     except httpx.RequestError as e:
         raise CLIError(f"Failed to connect to API: {e}")
@@ -446,84 +434,61 @@ def _matches_pattern(message: str, pattern: str) -> bool:
         return pattern.lower() in message.lower()
 
 
+def _clean_log_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
+    """Clean up a log entry for structured output formats."""
+    cleaned_entry = entry.copy()
+    cleaned_entry['severity'] = _parse_log_level(entry.get('level', 'INFO'))
+    cleaned_entry['message'] = _clean_message(entry.get('message', ''))
+    # Remove the original 'level' field
+    cleaned_entry.pop('level', None)
+    return cleaned_entry
+
+
+def _display_text_log_entry(entry: Dict[str, Any]) -> None:
+    """Display a single log entry in text format."""
+    timestamp = _format_timestamp(entry.get('timestamp', ''))
+    raw_level = entry.get('level', 'INFO')
+    level = _parse_log_level(raw_level)
+    message = _clean_message(entry.get('message', ''))
+    
+    level_style = _get_level_style(level)
+    
+    console.print(
+        f"[bright_black not bold]{timestamp}[/bright_black not bold] "
+        f"[{level_style}]{level:7}[/{level_style}] "
+        f"{message}"
+    )
+
+
 def _display_logs(log_entries: List[Dict[str, Any]], title: str = "Logs", format: str = "text") -> None:
     """Display logs in the specified format."""
     if not log_entries:
         return
     
     if format == "json":
-        # Clean up the log entries for better JSON output
-        cleaned_entries = []
-        for entry in log_entries:
-            cleaned_entry = entry.copy()
-            cleaned_entry['severity'] = _parse_log_level(entry.get('level', 'INFO'))
-            cleaned_entry['message'] = _clean_message(entry.get('message', ''))
-            # Remove the original 'level' field
-            cleaned_entry.pop('level', None)
-            cleaned_entries.append(cleaned_entry)
+        cleaned_entries = [_clean_log_entry(entry) for entry in log_entries]
         print(json.dumps(cleaned_entries, indent=2))
     elif format == "yaml":
-        # Clean up the log entries for better YAML output
-        cleaned_entries = []
-        for entry in log_entries:
-            cleaned_entry = entry.copy()
-            cleaned_entry['severity'] = _parse_log_level(entry.get('level', 'INFO'))
-            cleaned_entry['message'] = _clean_message(entry.get('message', ''))
-            # Remove the original 'level' field
-            cleaned_entry.pop('level', None)
-            cleaned_entries.append(cleaned_entry)
+        cleaned_entries = [_clean_log_entry(entry) for entry in log_entries]
         print(yaml.dump(cleaned_entries, default_flow_style=False))
     else:  # text format (default)
         if title:
             console.print(f"[bold blue]{title}[/bold blue]\n")
         
         for entry in log_entries:
-            timestamp = _format_timestamp(entry.get('timestamp', ''))
-            raw_level = entry.get('level', 'INFO')
-            level = _parse_log_level(raw_level)
-            message = _clean_message(entry.get('message', ''))
-
-            level_style = _get_level_style(level)
-            
-            # Format: [timestamp] LEVEL message
-            console.print(
-                f"[bright_black not bold]{timestamp}[/bright_black not bold] "
-                f"[{level_style}]{level:7}[/{level_style}] "
-                f"{message}"
-            )
+            _display_text_log_entry(entry)
 
 
 def _display_log_entry(log_entry: Dict[str, Any], format: str = "text") -> None:
     """Display a single log entry for streaming."""
     if format == "json":
-        # Clean up the log entry for better JSON output
-        cleaned_entry = log_entry.copy()
-        cleaned_entry['severity'] = _parse_log_level(log_entry.get('level', 'INFO'))
-        cleaned_entry['message'] = _clean_message(log_entry.get('message', ''))
-        # Remove the original 'level' field
-        cleaned_entry.pop('level', None)
+        cleaned_entry = _clean_log_entry(log_entry)
         print(json.dumps(cleaned_entry))
     elif format == "yaml":
-        # Clean up the log entry for better YAML output
-        cleaned_entry = log_entry.copy()
-        cleaned_entry['severity'] = _parse_log_level(log_entry.get('level', 'INFO'))
-        cleaned_entry['message'] = _clean_message(log_entry.get('message', ''))
-        # Remove the original 'level' field
-        cleaned_entry.pop('level', None)
+        cleaned_entry = _clean_log_entry(log_entry)
         print(yaml.dump([cleaned_entry], default_flow_style=False))
     else:  # text format (default)
-        timestamp = _format_timestamp(log_entry.get('timestamp', ''))
-        raw_level = log_entry.get('level', 'INFO')
-        level = _parse_log_level(raw_level)
-        message = _clean_message(log_entry.get('message', ''))
-        
-        level_style = _get_level_style(level)
-        
-        console.print(
-            f"[bright_black not bold]{timestamp}[/bright_black not bold] "
-            f"[{level_style}]{level:7}[/{level_style}] "
-            f"{message}"
-        )
+        _display_text_log_entry(log_entry)
 
 
 def _convert_timestamp_to_local(timestamp: float) -> str:
