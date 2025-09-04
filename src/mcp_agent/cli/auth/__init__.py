@@ -3,6 +3,18 @@
 This package provides utilities for authentication (for now, api keys).
 """
 
-from .main import load_api_key_credentials, save_api_key_credentials
+from .main import (
+    clear_credentials,
+    load_api_key_credentials,
+    load_credentials,
+    save_credentials,
+)
+from .models import UserCredentials
 
-__all__ = ["load_api_key_credentials", "save_api_key_credentials"]
+__all__ = [
+    "clear_credentials",
+    "load_api_key_credentials",
+    "load_credentials",
+    "save_credentials",
+    "UserCredentials",
+]
