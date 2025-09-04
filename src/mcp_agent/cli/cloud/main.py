@@ -20,6 +20,7 @@ from mcp_agent.cli.cloud.commands.app import (
     list_app_workflows,
 )
 from mcp_agent.cli.cloud.commands.apps import list_apps
+from mcp_agent.cli.cloud.commands.open import open_portal
 from mcp_agent.cli.cloud.commands.workflow import get_workflow_status
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.utils.ux import print_error
@@ -160,7 +161,12 @@ app_cmd_cloud_auth.command(name="whoami", help="Print current identity and org(s
 app_cmd_cloud_auth.command(name="logout", help="Clear credentials.")(logout)
 # Add auth sub-typer to cloud
 app_cmd_cloud.add_typer(app_cmd_cloud_auth, name="auth", help="Authentication commands")
-# Register cloud commands (only containing auth for now)
+
+# Add open command to cloud
+app_cmd_cloud.command(name="open", help="Open the MCP Agent Cloud portal in browser")(
+    open_portal
+)
+
 app.add_typer(app_cmd_cloud, name="cloud", help="Cloud operations and management")
 # Top-level auth commands that map to cloud auth commands
 app.command(
