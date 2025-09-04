@@ -414,7 +414,7 @@ class TestMCPApp:
             # First call creates the logger
             assert basic_app.logger is mock_logger
             mock_get_logger.assert_called_once_with(
-                f"mcp_agent.{basic_app.name}", session_id=None
+                f"mcp_agent.{basic_app.name}", session_id=None, context=None
             )
 
             # Reset mock
@@ -450,7 +450,9 @@ class TestMCPApp:
                 # Get the logger - this should call get_logger with the session_id
                 assert basic_app.logger is mock_logger
                 mock_get_logger.assert_called_once_with(
-                    f"mcp_agent.{basic_app.name}", session_id=mock_context.session_id
+                    f"mcp_agent.{basic_app.name}",
+                    session_id=mock_context.session_id,
+                    context=mock_context,
                 )
 
     #

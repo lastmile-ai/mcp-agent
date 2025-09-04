@@ -26,6 +26,10 @@ class SessionProxy:
     def execution_id(self) -> str:
         return self._execution_id
 
+    @execution_id.setter
+    def execution_id(self, value: str):
+        self._execution_id = value
+
     async def send_log_message(
         self,
         *,

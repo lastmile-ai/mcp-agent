@@ -32,7 +32,7 @@ def _resolve_gateway_url(
 
 async def log_via_proxy(
     server_registry: Optional[ServerRegistry],
-    run_id: str,
+    execution_id: str,
     level: str,
     namespace: str,
     message: str,
@@ -53,7 +53,7 @@ async def log_via_proxy(
         r = await client.post(
             url,
             json={
-                "run_id": run_id,
+                "execution_id": execution_id,
                 "level": level,
                 "namespace": namespace,
                 "message": message,
@@ -69,7 +69,7 @@ async def log_via_proxy(
 
 async def ask_via_proxy(
     server_registry: Optional[ServerRegistry],
-    run_id: str,
+    execution_id: str,
     prompt: str,
     metadata: Dict[str, Any] | None = None,
     *,
@@ -88,7 +88,7 @@ async def ask_via_proxy(
         r = await client.post(
             url,
             json={
-                "run_id": run_id,
+                "execution_id": execution_id,
                 "prompt": {"text": prompt},
                 "metadata": metadata or {},
             },
@@ -101,7 +101,7 @@ async def ask_via_proxy(
 
 async def notify_via_proxy(
     server_registry: Optional[ServerRegistry],
-    run_id: str,
+    execution_id: str,
     method: str,
     params: Dict[str, Any] | None = None,
     *,
@@ -110,7 +110,7 @@ async def notify_via_proxy(
     gateway_token: Optional[str] = None,
 ) -> bool:
     base = _resolve_gateway_url(server_registry, server_name, gateway_url)
-    url = f"{base}/internal/session/by-run/{run_id}/notify"
+    url = f"{base}/internal/session/by-run/{execution_id}/notify"
     headers: Dict[str, str] = {}
     tok = gateway_token or os.environ.get("MCP_GATEWAY_TOKEN")
     if tok:
@@ -129,7 +129,7 @@ async def notify_via_proxy(
 
 async def request_via_proxy(
     server_registry: Optional[ServerRegistry],
-    run_id: str,
+    execution_id: str,
     method: str,
     params: Dict[str, Any] | None = None,
     *,
@@ -138,7 +138,7 @@ async def request_via_proxy(
     gateway_token: Optional[str] = None,
 ) -> Dict[str, Any]:
     base = _resolve_gateway_url(server_registry, server_name, gateway_url)
-    url = f"{base}/internal/session/by-run/{run_id}/request"
+    url = f"{base}/internal/session/by-run/{execution_id}/request"
     headers: Dict[str, str] = {}
     tok = gateway_token or os.environ.get("MCP_GATEWAY_TOKEN")
     if tok:

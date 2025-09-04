@@ -30,19 +30,13 @@ async def test_upstream_logging_listener_sends_notifications(monkeypatch):
 
     dummy_session = DummyUpstreamSession()
 
-    # Monkeypatch get_current_context to return an object with upstream_session
-    def _fake_get_current_context():
-        return SimpleNamespace(upstream_session=dummy_session)
-
-    monkeypatch.setattr(
-        "mcp_agent.core.context.get_current_context", _fake_get_current_context
-    )
+    current_context = SimpleNamespace(upstream_session=dummy_session)
 
     # Configure logging with low threshold so our event passes
     await LoggingConfig.configure(event_filter=EventFilter(min_level="debug"))
 
     try:
-        logger = get_logger("tests.logging")
+        logger = get_logger("tests.logging", context=current_context)
         logger.info("hello world", name="unit", foo="bar")
 
         # Give the async bus a moment to process
@@ -76,4 +70,3 @@ async def test_logging_capability_registered_in_fastmcp():
 
     # The presence of a SetLevelRequest handler indicates logging capability will be advertised
     assert types.SetLevelRequest in low.request_handlers
-

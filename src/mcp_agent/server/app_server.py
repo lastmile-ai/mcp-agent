@@ -1349,12 +1349,17 @@ async def _workflow_run(
         )
 
         logger.info(
-            f"Workflow {workflow_name} started with workflow ID {execution.workflow_id} and run ID {execution.run_id}. Parameters: {run_parameters}"
+            f"Workflow {workflow_name} started execution {execution_id} for workflow ID {execution.workflow_id}, "
+            f"run ID {execution.run_id}. Parameters: {run_parameters}"
         )
 
         # Register upstream session for this run so external workers can proxy logs/prompts
         try:
-            await _register_session(execution_id, getattr(ctx, "session", None))
+            await _register_session(
+                run_id=execution.run_id,
+                execution_id=execution_id,
+                session=getattr(ctx, "session", None),
+            )
         except Exception:
             pass
 

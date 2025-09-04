@@ -17,7 +17,7 @@ class SystemActivities(ContextDependent):
     @activity.defn(name="mcp_forward_log")
     async def forward_log(
         self,
-        run_id: str,
+        execution_id: str,
         level: str,
         namespace: str,
         message: str,
@@ -28,7 +28,7 @@ class SystemActivities(ContextDependent):
         gateway_token = getattr(self.context, "gateway_token", None)
         return await log_via_proxy(
             registry,
-            run_id=run_id,
+            execution_id=execution_id,
             level=level,
             namespace=namespace,
             message=message,
@@ -42,7 +42,7 @@ class SystemActivities(ContextDependent):
         self,
         session_id: str,
         workflow_id: str,
-        run_id: str,
+        execution_id: str,
         prompt: str,
         signal_name: str = "human_input",
     ) -> Dict[str, Any]:
@@ -52,7 +52,7 @@ class SystemActivities(ContextDependent):
         gateway_token = getattr(self.context, "gateway_token", None)
         return await ask_via_proxy(
             registry,
-            run_id=run_id,
+            execution_id=execution_id,
             prompt=prompt,
             metadata={
                 "session_id": session_id,
@@ -65,14 +65,14 @@ class SystemActivities(ContextDependent):
 
     @activity.defn(name="mcp_relay_notify")
     async def relay_notify(
-        self, run_id: str, method: str, params: Dict[str, Any] | None = None
+        self, execution_id: str, method: str, params: Dict[str, Any] | None = None
     ) -> bool:
         registry = self.context.server_registry
         gateway_url = getattr(self.context, "gateway_url", None)
         gateway_token = getattr(self.context, "gateway_token", None)
         return await notify_via_proxy(
             registry,
-            run_id=run_id,
+            execution_id=execution_id,
             method=method,
             params=params or {},
             gateway_url=gateway_url,
@@ -81,14 +81,14 @@ class SystemActivities(ContextDependent):
 
     @activity.defn(name="mcp_relay_request")
     async def relay_request(
-        self, run_id: str, method: str, params: Dict[str, Any] | None = None
+        self, execution_id: str, method: str, params: Dict[str, Any] | None = None
     ) -> Dict[str, Any]:
         registry = self.context.server_registry
         gateway_url = getattr(self.context, "gateway_url", None)
         gateway_token = getattr(self.context, "gateway_token", None)
         return await request_via_proxy(
             registry,
-            run_id=run_id,
+            execution_id=execution_id,
             method=method,
             params=params or {},
             gateway_url=gateway_url,

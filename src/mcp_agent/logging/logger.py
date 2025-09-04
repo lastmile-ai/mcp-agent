@@ -386,8 +386,7 @@ def get_logger(namespace: str, session_id: str | None = None, context=None) -> L
     Args:
         namespace: The namespace for the logger (e.g. "agent.helper", "workflow.demo")
         session_id: Optional session ID to associate with all events from this logger
-        context: Deprecated/ignored. Present for backwards compatibility.
-
+        context: Optional context to bind to the logger
     Returns:
         A Logger instance for the given namespace
     """
@@ -398,12 +397,11 @@ def get_logger(namespace: str, session_id: str | None = None, context=None) -> L
             logger = Logger(namespace, session_id, bound_context=context)
             _loggers[namespace] = logger
             return logger
-        # Update session_id/bound context if caller provides them
-        if session_id is not None:
-            existing.session_id = session_id
-        if context is not None:
-            try:
+        else:
+            # Update session_id/bound context if caller provides them
+            if session_id is not None:
+                existing.session_id = session_id
+            if context is not None:
                 existing._bound_context = context
-            except Exception:
-                pass
+
         return existing
