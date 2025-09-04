@@ -347,8 +347,11 @@ class MCPAggregator(ContextDependent):
                 self._server_to_tool_map[server_name] = []
                 
                 # Get server configuration to check for tool filtering
-                server_config = self.context.server_registry.get_server_config(server_name)
-                allowed_tools = server_config.allowed_tools if server_config else None
+                allowed_tools = None
+                if self.context is None or self.context.server_registry is None:
+                    logger.warning(f"No config found for server '{server_name}', no tool filter will be applied...")
+                else:
+                    allowed_tools = self.context.server_registry.get_server_config(server_name).allowed_tools
                 
                 for tool in tools:
                     # Apply tool filtering if configured - O(1) lookup with set
