@@ -1,0 +1,3 @@
+otel:
+  endpoint: https://otel.example.com:4318/v1/logs
+  headers: {}
