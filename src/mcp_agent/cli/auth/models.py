@@ -1,7 +1,7 @@
 """Authentication models for MCP Agent Cloud CLI."""
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
@@ -11,7 +11,7 @@ class UserCredentials:
     """User authentication credentials and identity information."""
 
     # Authentication
-    api_key: str
+    api_key: str = field(repr=False)
     token_expires_at: Optional[datetime] = None
 
     # Identity
