@@ -25,6 +25,7 @@ from mcp_agent.executor.workflow_registry import (
     WorkflowRegistry,
     InMemoryWorkflowRegistry,
 )
+from mcp_agent.executor.temporal.temporal_context import set_execution_id
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.logging.logger import LoggingConfig
 from mcp_agent.mcp.mcp_server_registry import ServerRegistry
@@ -1354,6 +1355,7 @@ async def _workflow_run(
     # Generate a unique execution ID to track this run. We need to pass this to the workflow, and the run_id is only established
     # after we create the workflow
     execution_id = str(uuid.uuid4())
+    set_execution_id(execution_id)
 
     # Resolve workflows and app context irrespective of startup mode
     # This now returns a context with upstream_session already set
@@ -1496,7 +1498,8 @@ async def _workflow_status(
     try:
         state = str(status.get("status", "")).lower()
         if state in ("completed", "error", "cancelled"):
-            await _unregister_session(run_id)
+            # await _unregister_session(run_id)
+            pass
     except Exception:
         pass
 

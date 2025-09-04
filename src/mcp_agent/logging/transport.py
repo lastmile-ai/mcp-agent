@@ -447,7 +447,6 @@ class AsyncEventBus:
                 self._running = True
                 self._task = asyncio.create_task(self._process_events())
 
-        # Then queue for listeners
         self._queue.put_nowait(event)
 
     async def _send_to_transport(self, event: Event):

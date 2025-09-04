@@ -258,18 +258,13 @@ class Workflow(ABC, Generic[T], ContextDependent):
             if self.context.config.execution_engine == "temporal":
                 setattr(self._logger, "_temporal_run_id", self._run_id)
                 # Ensure upstream_session is a passthrough SessionProxy bound to this run
-                if (
-                    getattr(self.context, "upstream_session", None) is None
-                    and self.context.execution_id
-                ):
-                    try:
-                        self.context.upstream_session = SessionProxy(
-                            executor=self.executor,
-                            execution_id=self.context.execution_id,
-                            context=self.context,
-                        )
-                    except Exception:
-                        pass
+                upstream_session = getattr(self.context, "upstream_session", None)
+
+                if upstream_session is None:
+                    self.context.upstream_session = SessionProxy(
+                        executor=self.executor,
+                        context=self.context,
+                    )
         except Exception:
             pass
 
@@ -838,10 +833,9 @@ class Workflow(ABC, Generic[T], ContextDependent):
                 if isinstance(memo_map, dict):
                     gw = memo_map.get("gateway_url")
                     gt = memo_map.get("gateway_token")
-                    e_id = memo_map.get("execution_id")
 
                     self._logger.debug(
-                        f"Proxy parameters: gateway_url={gw}, gateway_token={gt}, execution_id={e_id}"
+                        f"Proxy parameters: gateway_url={gw}, gateway_token={gt}"
                     )
 
                     if gw:
@@ -854,11 +848,6 @@ class Workflow(ABC, Generic[T], ContextDependent):
                             self.context.gateway_token = gt
                         except Exception:
                             pass
-                    if e_id:
-                        try:
-                            self.context.execution_id = e_id
-                        except Exception:
-                            pass
             except Exception:
                 # Safe to ignore if called outside workflow sandbox or memo unavailable
                 pass
@@ -869,21 +858,16 @@ class Workflow(ABC, Generic[T], ContextDependent):
                 upstream_session = getattr(self.context, "upstream_session", None)
 
                 if upstream_session is None:
-                    if self.context.execution_id:
-                        self.context.upstream_session = SessionProxy(
-                            executor=self.executor,
-                            execution_id=self.context.execution_id,
-                            context=self.context,
-                        )
+                    self.context.upstream_session = SessionProxy(
+                        executor=self.executor,
+                        context=self.context,
+                    )
 
-                        app = self.context.app
-                        if app:
-                            # Ensure the app's logger is bound to the current context with upstream_session
-                            if app._logger and hasattr(app._logger, "_bound_context"):
-                                app._logger._bound_context = self.context
-                elif self.context.execution_id:
-                    # ensure the upstream session's execution_id is the current one. (We may be in a different workflow.)
-                    upstream_session.execution_id = self.context.execution_id
+                    app = self.context.app
+                    if app:
+                        # Ensure the app's logger is bound to the current context with upstream_session
+                        if app._logger and hasattr(app._logger, "_bound_context"):
+                            app._logger._bound_context = self.context
             except Exception:
                 # Non-fatal if context is immutable early; will be set after run_id assignment in run_async
                 pass

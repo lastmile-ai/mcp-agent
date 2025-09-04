@@ -15,6 +15,8 @@ from typing import Any, Dict, Final
 
 from contextlib import asynccontextmanager, contextmanager
 
+import temporalio
+
 from mcp_agent.logging.events import (
     Event,
     EventContext,
@@ -72,13 +74,18 @@ class Logger:
             asyncio.create_task(self.event_bus.emit(event))
         else:
             # If no loop is running, run it until the emit completes
-            try:
-                loop.run_until_complete(self.event_bus.emit(event))
-            except NotImplementedError:
+            if isinstance(
+                loop, temporalio.worker._workflow_instance._WorkflowInstanceImpl
+            ):
                 # Handle Temporal workflow environment where run_until_complete() is not implemented
                 # In Temporal, we can't block on async operations, so we'll need to avoid this
                 # Simply log to stdout/stderr as a fallback
                 self.event_bus.emit_with_stderr_transport(event)
+            else:
+                try:
+                    loop.run_until_complete(self.event_bus.emit(event))
+                except NotImplementedError:
+                    pass
 
     def event(
         self,
@@ -102,6 +109,7 @@ class Logger:
         # can forward reliably, regardless of the current task context.
         # 1) Prefer logger-bound app context (set at creation or refreshed by caller)
         extra_event_fields: Dict[str, Any] = {}
+
         try:
             upstream = (
                 getattr(self._bound_context, "upstream_session", None)
@@ -396,7 +404,7 @@ def get_logger(namespace: str, session_id: str | None = None, context=None) -> L
     with _logger_lock:
         existing = _loggers.get(namespace)
         if existing is None:
-            logger = Logger(namespace, session_id, bound_context=context)
+            logger = Logger(namespace, session_id, context)
             _loggers[namespace] = logger
             return logger
 
@@ -405,4 +413,5 @@ def get_logger(namespace: str, session_id: str | None = None, context=None) -> L
             existing.session_id = session_id
         if context is not None:
             existing._bound_context = context
+
         return existing

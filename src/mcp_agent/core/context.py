@@ -92,7 +92,6 @@ class Context(BaseModel):
     # Dynamic gateway configuration (per-run overrides via Temporal memo)
     gateway_url: str | None = None
     gateway_token: str | None = None
-    execution_id: str | None = None
 
     model_config = ConfigDict(
         extra="allow",

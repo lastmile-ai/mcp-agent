@@ -195,12 +195,14 @@ class MCPApp:
             try:
                 if self._context is not None:
                     self._logger._bound_context = self._context  # type: ignore[attr-defined]
+
             except Exception:
                 pass
         else:
             # Update the logger's bound context in case upstream_session was set after logger creation
             if self._context and hasattr(self._logger, "_bound_context"):
                 self._logger._bound_context = self._context
+
         return self._logger
 
     async def initialize(self):

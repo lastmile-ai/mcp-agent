@@ -2,6 +2,7 @@ from typing import Any, Dict, Optional
 
 from mcp_agent.core.context import Context
 from mcp_agent.executor.temporal.system_activities import SystemActivities
+from mcp_agent.executor.temporal.temporal_context import get_execution_id
 
 
 class SessionProxy:
@@ -17,18 +18,9 @@ class SessionProxy:
         - request(method, params)
     """
 
-    def __init__(self, *, executor, execution_id: str, context: Context):
+    def __init__(self, *, executor, context: Context):
         self._executor = executor
-        self._execution_id = execution_id
         self.sys_acts = SystemActivities(context)
-
-    @property
-    def execution_id(self) -> str:
-        return self._execution_id
-
-    @execution_id.setter
-    def execution_id(self, value: str):
-        self._execution_id = value
 
     async def send_log_message(
         self,
@@ -51,16 +43,16 @@ class SessionProxy:
         # result = await self._executor.execute(self.sys_acts.relay_notify, self.execution_id, "notifications/message", params)
         # we can't.
         await self.sys_acts.relay_notify(
-            self.execution_id, "notifications/message", params
+            get_execution_id(), "notifications/message", params
         )
 
     async def notify(self, method: str, params: Dict[str, Any] | None = None) -> bool:
         result = await self.sys_acts.relay_notify(
-            self.execution_id, method, params or {}
+            get_execution_id(), method, params or {}
         )
         return bool(result)
 
     async def request(
         self, method: str, params: Dict[str, Any] | None = None
     ) -> Dict[str, Any]:
-        await self.sys_acts.relay_request(self.execution_id, method, params or {})
+        await self.sys_acts.relay_request(get_execution_id(), method, params or {})
