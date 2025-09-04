@@ -21,6 +21,8 @@ from mcp_agent.cli.core.constants import DEFAULT_API_BASE_URL
 
 console = Console()
 
+DEFAULT_LOG_LIMIT = 100
+
 
 def tail_logs(
     app_identifier: str = typer.Argument(
@@ -43,10 +45,10 @@ def tail_logs(
         help="Stream logs continuously",
     ),
     limit: Optional[int] = typer.Option(
-        100,
+        DEFAULT_LOG_LIMIT,
         "--limit",
         "-n",
-        help="Maximum number of log entries to show (default: 100)",
+        help=f"Maximum number of log entries to show (default: {DEFAULT_LOG_LIMIT})",
     ),
     order_by: Optional[str] = typer.Option(
         None,
@@ -98,7 +100,7 @@ def tail_logs(
         console.print("[red]Error: --since cannot be used with --follow (streaming mode)[/red]")
         raise typer.Exit(6)
     
-    if follow and limit != 100:  # 100 is the default value
+    if follow and limit != DEFAULT_LOG_LIMIT:
         console.print("[red]Error: --limit cannot be used with --follow (streaming mode)[/red]")
         raise typer.Exit(6)
     
@@ -196,7 +198,6 @@ async def _fetch_logs(
     if limit:
         payload["limit"] = limit
     
-    # Add ordering parameters
     if order_by:
         if order_by == "timestamp":
             payload["orderBy"] = "LOG_ORDER_BY_TIMESTAMP"
@@ -439,7 +440,6 @@ def _clean_log_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
     cleaned_entry = entry.copy()
     cleaned_entry['severity'] = _parse_log_level(entry.get('level', 'INFO'))
     cleaned_entry['message'] = _clean_message(entry.get('message', ''))
-    # Remove the original 'level' field
     cleaned_entry.pop('level', None)
     return cleaned_entry
 
