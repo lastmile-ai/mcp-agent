@@ -48,7 +48,6 @@ def configure_logger(
     config_path = _find_config_file()
     
     if test:
-        # Test existing configuration
         if config_path and config_path.exists():
             config = _load_config(config_path)
             otel_config = config.get("otel", {})
@@ -58,7 +57,6 @@ def configure_logger(
             console.print("[yellow]No configuration file found. Use --endpoint to set up OTEL configuration.[/yellow]")
             raise typer.Exit(1)
     else:
-        # Parse headers if provided
         headers_dict = {}
         if headers:
             try:
@@ -69,13 +67,11 @@ def configure_logger(
                 console.print("[red]Error: Headers must be in format 'key=value,key2=value2'[/red]")
                 raise typer.Exit(1)
     
-    # Test the connection
     if endpoint:
         console.print(f"[blue]Testing connection to {endpoint}...[/blue]")
         
         try:
             with httpx.Client(timeout=10.0) as client:
-                # Test with a simple health check or ping
                 response = client.get(
                     endpoint.replace("/v1/logs", "/health") if "/v1/logs" in endpoint else f"{endpoint}/health",
                     headers=headers_dict
@@ -91,21 +87,18 @@ def configure_logger(
             if not test:
                 console.print("[yellow]Configuration will be saved anyway. Check your endpoint URL and network connection.[/yellow]")
     
-    # Save configuration if not just testing
     if not test:
         if not config_path:
             config_path = Path.cwd() / "mcp_agent.config.yaml"
             
         config = _load_config(config_path) if config_path.exists() else {}
         
-        # Update OTEL configuration
         if "otel" not in config:
             config["otel"] = {}
             
         config["otel"]["endpoint"] = endpoint
         config["otel"]["headers"] = headers_dict
         
-        # Save configuration
         try:
             config_path.parent.mkdir(parents=True, exist_ok=True)
             with open(config_path, "w") as f:
