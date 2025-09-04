@@ -23,8 +23,9 @@ ENV_API_BASE_URL = "MCP_API_BASE_URL"
 ENV_API_KEY = "MCP_API_KEY"
 ENV_VERBOSE = "MCP_VERBOSE"
 
-# API defaults
-DEFAULT_API_BASE_URL = "https://mcp-agent.com/api"
+# Base URL defaults
+DEFAULT_BASE_URL = "https://mcp-agent.com"  # Base URL for web portal and API
+DEFAULT_API_BASE_URL = f"{DEFAULT_BASE_URL}/api"  # API endpoint derived from base URL
 
 # Secret types (string constants)
 SECRET_TYPE_DEVELOPER = "dev"
