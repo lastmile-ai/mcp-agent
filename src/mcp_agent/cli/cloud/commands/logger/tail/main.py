@@ -73,13 +73,11 @@ def tail_logs(
         mcp-agent cloud logger tail app_abc123 --follow --grep "authentication.*failed"
     """
     
-    # Load authentication
     credentials = load_credentials()
     if not credentials:
         console.print("[red]Error: Not authenticated. Run 'mcp-agent login' first.[/red]")
         raise typer.Exit(4)
     
-    # Parse the ID to determine if it's a URL, app ID, or config ID
     app_id, config_id, server_url = _parse_app_identifier(app_identifier)
     
     try:
@@ -121,14 +119,12 @@ async def _fetch_logs(
 ) -> None:
     """Fetch logs one-time via HTTP API."""
     
-    # Build API request
     api_base = DEFAULT_API_BASE_URL
     headers = {
         "Authorization": f"Bearer {credentials.api_key}",
         "Content-Type": "application/json",
     }
     
-    # Prepare request payload
     payload = {}
     
     if app_id:
@@ -143,7 +139,6 @@ async def _fetch_logs(
     if limit:
         payload["limit"] = limit
     
-    # Show progress while fetching
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -168,12 +163,11 @@ async def _fetch_logs(
                     raise CLIError(f"API request failed: {response.status_code} {response.text}")
                 
                 data = response.json()
-                log_entries = data.get("logEntries", [])  # API uses camelCase
+                log_entries = data.get("logEntries", [])
                 
         except httpx.RequestError as e:
             raise CLIError(f"Failed to connect to API: {e}")
     
-    # Filter and display logs
     filtered_logs = _filter_logs(log_entries, grep_pattern) if grep_pattern else log_entries
     
     if not filtered_logs:
@@ -199,7 +193,6 @@ async def _resolve_server_url(
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             if app_id:
-                # Get app info to extract server URL
                 response = await client.post(
                     f"{api_base}/mcp_app/get_app",
                     json={"app_id": app_id},
@@ -222,7 +215,6 @@ async def _resolve_server_url(
                 if not server_url:
                     raise CLIError(f"No server URL found for app '{app_id}'")
                     
-                # Check if server is online
                 status = server_info.get("status", "APP_SERVER_STATUS_UNSPECIFIED")
                 if status == "APP_SERVER_STATUS_OFFLINE":
                     raise CLIError(f"App '{app_id}' server is offline")
@@ -230,7 +222,6 @@ async def _resolve_server_url(
                 return server_url
                 
             elif config_id:
-                # Get app configuration info to extract server URL
                 response = await client.post(
                     f"{api_base}/mcp_app/get_app_configuration",
                     json={"app_configuration_id": config_id},
@@ -253,7 +244,6 @@ async def _resolve_server_url(
                 if not server_url:
                     raise CLIError(f"No server URL found for app configuration '{config_id}'")
                     
-                # Check if server is online
                 status = server_info.get("status", "APP_SERVER_STATUS_UNSPECIFIED")
                 if status == "APP_SERVER_STATUS_OFFLINE":
                     raise CLIError(f"App configuration '{config_id}' server is offline")
@@ -319,16 +309,13 @@ async def _stream_logs(
                 
                 console.print("[green]✓ Connected to log stream[/green]\n")
                 
-                # Process SSE stream
                 buffer = ""
                 async for chunk in response.aiter_text():
                     buffer += chunk
                     lines = buffer.split('\n')
-                    buffer = lines[-1]  # Keep incomplete line
                     
                     for line in lines[:-1]:
                         if line.startswith('data:'):
-                            data_content = line[5:]  # Remove 'data:' prefix  
                             
                             if data_content.strip() == '[DONE]':
                                 continue
@@ -336,9 +323,7 @@ async def _stream_logs(
                             try:
                                 log_data = json.loads(data_content)
                                 
-                                # Extract log entry from the notification payload
                                 if 'message' in log_data:
-                                    # Convert Unix timestamp to ISO format if present
                                     timestamp = log_data.get('time')
                                     if timestamp:
                                         dt = datetime.fromtimestamp(timestamp, timezone.utc)
@@ -352,7 +337,6 @@ async def _stream_logs(
                                         'level': log_data.get('level', 'INFO')
                                     }
                                     
-                                    # Filter if pattern specified
                                     if not grep_pattern or _matches_pattern(log_entry['message'], grep_pattern):
                                         _display_log_entry(log_entry)
                                         
@@ -367,19 +351,13 @@ async def _stream_logs(
 def _parse_app_identifier(identifier: str) -> tuple[Optional[str], Optional[str], Optional[str]]:
     """Parse app identifier to extract app ID, config ID, and server URL."""
     
-    # Check if it's a URL
     if identifier.startswith(('http://', 'https://')):
         return None, None, identifier
-    
-    # Check if it's an MCPAppConfig ID (starts with apcnf_)
     if identifier.startswith('apcnf_'):
         return None, identifier, None
-    
-    # Check if it's an MCPApp ID (starts with app_)
     if identifier.startswith('app_'):
         return identifier, None, None
     
-    # If no specific prefix, assume it's an app ID for backward compatibility
     return identifier, None, None
 
 
@@ -392,7 +370,6 @@ def _filter_logs(log_entries: List[Dict[str, Any]], pattern: str) -> List[Dict[s
         regex = re.compile(pattern, re.IGNORECASE)
         return [entry for entry in log_entries if regex.search(entry.get('message', ''))]
     except re.error:
-        # If regex is invalid, fall back to simple string matching
         return [entry for entry in log_entries if pattern.lower() in entry.get('message', '').lower()]
 
 
@@ -459,11 +436,8 @@ def _format_timestamp(timestamp_str: str) -> str:
 def _parse_log_level(level: str) -> str:
     """Parse log level from API format to clean display format."""
     if level.startswith('LOG_LEVEL_'):
-        # Convert LOG_LEVEL_INFO -> INFO, LOG_LEVEL_WARNING -> WARN, etc.
         clean_level = level.replace('LOG_LEVEL_', '')
-        if clean_level == 'WARNING':
-            return 'WARN'
-        elif clean_level == 'UNSPECIFIED':
+        if clean_level == 'UNSPECIFIED':
             return 'UNKNOWN'
         return clean_level
     return level.upper()
