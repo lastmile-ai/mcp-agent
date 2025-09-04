@@ -726,6 +726,23 @@
           "default": null,
           "title": "Env",
           "description": "Environment variables to pass to the server process."
+        },
+        "allowed_tools": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "uniqueItems": true
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Allowed Tools",
+          "description": "Allow list for tools of given server"
         }
       },
       "title": "MCPServerSettings",
@@ -1031,6 +1048,17 @@
           ],
           "default": null,
           "title": "Rpc Metadata"
+        },
+        "id_reuse_policy": {
+          "default": "allow_duplicate",
+          "enum": [
+            "allow_duplicate",
+            "allow_duplicate_failed_only",
+            "reject_duplicate",
+            "terminate_if_running"
+          ],
+          "title": "Id Reuse Policy",
+          "type": "string"
         }
       },
       "required": [
