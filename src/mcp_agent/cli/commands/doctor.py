@@ -90,3 +90,33 @@ def doctor() -> None:
         misc_table.add_row("OTEL.enabled", "true")
         misc_table.add_row("OTEL.exporters", ", ".join(types))
     console.print(misc_table)
+
+    # Config/secrets validation and suggestions
+    suggestions = []
+    if not Settings.find_config():
+        suggestions.append("Run 'mcp-agent config init' to create configuration.")
+    if not Settings.find_secrets():
+        suggestions.append(
+            "Create 'mcp_agent.secrets.yaml' with provider API keys or set env vars."
+        )
+    if (
+        settings.logger
+        and settings.logger.type == "file"
+        and not getattr(settings.logger, "path", None)
+    ):
+        suggestions.append("Logger type 'file' requires 'logger.path'.")
+    if settings.otel and settings.otel.enabled:
+        # Check OTLP exporter endpoint when present
+        try:
+            for e in settings.otel.exporters or []:
+                if getattr(e, "type", None) == "otlp" and not getattr(
+                    e, "endpoint", None
+                ):
+                    suggestions.append("OTLP exporter enabled without endpoint.")
+        except Exception:
+            pass
+
+    if suggestions:
+        console.print("\n[bold]Suggestions:[/bold]")
+        for s in suggestions:
+            console.print(f"- {s}")

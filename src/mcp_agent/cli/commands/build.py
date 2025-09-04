@@ -40,7 +40,10 @@ def _check_url(url: str, timeout: float = 2.0) -> bool:
 
 
 @app.callback(invoke_without_command=True)
-def build(check_only: bool = typer.Option(False, "--check-only")) -> None:
+def build(
+    check_only: bool = typer.Option(False, "--check-only"),
+    fix: bool = typer.Option(False, "--fix", help="Attempt to fix minor issues"),
+) -> None:
     settings = get_settings()
     ok = True
     report = {
@@ -80,6 +83,15 @@ def build(check_only: bool = typer.Option(False, "--check-only")) -> None:
     manifest = out_dir / "manifest.json"
     manifest.write_text(json.dumps(report, indent=2))
     console.print(f"Wrote manifest: {manifest}")
+
+    if fix and not ok:
+        # Best-effort guidance
+        for name, st in report["servers"].items():
+            if st.get("transport") == "stdio" and not st.get("command_found"):
+                console.print(
+                    f"[yellow]Hint:[/yellow] Ensure '{st.get('command')}' is on PATH (install npx/uvx if used)."
+                )
+        # Don't change exit behavior here; just print hints
 
     if not check_only and not ok:
         typer.secho(

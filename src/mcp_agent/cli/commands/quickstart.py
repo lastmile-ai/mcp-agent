@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
+from importlib.resources import files as _pkg_files
 
 import typer
 from rich.console import Console
@@ -23,6 +24,43 @@ def _copy_tree(src: Path, dst: Path, force: bool) -> int:
     if not src.exists():
         typer.echo(f"Source not found: {src}", err=True)
         return 0
+
+
+def _copy_pkg_tree(pkg_rel: str, dst: Path, force: bool) -> int:
+    """Copy packaged examples from mcp_agent.data/examples/<pkg_rel> into dst.
+
+    Uses importlib.resources to locate files installed with the package.
+    """
+    try:
+        root = (
+            _pkg_files("mcp_agent")
+            .joinpath("data")
+            .joinpath("examples")
+            .joinpath(pkg_rel)
+        )
+    except Exception:
+        return 0
+    if not root.exists():
+        return 0
+
+    # Mirror directory tree
+    def _copy_any(node, target: Path):
+        if node.is_dir():
+            target.mkdir(parents=True, exist_ok=True)
+            for child in node.iterdir():
+                _copy_any(child, target / child.name)
+        else:
+            if target.exists() and not force:
+                return
+            with node.open("rb") as rf:
+                data = rf.read()
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with open(target, "wb") as wf:
+                wf.write(data)
+
+    _copy_any(root, dst)
+    return 1
+
     if dst.exists() and force:
         shutil.rmtree(dst)
     if not dst.exists():
@@ -41,6 +79,10 @@ def overview() -> None:
         ("researcher", "examples/usecases/mcp_researcher"),
         ("data-analysis", "examples/usecases/mcp_financial_analyzer"),
         ("state-transfer", "examples/workflows/workflow_router"),
+        ("mcp-basic-agent", "data/examples/basic/mcp_basic_agent"),
+        ("token-counter", "data/examples/basic/token_counter"),
+        ("agent-factory", "data/examples/basic/agent_factory"),
+        ("basic-agent-server", "data/examples/mcp_agent_server/asyncio"),
     ]
     for n, p in rows:
         table.add_row(n, p)
@@ -100,4 +142,57 @@ def data_analysis(
     src = EXAMPLE_ROOT / "usecases" / "mcp_financial_analyzer"
     dst = dir.resolve() / "data-analysis"
     copied = _copy_tree(src, dst, force)
+    console.print(f"Copied {copied} set(s) to {dst}")
+
+
+@app.command("mcp-basic-agent")
+def mcp_basic_agent(
+    dir: Path = typer.Argument(Path(".")),
+    force: bool = typer.Option(False, "--force", "-f"),
+) -> None:
+    dst = dir.resolve() / "mcp_basic_agent"
+    copied = _copy_pkg_tree("basic/mcp_basic_agent", dst, force)
+    if not copied:
+        # fallback to repo examples
+        src = EXAMPLE_ROOT / "basic" / "mcp_basic_agent"
+        copied = _copy_tree(src, dst, force)
+    console.print(f"Copied {copied} set(s) to {dst}")
+
+
+@app.command("token-counter")
+def token_counter(
+    dir: Path = typer.Argument(Path(".")),
+    force: bool = typer.Option(False, "--force", "-f"),
+) -> None:
+    dst = dir.resolve() / "token_counter"
+    copied = _copy_pkg_tree("basic/token_counter", dst, force)
+    if not copied:
+        src = EXAMPLE_ROOT / "basic" / "token_counter"
+        copied = _copy_tree(src, dst, force)
+    console.print(f"Copied {copied} set(s) to {dst}")
+
+
+@app.command("agent-factory")
+def agent_factory(
+    dir: Path = typer.Argument(Path(".")),
+    force: bool = typer.Option(False, "--force", "-f"),
+) -> None:
+    dst = dir.resolve() / "agent_factory"
+    copied = _copy_pkg_tree("basic/agent_factory", dst, force)
+    if not copied:
+        src = EXAMPLE_ROOT / "basic" / "agent_factory"
+        copied = _copy_tree(src, dst, force)
+    console.print(f"Copied {copied} set(s) to {dst}")
+
+
+@app.command("basic-agent-server")
+def basic_agent_server(
+    dir: Path = typer.Argument(Path(".")),
+    force: bool = typer.Option(False, "--force", "-f"),
+) -> None:
+    dst = dir.resolve() / "basic_agent_server"
+    copied = _copy_pkg_tree("mcp_agent_server/asyncio", dst, force)
+    if not copied:
+        src = EXAMPLE_ROOT / "mcp_agent_server" / "asyncio"
+        copied = _copy_tree(src, dst, force)
     console.print(f"Copied {copied} set(s) to {dst}")

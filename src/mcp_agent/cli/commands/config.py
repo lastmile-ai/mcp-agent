@@ -137,3 +137,114 @@ def edit(secrets: bool = typer.Option(False, "--secrets", "-s")) -> None:
             continue
     # If all fail, just print the path
     console.print(str(target))
+
+
+@app.command("init")
+def init_builder() -> None:
+    """Interactive builder for config and secrets files."""
+    import yaml
+    from mcp_agent.config import Settings as _Settings
+
+    console.print("\n[bold]mcp-agent config init[/bold]\n")
+
+    # Prompts
+    use_filesystem = typer.confirm("Add filesystem server recipe?", default=False)
+    use_fetch = typer.confirm("Add fetch server recipe?", default=False)
+    logger_type = typer.prompt(
+        "Logger type (none|console|file|http)", default="console"
+    )
+    logger_level = typer.prompt(
+        "Logger level (debug|info|warning|error)", default="info"
+    )
+    log_path = None
+    if logger_type == "file":
+        log_path = typer.prompt("Log file path", default="mcp-agent.jsonl")
+    otel_enabled = typer.confirm("Enable OpenTelemetry?", default=False)
+    default_openai = typer.prompt("Default OpenAI model (optional)", default="")
+    default_anthropic = typer.prompt("Default Anthropic model (optional)", default="")
+
+    # Start from packaged template
+    try:
+        tmpl_cfg = (
+            Path(__file__).parents[3] / "data" / "templates" / "config_basic.yaml"
+        ).read_text(encoding="utf-8")
+        cfg: dict = yaml.safe_load(tmpl_cfg) or {}
+    except Exception:
+        cfg = {
+            "mcp": {"servers": {}},
+            "logger": {"type": logger_type, "level": logger_level},
+            "otel": {"enabled": bool(otel_enabled)},
+        }
+    # Apply choices
+    cfg.setdefault("logger", {})
+    cfg["logger"]["type"] = logger_type
+    cfg["logger"]["level"] = logger_level
+    cfg.setdefault("otel", {})
+    cfg["otel"]["enabled"] = bool(otel_enabled)
+    if logger_type == "file" and log_path:
+        cfg["logger"]["path"] = log_path
+
+    if use_filesystem:
+        cfg["mcp"]["servers"]["filesystem"] = {
+            "transport": "stdio",
+            "command": "npx",
+            "args": ["-y", "@modelcontextprotocol/server-filesystem", "."],
+        }
+    if use_fetch:
+        cfg["mcp"]["servers"]["fetch"] = {
+            "transport": "stdio",
+            "command": "uvx",
+            "args": ["mcp-server-fetch"],
+        }
+
+    if default_openai:
+        cfg["openai"] = {"default_model": default_openai}
+    if default_anthropic:
+        cfg["anthropic"] = {"default_model": default_anthropic}
+
+    # Secrets prompts
+    write_secrets = typer.confirm("Write secrets file now?", default=True)
+    secrets: dict = {}
+    if write_secrets:
+        if typer.confirm("Set OpenAI API key?", default=False):
+            secrets.setdefault("openai", {})["api_key"] = typer.prompt("OPENAI_API_KEY")
+        if typer.confirm("Set Anthropic API key?", default=False):
+            secrets.setdefault("anthropic", {})["api_key"] = typer.prompt(
+                "ANTHROPIC_API_KEY"
+            )
+
+    # Write files
+    cfg_path = _find_config_file() or (Path.cwd() / "mcp_agent.config.yaml")
+    try:
+        cfg_path.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
+        console.print(f"[green]Wrote[/green] {cfg_path}")
+    except Exception as e:
+        typer.secho(f"Failed to write config: {e}", err=True, fg=typer.colors.RED)
+        raise typer.Exit(5)
+
+    if secrets is not None:
+        try:
+            tmpl_sec = (
+                Path(__file__).parents[3] / "data" / "templates" / "secrets_basic.yaml"
+            ).read_text(encoding="utf-8")
+        except Exception:
+            tmpl_sec = ""
+        merged = {}
+        if tmpl_sec:
+            try:
+                merged = yaml.safe_load(tmpl_sec) or {}
+            except Exception:
+                merged = {}
+        if isinstance(secrets, dict):
+            # Overlay user-provided keys
+            for k, v in secrets.items():
+                merged.setdefault(k, {}).update(v if isinstance(v, dict) else {})
+        sec_path = _find_secrets_file() or (Path.cwd() / "mcp_agent.secrets.yaml")
+        try:
+            sec_path.write_text(
+                yaml.safe_dump(merged, sort_keys=False), encoding="utf-8"
+            )
+            console.print(f"[green]Wrote[/green] {sec_path}")
+        except Exception as e:
+            typer.secho(f"Failed to write secrets: {e}", err=True, fg=typer.colors.RED)
+            raise typer.Exit(5)
