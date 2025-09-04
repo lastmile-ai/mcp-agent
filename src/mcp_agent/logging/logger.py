@@ -78,12 +78,7 @@ class Logger:
                 # Handle Temporal workflow environment where run_until_complete() is not implemented
                 # In Temporal, we can't block on async operations, so we'll need to avoid this
                 # Simply log to stdout/stderr as a fallback
-                import sys
-
-                print(
-                    f"[{event.type}] {event.namespace}: {event.message}",
-                    file=sys.stderr,
-                )
+                self.event_bus.emit_with_stderr_transport(event)
 
     def event(
         self,
@@ -113,6 +108,7 @@ class Logger:
                 if getattr(self, "_bound_context", None) is not None
                 else None
             )
+
             if upstream is not None:
                 extra_event_fields["upstream_session"] = upstream
         except Exception:

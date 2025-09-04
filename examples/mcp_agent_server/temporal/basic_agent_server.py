@@ -58,12 +58,20 @@ class BasicAgentWorkflow(Workflow[str]):
         context = app.context
         context.config.mcp.servers["filesystem"].args.extend([os.getcwd()])
 
+        # Use of the app.logger will forward logs back to the mcp client
+        app_logger = app.logger
+
+        app_logger.info("Starting finder agent")
         async with finder_agent:
             finder_llm = await finder_agent.attach_llm(OpenAIAugmentedLLM)
 
             result = await finder_llm.generate_str(
                 message=input,
             )
+
+            # forwards the log to the caller
+            app_logger.info(f"Finder agent completed with result {result}")
+            # print to the console (for when running locally)
             print(f"Agent result: {result}")
             return WorkflowResult(value=result)
 

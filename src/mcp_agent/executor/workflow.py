@@ -257,11 +257,13 @@ class Workflow(ABC, Generic[T], ContextDependent):
                 # Ensure upstream_session is a passthrough SessionProxy bound to this run
                 if (
                     getattr(self.context, "upstream_session", None) is None
-                    and self._run_id
+                    and self.context.execution_id
                 ):
                     try:
                         self.context.upstream_session = SessionProxy(
-                            executor=self.executor, run_id=self._run_id
+                            executor=self.executor,
+                            execution_id=self.context.execution_id,
+                            context=self.context,
                         )
                     except Exception:
                         pass
@@ -823,6 +825,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
                 if isinstance(memo_map, dict):
                     gw = memo_map.get("gateway_url")
                     gt = memo_map.get("gateway_token")
+                    e_id = memo_map.get("execution_id")
                     if gw:
                         try:
                             self.context.gateway_url = gw
@@ -831,6 +834,11 @@ class Workflow(ABC, Generic[T], ContextDependent):
                     if gt:
                         try:
                             self.context.gateway_token = gt
+                        except Exception:
+                            pass
+                    if e_id:
+                        try:
+                            self.context.execution_id = e_id
                         except Exception:
                             pass
             except Exception:
@@ -842,11 +850,19 @@ class Workflow(ABC, Generic[T], ContextDependent):
             try:
                 if (
                     getattr(self.context, "upstream_session", None) is None
-                    and self._run_id
+                    and self.context.execution_id
                 ):
                     self.context.upstream_session = SessionProxy(
-                        executor=self.executor, run_id=self._run_id
+                        executor=self.executor,
+                        execution_id=self.context.execution_id,
+                        context=self.context,
                     )
+
+                    app = self.context.app
+                    if app:
+                        # Ensure the app's logger is bound to the current context with upstream_session
+                        if app._logger and hasattr(app._logger, "_bound_context"):
+                            app._logger._bound_context = self.context
             except Exception:
                 # Non-fatal if context is immutable early; will be set after run_id assignment in run_async
                 pass

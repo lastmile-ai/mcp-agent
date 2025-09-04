@@ -116,6 +116,7 @@ async def notify_via_proxy(
     if tok:
         headers["X-MCP-Gateway-Token"] = tok
     timeout = float(os.environ.get("MCP_GATEWAY_TIMEOUT", "10"))
+
     async with httpx.AsyncClient(timeout=timeout) as client:
         r = await client.post(
             url, json={"method": method, "params": params or {}}, headers=headers

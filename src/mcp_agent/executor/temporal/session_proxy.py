@@ -1,6 +1,7 @@
-from __future__ import annotations
-
 from typing import Any, Dict, Optional
+
+from mcp_agent.core.context import Context
+from mcp_agent.executor.temporal.system_activities import SystemActivities
 
 
 class SessionProxy:
@@ -16,13 +17,14 @@ class SessionProxy:
         - request(method, params)
     """
 
-    def __init__(self, *, executor, run_id: str):
+    def __init__(self, *, executor, execution_id: str, context: Context):
         self._executor = executor
-        self._run_id = run_id
+        self._execution_id = execution_id
+        self.sys_acts = SystemActivities(context)
 
     @property
-    def run_id(self) -> str:
-        return self._run_id
+    def execution_id(self) -> str:
+        return self._execution_id
 
     async def send_log_message(
         self,
@@ -41,24 +43,20 @@ class SessionProxy:
         if related_request_id is not None:
             params["related_request_id"] = related_request_id
 
-        activity = self._executor.context.task_registry.get_activity("mcp_relay_notify")
-        await self._executor.execute(
-            activity, self._run_id, "notifications/message", params
+        # We are outside of the temporal loop. So even though we'd like to do something like
+        # result = await self._executor.execute(self.sys_acts.relay_notify, self.execution_id, "notifications/message", params)
+        # we can't.
+        await self.sys_acts.relay_notify(
+            self.execution_id, "notifications/message", params
         )
 
     async def notify(self, method: str, params: Dict[str, Any] | None = None) -> bool:
-        activity = self._executor.context.task_registry.get_activity("mcp_relay_notify")
-        result = await self._executor.execute(
-            activity, self._run_id, method, params or {}
+        result = await self.sys_acts.relay_notify(
+            self.execution_id, method, params or {}
         )
         return bool(result)
 
     async def request(
         self, method: str, params: Dict[str, Any] | None = None
     ) -> Dict[str, Any]:
-        activity = self._executor.context.task_registry.get_activity(
-            "mcp_relay_request"
-        )
-        return await self._executor.execute(
-            activity, self._run_id, method, params or {}
-        )
+        await self.sys_acts.relay_request(self.execution_id, method, params or {})

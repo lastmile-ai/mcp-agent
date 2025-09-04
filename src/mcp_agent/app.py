@@ -898,6 +898,13 @@ class MCPApp:
             )
 
             if task_defn:
+                # prevent trying to decorate an already decorated function
+                if hasattr(target, "__temporal_activity_definition"):
+                    self.logger.debug(
+                        f"target {name} has __temporal_activity_definition"
+                    )
+                    return target  # Already decorated with @activity
+
                 if isinstance(target, MethodType):
                     self_ref = target.__self__
 

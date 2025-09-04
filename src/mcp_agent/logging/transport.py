@@ -8,6 +8,7 @@ import asyncio
 import json
 import uuid
 import datetime
+import sys
 from abc import ABC, abstractmethod
 from typing import Dict, List, Protocol
 from pathlib import Path
@@ -431,6 +432,23 @@ class AsyncEventBus:
 
         # Then queue for listeners
         await self._queue.put(event)
+
+    def emit_with_stderr_transport(self, event: Event):
+        print(
+            f"[{event.type}] {event.namespace}: {event.message}",
+            file=sys.stderr,
+        )
+
+        # Initialize queue and start processing if needed
+        if not hasattr(self, "_queue"):
+            self.init_queue()
+            # Auto-start the event processing task if not running
+            if not self._running:
+                self._running = True
+                self._task = asyncio.create_task(self._process_events())
+
+        # Then queue for listeners
+        self._queue.put_nowait(event)
 
     async def _send_to_transport(self, event: Event):
         """Send event to transport with error handling."""

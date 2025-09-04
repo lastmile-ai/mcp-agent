@@ -7,6 +7,12 @@ from mcp_agent.config import MCPServerSettings
 from mcp_agent.executor.workflow import WorkflowExecution
 from mcp_agent.mcp.gen_client import gen_client
 
+from datetime import timedelta
+from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
+from mcp import ClientSession
+from mcp.types import LoggingMessageNotificationParams
+from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
+
 
 async def main():
     # Create MCPApp to get the server registry
@@ -27,7 +33,33 @@ async def main():
         )
 
         # Connect to the workflow server
-        async with gen_client("basic_agent_server", context.server_registry) as server:
+        # Define a logging callback to receive server-side log notifications
+        async def on_server_log(params: LoggingMessageNotificationParams) -> None:
+            # Pretty-print server logs locally for demonstration
+            level = params.level.upper()
+            name = params.logger or "server"
+            # params.data can be any JSON-serializable data
+            print(f"[SERVER LOG] [{level}] [{name}] {params.data}")
+
+        # Provide a client session factory that installs our logging callback
+        def make_session(
+            read_stream: MemoryObjectReceiveStream,
+            write_stream: MemoryObjectSendStream,
+            read_timeout_seconds: timedelta | None,
+        ) -> ClientSession:
+            return MCPAgentClientSession(
+                read_stream=read_stream,
+                write_stream=write_stream,
+                read_timeout_seconds=read_timeout_seconds,
+                logging_callback=on_server_log,
+            )
+
+        # Connect to the workflow server
+        async with gen_client(
+            "basic_agent_server",
+            context.server_registry,
+            client_session_factory=make_session,
+        ) as server:
             # Call the BasicAgentWorkflow
             run_result = await server.call_tool(
                 "workflows-BasicAgentWorkflow-run",
