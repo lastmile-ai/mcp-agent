@@ -316,10 +316,9 @@ async def _stream_logs(
                                 if 'message' in log_data:
                                     timestamp = log_data.get('time')
                                     if timestamp:
-                                        dt = datetime.fromtimestamp(timestamp, timezone.utc)
-                                        formatted_timestamp = dt.isoformat()
+                                        formatted_timestamp = _convert_timestamp_to_local(timestamp)
                                     else:
-                                        formatted_timestamp = datetime.now(timezone.utc).isoformat()
+                                        formatted_timestamp = datetime.now().isoformat()
                                     
                                     log_entry = {
                                         'timestamp': formatted_timestamp,
@@ -412,12 +411,21 @@ def _display_log_entry(log_entry: Dict[str, Any]) -> None:
     )
 
 
+def _convert_timestamp_to_local(timestamp: float) -> str:
+    """Convert UTC timestamp to local time ISO format."""
+    dt_utc = datetime.fromtimestamp(timestamp, timezone.utc)
+    dt_local = dt_utc.astimezone()
+    return dt_local.isoformat()
+
+
 def _format_timestamp(timestamp_str: str) -> str:
-    """Format timestamp for display."""
+    """Format timestamp for display, converting to local time."""
     try:
         if timestamp_str:
-            dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
-            return dt.strftime('%H:%M:%S')
+            # Parse UTC timestamp and convert to local time
+            dt_utc = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+            dt_local = dt_utc.astimezone()
+            return dt_local.strftime('%H:%M:%S')
         return datetime.now().strftime('%H:%M:%S')
     except (ValueError, TypeError):
         return timestamp_str[:8] if len(timestamp_str) >= 8 else timestamp_str
