@@ -45,7 +45,8 @@ openai:
 
 otel:
   enabled: true
-  exporters: ["file", "otlp"]
-  otlp_settings:
-    endpoint: "http://localhost:4318/v1/traces"
+  exporters:
+    - type: file
+    - type: otlp
+      endpoint: "http://localhost:4318/v1/traces"
   service_name: "TemporalTracingExample"

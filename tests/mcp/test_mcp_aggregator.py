@@ -868,27 +868,28 @@ async def test_mcp_compound_server_call_tool_and_get_prompt(monkeypatch):
 # =============================================================================
 
 
-
 class MockServerConfig:
     """Mock server configuration for testing"""
+
     def __init__(self, allowed_tools=None):
         self.allowed_tools = allowed_tools
 
 
 class DummyContextWithServerRegistry:
     """Extended dummy context with server registry for tool filtering tests"""
+
     def __init__(self, server_configs=None):
         self.tracer = None
         self.tracing_enabled = False
         self.server_configs = server_configs or {}
-        
+
         class MockServerRegistry:
             def __init__(self, configs):
                 self.configs = configs
-                
+
             def get_server_config(self, server_name):
                 return self.configs.get(server_name, MockServerConfig())
-                
+
             def start_server(self, server_name, client_session_factory=None):
                 class DummyCtxMgr:
                     async def __aenter__(self):
@@ -896,13 +897,16 @@ class DummyContextWithServerRegistry:
                             async def initialize(self):
                                 class InitResult:
                                     capabilities = {"tools": True}
+
                                 return InitResult()
+
                         return DummySession()
-                    
+
                     async def __aexit__(self, exc_type, exc_val, exc_tb):
                         pass
+
                 return DummyCtxMgr()
-        
+
         self.server_registry = MockServerRegistry(self.server_configs)
         self._mcp_connection_manager_lock = asyncio.Lock()
         self._mcp_connection_manager_ref_count = 0
@@ -912,43 +916,59 @@ class DummyContextWithServerRegistry:
 async def test_tool_filtering_with_allowed_tools():
     """Test that tools are filtered correctly when allowed_tools is configured"""
     # Setup server config with allowed tools
-    server_configs = {
-        "test_server": MockServerConfig(allowed_tools={"tool1", "tool3"})
-    }
+    server_configs = {"test_server": MockServerConfig(allowed_tools={"tool1", "tool3"})}
     context = DummyContextWithServerRegistry(server_configs)
-    
+
     aggregator = mcp_aggregator_mod.MCPAggregator(
         server_names=["test_server"],
         connection_persistence=False,
         context=context,
         name="test_agent",
     )
-    
+
     # Mock tools that would be returned from server
     mock_tools = [
-        Tool(name="tool1", description="Description for tool1", inputSchema={"type": "object"}),  # Should be included
-        Tool(name="tool2", description="Description for tool2", inputSchema={"type": "object"}),  # Should be filtered out
-        Tool(name="tool3", description="Description for tool3", inputSchema={"type": "object"}),  # Should be included
-        Tool(name="tool4", description="Description for tool4", inputSchema={"type": "object"}),  # Should be filtered out
+        Tool(
+            name="tool1",
+            description="Description for tool1",
+            inputSchema={"type": "object"},
+        ),  # Should be included
+        Tool(
+            name="tool2",
+            description="Description for tool2",
+            inputSchema={"type": "object"},
+        ),  # Should be filtered out
+        Tool(
+            name="tool3",
+            description="Description for tool3",
+            inputSchema={"type": "object"},
+        ),  # Should be included
+        Tool(
+            name="tool4",
+            description="Description for tool4",
+            inputSchema={"type": "object"},
+        ),  # Should be filtered out
     ]
-    
+
     # Mock _fetch_capabilities to return our test tools
     async def mock_fetch_capabilities(server_name):
         return (None, mock_tools, [], [])  # capabilities, tools, prompts, resources
-    
-    with patch.object(aggregator, '_fetch_capabilities', side_effect=mock_fetch_capabilities):
+
+    with patch.object(
+        aggregator, "_fetch_capabilities", side_effect=mock_fetch_capabilities
+    ):
         await aggregator.load_server("test_server")
-    
+
     # Verify only allowed tools were added
     server_tools = aggregator._server_to_tool_map.get("test_server", [])
     assert len(server_tools) == 2
-    
+
     tool_names = [tool.tool.name for tool in server_tools]
     assert "tool1" in tool_names
     assert "tool3" in tool_names
     assert "tool2" not in tool_names
     assert "tool4" not in tool_names
-    
+
     # Verify namespaced tools map
     assert "test_server_tool1" in aggregator._namespaced_tool_map
     assert "test_server_tool3" in aggregator._namespaced_tool_map
@@ -960,34 +980,46 @@ async def test_tool_filtering_with_allowed_tools():
 async def test_tool_filtering_no_filtering_when_none():
     """Test that all tools are included when allowed_tools is None"""
     # Setup server config with no filtering
-    server_configs = {
-        "test_server": MockServerConfig(allowed_tools=None)
-    }
+    server_configs = {"test_server": MockServerConfig(allowed_tools=None)}
     context = DummyContextWithServerRegistry(server_configs)
-    
+
     aggregator = mcp_aggregator_mod.MCPAggregator(
         server_names=["test_server"],
         connection_persistence=False,
         context=context,
         name="test_agent",
     )
-    
+
     mock_tools = [
-        Tool(name="tool1", description="Description for tool1", inputSchema={"type": "object"}),
-        Tool(name="tool2", description="Description for tool2", inputSchema={"type": "object"}),
-        Tool(name="tool3", description="Description for tool3", inputSchema={"type": "object"}),
+        Tool(
+            name="tool1",
+            description="Description for tool1",
+            inputSchema={"type": "object"},
+        ),
+        Tool(
+            name="tool2",
+            description="Description for tool2",
+            inputSchema={"type": "object"},
+        ),
+        Tool(
+            name="tool3",
+            description="Description for tool3",
+            inputSchema={"type": "object"},
+        ),
     ]
-    
+
     async def mock_fetch_capabilities(server_name):
         return (None, mock_tools, [], [])
-    
-    with patch.object(aggregator, '_fetch_capabilities', side_effect=mock_fetch_capabilities):
+
+    with patch.object(
+        aggregator, "_fetch_capabilities", side_effect=mock_fetch_capabilities
+    ):
         await aggregator.load_server("test_server")
-    
+
     # Verify all tools were added
     server_tools = aggregator._server_to_tool_map.get("test_server", [])
     assert len(server_tools) == 3
-    
+
     tool_names = [tool.tool.name for tool in server_tools]
     assert "tool1" in tool_names
     assert "tool2" in tool_names
@@ -998,33 +1030,41 @@ async def test_tool_filtering_no_filtering_when_none():
 async def test_tool_filtering_empty_allowed_tools():
     """Test behavior when allowed_tools is empty set (should filter out all tools)"""
     # Setup server config with empty allowed tools
-    server_configs = {
-        "test_server": MockServerConfig(allowed_tools=set())
-    }
+    server_configs = {"test_server": MockServerConfig(allowed_tools=set())}
     context = DummyContextWithServerRegistry(server_configs)
-    
+
     aggregator = mcp_aggregator_mod.MCPAggregator(
         server_names=["test_server"],
         connection_persistence=False,
         context=context,
         name="test_agent",
     )
-    
+
     mock_tools = [
-        Tool(name="tool1", description="Description for tool1", inputSchema={"type": "object"}),
-        Tool(name="tool2", description="Description for tool2", inputSchema={"type": "object"}),
+        Tool(
+            name="tool1",
+            description="Description for tool1",
+            inputSchema={"type": "object"},
+        ),
+        Tool(
+            name="tool2",
+            description="Description for tool2",
+            inputSchema={"type": "object"},
+        ),
     ]
-    
+
     async def mock_fetch_capabilities(server_name):
         return (None, mock_tools, [], [])
-    
-    with patch.object(aggregator, '_fetch_capabilities', side_effect=mock_fetch_capabilities):
+
+    with patch.object(
+        aggregator, "_fetch_capabilities", side_effect=mock_fetch_capabilities
+    ):
         await aggregator.load_server("test_server")
-    
+
     # Verify no tools were added
     server_tools = aggregator._server_to_tool_map.get("test_server", [])
     assert len(server_tools) == 0
-    
+
     # Verify namespaced tools map is empty for this server
     assert "test_server_tool1" not in aggregator._namespaced_tool_map
     assert "test_server_tool2" not in aggregator._namespaced_tool_map
@@ -1035,29 +1075,39 @@ async def test_tool_filtering_no_server_registry():
     """Test fallback behavior when server registry is not available"""
     # Setup context without proper server registry
     context = DummyContext()  # Original dummy context without server registry
-    
+
     aggregator = mcp_aggregator_mod.MCPAggregator(
         server_names=["test_server"],
         connection_persistence=False,
         context=context,
         name="test_agent",
     )
-    
+
     mock_tools = [
-        Tool(name="tool1", description="Description for tool1", inputSchema={"type": "object"}),
-        Tool(name="tool2", description="Description for tool2", inputSchema={"type": "object"}),
+        Tool(
+            name="tool1",
+            description="Description for tool1",
+            inputSchema={"type": "object"},
+        ),
+        Tool(
+            name="tool2",
+            description="Description for tool2",
+            inputSchema={"type": "object"},
+        ),
     ]
-    
+
     async def mock_fetch_capabilities(server_name):
         return (None, mock_tools, [], [])
-    
-    with patch.object(aggregator, '_fetch_capabilities', side_effect=mock_fetch_capabilities):
+
+    with patch.object(
+        aggregator, "_fetch_capabilities", side_effect=mock_fetch_capabilities
+    ):
         await aggregator.load_server("test_server")
-    
+
     # Should include all tools when no server registry is available
     server_tools = aggregator._server_to_tool_map.get("test_server", [])
     assert len(server_tools) == 2
-    
+
     tool_names = [tool.tool.name for tool in server_tools]
     assert "tool1" in tool_names
     assert "tool2" in tool_names
@@ -1073,40 +1123,70 @@ async def test_tool_filtering_multiple_servers():
         "server3": MockServerConfig(allowed_tools=None),  # No filtering
     }
     context = DummyContextWithServerRegistry(server_configs)
-    
+
     aggregator = mcp_aggregator_mod.MCPAggregator(
         server_names=["server1", "server2", "server3"],
         connection_persistence=False,
         context=context,
         name="test_agent",
     )
-    
+
     # Different tools for each server
     server_tools = {
         "server1": [
-            Tool(name="tool1", description="Description for tool1", inputSchema={"type": "object"}),
-            Tool(name="tool2", description="Description for tool2", inputSchema={"type": "object"}),
-            Tool(name="tool_extra", description="Description for tool_extra", inputSchema={"type": "object"})
+            Tool(
+                name="tool1",
+                description="Description for tool1",
+                inputSchema={"type": "object"},
+            ),
+            Tool(
+                name="tool2",
+                description="Description for tool2",
+                inputSchema={"type": "object"},
+            ),
+            Tool(
+                name="tool_extra",
+                description="Description for tool_extra",
+                inputSchema={"type": "object"},
+            ),
         ],
         "server2": [
-            Tool(name="tool3", description="Description for tool3", inputSchema={"type": "object"}),
-            Tool(name="tool_filtered", description="Description for tool_filtered", inputSchema={"type": "object"})
+            Tool(
+                name="tool3",
+                description="Description for tool3",
+                inputSchema={"type": "object"},
+            ),
+            Tool(
+                name="tool_filtered",
+                description="Description for tool_filtered",
+                inputSchema={"type": "object"},
+            ),
         ],
         "server3": [
-            Tool(name="toolA", description="Description for toolA", inputSchema={"type": "object"}),
-            Tool(name="toolB", description="Description for toolB", inputSchema={"type": "object"})
+            Tool(
+                name="toolA",
+                description="Description for toolA",
+                inputSchema={"type": "object"},
+            ),
+            Tool(
+                name="toolB",
+                description="Description for toolB",
+                inputSchema={"type": "object"},
+            ),
         ],
     }
-    
+
     async def mock_fetch_capabilities(server_name):
         tools = server_tools.get(server_name, [])
         return (None, tools, [], [])
-    
-    with patch.object(aggregator, '_fetch_capabilities', side_effect=mock_fetch_capabilities):
+
+    with patch.object(
+        aggregator, "_fetch_capabilities", side_effect=mock_fetch_capabilities
+    ):
         await aggregator.load_server("server1")
-        await aggregator.load_server("server2") 
+        await aggregator.load_server("server2")
         await aggregator.load_server("server3")
-    
+
     # Check server1 filtering
     server1_tools = aggregator._server_to_tool_map.get("server1", [])
     assert len(server1_tools) == 2
@@ -1114,21 +1194,21 @@ async def test_tool_filtering_multiple_servers():
     assert "tool1" in server1_names
     assert "tool2" in server1_names
     assert "tool_extra" not in server1_names
-    
+
     # Check server2 filtering
     server2_tools = aggregator._server_to_tool_map.get("server2", [])
     assert len(server2_tools) == 1
     server2_names = [tool.tool.name for tool in server2_tools]
     assert "tool3" in server2_names
     assert "tool_filtered" not in server2_names
-    
+
     # Check server3 (no filtering)
     server3_tools = aggregator._server_to_tool_map.get("server3", [])
     assert len(server3_tools) == 2
     server3_names = [tool.tool.name for tool in server3_tools]
     assert "toolA" in server3_names
     assert "toolB" in server3_names
-    
+
     # Check namespaced tools map
     assert "server1_tool1" in aggregator._namespaced_tool_map
     assert "server1_tool2" in aggregator._namespaced_tool_map
@@ -1139,39 +1219,56 @@ async def test_tool_filtering_multiple_servers():
     assert "server3_toolB" in aggregator._namespaced_tool_map
 
 
-
-@pytest.mark.asyncio 
+@pytest.mark.asyncio
 async def test_tool_filtering_edge_case_exact_match():
     """Test that tool filtering requires exact name matches"""
     server_configs = {
         "test_server": MockServerConfig(allowed_tools={"tool", "tool_exact"})
     }
     context = DummyContextWithServerRegistry(server_configs)
-    
+
     aggregator = mcp_aggregator_mod.MCPAggregator(
         server_names=["test_server"],
         connection_persistence=False,
         context=context,
         name="test_agent",
     )
-    
+
     mock_tools = [
-        Tool(name="tool", description="Description for tool", inputSchema={"type": "object"}),           # Should be included (exact match)
-        Tool(name="tool_exact", description="Description for tool_exact", inputSchema={"type": "object"}),     # Should be included (exact match)
-        Tool(name="tool_similar", description="Description for tool_similar", inputSchema={"type": "object"}),   # Should be filtered (not exact match)
-        Tool(name="my_tool", description="Description for my_tool", inputSchema={"type": "object"}),        # Should be filtered (not exact match)
+        Tool(
+            name="tool",
+            description="Description for tool",
+            inputSchema={"type": "object"},
+        ),  # Should be included (exact match)
+        Tool(
+            name="tool_exact",
+            description="Description for tool_exact",
+            inputSchema={"type": "object"},
+        ),  # Should be included (exact match)
+        Tool(
+            name="tool_similar",
+            description="Description for tool_similar",
+            inputSchema={"type": "object"},
+        ),  # Should be filtered (not exact match)
+        Tool(
+            name="my_tool",
+            description="Description for my_tool",
+            inputSchema={"type": "object"},
+        ),  # Should be filtered (not exact match)
     ]
-    
+
     async def mock_fetch_capabilities(server_name):
         return (None, mock_tools, [], [])
-    
-    with patch.object(aggregator, '_fetch_capabilities', side_effect=mock_fetch_capabilities):
+
+    with patch.object(
+        aggregator, "_fetch_capabilities", side_effect=mock_fetch_capabilities
+    ):
         await aggregator.load_server("test_server")
-    
+
     # Verify only exact matches were included
     server_tools = aggregator._server_to_tool_map.get("test_server", [])
     assert len(server_tools) == 2
-    
+
     tool_names = [tool.tool.name for tool in server_tools]
     assert "tool" in tool_names
     assert "tool_exact" in tool_names

@@ -1,7 +1,6 @@
 # Langfuse Trace Exporter Example
 
-This example shows how to configure a Langfuse OTLP trace exporter for use in `mcp-agent` by configuring the
-`otel.otlp_settings` with the expected endpoint and headers.
+This example shows how to configure a Langfuse OTLP trace exporter for use in `mcp-agent` by adding a typed OTLP exporter with the expected endpoint and headers.
 Following information from https://langfuse.com/integrations/native/opentelemetry
 
 ## `1` App set up
@@ -47,7 +46,7 @@ Obtain a secret and public API key for your desired Langfuse project and then ge
 echo -n "pk-your-public-key:sk-your-secret-key" | base64
 ```
 
-In `mcp_agent.secrets.yaml` set the Authorization header for OTLP:
+In `mcp_agent.secrets.yaml` set the Authorization header for OTLP (merged automatically with the typed exporter):
 
 ```yaml
 otel:
@@ -56,8 +55,15 @@ otel:
       Authorization: "Basic AUTH_STRING"
 ```
 
-Lastly, ensure the proper trace endpoint is configured for the `otel.otlp_settings.endpoint` in `mcp_agent.yaml` for the relevant
-Langfuse data region.
+Lastly, ensure the proper trace endpoint is configured in the typed exporter in `mcp_agent.config.yaml` for your Langfuse region, e.g.:
+
+```yaml
+otel:
+  enabled: true
+  exporters:
+    - type: otlp
+      endpoint: "https://us.cloud.langfuse.com/api/public/otel/v1/traces"
+```
 
 ## `4` Run locally
 

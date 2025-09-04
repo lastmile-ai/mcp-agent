@@ -17,8 +17,7 @@ openai:
 
 otel:
   enabled: true
-  exporters: ["otlp"]
-  # If running jaeger locally, uncomment the following lines and add "otlp" to the exporters list
-  otlp_settings:
-    endpoint: "http://localhost:4318/v1/traces"
+  exporters:
+    - type: otlp
+      endpoint: "http://localhost:4318/v1/traces"
   service_name: "MCPAgentSSEExample"
