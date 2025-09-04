@@ -25,7 +25,7 @@ def logout() -> None:
         user_info = f"user '{credentials.email}'"
 
     # Confirm logout action
-    if not Confirm.ask(f"Are you sure you want to logout {user_info}?"):
+    if not Confirm.ask(f"Are you sure you want to logout {user_info}?", default=False):
         print_info("Logout cancelled.")
         return
 
