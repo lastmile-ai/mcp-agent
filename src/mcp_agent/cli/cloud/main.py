@@ -14,7 +14,7 @@ from rich.panel import Panel
 from typer.core import TyperGroup
 
 from mcp_agent.cli.cloud.commands import configure_app, deploy_config, login, logout, whoami
-from mcp_agent.cli.cloud.commands.logger import configure_logger, tail_logs
+from mcp_agent.cli.cloud.commands.logger import tail_logs
 from mcp_agent.cli.cloud.commands.app import (
     delete_app,
     get_app_status,
@@ -166,10 +166,6 @@ app_cmd_cloud_logger = typer.Typer(
     cls=HelpfulTyperGroup,
 )
 # Register logger commands under cloud logger
-app_cmd_cloud_logger.command(
-    name="configure",
-    help="Configure OTEL endpoint and headers for log collection",
-)(configure_logger)
 app_cmd_cloud_logger.command(
     name="tail",
     help="Retrieve and stream logs from deployed MCP apps",
