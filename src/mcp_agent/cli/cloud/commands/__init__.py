@@ -6,6 +6,6 @@ Each command is exported as a single function with a signature that matches the 
 
 from .configure.main import configure_app
 from .deploy.main import deploy_config
-from .login import login
+from .auth import login, logout, whoami
 
-__all__ = ["configure_app", "deploy_config", "login"]
+__all__ = ["configure_app", "deploy_config", "login", "logout", "whoami"]
