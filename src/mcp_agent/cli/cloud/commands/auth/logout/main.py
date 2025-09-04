@@ -1,6 +1,5 @@
 """MCP Agent Cloud logout command implementation."""
 
-import typer
 from rich.prompt import Confirm
 
 from mcp_agent.cli.auth import clear_credentials, load_credentials
