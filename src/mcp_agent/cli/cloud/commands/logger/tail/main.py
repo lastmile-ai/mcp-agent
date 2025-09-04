@@ -320,30 +320,27 @@ def _matches_pattern(message: str, pattern: str) -> bool:
 
 
 def _display_logs(log_entries: List[Dict[str, Any]], title: str = "Logs") -> None:
-    """Display logs in a formatted table."""
+    """Display logs in inline format."""
     if not log_entries:
         return
     
-    table = Table(title=title, show_header=True, header_style="bold blue")
-    table.add_column("Timestamp", style="dim", width=20)
-    table.add_column("Level", width=8)
-    table.add_column("Message", style="white")
+    if title:
+        console.print(f"[bold blue]{title}[/bold blue]\n")
     
     for entry in log_entries:
         timestamp = _format_timestamp(entry.get('timestamp', ''))
-        level = entry.get('level', 'INFO')
-        message = entry.get('message', '')
-        
-        # Color code by level
+        raw_level = entry.get('level', 'INFO')
+        level = _parse_log_level(raw_level)
+        message = _clean_message(entry.get('message', ''))
+
         level_style = _get_level_style(level)
         
-        table.add_row(
-            timestamp,
-            Text(level, style=level_style),
-            _truncate_message(message)
+        # Format: [timestamp] LEVEL message
+        console.print(
+            f"[bright_black not bold]{timestamp}[/bright_black not bold] "
+            f"[{level_style}]{level:5}[/{level_style}] "
+            f"{message}"
         )
-    
-    console.print(table)
 
 
 def _display_log_entry(log_entry: Dict[str, Any]) -> None:
@@ -354,7 +351,6 @@ def _display_log_entry(log_entry: Dict[str, Any]) -> None:
     
     level_style = _get_level_style(level)
     
-    # Format: [timestamp] LEVEL message
     console.print(
         f"[dim]{timestamp}[/dim] "
         f"[{level_style}]{level:5}[/{level_style}] "
@@ -373,6 +369,33 @@ def _format_timestamp(timestamp_str: str) -> str:
         return timestamp_str[:8] if len(timestamp_str) >= 8 else timestamp_str
 
 
+def _parse_log_level(level: str) -> str:
+    """Parse log level from API format to clean display format."""
+    if level.startswith('LOG_LEVEL_'):
+        # Convert LOG_LEVEL_INFO -> INFO, LOG_LEVEL_WARNING -> WARN, etc.
+        clean_level = level.replace('LOG_LEVEL_', '')
+        if clean_level == 'WARNING':
+            return 'WARN'
+        elif clean_level == 'UNSPECIFIED':
+            return 'UNKNOWN'
+        return clean_level
+    return level.upper()
+
+
+def _clean_message(message: str) -> str:
+    """Remove redundant log level prefix from message if present."""
+    prefixes = [
+        'ERROR:', 'WARNING:', 'INFO:', 'DEBUG:', 'TRACE:',
+        'WARN:', 'FATAL:', 'UNKNOWN:', 'UNSPECIFIED:'
+    ]
+    
+    for prefix in prefixes:
+        if message.startswith(prefix):
+            return message[len(prefix):].lstrip()
+    
+    return message
+
+
 def _get_level_style(level: str) -> str:
     """Get Rich style for log level."""
     level = level.upper()
@@ -382,8 +405,10 @@ def _get_level_style(level: str) -> str:
         return "yellow bold"
     elif level == 'INFO':
         return "blue"
-    elif level == 'DEBUG':
+    elif level in ['DEBUG', 'TRACE']:
         return "dim"
+    elif level in ['UNKNOWN', 'UNSPECIFIED']:
+        return "magenta"
     else:
         return "white"
 
