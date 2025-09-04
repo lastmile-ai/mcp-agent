@@ -47,6 +47,21 @@ def tail_logs(
         "-n",
         help="Maximum number of log entries to show (default: 100)",
     ),
+    order_by: Optional[str] = typer.Option(
+        None,
+        "--order-by",
+        help="Field to order by. Options: timestamp, severity (default: timestamp)",
+    ),
+    asc: bool = typer.Option(
+        False,
+        "--asc",
+        help="Sort in ascending order (oldest first)",
+    ),
+    desc: bool = typer.Option(
+        False,
+        "--desc",
+        help="Sort in descending order (newest first, default)",
+    ),
 ) -> None:
     """Tail logs for an MCP app deployment.
     
@@ -72,6 +87,33 @@ def tail_logs(
         console.print("[red]Error: Not authenticated. Run 'mcp-agent login' first.[/red]")
         raise typer.Exit(4)
     
+    # Validate conflicting options
+    if follow and since:
+        console.print("[red]Error: --since cannot be used with --follow (streaming mode)[/red]")
+        raise typer.Exit(6)
+    
+    if follow and limit != 100:  # 100 is the default value
+        console.print("[red]Error: --limit cannot be used with --follow (streaming mode)[/red]")
+        raise typer.Exit(6)
+    
+    if follow and order_by:
+        console.print("[red]Error: --order-by cannot be used with --follow (streaming mode)[/red]")
+        raise typer.Exit(6)
+    
+    if follow and (asc or desc):
+        console.print("[red]Error: --asc/--desc cannot be used with --follow (streaming mode)[/red]")
+        raise typer.Exit(6)
+    
+    # Validate order_by values
+    if order_by and order_by not in ["timestamp", "severity"]:
+        console.print("[red]Error: --order-by must be 'timestamp' or 'severity'[/red]")
+        raise typer.Exit(6)
+    
+    # Validate that both --asc and --desc are not used together
+    if asc and desc:
+        console.print("[red]Error: Cannot use both --asc and --desc together[/red]")
+        raise typer.Exit(6)
+    
     app_id, config_id, server_url = _parse_app_identifier(app_identifier)
     
     try:
@@ -93,6 +135,9 @@ def tail_logs(
                 since=since,
                 grep_pattern=grep,
                 limit=limit,
+                order_by=order_by,
+                asc=asc,
+                desc=desc,
             ))
             
     except KeyboardInterrupt:
@@ -111,6 +156,9 @@ async def _fetch_logs(
     since: Optional[str],
     grep_pattern: Optional[str],
     limit: int,
+    order_by: Optional[str],
+    asc: bool,
+    desc: bool,
 ) -> None:
     """Fetch logs one-time via HTTP API."""
     
@@ -133,6 +181,18 @@ async def _fetch_logs(
         payload["since"] = since
     if limit:
         payload["limit"] = limit
+    
+    # Add ordering parameters
+    if order_by:
+        if order_by == "timestamp":
+            payload["orderBy"] = "LOG_ORDER_BY_TIMESTAMP"
+        elif order_by == "severity":
+            payload["orderBy"] = "LOG_ORDER_BY_LEVEL"
+    
+    if asc:
+        payload["order"] = "LOG_ORDER_ASC"
+    elif desc:
+        payload["order"] = "LOG_ORDER_DESC"
     
     with Progress(
         SpinnerColumn(),
