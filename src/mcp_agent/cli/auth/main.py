@@ -20,8 +20,9 @@ def save_credentials(credentials: UserCredentials) -> None:
 
     # Create file with restricted permissions (0600) to prevent leakage
     with open(credentials_path, "w", encoding="utf-8") as f:
-        f.write(credentials.to_json())
-    os.chmod(credentials_path, 0o600)
+        fd = os.open(credentials_path, os.O_WRONLY | os.O_CREAT, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(credentials.to_json())
 
 
 def load_credentials() -> Optional[UserCredentials]:
