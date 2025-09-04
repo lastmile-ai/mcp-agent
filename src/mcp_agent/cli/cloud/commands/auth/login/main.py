@@ -4,15 +4,15 @@ from typing import Optional
 import typer
 from rich.prompt import Confirm, Prompt
 
-from mcp_agent_cloud.auth import (
+from mcp_agent.cli.auth import (
     UserCredentials,
     load_credentials,
     save_credentials,
 )
-from mcp_agent_cloud.config import settings
-from mcp_agent_cloud.core.api_client import APIClient
-from mcp_agent_cloud.exceptions import CLIError
-from mcp_agent_cloud.ux import (
+from mcp_agent.cli.config import settings
+from mcp_agent.cli.core.api_client import APIClient
+from mcp_agent.cli.exceptions import CLIError
+from mcp_agent.cli.utils.ux import (
     print_info,
     print_success,
     print_warning,

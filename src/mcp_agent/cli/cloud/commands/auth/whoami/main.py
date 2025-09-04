@@ -7,9 +7,9 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from mcp_agent_cloud.auth import load_credentials
-from mcp_agent_cloud.exceptions import CLIError
-from mcp_agent_cloud.ux import print_error, print_info
+from mcp_agent.cli.auth import load_credentials
+from mcp_agent.cli.exceptions import CLIError
+from mcp_agent.cli.utils.ux import print_error, print_info
 
 
 def whoami() -> None:

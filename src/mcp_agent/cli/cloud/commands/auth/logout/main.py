@@ -3,8 +3,8 @@
 import typer
 from rich.prompt import Confirm
 
-from mcp_agent_cloud.auth import clear_credentials, load_credentials
-from mcp_agent_cloud.ux import print_info, print_success
+from mcp_agent.cli.auth import clear_credentials, load_credentials
+from mcp_agent.cli.utils.ux import print_info, print_success
 
 
 def logout() -> None:
