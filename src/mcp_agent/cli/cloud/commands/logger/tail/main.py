@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 
 import httpx
 import typer
+import yaml
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
@@ -61,6 +62,11 @@ def tail_logs(
         False,
         "--desc",
         help="Sort in descending order (newest first, default)",
+    ),
+    format: Optional[str] = typer.Option(
+        "text",
+        "--format",
+        help="Output format. Options: text, json, yaml (default: text)",
     ),
 ) -> None:
     """Tail logs for an MCP app deployment.
@@ -114,6 +120,11 @@ def tail_logs(
         console.print("[red]Error: Cannot use both --asc and --desc together[/red]")
         raise typer.Exit(6)
     
+    # Validate format values
+    if format and format not in ["text", "json", "yaml"]:
+        console.print("[red]Error: --format must be 'text', 'json', or 'yaml'[/red]")
+        raise typer.Exit(6)
+    
     app_id, config_id, server_url = _parse_app_identifier(app_identifier)
     
     try:
@@ -125,6 +136,7 @@ def tail_logs(
                 credentials=credentials,
                 grep_pattern=grep,
                 app_identifier=app_identifier,
+                format=format,
             ))
         else:
             asyncio.run(_fetch_logs(
@@ -138,6 +150,7 @@ def tail_logs(
                 order_by=order_by,
                 asc=asc,
                 desc=desc,
+                format=format,
             ))
             
     except KeyboardInterrupt:
@@ -159,6 +172,7 @@ async def _fetch_logs(
     order_by: Optional[str],
     asc: bool,
     desc: bool,
+    format: str,
 ) -> None:
     """Fetch logs one-time via HTTP API."""
     
@@ -229,7 +243,7 @@ async def _fetch_logs(
         console.print("[yellow]No logs found matching the criteria[/yellow]")
         return
     
-    _display_logs(filtered_logs, title=f"Logs for {app_id or config_id}")
+    _display_logs(filtered_logs, title=f"Logs for {app_id or config_id}", format=format)
 
 
 async def _resolve_server_url(
@@ -319,6 +333,7 @@ async def _stream_logs(
     credentials: UserCredentials,
     grep_pattern: Optional[str],
     app_identifier: str,
+    format: str,
 ) -> None:
     """Stream logs continuously via SSE."""
     
@@ -387,7 +402,7 @@ async def _stream_logs(
                                     }
                                     
                                     if not grep_pattern or _matches_pattern(log_entry['message'], grep_pattern):
-                                        _display_log_entry(log_entry)
+                                        _display_log_entry(log_entry, format=format)
                                         
                             except json.JSONDecodeError:
                                 # Skip malformed JSON
@@ -431,44 +446,84 @@ def _matches_pattern(message: str, pattern: str) -> bool:
         return pattern.lower() in message.lower()
 
 
-def _display_logs(log_entries: List[Dict[str, Any]], title: str = "Logs") -> None:
-    """Display logs in inline format."""
+def _display_logs(log_entries: List[Dict[str, Any]], title: str = "Logs", format: str = "text") -> None:
+    """Display logs in the specified format."""
     if not log_entries:
         return
     
-    if title:
-        console.print(f"[bold blue]{title}[/bold blue]\n")
-    
-    for entry in log_entries:
-        timestamp = _format_timestamp(entry.get('timestamp', ''))
-        raw_level = entry.get('level', 'INFO')
-        level = _parse_log_level(raw_level)
-        message = _clean_message(entry.get('message', ''))
+    if format == "json":
+        # Clean up the log entries for better JSON output
+        cleaned_entries = []
+        for entry in log_entries:
+            cleaned_entry = entry.copy()
+            cleaned_entry['severity'] = _parse_log_level(entry.get('level', 'INFO'))
+            cleaned_entry['message'] = _clean_message(entry.get('message', ''))
+            # Remove the original 'level' field
+            cleaned_entry.pop('level', None)
+            cleaned_entries.append(cleaned_entry)
+        print(json.dumps(cleaned_entries, indent=2))
+    elif format == "yaml":
+        # Clean up the log entries for better YAML output
+        cleaned_entries = []
+        for entry in log_entries:
+            cleaned_entry = entry.copy()
+            cleaned_entry['severity'] = _parse_log_level(entry.get('level', 'INFO'))
+            cleaned_entry['message'] = _clean_message(entry.get('message', ''))
+            # Remove the original 'level' field
+            cleaned_entry.pop('level', None)
+            cleaned_entries.append(cleaned_entry)
+        print(yaml.dump(cleaned_entries, default_flow_style=False))
+    else:  # text format (default)
+        if title:
+            console.print(f"[bold blue]{title}[/bold blue]\n")
+        
+        for entry in log_entries:
+            timestamp = _format_timestamp(entry.get('timestamp', ''))
+            raw_level = entry.get('level', 'INFO')
+            level = _parse_log_level(raw_level)
+            message = _clean_message(entry.get('message', ''))
 
+            level_style = _get_level_style(level)
+            
+            # Format: [timestamp] LEVEL message
+            console.print(
+                f"[bright_black not bold]{timestamp}[/bright_black not bold] "
+                f"[{level_style}]{level:7}[/{level_style}] "
+                f"{message}"
+            )
+
+
+def _display_log_entry(log_entry: Dict[str, Any], format: str = "text") -> None:
+    """Display a single log entry for streaming."""
+    if format == "json":
+        # Clean up the log entry for better JSON output
+        cleaned_entry = log_entry.copy()
+        cleaned_entry['severity'] = _parse_log_level(log_entry.get('level', 'INFO'))
+        cleaned_entry['message'] = _clean_message(log_entry.get('message', ''))
+        # Remove the original 'level' field
+        cleaned_entry.pop('level', None)
+        print(json.dumps(cleaned_entry))
+    elif format == "yaml":
+        # Clean up the log entry for better YAML output
+        cleaned_entry = log_entry.copy()
+        cleaned_entry['severity'] = _parse_log_level(log_entry.get('level', 'INFO'))
+        cleaned_entry['message'] = _clean_message(log_entry.get('message', ''))
+        # Remove the original 'level' field
+        cleaned_entry.pop('level', None)
+        print(yaml.dump([cleaned_entry], default_flow_style=False))
+    else:  # text format (default)
+        timestamp = _format_timestamp(log_entry.get('timestamp', ''))
+        raw_level = log_entry.get('level', 'INFO')
+        level = _parse_log_level(raw_level)
+        message = _clean_message(log_entry.get('message', ''))
+        
         level_style = _get_level_style(level)
         
-        # Format: [timestamp] LEVEL message
         console.print(
             f"[bright_black not bold]{timestamp}[/bright_black not bold] "
             f"[{level_style}]{level:7}[/{level_style}] "
             f"{message}"
         )
-
-
-def _display_log_entry(log_entry: Dict[str, Any]) -> None:
-    """Display a single log entry for streaming."""
-    timestamp = _format_timestamp(log_entry.get('timestamp', ''))
-    raw_level = log_entry.get('level', 'INFO')
-    level = _parse_log_level(raw_level)
-    message = _clean_message(log_entry.get('message', ''))
-    
-    level_style = _get_level_style(level)
-    
-    console.print(
-        f"[bright_black not bold]{timestamp}[/bright_black not bold] "
-        f"[{level_style}]{level:7}[/{level_style}] "
-        f"{message}"
-    )
 
 
 def _convert_timestamp_to_local(timestamp: float) -> str:
