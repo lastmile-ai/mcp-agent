@@ -28,7 +28,6 @@ from mcp_agent.cli.mcp_app.mcp_client import (
 from mcp_agent.cli.utils.ux import (
     console,
     print_error,
-    print_warning,
 )
 
 
