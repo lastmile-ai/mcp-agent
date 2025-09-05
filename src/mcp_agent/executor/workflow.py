@@ -16,14 +16,11 @@ from typing import (
 
 from pydantic import BaseModel, ConfigDict, Field
 from mcp_agent.core.context_dependent import ContextDependent
-from mcp_agent.executor.temporal import TemporalExecutor
-from mcp_agent.executor.temporal.workflow_signal import (
+from mcp_agent.executor.workflow_signal import (
     Signal,
     SignalMailbox,
 )
-from mcp_agent.executor.temporal.session_proxy import SessionProxy
 from mcp_agent.logging.logger import get_logger
-# (Temporal path now uses activities; HTTP proxy helpers unused here)
 
 if TYPE_CHECKING:
     from temporalio.client import WorkflowHandle
@@ -256,6 +253,8 @@ class Workflow(ABC, Generic[T], ContextDependent):
         # Hint the logger with the current run_id for Temporal proxy fallback
         try:
             if self.context.config.execution_engine == "temporal":
+                from mcp_agent.executor.temporal.session_proxy import SessionProxy
+
                 setattr(self._logger, "_temporal_run_id", self._run_id)
                 # Ensure upstream_session is a passthrough SessionProxy bound to this run
                 upstream_session = getattr(self.context, "upstream_session", None)
@@ -380,63 +379,6 @@ class Workflow(ABC, Generic[T], ContextDependent):
             run_id=self._run_id,
             workflow_id=self._workflow_id,
         )
-
-    # Engine-aware helpers to unify upstream interactions
-    async def log_upstream(
-        self,
-        level: str,
-        namespace: str,
-        message: str,
-        data: Dict[str, Any] | None = None,
-    ):
-        if self.context.config.execution_engine == "temporal":
-            # Route via Temporal activity for determinism
-            try:
-                act = self.context.task_registry.get_activity("mcp_forward_log")
-                await self.executor.execute(
-                    act,
-                    self._run_id or "",
-                    level,
-                    namespace,
-                    message,
-                    data or {},
-                )
-            except Exception:
-                pass
-            return
-        # asyncio: use local logger
-        if level == "debug":
-            self._logger.debug(message, **(data or {}))
-        elif level == "warning":
-            self._logger.warning(message, **(data or {}))
-        elif level == "error":
-            self._logger.error(message, **(data or {}))
-        else:
-            self._logger.info(message, **(data or {}))
-
-    async def ask_user(
-        self, prompt: str, metadata: Dict[str, Any] | None = None
-    ) -> Any:
-        if self.context.config.execution_engine == "temporal":
-            # Route via Temporal activity for determinism; returns request_id or error
-            try:
-                act = self.context.task_registry.get_activity("mcp_request_user_input")
-                return await self.executor.execute(
-                    act,
-                    self.context.session_id or "",
-                    self.id or self.name,
-                    self._run_id or "",
-                    prompt,
-                    (metadata or {}).get("signal_name", "human_input"),
-                )
-            except Exception as e:
-                return {"error": str(e)}
-        handler = getattr(self.context, "human_input_handler", None)
-        if not handler:
-            return None
-        if asyncio.iscoroutinefunction(handler):  # type: ignore[arg-type]
-            return await handler({"prompt": prompt, "metadata": metadata or {}})
-        return handler({"prompt": prompt, "metadata": metadata or {}})
 
     async def resume(
         self, signal_name: str | None = "resume", payload: str | None = None
@@ -831,21 +773,21 @@ class Workflow(ABC, Generic[T], ContextDependent):
                         memo_map = None
 
                 if isinstance(memo_map, dict):
-                    gw = memo_map.get("gateway_url")
-                    gt = memo_map.get("gateway_token")
+                    gateway_url = memo_map.get("gateway_url")
+                    gateway_token = memo_map.get("gateway_token")
 
                     self._logger.debug(
-                        f"Proxy parameters: gateway_url={gw}, gateway_token={gt}"
+                        f"Proxy parameters: gateway_url={gateway_url}, gateway_token={gateway_token}"
                     )
 
-                    if gw:
+                    if gateway_url:
                         try:
-                            self.context.gateway_url = gw
+                            self.context.gateway_url = gateway_url
                         except Exception:
                             pass
-                    if gt:
+                    if gateway_token:
                         try:
-                            self.context.gateway_token = gt
+                            self.context.gateway_token = gateway_token
                         except Exception:
                             pass
             except Exception:
@@ -855,6 +797,8 @@ class Workflow(ABC, Generic[T], ContextDependent):
             # Expose a virtual upstream session (passthrough) bound to this run via activities
             # This lets any code use context.upstream_session like a real session.
             try:
+                from mcp_agent.executor.temporal.session_proxy import SessionProxy
+
                 upstream_session = getattr(self.context, "upstream_session", None)
 
                 if upstream_session is None:

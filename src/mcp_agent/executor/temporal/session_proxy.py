@@ -67,7 +67,7 @@ class SessionProxy(ServerSession):
         self._executor = executor
         self._context = context
         # Local helper used when we're not inside a workflow runtime
-        self._sys_acts = SystemActivities(context)
+        self._system_activities = SystemActivities(context)
         # Provide a low-level RPC facade similar to real ServerSession
         self.rpc = _RPC(self)
 
@@ -91,7 +91,9 @@ class SessionProxy(ServerSession):
             except Exception:
                 return False
         # Non-workflow (activity/asyncio)
-        return bool(await self._sys_acts.relay_notify(exec_id, method, params or {}))
+        return bool(
+            await self._system_activities.relay_notify(exec_id, method, params or {})
+        )
 
     async def request(
         self, method: str, params: Dict[str, Any] | None = None
@@ -106,7 +108,9 @@ class SessionProxy(ServerSession):
         if _in_workflow_runtime():
             act = self._context.task_registry.get_activity("mcp_relay_request")
             return await self._executor.execute(act, exec_id, method, params or {})
-        return await self._sys_acts.relay_request(exec_id, method, params or {})
+        return await self._system_activities.relay_request(
+            exec_id, method, params or {}
+        )
 
     async def send_notification(
         self,

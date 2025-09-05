@@ -15,7 +15,6 @@ from typing import Any, Dict, Final
 
 from contextlib import asynccontextmanager, contextmanager
 
-import temporalio
 
 from mcp_agent.logging.events import (
     Event,
@@ -74,13 +73,24 @@ class Logger:
             asyncio.create_task(self.event_bus.emit(event))
         else:
             # If no loop is running, run it until the emit completes
-            if isinstance(
-                loop, temporalio.worker._workflow_instance._WorkflowInstanceImpl
-            ):
-                # Handle Temporal workflow environment where run_until_complete() is not implemented
+            # Detect Temporal workflow runtime without hard dependency
+            # If inside Temporal workflow sandbox, avoid run_until_complete and use workflow-safe forwarding
+            in_temporal_workflow = False
+            try:
+                from temporalio import workflow as _wf  # type: ignore
+
+                try:
+                    # Detect active Temporal workflow runtime
+                    if getattr(_wf, "_Runtime").current() is not None:  # type: ignore[attr-defined]
+                        in_temporal_workflow = True
+                except Exception:
+                    in_temporal_workflow = False
+            except Exception:
+                in_temporal_workflow = False
+
+            if in_temporal_workflow:
                 # Prefer forwarding via the upstream session proxy using a workflow task, if available.
                 try:
-                    from temporalio import workflow as _wf  # type: ignore
                     from mcp_agent.executor.temporal.temporal_context import (
                         get_execution_id as _get_exec_id,
                     )
@@ -166,18 +176,18 @@ class Logger:
                                     schedule_to_close_timeout=5,
                                 )
                                 return
-                        except Exception as _e:
+                        except Exception:
                             pass
 
                         # If all else fails, fall back to stderr transport
                         self.event_bus.emit_with_stderr_transport(event)
 
-                        try:
-                            _wf.create_task(_forward_via_proxy())
-                            return
-                        except Exception:
-                            # Could not create workflow task, fall through to stderr transport
-                            pass
+                    try:
+                        _wf.create_task(_forward_via_proxy())
+                        return
+                    except Exception:
+                        # Could not create workflow task, fall through to stderr transport
+                        pass
                 except Exception:
                     # If Temporal workflow module unavailable or any error occurs, fall through
                     pass

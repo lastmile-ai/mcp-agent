@@ -62,7 +62,7 @@ class ContextPropagationInterceptor(
 
     This interceptor implements methods `temporalio.client.Interceptor` and  `temporalio.worker.Interceptor` so that
 
-    (1) a user ID key is taken from context by the client code and sent in a header field with outbound requests
+    (1) an execution ID key is taken from context by the client code and sent in a header field with outbound requests
     (2) workflows take this value from their task input, set it in context, and propagate it into the header field of
         their outbound calls
     (3) activities similarly take the value from their task input and set it in context so that it's available for their
