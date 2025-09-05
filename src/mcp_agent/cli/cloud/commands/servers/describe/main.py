@@ -65,7 +65,6 @@ def _server_to_dict(server: Union[MCPApp, MCPAppConfiguration]) -> dict:
         server_description = server.description
         created_at = server.createdAt
         server_info = server.appServerInfo
-        creator_id = server.creatorId
         underlying_app = None
     else:
         server_type = "configured"
@@ -74,7 +73,6 @@ def _server_to_dict(server: Union[MCPApp, MCPAppConfiguration]) -> dict:
         server_description = server.app.description if server.app else None
         created_at = server.createdAt
         server_info = server.appServerInfo
-        creator_id = server.creatorId
         underlying_app = {
             "app_id": server.app.appId,
             "name": server.app.name
@@ -90,7 +88,6 @@ def _server_to_dict(server: Union[MCPApp, MCPAppConfiguration]) -> dict:
         "status": clean_server_status(status_raw),
         "server_url": server_url,
         "description": server_description,
-        "creator_id": creator_id,
         "created_at": created_at.isoformat() if created_at else None
     }
     
@@ -111,7 +108,6 @@ def _print_server_text(server: Union[MCPApp, MCPAppConfiguration]) -> None:
         server_description = server.description
         created_at = server.createdAt
         server_info = server.appServerInfo
-        creator_id = server.creatorId
     else:
         server_type = "Configured Server"
         server_id = server.appConfigurationId
@@ -119,7 +115,6 @@ def _print_server_text(server: Union[MCPApp, MCPAppConfiguration]) -> None:
         server_description = server.app.description if server.app else None
         created_at = server.createdAt
         server_info = server.appServerInfo
-        creator_id = server.creatorId
 
     status_text = "❓ Unknown"
     server_url = "N/A"
@@ -137,8 +132,6 @@ def _print_server_text(server: Union[MCPApp, MCPAppConfiguration]) -> None:
     
     if server_description:
         content_lines.append(f"Description: [cyan]{server_description}[/cyan]")
-    
-    content_lines.append(f"Creator: [cyan]{creator_id}[/cyan]")
     
     if created_at:
         content_lines.append(f"Created: [cyan]{created_at.strftime('%Y-%m-%d %H:%M:%S')}[/cyan]")
