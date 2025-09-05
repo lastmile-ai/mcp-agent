@@ -311,8 +311,10 @@ def chat(
                             continue
                         if inp.startswith("/usage"):
                             try:
-                                from mcp_agent.cli.utils.display import TokenUsageDisplay
-                                
+                                from mcp_agent.cli.utils.display import (
+                                    TokenUsageDisplay,
+                                )
+
                                 # Try to get summary from token counter
                                 tc = getattr(app_obj.context, "token_counter", None)
                                 if tc:
@@ -335,15 +337,22 @@ def chat(
 
                         # Broadcast input to all models and print results
                         try:
-                            from mcp_agent.cli.utils.display import ParallelResultsDisplay
+                            from mcp_agent.cli.utils.display import (
+                                ParallelResultsDisplay,
+                            )
 
-                            async def _gen(l):
+                            async def _gen(llm_instance):
                                 try:
-                                    return l.name, await l.generate_str(inp)
+                                    return (
+                                        llm_instance.name,
+                                        await llm_instance.generate_str(inp),
+                                    )
                                 except Exception as e:
-                                    return l.name, f"ERROR: {e}"
+                                    return llm_instance.name, f"ERROR: {e}"
 
-                            results = await asyncio.gather(*[_gen(l) for l in llms])
+                            results = await asyncio.gather(
+                                *[_gen(item) for item in llms]
+                            )
                             display = ParallelResultsDisplay()
                             display.show_results(results)
                         except Exception as e:
@@ -413,7 +422,7 @@ def chat(
                         context=app_obj.context,
                     )
                     console.print(
-                        "Interactive chat. Commands: /help, /servers, /tools [server], /resources [server], /models, /prompt <name> [args-json], /apply <file>, /attach <server> <resource-uri>, /history [clear], /save <file>, /clear, /usage, /quit, /exit"
+                        "Interactive chat. Commands: /help, /servers, /tools [server], /resources [server], /models, /prompt <name> [args-json], /apply <file>, /attach <server> <resource-uri>, /history [clear], /save <file>, /clear, /usage, /quit, /exit, /model <name>"
                     )
                     last_output: str | None = None
                     attachments: list[str] = []
@@ -436,7 +445,10 @@ def chat(
                             continue
                         if inp.startswith("/models"):
                             # Show available models
-                            from mcp_agent.workflows.llm.llm_selector import load_default_models
+                            from mcp_agent.workflows.llm.llm_selector import (
+                                load_default_models,
+                            )
+
                             models = load_default_models()
                             console.print("\n[bold]Available models:[/bold]")
                             current_model_str = str(model_id) if model_id else "default"
@@ -445,6 +457,34 @@ def chat(
                                 console.print(f"  {m.provider}.{m.name}")
                             if len(models) > 15:
                                 console.print(f"  ... and {len(models) - 15} more")
+                            continue
+                        if inp.startswith("/model "):
+                            # Switch current model on the fly
+                            try:
+                                new_model = inp.split(" ", 1)[1].strip()
+                                if not new_model:
+                                    console.print(
+                                        "Usage: /model <provider.model or provider:model>"
+                                    )
+                                    continue
+                                model_id = new_model
+                                prov = None
+                                if ":" in new_model:
+                                    prov = new_model.split(":", 1)[0]
+                                elif "." in new_model:
+                                    prov = new_model.split(".", 1)[0]
+                                # Recreate LLM with new model
+                                llm_local = create_llm(
+                                    agent_name=(name or "chat"),
+                                    server_names=server_list or [],
+                                    provider=(prov or "openai"),
+                                    model=model_id,
+                                    context=app_obj.context,
+                                )
+                                llm = llm_local
+                                console.print(f"Switched model to: {model_id}")
+                            except Exception as e:
+                                console.print(f"/model error: {e}")
                             continue
                         if inp.startswith("/servers"):
                             cfg = app_obj.context.config
@@ -456,7 +496,7 @@ def chat(
                             continue
                         if inp.startswith("/tools"):
                             from mcp_agent.cli.utils.display import format_tool_list
-                            
+
                             parts = inp.split()
                             srv = parts[1] if len(parts) > 1 else None
                             ag = Agent(
@@ -475,7 +515,7 @@ def chat(
                             continue
                         if inp.startswith("/resources"):
                             from mcp_agent.cli.utils.display import format_resource_list
-                            
+
                             parts = inp.split()
                             srv = parts[1] if len(parts) > 1 else None
                             ag = Agent(
@@ -490,7 +530,9 @@ def chat(
                                     if srv
                                     else await ag.list_resources()
                                 )
-                                format_resource_list(getattr(res, "resources", []), server_name=srv)
+                                format_resource_list(
+                                    getattr(res, "resources", []), server_name=srv
+                                )
                             continue
                         if inp.startswith("/prompt"):
                             try:
@@ -561,7 +603,7 @@ def chat(
                                 # Try to extract text
                                 content_text = None
                                 try:
-                                    from mcp_agent.mcp.helpers.content_helpers import (
+                                    from mcp_agent.utils.content_utils import (
                                         get_text,
                                     )
 
@@ -616,8 +658,10 @@ def chat(
                             continue
                         if inp.startswith("/usage"):
                             try:
-                                from mcp_agent.cli.utils.display import TokenUsageDisplay
-                                
+                                from mcp_agent.cli.utils.display import (
+                                    TokenUsageDisplay,
+                                )
+
                                 tc = getattr(app_obj.context, "token_counter", None)
                                 if tc:
                                     summary = await tc.get_summary()

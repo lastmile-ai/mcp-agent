@@ -24,6 +24,16 @@ def _copy_tree(src: Path, dst: Path, force: bool) -> int:
     if not src.exists():
         typer.echo(f"Source not found: {src}", err=True)
         return 0
+    try:
+        if dst.exists():
+            if force:
+                shutil.rmtree(dst)
+            else:
+                return 0
+        shutil.copytree(src, dst)
+        return 1
+    except Exception:
+        return 0
 
 
 def _copy_pkg_tree(pkg_rel: str, dst: Path, force: bool) -> int:
@@ -60,13 +70,6 @@ def _copy_pkg_tree(pkg_rel: str, dst: Path, force: bool) -> int:
 
     _copy_any(root, dst)
     return 1
-
-    if dst.exists() and force:
-        shutil.rmtree(dst)
-    if not dst.exists():
-        shutil.copytree(src, dst)
-        return 1
-    return 0
 
 
 @app.callback(invoke_without_command=True)
