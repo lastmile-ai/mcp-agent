@@ -38,7 +38,6 @@ from mcp_agent.executor.workflow_signal import SignalHandler
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.utils.common import unwrap
 from mcp_agent.executor.temporal.system_activities import SystemActivities
-from mcp_agent.executor.temporal.interceptor import ContextPropagationInterceptor
 
 if TYPE_CHECKING:
     from mcp_agent.app import MCPApp
@@ -266,9 +265,9 @@ class TemporalExecutor(Executor):
                 api_key=self.config.api_key,
                 tls=self.config.tls,
                 data_converter=pydantic_data_converter,
-                interceptors=[TracingInterceptor(), ContextPropagationInterceptor()]
+                interceptors=[TracingInterceptor()]
                 if self.context.tracing_enabled
-                else [ContextPropagationInterceptor()],
+                else [],
                 rpc_metadata=self.config.rpc_metadata or {},
             )
 

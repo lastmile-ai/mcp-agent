@@ -16,7 +16,6 @@ from mcp.shared.message import ServerMessageMetadata
 
 from mcp_agent.core.context import Context
 from mcp_agent.executor.temporal.system_activities import SystemActivities
-from mcp_agent.executor.temporal.temporal_context import get_execution_id
 
 
 class SessionProxy(_BaseServerSession):
@@ -79,19 +78,22 @@ class SessionProxy(_BaseServerSession):
 
         Returns True on best-effort success.
         """
-        exec_id = get_execution_id()
-        if not exec_id:
-            return False
 
         if _in_workflow_runtime():
             try:
                 act = self._context.task_registry.get_activity("mcp_relay_notify")
-                await self._executor.execute(act, exec_id, method, params or {})
+                await self._executor.execute(
+                    act, self._context.session_id, method, params or {}
+                )
                 return True
             except Exception:
                 return False
         # Non-workflow (activity/asyncio)
-        return bool(await self._sys_acts.relay_notify(exec_id, method, params or {}))
+        return bool(
+            await self._sys_acts.relay_notify(
+                self._context.session_id, method, params or {}
+            )
+        )
 
     async def request(
         self, method: str, params: Dict[str, Any] | None = None
@@ -99,14 +101,14 @@ class SessionProxy(_BaseServerSession):
         """Send a server->client request and return the client's response.
         The result is a plain JSON-serializable dict.
         """
-        exec_id = get_execution_id()
-        if not exec_id:
-            return {"error": "missing_execution_id"}
-
         if _in_workflow_runtime():
             act = self._context.task_registry.get_activity("mcp_relay_request")
-            return await self._executor.execute(act, exec_id, method, params or {})
-        return await self._sys_acts.relay_request(exec_id, method, params or {})
+            return await self._executor.execute(
+                act, self._context.session_id, method, params or {}
+            )
+        return await self._sys_acts.relay_request(
+            self._context.session_id, method, params or {}
+        )
 
     # ----------------------
     # ServerSession-like API
@@ -163,8 +165,7 @@ class SessionProxy(_BaseServerSession):
     ) -> None:
         """Best-effort log forwarding to the client's UI."""
         # Prefer activity-based forwarding inside workflow for determinism
-        exec_id = get_execution_id()
-        if _in_workflow_runtime() and exec_id:
+        if _in_workflow_runtime():
             try:
                 act = self._context.task_registry.get_activity("mcp_forward_log")
                 namespace = (
@@ -175,7 +176,7 @@ class SessionProxy(_BaseServerSession):
                 message = (data or {}).get("message") if isinstance(data, dict) else ""
                 await self._executor.execute(
                     act,
-                    exec_id,
+                    self._context.session_id,
                     str(level),
                     namespace or (logger or "mcp_agent"),
                     message or "",
