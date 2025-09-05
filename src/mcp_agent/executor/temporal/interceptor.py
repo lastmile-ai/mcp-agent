@@ -69,13 +69,11 @@ class ContextPropagationInterceptor(
         self,
         payload_converter: temporalio.converter.PayloadConverter = temporalio.converter.default().payload_converter,
     ) -> None:
-        logger.info("ZZ Creating interceptor with payload converter")
         self._payload_converter = payload_converter
 
     def intercept_client(
         self, next: temporalio.client.OutboundInterceptor
     ) -> temporalio.client.OutboundInterceptor:
-        logger.info("ZZ Creating client interceptor class")
         return _ContextPropagationClientOutboundInterceptor(
             next, self._payload_converter
         )
@@ -83,13 +81,11 @@ class ContextPropagationInterceptor(
     def intercept_activity(
         self, next: temporalio.worker.ActivityInboundInterceptor
     ) -> temporalio.worker.ActivityInboundInterceptor:
-        logger.info("ZZ Creating activity interceptor class")
         return _ContextPropagationActivityInboundInterceptor(next)
 
     def workflow_interceptor_class(
         self, input: temporalio.worker.WorkflowInterceptorClassInput
     ) -> Type[_ContextPropagationWorkflowInboundInterceptor]:
-        logger.info("ZZ Creating workflow interceptor class")
         return _ContextPropagationWorkflowInboundInterceptor
 
 
@@ -102,7 +98,6 @@ class _ContextPropagationClientOutboundInterceptor(
         payload_converter: temporalio.converter.PayloadConverter,
     ) -> None:
         super().__init__(next)
-        logger.info("ZZ Creating client outbound interceptor")
         self._payload_converter = payload_converter
 
     async def start_workflow(
@@ -142,8 +137,6 @@ class _ContextPropagationWorkflowInboundInterceptor(
     temporalio.worker.WorkflowInboundInterceptor
 ):
     def init(self, outbound: temporalio.worker.WorkflowOutboundInterceptor) -> None:
-        logger.info("ZZ Creating worker inbound interceptor")
-
         self.next.init(_ContextPropagationWorkflowOutboundInterceptor(outbound))
 
     async def execute_workflow(
