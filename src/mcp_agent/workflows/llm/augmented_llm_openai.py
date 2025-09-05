@@ -472,12 +472,13 @@ class OpenAIAugmentedLLM(
 
             # Build response_format
             schema = response_model.model_json_schema()
+            strict = getattr(params, "strict", False)
             response_format = {
                 "type": "json_schema",
                 "json_schema": {
                     "name": getattr(response_model, "__name__", "StructuredOutput"),
                     "schema": schema,
-                    "strict": True,
+                    "strict": strict,
                 },
             }
 
@@ -495,9 +496,6 @@ class OpenAIAugmentedLLM(
                 payload["stop"] = params.stopSequences
             if params.metadata:
                 payload.update(params.metadata)
-
-            strict = getattr(params, "strict", False)
-            payload["strict"] = strict
 
             completion: ChatCompletion = await self.executor.execute(
                 OpenAICompletionTasks.request_completion_task,
