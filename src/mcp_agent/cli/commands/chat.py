@@ -235,7 +235,7 @@ def chat(
                         llms.append(llm)
 
                     console.print(
-                        "Interactive parallel chat. Commands: /help, /servers, /tools [server], /resources [server], /usage, /quit"
+                        "Interactive parallel chat. Commands: /help, /servers, /tools [server], /resources [server], /models, /clear, /usage, /quit, /exit"
                     )
                     from mcp_agent.agents.agent import Agent as _Agent
 
@@ -246,12 +246,21 @@ def chat(
                             break
                         if not inp:
                             continue
-                        if inp.startswith("/quit"):
+                        if inp.startswith("/quit") or inp.startswith("/exit"):
                             break
                         if inp.startswith("/help"):
                             console.print(
-                                "/servers, /tools [server], /resources [server], /usage, /quit"
+                                "/servers, /tools [server], /resources [server], /models, /clear, /usage, /quit, /exit"
                             )
+                            continue
+                        if inp.startswith("/clear"):
+                            console.clear()
+                            continue
+                        if inp.startswith("/models"):
+                            # Show available models
+                            console.print(f"\nActive models ({len(llms)}):")
+                            for llm in llms:
+                                console.print(f"  - {llm.name}")
                             continue
                         if inp.startswith("/servers"):
                             cfg = app_obj.context.config
@@ -302,31 +311,31 @@ def chat(
                             continue
                         if inp.startswith("/usage"):
                             try:
-                                # Show per-model token usage if available
-                                any_shown = False
-                                for llm in llms:
-                                    try:
-                                        usage = await llm.get_token_usage()
-                                        if usage:
-                                            console.print(f"{llm.name}: {usage}")
-                                            any_shown = True
-                                    except Exception:
-                                        continue
-                                if not any_shown:
-                                    tc = getattr(app_obj.context, "token_counter", None)
-                                    if tc:
-                                        summary = await tc.get_summary()
-                                        console.print(
+                                from mcp_agent.cli.utils.display import TokenUsageDisplay
+                                
+                                # Try to get summary from token counter
+                                tc = getattr(app_obj.context, "token_counter", None)
+                                if tc:
+                                    summary = await tc.get_summary()
+                                    if summary:
+                                        display = TokenUsageDisplay()
+                                        summary_dict = (
                                             summary.model_dump()
                                             if hasattr(summary, "model_dump")
                                             else summary
                                         )
-                            except Exception:
-                                console.print("(no usage)")
+                                        display.show_summary(summary_dict)
+                                    else:
+                                        console.print("(no usage data)")
+                                else:
+                                    console.print("(no token counter)")
+                            except Exception as e:
+                                console.print(f"(usage error: {e})")
                             continue
 
                         # Broadcast input to all models and print results
                         try:
+                            from mcp_agent.cli.utils.display import ParallelResultsDisplay
 
                             async def _gen(l):
                                 try:
@@ -335,9 +344,8 @@ def chat(
                                     return l.name, f"ERROR: {e}"
 
                             results = await asyncio.gather(*[_gen(l) for l in llms])
-                            for model_name, out in results:
-                                console.print(f"\n[bold]{model_name}[/bold]:\n{out}")
-                            console.print()
+                            display = ParallelResultsDisplay()
+                            display.show_results(results)
                         except Exception as e:
                             console.print(f"ERROR: {e}")
 
@@ -405,7 +413,7 @@ def chat(
                         context=app_obj.context,
                     )
                     console.print(
-                        "Interactive chat. Commands: /help, /servers, /tools [server], /resources [server], /prompt <name> [args-json], /apply <file>, /attach <server> <resource-uri>, /history [clear], /save <file>, /usage, /quit"
+                        "Interactive chat. Commands: /help, /servers, /tools [server], /resources [server], /models, /prompt <name> [args-json], /apply <file>, /attach <server> <resource-uri>, /history [clear], /save <file>, /clear, /usage, /quit, /exit"
                     )
                     last_output: str | None = None
                     attachments: list[str] = []
@@ -416,12 +424,27 @@ def chat(
                             break
                         if not inp:
                             continue
-                        if inp.startswith("/quit"):
+                        if inp.startswith("/quit") or inp.startswith("/exit"):
                             break
                         if inp.startswith("/help"):
                             console.print(
-                                "/servers, /tools [server], /resources [server], /prompt <name> [args-json], /apply <file>, /attach <server> <resource-uri>, /history [clear], /save <file>, /usage, /quit"
+                                "/servers, /tools [server], /resources [server], /models, /prompt <name> [args-json], /apply <file>, /attach <server> <resource-uri>, /history [clear], /save <file>, /clear, /usage, /quit, /exit"
                             )
+                            continue
+                        if inp.startswith("/clear"):
+                            console.clear()
+                            continue
+                        if inp.startswith("/models"):
+                            # Show available models
+                            from mcp_agent.workflows.llm.llm_selector import load_default_models
+                            models = load_default_models()
+                            console.print("\n[bold]Available models:[/bold]")
+                            current_model_str = str(model_id) if model_id else "default"
+                            console.print(f"Current: {current_model_str}\n")
+                            for m in models[:15]:  # Show first 15
+                                console.print(f"  {m.provider}.{m.name}")
+                            if len(models) > 15:
+                                console.print(f"  ... and {len(models) - 15} more")
                             continue
                         if inp.startswith("/servers"):
                             cfg = app_obj.context.config
@@ -432,6 +455,8 @@ def chat(
                                 console.print(s)
                             continue
                         if inp.startswith("/tools"):
+                            from mcp_agent.cli.utils.display import format_tool_list
+                            
                             parts = inp.split()
                             srv = parts[1] if len(parts) > 1 else None
                             ag = Agent(
@@ -446,10 +471,11 @@ def chat(
                                     if srv
                                     else await ag.list_tools()
                                 )
-                                for t in res.tools:
-                                    console.print(t.name)
+                                format_tool_list(res.tools, server_name=srv)
                             continue
                         if inp.startswith("/resources"):
+                            from mcp_agent.cli.utils.display import format_resource_list
+                            
                             parts = inp.split()
                             srv = parts[1] if len(parts) > 1 else None
                             ag = Agent(
@@ -464,11 +490,7 @@ def chat(
                                     if srv
                                     else await ag.list_resources()
                                 )
-                                for r in getattr(res, "resources", []):
-                                    try:
-                                        console.print(r.uri)
-                                    except Exception:
-                                        console.print(str(getattr(r, "uri", "")))
+                                format_resource_list(getattr(res, "resources", []), server_name=srv)
                             continue
                         if inp.startswith("/prompt"):
                             try:
@@ -594,16 +616,25 @@ def chat(
                             continue
                         if inp.startswith("/usage"):
                             try:
+                                from mcp_agent.cli.utils.display import TokenUsageDisplay
+                                
                                 tc = getattr(app_obj.context, "token_counter", None)
                                 if tc:
                                     summary = await tc.get_summary()
-                                    console.print(
-                                        summary.model_dump()
-                                        if hasattr(summary, "model_dump")
-                                        else summary
-                                    )
-                            except Exception:
-                                console.print("(no usage)")
+                                    if summary:
+                                        display = TokenUsageDisplay()
+                                        summary_dict = (
+                                            summary.model_dump()
+                                            if hasattr(summary, "model_dump")
+                                            else summary
+                                        )
+                                        display.show_summary(summary_dict)
+                                    else:
+                                        console.print("(no usage data)")
+                                else:
+                                    console.print("(no token counter)")
+                            except Exception as e:
+                                console.print(f"(usage error: {e})")
                             continue
                         # Regular message
                         try:

@@ -117,11 +117,19 @@ class TracingConfig:
                     )
                 )
             elif exporter_type == "otlp":
-                # Get endpoint/headers from typed config if available, else fall back to legacy otlp_settings
-                endpoint = getattr(exporter, "endpoint", None)
-                headers = getattr(exporter, "headers", None)
-                if not endpoint and settings.otlp_settings:
-                    endpoint = settings.otlp_settings.endpoint
+                # Merge endpoint/headers from typed config with legacy secrets (if provided)
+                endpoint = (
+                    getattr(exporter, "endpoint", None)
+                    if not isinstance(exporter, str)
+                    else None
+                )
+                headers = (
+                    getattr(exporter, "headers", None)
+                    if not isinstance(exporter, str)
+                    else None
+                )
+                if settings.otlp_settings:
+                    endpoint = endpoint or settings.otlp_settings.endpoint
                     headers = headers or settings.otlp_settings.headers
                 if endpoint:
                     tracer_provider.add_span_processor(
@@ -137,10 +145,16 @@ class TracingConfig:
                         "OTLP exporter is enabled but no OTLP settings endpoint is provided."
                     )
             elif exporter_type == "file":
-                # Prefer per-exporter file settings; fall back to top-level legacy ones
-                custom_path = getattr(exporter, "path", None) or settings.path
+                # Use only per-exporter file settings
+                custom_path = (
+                    getattr(exporter, "path", None)
+                    if not isinstance(exporter, str)
+                    else None
+                )
                 path_settings = (
-                    getattr(exporter, "path_settings", None) or settings.path_settings
+                    getattr(exporter, "path_settings", None)
+                    if not isinstance(exporter, str)
+                    else None
                 )
                 tracer_provider.add_span_processor(
                     BatchSpanProcessor(

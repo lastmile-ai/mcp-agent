@@ -104,8 +104,19 @@ def configure(
         target = Path.home() / ".claude" / "mcp.json"
     elif client_lc == "vscode":
         target = Path.cwd() / ".vscode" / "mcp.json"
+    elif client_lc == "smithery":
+        # Smithery uses a project-local config
+        target = Path.cwd() / ".smithery" / "mcp.json"
+    elif client_lc == "mcp.run":
+        # mcp.run typically uses a web interface, just print config
+        console.print("[yellow]mcp.run uses web interface for configuration.[/yellow]")
+        console.print("Copy this configuration to your mcp.run dashboard:")
+        _print_output(snippet, format)
+        return
     else:
         # Unknown/unsupported: print snippet only
+        console.print(f"[yellow]Client '{client}' not directly supported.[/yellow]")
+        console.print("Use this configuration snippet in your client:")
         _print_output(snippet, format)
         return
 
