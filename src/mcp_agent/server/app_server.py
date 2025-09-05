@@ -27,7 +27,6 @@ from mcp_agent.executor.workflow_registry import (
 )
 from mcp_agent.executor.temporal.temporal_context import (
     set_execution_id,
-    get_execution_id,
 )
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.logging.logger import LoggingConfig
