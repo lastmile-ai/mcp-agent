@@ -99,7 +99,7 @@ def handle_server_api_errors(func):
             raise
         except Exception as e:
             # Get the original function name for better error messages
-            func_name = func.__name__.replace('_', ' ').replace('server', 'server')
+            func_name = func.__name__.replace('_', ' ')
             raise CLIError(f"Error in {func_name}: {str(e)}") from e
     
     return wrapper
