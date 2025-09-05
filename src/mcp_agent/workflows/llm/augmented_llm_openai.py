@@ -472,13 +472,12 @@ class OpenAIAugmentedLLM(
 
             # Build response_format
             schema = response_model.model_json_schema()
-            strict = getattr(params, "strict", False)
             response_format = {
                 "type": "json_schema",
                 "json_schema": {
                     "name": getattr(response_model, "__name__", "StructuredOutput"),
                     "schema": schema,
-                    "strict": strict,
+                    "strict": params.strict,
                 },
             }
 
