@@ -13,7 +13,13 @@ from rich.console import Console
 from rich.panel import Panel
 from typer.core import TyperGroup
 
-from mcp_agent.cli.cloud.commands import configure_app, deploy_config, login, logout, whoami
+from mcp_agent.cli.cloud.commands import (
+    configure_app,
+    deploy_config,
+    login,
+    logout,
+    whoami,
+)
 from mcp_agent.cli.cloud.commands.logger import tail_logs
 from mcp_agent.cli.cloud.commands.app import (
     delete_app,
@@ -173,7 +179,9 @@ app_cmd_cloud_logger.command(
 
 # Add sub-typers to cloud
 app_cmd_cloud.add_typer(app_cmd_cloud_auth, name="auth", help="Authentication commands")
-app_cmd_cloud.add_typer(app_cmd_cloud_logger, name="logger", help="Logging and observability")
+app_cmd_cloud.add_typer(
+    app_cmd_cloud_logger, name="logger", help="Logging and observability"
+)
 # Register cloud commands
 app.add_typer(app_cmd_cloud, name="cloud", help="Cloud operations and management")
 # Top-level auth commands that map to cloud auth commands

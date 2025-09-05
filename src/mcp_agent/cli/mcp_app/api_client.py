@@ -321,13 +321,13 @@ class MCPAppClient(APIClient):
 
     async def configure_app(
         self,
-        app_id: str,
+        app_server_url: str,
         config_params: Dict[str, Any] = {},
     ) -> MCPAppConfiguration:
         """Configure a deployed MCP App via the API.
 
         Args:
-            app_id: The UUID of the app to configure
+            app_server_url: The server URL of the app to configure
             config_params: Dictionary of configuration parameters (e.g. user secrets)
 
         Returns:
@@ -338,11 +338,11 @@ class MCPAppClient(APIClient):
             httpx.HTTPStatusError: If the API returns an error
             httpx.HTTPError: If the request fails
         """
-        if not app_id or not is_valid_app_id_format(app_id):
-            raise ValueError(f"Invalid app ID format: {app_id}")
+        if not app_server_url or not is_valid_server_url_format(app_server_url):
+            raise ValueError(f"Invalid app server URL format: {app_server_url}")
 
         payload = {
-            "appId": app_id,
+            "appServerUrl": app_server_url,
             "params": config_params,
         }
 
@@ -354,11 +354,11 @@ class MCPAppClient(APIClient):
 
         return MCPAppConfiguration(**res["appConfiguration"])
 
-    async def list_config_params(self, app_id: str) -> List[str]:
+    async def list_config_params(self, app_server_url: str) -> List[str]:
         """List required configuration parameters (e.g. user secrets) for an MCP App via the API.
 
         Args:
-            app_id: The UUID of the app to retrieve config params for
+            app_server_url: The server URL of the app to retrieve config params for
 
         Returns:
             List[str]: List of configuration parameter names
@@ -368,10 +368,12 @@ class MCPAppClient(APIClient):
             httpx.HTTPStatusError: If the API returns an error
             httpx.HTTPError: If the request fails
         """
-        if not app_id or not is_valid_app_id_format(app_id):
-            raise ValueError(f"Invalid app ID format: {app_id}")
+        if not app_server_url or not is_valid_server_url_format(app_server_url):
+            raise ValueError(f"Invalid app server URL format: {app_server_url}")
 
-        response = await self.post("/mcp_app/list_config_params", {"appId": app_id})
+        response = await self.post(
+            "/mcp_app/list_config_params", {"appServerUrl": app_server_url}
+        )
         return response.json().get("paramKeys", [])
 
     async def list_apps(
