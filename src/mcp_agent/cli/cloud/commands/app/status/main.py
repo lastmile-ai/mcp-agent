@@ -27,6 +27,8 @@ from mcp_agent.cli.mcp_app.mcp_client import (
 )
 from mcp_agent.cli.utils.ux import (
     console,
+    print_error,
+    print_warning,
 )
 
 
@@ -210,13 +212,7 @@ async def print_server_tools(session: MCPClientSession) -> None:
         console.print(Panel(Group(*panels), title="Server Tools", border_style="blue"))
 
     except Exception as e:
-        console.print(
-            Panel(
-                f"[red]Error fetching tools: {str(e)}[/red]",
-                title="Server Tools",
-                border_style="red",
-            )
-        )
+        print_error(f"Error fetching tools: {str(e)}")
 
 
 async def print_server_prompts(session: MCPClientSession) -> None:
@@ -263,13 +259,7 @@ async def print_server_prompts(session: MCPClientSession) -> None:
             Panel(Group(*panels), title="Server Prompts", border_style="blue")
         )
     except Exception as e:
-        console.print(
-            Panel(
-                f"[red]Error fetching prompts: {str(e)}[/red]",
-                title="Server Prompts",
-                border_style="red",
-            )
-        )
+        print_error(f"Error fetching prompts: {str(e)}")
 
 
 async def print_server_resources(session: MCPClientSession) -> None:
@@ -304,13 +294,7 @@ async def print_server_resources(session: MCPClientSession) -> None:
             )
         console.print(Panel(table, title="Server Resources", border_style="blue"))
     except Exception as e:
-        console.print(
-            Panel(
-                f"[red]Error fetching resources: {str(e)}[/red]",
-                title="Server Resources",
-                border_style="red",
-            )
-        )
+        print_error(f"Error fetching resources: {str(e)}")
 
 
 async def print_server_workflows(session: MCPClientSession) -> None:
@@ -347,10 +331,4 @@ async def print_server_workflows(session: MCPClientSession) -> None:
             Panel(Group(*panels), title="Server Workflows", border_style="blue")
         )
     except Exception as e:
-        console.print(
-            Panel(
-                f"[red]Error fetching workflows: {str(e)}[/red]",
-                title="Server Workflows",
-                border_style="red",
-            )
-        )
+        print_error(f"Error fetching workflows: {str(e)}")

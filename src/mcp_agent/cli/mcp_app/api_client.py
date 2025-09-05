@@ -118,12 +118,11 @@ class LogEntry(BaseModel):
 class GetAppLogsResponse(BaseModel):
     """Response from get_app_logs API endpoint."""
     logEntries: Optional[List[LogEntry]] = []
-    log_entries: Optional[List[LogEntry]] = []
     
     @property
     def log_entries_list(self) -> List[LogEntry]:
         """Get log entries regardless of field name format."""
-        return self.logEntries or self.log_entries or []
+        return self.logEntries or []
 
 
 class MCPAppClient(APIClient):

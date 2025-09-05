@@ -26,19 +26,26 @@ def run_async(coro):
         raise
 
 
-def parse_app_identifier(identifier: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
-    """Parse app identifier to extract app ID, config ID, and server URL."""
+def parse_app_identifier(identifier: str) -> Tuple[Optional[str], Optional[str]]:
+    """Parse app identifier to extract app ID and config ID.
     
-    if identifier.startswith(('http://', 'https://')):
-        return None, None, identifier
+    Args:
+        identifier: App identifier (must be app_... or apcnf_...)
+        
+    Returns:
+        Tuple of (app_id, config_id)
+        
+    Raises:
+        ValueError: If identifier format is not recognized
+    """
     
     if identifier.startswith('apcnf_'):
-        return None, identifier, None
+        return None, identifier
     
     if identifier.startswith('app_'):
-        return identifier, None, None
+        return identifier, None
     
-    return identifier, None, None
+    raise ValueError(f"Invalid identifier format: '{identifier}'. Must be an app ID (app_...) or app configuration ID (apcnf_...)")
 
 
 async def resolve_server_url(

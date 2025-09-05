@@ -17,7 +17,7 @@ from mcp_agent.cli.utils.ux import console, print_info
 
 @handle_server_api_errors
 def delete_server(
-    id_or_url: str = typer.Argument(..., help="Server ID or URL to delete"),
+    id_or_url: str = typer.Argument(..., help="Server ID or app configuration ID to delete"),
     force: bool = typer.Option(False, "--force", "-f", help="Force deletion without confirmation prompt"),
 ) -> None:
     """Delete a specific MCP Server."""
