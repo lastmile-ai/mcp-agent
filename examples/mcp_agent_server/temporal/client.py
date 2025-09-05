@@ -1,6 +1,7 @@
 import asyncio
 import json
 import time
+import argparse
 from mcp_agent.app import MCPApp
 from mcp_agent.config import MCPServerSettings
 from mcp_agent.executor.workflow import WorkflowExecution
@@ -23,6 +24,14 @@ except Exception:  # pragma: no cover
 
 
 async def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--server-log-level",
+        type=str,
+        default=None,
+        help="Set server logging level (debug, info, notice, warning, error, critical, alert, emergency)",
+    )
+    args = parser.parse_args()
     # Create MCPApp to get the server registry
     app = MCPApp(name="workflow_mcp_client")
     async with app.run() as client_app:
@@ -69,6 +78,14 @@ async def main():
                 context.server_registry,
                 client_session_factory=make_session,
             ) as server:
+                # Ask server to send logs at the requested level (default info)
+                level = (args.server_log_level or "info").lower()
+                print(f"[client] Setting server logging level to: {level}")
+                try:
+                    await server.set_logging_level(level)
+                except Exception:
+                    # Older servers may not support logging capability
+                    print("[client] Server does not support logging/setLevel")
                 # Call the BasicAgentWorkflow
                 run_result = await server.call_tool(
                     "workflows-BasicAgentWorkflow-run",

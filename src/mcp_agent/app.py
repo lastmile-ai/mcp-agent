@@ -15,6 +15,7 @@ from mcp_agent.config import Settings, get_settings
 from mcp_agent.executor.signal_registry import SignalRegistry
 from mcp_agent.logging.event_progress import ProgressAction
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.logging.logger import set_default_bound_context
 from mcp_agent.executor.decorator_registry import (
     DecoratorRegistry,
     register_asyncio_decorators,
@@ -232,6 +233,12 @@ class MCPApp:
 
         # Store a reference to this app instance in the context for easier access
         self._context.app = self
+
+        # Provide a safe default bound context for loggers created after init without explicit context
+        try:
+            set_default_bound_context(self._context)
+        except Exception:
+            pass
 
         # Auto-load subagents if enabled in settings
         try:

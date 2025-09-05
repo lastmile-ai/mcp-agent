@@ -37,8 +37,8 @@ from mcp_agent.executor.temporal.workflow_signal import TemporalSignalHandler
 from mcp_agent.executor.workflow_signal import SignalHandler
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.utils.common import unwrap
-from mcp_agent.executor.temporal.system_activities import SystemActivities
 from mcp_agent.executor.temporal.interceptor import ContextPropagationInterceptor
+from mcp_agent.executor.temporal.system_activities import SystemActivities
 
 if TYPE_CHECKING:
     from mcp_agent.app import MCPApp
@@ -521,6 +521,7 @@ async def create_temporal_worker_for_app(app: "MCPApp"):
             task_queue=running_app.executor.config.task_queue,
             activities=activities,
             workflows=workflows,
+            interceptors=[ContextPropagationInterceptor()],
         )
 
         try:

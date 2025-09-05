@@ -11,7 +11,7 @@ from anyio.streams.memory import (
 from temporalio import workflow as _twf
 
 from mcp.server.models import InitializationOptions
-from mcp.server.session import ServerSession as _BaseServerSession
+from mcp.server.session import ServerSession
 from mcp.shared.message import ServerMessageMetadata
 
 from mcp_agent.core.context import Context
@@ -19,7 +19,7 @@ from mcp_agent.executor.temporal.system_activities import SystemActivities
 from mcp_agent.executor.temporal.temporal_context import get_execution_id
 
 
-class SessionProxy(_BaseServerSession):
+class SessionProxy(ServerSession):
     """
     SessionProxy acts like an MCP `ServerSession` for code running under the
     Temporal engine. It forwards server->client messages through the MCPApp
@@ -108,9 +108,6 @@ class SessionProxy(_BaseServerSession):
             return await self._executor.execute(act, exec_id, method, params or {})
         return await self._sys_acts.relay_request(exec_id, method, params or {})
 
-    # ----------------------
-    # ServerSession-like API
-    # ----------------------
     async def send_notification(
         self,
         notification: types.ServerNotification,

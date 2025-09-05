@@ -8,7 +8,6 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional, Set, Tuple, Type, TYPE_CHECKING
 import os
-import uuid
 import asyncio
 
 from mcp.server.fastmcp import Context as MCPContext, FastMCP
@@ -25,9 +24,7 @@ from mcp_agent.executor.workflow_registry import (
     WorkflowRegistry,
     InMemoryWorkflowRegistry,
 )
-from mcp_agent.executor.temporal.temporal_context import (
-    set_execution_id,
-)
+
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.logging.logger import LoggingConfig
 from mcp_agent.mcp.mcp_server_registry import ServerRegistry
@@ -1335,10 +1332,8 @@ async def _workflow_run(
     run_parameters: Dict[str, Any] | None = None,
     **kwargs: Any,
 ) -> Dict[str, str]:
-    # Generate a unique execution ID to track this run. We need to pass this to the workflow, and the run_id is only established
-    # after we create the workflow
-    execution_id = str(uuid.uuid4())
-    set_execution_id(execution_id)
+    # Use Temporal run_id as the routing key for gateway callbacks.
+    # We don't have it until after the workflow is started; we'll register mapping post-start.
 
     # Resolve workflows and app context irrespective of startup mode
     # This now returns a context with upstream_session already set
@@ -1420,7 +1415,6 @@ async def _workflow_run(
                 workflow_memo = {
                     "gateway_url": gateway_url,
                     "gateway_token": gateway_token,
-                    "execution_id": execution_id,
                 }
         except Exception:
             workflow_memo = None
@@ -1431,6 +1425,7 @@ async def _workflow_run(
             **run_parameters,
         )
 
+        execution_id = execution.run_id
         logger.info(
             f"Workflow {workflow_name} started execution {execution_id} for workflow ID {execution.workflow_id}, "
             f"run ID {execution.run_id}. Parameters: {run_parameters}"

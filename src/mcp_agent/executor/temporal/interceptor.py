@@ -40,6 +40,7 @@ def set_header_from_context(
 def context_from_header(
     input: _InputWithHeaders, payload_converter: temporalio.converter.PayloadConverter
 ):
+    prev_exec_id = get_execution_id()
     execution_id_payload = input.headers.get(EXECUTION_ID_KEY)
     execution_id_from_header = (
         payload_converter.from_payload(execution_id_payload, str)
@@ -48,7 +49,10 @@ def context_from_header(
     )
     set_execution_id(execution_id_from_header if execution_id_from_header else None)
 
-    yield
+    try:
+        yield
+    finally:
+        set_execution_id(prev_exec_id)
 
 
 class ContextPropagationInterceptor(
