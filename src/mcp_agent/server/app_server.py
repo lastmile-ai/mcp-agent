@@ -8,6 +8,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional, Set, Tuple, Type, TYPE_CHECKING
 import os
+import secrets
 import asyncio
 
 from mcp.server.fastmcp import Context as MCPContext, FastMCP
@@ -334,7 +335,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
 
             # Optional shared-secret auth
             gw_token = os.environ.get("MCP_GATEWAY_TOKEN")
-            if gw_token and request.headers.get("X-MCP-Gateway-Token") != gw_token:
+            if gw_token and not secrets.compare_digest(
+                request.headers.get("X-MCP-Gateway-Token", ""), gw_token
+            ):
                 return JSONResponse(
                     {"ok": False, "error": "unauthorized"}, status_code=401
                 )
@@ -496,7 +499,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
 
             # Optional shared-secret auth
             gw_token = os.environ.get("MCP_GATEWAY_TOKEN")
-            if gw_token and request.headers.get("X-MCP-Gateway-Token") != gw_token:
+            if gw_token and not secrets.compare_digest(
+                request.headers.get("X-MCP-Gateway-Token", ""), gw_token
+            ):
                 return JSONResponse(
                     {"ok": False, "error": "unauthorized"}, status_code=401
                 )
@@ -533,7 +538,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
 
             # Optional shared-secret auth
             gw_token = os.environ.get("MCP_GATEWAY_TOKEN")
-            if gw_token and request.headers.get("X-MCP-Gateway-Token") != gw_token:
+            if gw_token and not secrets.compare_digest(
+                request.headers.get("X-MCP-Gateway-Token", ""), gw_token
+            ):
                 return JSONResponse({"error": "unauthorized"}, status_code=401)
 
             session = await _get_session(execution_id)

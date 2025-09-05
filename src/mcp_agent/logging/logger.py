@@ -8,6 +8,7 @@ Logger module for the MCP Agent, which provides:
 """
 
 import asyncio
+from datetime import timedelta
 import threading
 import time
 
@@ -171,7 +172,7 @@ class Logger:
                                     ns,
                                     msg,
                                     data,
-                                    schedule_to_close_timeout=5,
+                                    schedule_to_close_timeout=timedelta(seconds=5),
                                 )
                                 return
                         except Exception:
