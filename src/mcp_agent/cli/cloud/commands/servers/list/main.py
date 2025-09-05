@@ -149,7 +149,7 @@ def _apply_sort(servers: List[Union[MCPApp, MCPAppConfiguration]], sort_field: s
         if sort_field_lower == 'name':
             return name.lower()
         elif sort_field_lower in ['created', 'created_at', 'date']:
-            return created_at or datetime.min.replace(tzinfo=created_at.tzinfo if created_at else None)
+            return created_at or datetime.min.replace(tzinfo=None if created_at is None else created_at.tzinfo)
         elif sort_field_lower == 'status':
             return clean_server_status(status).lower()
         else:
