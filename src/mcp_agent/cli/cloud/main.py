@@ -26,7 +26,6 @@ from mcp_agent.cli.cloud.commands.servers import (
     list_servers,
     describe_server,
     delete_server,
-    list_server_workflows,
 )
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.utils.ux import print_error
@@ -150,7 +149,6 @@ app_cmd_servers = typer.Typer(
 app_cmd_servers.command(name="list")(list_servers)
 app_cmd_servers.command(name="describe")(describe_server)
 app_cmd_servers.command(name="delete")(delete_server)
-app_cmd_servers.command(name="workflows")(list_server_workflows)
 app.add_typer(app_cmd_servers, name="servers", help="Manage MCP Servers")
 
 # Alias for servers - apps should behave identically
