@@ -877,7 +877,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                 return {"ok": False, "error": "temporal executor not active"}
             client = await executor.ensure_client()
             handle = client.get_workflow_handle(
-                workflow_id=info.get("workflow_id"), run_id=info.get("run_id")
+                workflow_id=info.get("workflow_id"), run_id=info.get("execution_id")
             )
             await handle.signal(
                 info.get("signal_name", "human_input"),

@@ -138,10 +138,7 @@ class Logger:
                                         "span_id": event.span_id,
                                     }
                                 if event.context is not None:
-                                    try:
-                                        data["context"] = event.context.dict()
-                                    except Exception:
-                                        pass
+                                    data["context"] = event.context.model_dump()
 
                                 await upstream.send_log_message(  # type: ignore[attr-defined]
                                     level=level, data=data, logger=logger_name
