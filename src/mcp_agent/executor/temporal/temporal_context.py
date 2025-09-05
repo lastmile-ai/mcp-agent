@@ -18,15 +18,15 @@ def get_execution_id() -> Optional[str]:
     Priority:
     - If inside a Temporal workflow, return workflow.info().run_id
     - Else if inside a Temporal activity, return activity.info().workflow_run_id
-    - Else fall back to the process-scoped ContextVar (best-effort)
+    - Else fall back to the global (best-effort)
     """
     # Try workflow runtime first
     try:
-        from temporalio import workflow as _wf  # type: ignore
+        from temporalio import workflow  # type: ignore
 
         try:
-            if getattr(_wf, "_Runtime").current() is not None:  # type: ignore[attr-defined]
-                return _wf.info().run_id
+            if workflow.in_workflow():
+                return workflow.info().run_id
         except Exception:
             pass
     except Exception:
@@ -34,10 +34,10 @@ def get_execution_id() -> Optional[str]:
 
     # Then try activity runtime
     try:
-        from temporalio import activity as _act  # type: ignore
+        from temporalio import activity  # type: ignore
 
         try:
-            info = _act.info()
+            info = activity.info()
             if info is not None and getattr(info, "workflow_run_id", None):
                 return info.workflow_run_id
         except Exception:

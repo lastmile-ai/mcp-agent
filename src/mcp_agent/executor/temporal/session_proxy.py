@@ -289,7 +289,7 @@ class SessionProxy(ServerSession):
 def _in_workflow_runtime() -> bool:
     """Return True if currently executing inside a Temporal workflow sandbox."""
     try:
-        return _twf._Runtime.current() is not None  # type: ignore[attr-defined]
+        return _twf.in_workflow()
     except Exception:
         return False
 

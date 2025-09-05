@@ -849,14 +849,15 @@ class MCPApp:
             )
 
             if task_defn:
-                # prevent trying to decorate an already decorated function
+                # Prevent re-decoration of an already temporal-decorated function,
+                # but still register it with the app.
                 if hasattr(target, "__temporal_activity_definition"):
                     self.logger.debug(
-                        f"target {name} has __temporal_activity_definition"
+                        "Skipping redecorate for already-temporal activity",
+                        data={"activity_name": activity_name},
                     )
-                    return target  # Already decorated with @activity
-
-                if isinstance(target, MethodType):
+                    task_callable = target
+                elif isinstance(target, MethodType):
                     self_ref = target.__self__
 
                     @functools.wraps(func)
@@ -919,7 +920,15 @@ class MCPApp:
             )
 
             if task_defn:  # Engine-specific decorator available
-                if isinstance(target, MethodType):
+                # Prevent re-decoration of an already temporal-decorated function,
+                # but still register it with the app.
+                if hasattr(target, "__temporal_activity_definition"):
+                    self.logger.debug(
+                        "Skipping redecorate for already-temporal activity",
+                        data={"activity_name": activity_name},
+                    )
+                    task_callable = target
+                elif isinstance(target, MethodType):
                     self_ref = target.__self__
 
                     @functools.wraps(func)

@@ -250,23 +250,6 @@ class Workflow(ABC, Generic[T], ContextDependent):
             f"Workflow started with workflow ID: {self._workflow_id}, run ID: {self._run_id}"
         )
 
-        # Hint the logger with the current run_id for Temporal proxy fallback
-        try:
-            if self.context.config.execution_engine == "temporal":
-                from mcp_agent.executor.temporal.session_proxy import SessionProxy
-
-                setattr(self._logger, "_temporal_run_id", self._run_id)
-                # Ensure upstream_session is a passthrough SessionProxy bound to this run
-                upstream_session = getattr(self.context, "upstream_session", None)
-
-                if upstream_session is None:
-                    self.context.upstream_session = SessionProxy(
-                        executor=self.executor,
-                        context=self.context,
-                    )
-        except Exception:
-            pass
-
         # Define the workflow execution function
         async def _execute_workflow():
             try:

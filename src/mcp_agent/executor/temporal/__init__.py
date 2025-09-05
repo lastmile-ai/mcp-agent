@@ -122,7 +122,7 @@ class TemporalExecutor(Executor):
                     return await task(*args, **kwargs)
                 else:
                     # Check if we're in a Temporal workflow context
-                    if workflow._Runtime.current():
+                    if workflow.in_workflow():
                         wrapped_task = functools.partial(task, *args, **kwargs)
                         result = wrapped_task()
                     else:
@@ -199,7 +199,7 @@ class TemporalExecutor(Executor):
         """Execute multiple tasks (activities) in parallel."""
 
         # Must be called from within a workflow
-        if not workflow._Runtime.current():
+        if not workflow.in_workflow():
             raise RuntimeError(
                 "TemporalExecutor.execute must be called from within a workflow"
             )
@@ -217,7 +217,7 @@ class TemporalExecutor(Executor):
         """Execute multiple tasks (activities) in parallel."""
 
         # Must be called from within a workflow
-        if not workflow._Runtime.current():
+        if not workflow.in_workflow():
             raise RuntimeError(
                 "TemporalExecutor.execute must be called from within a workflow"
             )
@@ -235,7 +235,7 @@ class TemporalExecutor(Executor):
         *args,
         **kwargs,
     ) -> AsyncIterator[R | BaseException]:
-        if not workflow._Runtime.current():
+        if not workflow.in_workflow():
             raise RuntimeError(
                 "TemporalExecutor.execute_streaming must be called from within a workflow"
             )

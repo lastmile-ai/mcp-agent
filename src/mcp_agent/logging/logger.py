@@ -80,9 +80,7 @@ class Logger:
                 from temporalio import workflow as _wf  # type: ignore
 
                 try:
-                    # Detect active Temporal workflow runtime
-                    if getattr(_wf, "_Runtime").current() is not None:  # type: ignore[attr-defined]
-                        in_temporal_workflow = True
+                    in_temporal_workflow = bool(_wf.in_workflow())
                 except Exception:
                     in_temporal_workflow = False
             except Exception:
@@ -234,14 +232,14 @@ class Logger:
         except Exception:
             pass
         # Fallback to default bound context if logger wasn't explicitly bound
-        if "upstream_session" not in extra_event_fields:
+        if (
+            "upstream_session" not in extra_event_fields
+            and _default_bound_context is not None
+        ):
             try:
-                from mcp_agent.logging.logger import _default_bound_context as _dbc  # type: ignore
-
-                if _dbc is not None:
-                    _up = getattr(_dbc, "upstream_session", None)
-                    if _up is not None:
-                        extra_event_fields["upstream_session"] = _up
+                upstream = getattr(_default_bound_context, "upstream_session", None)
+                if upstream is not None:
+                    extra_event_fields["upstream_session"] = upstream
             except Exception:
                 pass
 
