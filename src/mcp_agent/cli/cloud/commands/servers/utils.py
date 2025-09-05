@@ -51,11 +51,11 @@ def validate_output_format(format: str) -> None:
 
 
 def resolve_server(client: MCPAppClient, id_or_url: str) -> Union[MCPApp, MCPAppConfiguration]:
-    """Resolve server from ID or URL.
+    """Resolve server from ID.
     
     Args:
         client: Authenticated MCP App client
-        id_or_url: Server identifier (ID, config ID, or URL)
+        id_or_url: Server identifier (app ID or app config ID)
         
     Returns:
         Server object (MCPApp or MCPAppConfiguration)
@@ -64,15 +64,15 @@ def resolve_server(client: MCPAppClient, id_or_url: str) -> Union[MCPApp, MCPApp
         CLIError: If server resolution fails
     """
     try:
-        app_id, config_id, server_url = parse_app_identifier(id_or_url)
+        app_id, config_id = parse_app_identifier(id_or_url)
         
-        if server_url:
-            return run_async(client.get_app(server_url=server_url))
-        elif config_id:
+        if config_id:
             return run_async(client.get_app_configuration(app_config_id=config_id))
         else:
             return run_async(client.get_app(app_id=app_id))
             
+    except ValueError as e:
+        raise CLIError(str(e)) from e
     except Exception as e:
         raise CLIError(f"Failed to resolve server '{id_or_url}': {str(e)}") from e
 

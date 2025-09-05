@@ -20,6 +20,7 @@ from mcp_agent.cli.auth import load_credentials, UserCredentials
 from mcp_agent.cli.cloud.commands.servers.utils import setup_authenticated_client
 from mcp_agent.cli.core.api_client import UnauthenticatedError
 from mcp_agent.cli.core.utils import parse_app_identifier, resolve_server_url
+from mcp_agent.cli.utils.ux import print_error
 
 console = Console()
 
@@ -28,7 +29,7 @@ DEFAULT_LOG_LIMIT = 100
 
 def tail_logs(
     app_identifier: str = typer.Argument(
-        help="Server ID, URL, or app configuration ID to retrieve logs for"
+        help="App ID or app configuration ID to retrieve logs for"
     ),
     since: Optional[str] = typer.Option(
         None,
@@ -83,7 +84,7 @@ def tail_logs(
         mcp-agent cloud logger tail app_abc123 --limit 50
         
         # Stream logs continuously
-        mcp-agent cloud logger tail https://app.mcpac.dev/abc123 --follow
+        mcp-agent cloud logger tail app_abc123 --follow
         
         # Show logs from the last hour with error filtering
         mcp-agent cloud logger tail app_abc123 --since 1h --grep "ERROR|WARN"
@@ -94,49 +95,48 @@ def tail_logs(
     
     credentials = load_credentials()
     if not credentials:
-        console.print("[red]Error: Not authenticated. Run 'mcp-agent login' first.[/red]")
+        print_error("Not authenticated. Run 'mcp-agent login' first.")
         raise typer.Exit(4)
     
     # Validate conflicting options
     if follow and since:
-        console.print("[red]Error: --since cannot be used with --follow (streaming mode)[/red]")
+        print_error("--since cannot be used with --follow (streaming mode)")
         raise typer.Exit(6)
     
     if follow and limit != DEFAULT_LOG_LIMIT:
-        console.print("[red]Error: --limit cannot be used with --follow (streaming mode)[/red]")
+        print_error("--limit cannot be used with --follow (streaming mode)")
         raise typer.Exit(6)
     
     if follow and order_by:
-        console.print("[red]Error: --order-by cannot be used with --follow (streaming mode)[/red]")
+        print_error("--order-by cannot be used with --follow (streaming mode)")
         raise typer.Exit(6)
     
     if follow and (asc or desc):
-        console.print("[red]Error: --asc/--desc cannot be used with --follow (streaming mode)[/red]")
+        print_error("--asc/--desc cannot be used with --follow (streaming mode)")
         raise typer.Exit(6)
     
     # Validate order_by values
     if order_by and order_by not in ["timestamp", "severity"]:
-        console.print("[red]Error: --order-by must be 'timestamp' or 'severity'[/red]")
+        print_error("--order-by must be 'timestamp' or 'severity'")
         raise typer.Exit(6)
     
     # Validate that both --asc and --desc are not used together
     if asc and desc:
-        console.print("[red]Error: Cannot use both --asc and --desc together[/red]")
+        print_error("Cannot use both --asc and --desc together")
         raise typer.Exit(6)
     
     # Validate format values
     if format and format not in ["text", "json", "yaml"]:
-        console.print("[red]Error: --format must be 'text', 'json', or 'yaml'[/red]")
+        print_error("--format must be 'text', 'json', or 'yaml'")
         raise typer.Exit(6)
     
-    app_id, config_id, server_url = parse_app_identifier(app_identifier)
+    app_id, config_id = parse_app_identifier(app_identifier)
     
     try:
         if follow:
             asyncio.run(_stream_logs(
                 app_id=app_id,
                 config_id=config_id,
-                server_url=server_url,
                 credentials=credentials,
                 grep_pattern=grep,
                 app_identifier=app_identifier,
@@ -146,7 +146,6 @@ def tail_logs(
             asyncio.run(_fetch_logs(
                 app_id=app_id,
                 config_id=config_id,
-                server_url=server_url,
                 credentials=credentials,
                 since=since,
                 grep_pattern=grep,
@@ -161,14 +160,12 @@ def tail_logs(
         console.print("\n[yellow]Interrupted by user[/yellow]")
         sys.exit(0)
     except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(5)
+        raise CLIError(str(e))
 
 
 async def _fetch_logs(
     app_id: Optional[str],
     config_id: Optional[str], 
-    server_url: Optional[str],
     credentials: UserCredentials,
     since: Optional[str],
     grep_pattern: Optional[str],
@@ -241,8 +238,7 @@ async def _fetch_logs(
 
 async def _stream_logs(
     app_id: Optional[str],
-    config_id: Optional[str],
-    server_url: Optional[str], 
+    config_id: Optional[str], 
     credentials: UserCredentials,
     grep_pattern: Optional[str],
     app_identifier: str,
@@ -250,8 +246,7 @@ async def _stream_logs(
 ) -> None:
     """Stream logs continuously via SSE."""
     
-    if not server_url:
-        server_url = await resolve_server_url(app_id, config_id, credentials)
+    server_url = await resolve_server_url(app_id, config_id, credentials)
     
     parsed = urlparse(server_url)
     stream_url = f"{parsed.scheme}://{parsed.netloc}/logs"
