@@ -13,13 +13,7 @@ from rich.console import Console
 from rich.panel import Panel
 from typer.core import TyperGroup
 
-from mcp_agent.cli.cloud.commands import (
-    configure_app,
-    deploy_config,
-    login,
-    logout,
-    whoami,
-)
+from mcp_agent.cli.cloud.commands import configure_app, deploy_config, login, logout, whoami
 from mcp_agent.cli.cloud.commands.logger import tail_logs
 from mcp_agent.cli.cloud.commands.app import (
     delete_app,
@@ -28,6 +22,11 @@ from mcp_agent.cli.cloud.commands.app import (
 )
 from mcp_agent.cli.cloud.commands.apps import list_apps
 from mcp_agent.cli.cloud.commands.workflow import get_workflow_status
+from mcp_agent.cli.cloud.commands.servers import (
+    list_servers,
+    describe_server,
+    delete_server,
+)
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.utils.ux import print_error
 
@@ -141,6 +140,20 @@ app_cmd_workflow = typer.Typer(
 app_cmd_workflow.command(name="status")(get_workflow_status)
 app.add_typer(app_cmd_workflow, name="workflow", help="Manage MCP Workflows")
 
+# Sub-typer for `mcp-agent servers` commands
+app_cmd_servers = typer.Typer(
+    help="Management commands for MCP Servers",
+    no_args_is_help=True,
+    cls=HelpfulTyperGroup,
+)
+app_cmd_servers.command(name="list")(list_servers)
+app_cmd_servers.command(name="describe")(describe_server)
+app_cmd_servers.command(name="delete")(delete_server)
+app.add_typer(app_cmd_servers, name="servers", help="Manage MCP Servers")
+
+# Alias for servers - apps should behave identically
+app.add_typer(app_cmd_servers, name="apps", help="Manage MCP Apps (alias for servers)")
+
 # Sub-typer for `mcp-agent cloud` commands
 app_cmd_cloud = typer.Typer(
     help="Cloud operations and management",
@@ -179,9 +192,9 @@ app_cmd_cloud_logger.command(
 
 # Add sub-typers to cloud
 app_cmd_cloud.add_typer(app_cmd_cloud_auth, name="auth", help="Authentication commands")
-app_cmd_cloud.add_typer(
-    app_cmd_cloud_logger, name="logger", help="Logging and observability"
-)
+app_cmd_cloud.add_typer(app_cmd_cloud_logger, name="logger", help="Logging and observability")
+app_cmd_cloud.add_typer(app_cmd_servers, name="servers", help="Server management commands")
+app_cmd_cloud.add_typer(app_cmd_servers, name="apps", help="App management commands (alias for servers)")
 # Register cloud commands
 app.add_typer(app_cmd_cloud, name="cloud", help="Cloud operations and management")
 # Top-level auth commands that map to cloud auth commands
