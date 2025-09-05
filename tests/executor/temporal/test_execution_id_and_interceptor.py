@@ -1,11 +1,11 @@
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 
 @pytest.mark.asyncio
 @patch("temporalio.workflow.info")
-@patch("temporalio.workflow._Runtime.current", return_value=MagicMock())
-def test_get_execution_id_in_workflow(mock_runtime, mock_info):
+@patch("temporalio.workflow.in_workflow", return_value=True)
+def test_get_execution_id_in_workflow(_mock_in_wf, mock_info):
     from mcp_agent.executor.temporal.temporal_context import get_execution_id
 
     mock_info.return_value.run_id = "run-123"
