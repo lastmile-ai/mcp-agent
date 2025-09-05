@@ -17,7 +17,8 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.auth import load_credentials, UserCredentials
-from mcp_agent.cli.core.constants import DEFAULT_API_BASE_URL
+from mcp_agent.cli.cloud.commands.servers.utils import setup_authenticated_client
+from mcp_agent.cli.core.api_client import UnauthenticatedError
 from mcp_agent.cli.core.utils import parse_app_identifier, resolve_server_url
 
 console = Console()
@@ -179,36 +180,22 @@ async def _fetch_logs(
 ) -> None:
     """Fetch logs one-time via HTTP API."""
     
-    api_base = DEFAULT_API_BASE_URL
-    headers = {
-        "Authorization": f"Bearer {credentials.api_key}",
-        "Content-Type": "application/json",
-    }
+    client = setup_authenticated_client()
     
-    payload = {}
-    
-    if app_id:
-        payload["app_id"] = app_id
-    elif config_id:
-        payload["app_configuration_id"] = config_id
-    else:
-        raise CLIError("Unable to determine app or configuration ID from provided identifier")
-    
-    if since:
-        payload["since"] = since
-    if limit:
-        payload["limit"] = limit
-    
+    # Map order_by parameter from CLI to API format
+    order_by_param = None
     if order_by:
         if order_by == "timestamp":
-            payload["orderBy"] = "LOG_ORDER_BY_TIMESTAMP"
+            order_by_param = "LOG_ORDER_BY_TIMESTAMP"
         elif order_by == "severity":
-            payload["orderBy"] = "LOG_ORDER_BY_LEVEL"
+            order_by_param = "LOG_ORDER_BY_LEVEL"
     
+    # Map order parameter from CLI to API format  
+    order_param = None
     if asc:
-        payload["order"] = "LOG_ORDER_ASC"
+        order_param = "LOG_ORDER_ASC"
     elif desc:
-        payload["order"] = "LOG_ORDER_DESC"
+        order_param = "LOG_ORDER_DESC"
     
     with Progress(
         SpinnerColumn(),
@@ -219,23 +206,26 @@ async def _fetch_logs(
         progress.add_task("Fetching logs...", total=None)
         
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    f"{api_base}/mcp_app/get_app_logs",
-                    json=payload,
-                    headers=headers,
-                )
-                
-                if response.status_code == 401:
-                    raise CLIError("Authentication failed. Try running 'mcp-agent login'")
-                elif response.status_code == 404:
-                    raise CLIError("App or configuration not found")
-                elif response.status_code != 200:
-                    raise CLIError(f"API request failed: {response.status_code} {response.text}")
-                
-                data = response.json()
-                log_entries = data.get("logEntries", [])
-                
+            response = await client.get_app_logs(
+                app_id=app_id,
+                app_configuration_id=config_id,
+                since=since,
+                limit=limit,
+                order_by=order_by_param,
+                order=order_param,
+            )
+            # Convert LogEntry models to dictionaries for compatibility with display functions
+            log_entries = [entry.model_dump() for entry in response.log_entries_list]
+            
+        except UnauthenticatedError:
+            raise CLIError("Authentication failed. Try running 'mcp-agent login'")
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                raise CLIError("App or configuration not found")
+            elif e.response.status_code == 401:
+                raise CLIError("Authentication failed. Try running 'mcp-agent login'")
+            else:
+                raise CLIError(f"API request failed: {e.response.status_code} {e.response.text}")
         except httpx.RequestError as e:
             raise CLIError(f"Failed to connect to API: {e}")
     
