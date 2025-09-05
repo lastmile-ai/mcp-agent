@@ -1339,7 +1339,6 @@ async def _workflow_run(
     # Generate a unique execution ID to track this run. We need to pass this to the workflow, and the run_id is only established
     # after we create the workflow
     execution_id = str(uuid.uuid4())
-    _prev_exec_id = get_execution_id()
     set_execution_id(execution_id)
 
     # Resolve workflows and app context irrespective of startup mode
@@ -1457,12 +1456,6 @@ async def _workflow_run(
     except Exception as e:
         logger.error(f"Error creating workflow {workflow_name}: {str(e)}")
         raise ToolError(f"Error creating workflow {workflow_name}: {str(e)}") from e
-    finally:
-        # Restore previous execution id to avoid leaking into other requests
-        try:
-            set_execution_id(_prev_exec_id)
-        except Exception:
-            pass
 
 
 async def _workflow_status(
