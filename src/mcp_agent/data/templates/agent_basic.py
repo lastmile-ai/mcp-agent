@@ -11,7 +11,7 @@ app = MCPApp("My Agent")
 my_agent = AgentSpec(
     name="assistant",
     instruction="You are a helpful AI assistant with access to the filesystem.",
-    server_names=["filesystem"]
+    server_names=["filesystem"],
 )
 
 # Register the agent with the app
@@ -21,7 +21,7 @@ app.register_agent("assistant", my_agent)
 if __name__ == "__main__":
     import asyncio
     from mcp_agent.workflows.factory import create_llm
-    
+
     async def main():
         """Run the agent interactively."""
         async with app.run():
@@ -30,13 +30,13 @@ if __name__ == "__main__":
                 agent_name="assistant",
                 server_names=["filesystem"],
                 instruction=my_agent.instruction,
-                context=app.context
+                context=app.context,
             )
-            
+
             # Start interactive chat
             print("Chat with your agent (Ctrl+C to exit)")
             print("Type your message and press Enter:\n")
-            
+
             while True:
                 try:
                     message = input("> ")
@@ -47,5 +47,5 @@ if __name__ == "__main__":
                     break
                 except Exception as e:
                     print(f"Error: {e}")
-    
+
     asyncio.run(main())

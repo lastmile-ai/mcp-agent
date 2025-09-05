@@ -5,7 +5,6 @@ Models command group: list and set-default (scaffold).
 from __future__ import annotations
 
 import json
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -57,7 +56,6 @@ def set_default(
     name: str = typer.Argument(..., help="Provider-qualified name"),
 ) -> None:
     """Set provider default model in config, writing to discovered file."""
-    from pathlib import Path
     import yaml
     from mcp_agent.config import Settings
 

@@ -14,7 +14,6 @@ import time
 import typer
 from rich.console import Console
 
-from mcp_agent.app import MCPApp
 from mcp_agent.cli.core.utils import load_user_app
 from mcp_agent.config import get_settings
 

@@ -4,15 +4,13 @@ Local server helpers: add/import/list/test with comprehensive server recipes.
 
 from __future__ import annotations
 
-from typing import Optional, Dict, Any
+from typing import Optional
 import json
-import subprocess
 
 import typer
 from rich.console import Console
 from rich.table import Table
-from rich.panel import Panel
-from rich.prompt import Prompt, Confirm
+from rich.prompt import Confirm
 
 from mcp_agent.config import Settings, MCPServerSettings, MCPSettings
 from mcp_agent.cli.utils.importers import import_servers_from_mcp_json
@@ -492,7 +490,7 @@ def add(
 
             if missing:
                 console.print(
-                    f"[yellow]Warning: Required environment variables not set:[/yellow]"
+                    "[yellow]Warning: Required environment variables not set:[/yellow]"
                 )
                 for var in missing:
                     console.print(f"  • {var}")
@@ -510,7 +508,7 @@ def add(
         srv_name = name or value
 
         # Show what will be added
-        console.print(f"\n[bold]Adding server from recipe:[/bold]")
+        console.print("\n[bold]Adding server from recipe:[/bold]")
         console.print(f"  Name: [cyan]{srv_name}[/cyan]")
         console.print(f"  Description: {recipe.get('description', 'N/A')}")
         console.print(f"  Command: {entry.command} {' '.join(entry.args)}")
@@ -591,7 +589,7 @@ def add(
         entry.env = {**env_vars, **env_dict}
 
         srv_name = name or default_name
-        console.print(f"\n[bold]Adding DXT server:[/bold]")
+        console.print("\n[bold]Adding DXT server:[/bold]")
         console.print(f"  Name: [cyan]{srv_name}[/cyan]")
         console.print(f"  Extracted: {manifest_dir}")
         console.print(f"  Command: {cmd} {' '.join(args)}")
@@ -609,7 +607,7 @@ def add(
         # Convenience shortcuts
         entry.transport = "stdio"
         entry.command = kind
-        entry.args = [value] if not " " in value else value.split()
+        entry.args = [value] if " " not in value else value.split()
         entry.env = env_dict
         srv_name = name or value.split("/")[-1]
 
@@ -660,7 +658,7 @@ def remove_server(
 
     if not force:
         server_info = servers[name]
-        console.print(f"[bold]Server to remove:[/bold]")
+        console.print("[bold]Server to remove:[/bold]")
         console.print(f"  Name: [cyan]{name}[/cyan]")
         console.print(f"  Transport: {server_info.get('transport', 'N/A')}")
         if not Confirm.ask("Remove this server?", default=False):
@@ -757,7 +755,7 @@ def test(
                                         console.print(
                                             f"  [dim]... and {len(resources.resources) - 5} more[/dim]"
                                         )
-                        except:
+                        except Exception:
                             pass  # Resources might not be supported
 
                         console.print(

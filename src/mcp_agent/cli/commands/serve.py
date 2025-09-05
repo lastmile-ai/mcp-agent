@@ -9,7 +9,6 @@ import signal
 import sys
 from typing import Optional, List
 from pathlib import Path
-import json
 import os
 
 import typer
@@ -17,11 +16,8 @@ from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich.live import Live
-from rich.layout import Layout
-from rich.text import Text
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
+from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from mcp_agent.app import MCPApp
 from mcp_agent.server.app_server import create_mcp_server_for_app
 from mcp_agent.cli.core.utils import load_user_app
 from mcp_agent.config import get_settings
@@ -150,7 +146,7 @@ def serve(
             console.print("\n[dim]Create an agent.py file or specify --script[/dim]")
             raise typer.Exit(1)
 
-        console.print(f"\n[bold cyan]🚀 MCP-Agent Server[/bold cyan]")
+        console.print("\n[bold cyan]🚀 MCP-Agent Server[/bold cyan]")
         console.print(f"Script: [green]{script_path}[/green]")
 
         try:
@@ -243,7 +239,7 @@ def serve(
                         tools_table.add_row("...", f"and {len(tools_list) - 10} more")
 
                     console.print(tools_table)
-            except:
+            except Exception:
                 pass
 
         # Set up monitoring if requested
@@ -337,7 +333,7 @@ def serve(
                                 )
                                 await asyncio.sleep(1)
 
-                    monitor_task = asyncio.create_task(update_monitor())
+                    asyncio.create_task(update_monitor())
 
                 await server.serve()
 
@@ -420,7 +416,7 @@ def test(
             # Create server
             task = progress.add_task("Creating MCP server...", total=None)
             try:
-                mcp = create_mcp_server_for_app(app_obj)
+                create_mcp_server_for_app(app_obj)
                 progress.update(task, description="[green]✅ Server created[/green]")
             except Exception as e:
                 progress.update(
@@ -517,7 +513,7 @@ def generate(
         import stat
 
         output.chmod(output.stat().st_mode | stat.S_IEXEC)
-    except:
+    except Exception:
         pass
 
     console.print("\n[bold]Next steps:[/bold]")

@@ -10,7 +10,7 @@ This example demonstrates three approaches to creating agents and workflows:
 import argparse
 import asyncio
 import os
-from typing import Dict, Any, Optional
+from typing import Optional
 
 from mcp.server.fastmcp import FastMCP
 from mcp_agent.core.context import Context as AppContext
@@ -24,7 +24,6 @@ from mcp_agent.workflows.llm.augmented_llm_anthropic import AnthropicAugmentedLL
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 from mcp_agent.workflows.parallel.parallel_llm import ParallelLLM
 from mcp_agent.executor.workflow import Workflow, WorkflowResult
-from mcp_agent.tracing.token_counter import TokenNode
 
 # Note: This is purely optional:
 # if not provided, a default FastMCP server will be created by MCPApp using create_mcp_server_for_app()
