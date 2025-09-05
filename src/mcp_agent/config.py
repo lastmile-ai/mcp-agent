@@ -10,6 +10,7 @@ from typing import Dict, List, Literal, Optional, Set
 import threading
 import warnings
 
+from httpx import URL
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -205,6 +206,7 @@ class AnthropicSettings(BaseSettings, VertexAIMixin, BedrockMixin):
             "provider", "ANTHROPIC_PROVIDER", "anthropic__provider"
         ),
     )
+    base_url: str | URL | None = Field(default=None)
 
     model_config = SettingsConfigDict(
         env_prefix="ANTHROPIC_",
