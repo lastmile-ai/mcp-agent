@@ -188,7 +188,6 @@ async def grade_story(story: str, app_ctx: Optional[AppContext] = None) -> str:
 async def grade_story_async(story: str, app_ctx: Optional[AppContext] = None) -> str:
     """
     Async variant of grade_story that starts a workflow run and returns IDs.
-
     Args:
         story: The student's short story to grade
         app_ctx: Optional MCPApp context for accessing app resources and logging

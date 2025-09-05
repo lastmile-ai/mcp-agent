@@ -35,11 +35,11 @@ flowchart TB
     B --> C{Execute Tasks}
     C --> D[Extract Knowledge]
     D --> E{Objective Complete?}
+    E -->|Yes| G
     E -->|No| F{Check Policy}
     F -->|Replan| B
     F -->|Continue| C
     F -->|Stop| G[Synthesize Results]
-    E -->|Yes| G
     G --> H[Final Result]
 
     style B fill:#e1f5fe

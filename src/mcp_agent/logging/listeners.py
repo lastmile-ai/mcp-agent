@@ -249,7 +249,7 @@ class MCPUpstreamLoggingListener(FilteredListener):
         )
 
         if upstream_session is None:
-            # No upstream_session available, event cannot be forwarded
+            # No upstream_session available; silently skip
             return
 
         # Map our EventType to MCP LoggingLevel; fold progress -> info

@@ -1,11 +1,17 @@
 import asyncio
 import json
 import time
-from mcp.types import CallToolResult
+import argparse
 from mcp_agent.app import MCPApp
 from mcp_agent.config import MCPServerSettings
 from mcp_agent.executor.workflow import WorkflowExecution
 from mcp_agent.mcp.gen_client import gen_client
+
+from datetime import timedelta
+from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
+from mcp import ClientSession
+from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
+from mcp.types import CallToolResult, LoggingMessageNotificationParams
 
 try:
     from exceptiongroup import ExceptionGroup as _ExceptionGroup  # Python 3.10 backport
@@ -18,6 +24,14 @@ except Exception:  # pragma: no cover
 
 
 async def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--server-log-level",
+        type=str,
+        default=None,
+        help="Set server logging level (debug, info, notice, warning, error, critical, alert, emergency)",
+    )
+    args = parser.parse_args()
     # Create MCPApp to get the server registry
     app = MCPApp(name="workflow_mcp_client")
     async with app.run() as client_app:
@@ -25,21 +39,53 @@ async def main():
         context = client_app.context
 
         # Connect to the workflow server
-        logger.info("Connecting to workflow server...")
-
-        # Override the server configuration to point to our local script
-        context.server_registry.registry["basic_agent_server"] = MCPServerSettings(
-            name="basic_agent_server",
-            description="Local workflow server running the basic agent example",
-            transport="sse",
-            url="http://0.0.0.0:8000/sse",
-        )
-
-        # Connect to the workflow server
         try:
+            logger.info("Connecting to workflow server...")
+
+            # Override the server configuration to point to our local script
+            context.server_registry.registry["basic_agent_server"] = MCPServerSettings(
+                name="basic_agent_server",
+                description="Local workflow server running the basic agent example",
+                transport="sse",
+                url="http://0.0.0.0:8000/sse",
+            )
+
+            # Connect to the workflow server
+            # Define a logging callback to receive server-side log notifications
+            async def on_server_log(params: LoggingMessageNotificationParams) -> None:
+                # Pretty-print server logs locally for demonstration
+                level = params.level.upper()
+                name = params.logger or "server"
+                # params.data can be any JSON-serializable data
+                print(f"[SERVER LOG] [{level}] [{name}] {params.data}")
+
+            # Provide a client session factory that installs our logging callback
+            def make_session(
+                read_stream: MemoryObjectReceiveStream,
+                write_stream: MemoryObjectSendStream,
+                read_timeout_seconds: timedelta | None,
+            ) -> ClientSession:
+                return MCPAgentClientSession(
+                    read_stream=read_stream,
+                    write_stream=write_stream,
+                    read_timeout_seconds=read_timeout_seconds,
+                    logging_callback=on_server_log,
+                )
+
+            # Connect to the workflow server
             async with gen_client(
-                "basic_agent_server", context.server_registry
+                "basic_agent_server",
+                context.server_registry,
+                client_session_factory=make_session,
             ) as server:
+                # Ask server to send logs at the requested level (default info)
+                level = (args.server_log_level or "info").lower()
+                print(f"[client] Setting server logging level to: {level}")
+                try:
+                    await server.set_logging_level(level)
+                except Exception:
+                    # Older servers may not support logging capability
+                    print("[client] Server does not support logging/setLevel")
                 # Call the BasicAgentWorkflow
                 run_result = await server.call_tool(
                     "workflows-BasicAgentWorkflow-run",
@@ -48,6 +94,17 @@ async def main():
                             "input": "Print the first 2 paragraphs of https://modelcontextprotocol.io/introduction"
                         }
                     },
+                )
+
+                execution = WorkflowExecution(**json.loads(run_result.content[0].text))
+                run_id = execution.run_id
+                logger.info(
+                    f"Started BasicAgentWorkflow-run. workflow ID={execution.workflow_id}, run ID={run_id}"
+                )
+
+                get_status_result = await server.call_tool(
+                    "workflows-BasicAgentWorkflow-get_status",
+                    arguments={"run_id": run_id},
                 )
 
                 execution = WorkflowExecution(**json.loads(run_result.content[0].text))
