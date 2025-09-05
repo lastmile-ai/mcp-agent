@@ -1,5 +1,5 @@
 # Core framework dependency
-mcp-agent==0.1.16
+mcp-agent @ file://../../../  # Link to the local mcp-agent project root
 
 # Additional dependencies specific to this example
 anthropic
