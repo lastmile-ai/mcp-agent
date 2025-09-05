@@ -25,7 +25,6 @@ from mcp_agent.cli.cloud.commands.workflow import get_workflow_status
 from mcp_agent.cli.cloud.commands.servers import (
     list_servers,
     describe_server,
-    get_server_stats,
     delete_server,
     list_server_workflows,
 )
@@ -150,7 +149,6 @@ app_cmd_servers = typer.Typer(
 )
 app_cmd_servers.command(name="list")(list_servers)
 app_cmd_servers.command(name="describe")(describe_server)
-app_cmd_servers.command(name="stats")(get_server_stats)
 app_cmd_servers.command(name="delete")(delete_server)
 app_cmd_servers.command(name="workflows")(list_server_workflows)
 app.add_typer(app_cmd_servers, name="servers", help="Manage MCP Servers")

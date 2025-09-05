@@ -41,7 +41,9 @@ def list_server_workflows(
     server_id = get_server_id(server)
     
     print_server_info(server_name, server_type, server_id)
-    print_workflows_placeholder(status, limit, format)
+    
+    # Show that this feature requires backend API support
+    print_workflows_unavailable(status, limit, format)
 
 
 def print_server_info(server_name: str, server_type: str, server_id: str) -> None:
@@ -58,135 +60,64 @@ def print_server_info(server_name: str, server_type: str, server_id: str) -> Non
     )
 
 
-def print_workflows_placeholder(status_filter: Optional[str], limit: Optional[int], output_format: str) -> None:
-    """Print workflows information placeholder."""
+def print_workflows_unavailable(status_filter: Optional[str], limit: Optional[int], output_format: str) -> None:
+    """Print message that workflow listing is not available without backend support."""
     
     if output_format == "json":
-        _print_workflows_json(status_filter, limit)
+        _print_workflows_unavailable_json(status_filter, limit)
     elif output_format == "yaml":
-        _print_workflows_yaml(status_filter, limit)
+        _print_workflows_unavailable_yaml(status_filter, limit)
     else:
-        _print_workflows_text(status_filter, limit)
+        _print_workflows_unavailable_text(status_filter, limit)
 
 
-def _print_workflows_json(status_filter: Optional[str], limit: Optional[int]) -> None:
-    """Print workflows in JSON format."""
-    workflows_data = {
-        "status": "not_implemented",
-        "message": "Workflow listing by server not yet implemented",
-        "filters": {
+def _print_workflows_unavailable_json(status_filter: Optional[str], limit: Optional[int]) -> None:
+    """Print workflow unavailability message in JSON format."""
+    error_data = {
+        "error": "workflow_listing_unavailable",
+        "message": "Workflow listing by server requires backend API support",
+        "detail": "No workflow listing API exists. Only individual workflow lookup via workflow ID is supported.",
+        "requested_filters": {
             "status": status_filter,
             "limit": limit
         },
-        "sample_workflows": [
-            {
-                "workflow_id": "wf_example123",
-                "name": "data-processor",
-                "status": "running",
-                "created_at": "2024-01-15T10:30:00Z",
-                "run_id": "run_abc456"
-            },
-            {
-                "workflow_id": "wf_example456", 
-                "name": "email-sender",
-                "status": "completed",
-                "created_at": "2024-01-15T09:15:00Z",
-                "run_id": "run_def789"
-            }
-        ],
-        "available_fields": [
-            "workflow_id",
-            "name",
-            "status",
-            "created_at",
-            "run_id",
-            "duration",
-            "performance_metrics"
-        ]
+        "alternative": "Use 'mcp-agent cloud workflow status --id <workflow-id>' for individual workflow details"
     }
-    print(json.dumps(workflows_data, indent=2))
+    print(json.dumps(error_data, indent=2))
 
 
-def _print_workflows_yaml(status_filter: Optional[str], limit: Optional[int]) -> None:
-    """Print workflows in YAML format."""
-    workflows_data = {
-        "status": "not_implemented",
-        "message": "Workflow listing by server not yet implemented",
-        "filters": {
+def _print_workflows_unavailable_yaml(status_filter: Optional[str], limit: Optional[int]) -> None:
+    """Print workflow unavailability message in YAML format."""
+    error_data = {
+        "error": "workflow_listing_unavailable",
+        "message": "Workflow listing by server requires backend API support",
+        "detail": "No workflow listing API exists. Only individual workflow lookup via workflow ID is supported.",
+        "requested_filters": {
             "status": status_filter,
             "limit": limit
         },
-        "sample_workflows": [
-            {
-                "workflow_id": "wf_example123",
-                "name": "data-processor",
-                "status": "running",
-                "created_at": "2024-01-15T10:30:00Z",
-                "run_id": "run_abc456"
-            },
-            {
-                "workflow_id": "wf_example456",
-                "name": "email-sender", 
-                "status": "completed",
-                "created_at": "2024-01-15T09:15:00Z",
-                "run_id": "run_def789"
-            }
-        ],
-        "available_fields": [
-            "workflow_id",
-            "name",
-            "status",
-            "created_at",
-            "run_id",
-            "duration",
-            "performance_metrics"
-        ]
+        "alternative": "Use 'mcp-agent cloud workflow status --id <workflow-id>' for individual workflow details"
     }
-    print(yaml.dump(workflows_data, default_flow_style=False))
+    print(yaml.dump(error_data, default_flow_style=False))
 
 
-def _print_workflows_text(status_filter: Optional[str], limit: Optional[int]) -> None:
-    """Print workflows in text format."""
-    table = Table(title="Server Workflows (Placeholder)")
-    table.add_column("Workflow ID", style="cyan")
-    table.add_column("Name", style="green")
-    table.add_column("Status", style="yellow")
-    table.add_column("Created", style="magenta")
-    table.add_column("Run ID", style="blue")
-    table.add_row(
-        "wf_example123",
-        "data-processor",
-        "🔄 Running",
-        "2024-01-15 10:30:00",
-        "run_abc456"
-    )
-    table.add_row(
-        "wf_example456",
-        "email-sender",
-        "✅ Completed",
-        "2024-01-15 09:15:00", 
-        "run_def789"
-    )
-
-    console.print("\n")
-    console.print(table)
-    
+def _print_workflows_unavailable_text(status_filter: Optional[str], limit: Optional[int]) -> None:
+    """Print workflow unavailability message in text format."""
     console.print(
         Panel(
-            f"[yellow]🚧 Workflow listing by server not yet implemented[/yellow]\n\n"
-            f"Applied filters:\n"
+            f"[red]❌ Workflow listing unavailable[/red]\n\n"
+            f"Requested filters:\n"
             f"• Status: [cyan]{status_filter or 'All'}[/cyan]\n"
             f"• Limit: [cyan]{limit or 'No limit'}[/cyan]\n\n"
-            f"This command is ready to display workflows running on this server including:\n"
-            f"• Workflow ID and execution details\n"
-            f"• Workflow name and type\n"
-            f"• Current execution status\n"
-            f"• Creation timestamp and run ID\n"
-            f"• Duration and performance metrics\n\n"
-            f"The backend API needs to be extended to support listing workflows\n"
-            f"by server/app ID using the AppSpecifier from the workflow proto.",
-            title="Implementation Status",
-            border_style="yellow",
+            f"[yellow]Issue:[/yellow] No workflow listing API exists in the backend.\n"
+            f"Only individual workflow lookup is supported.\n\n"
+            f"[blue]Alternative:[/blue] Use individual workflow commands:\n"
+            f"• [cyan]mcp-agent cloud workflow status --id <workflow-id>[/cyan]\n\n"
+            f"[dim]To implement this feature, the backend would need:\n"
+            f"• A workflow listing API endpoint\n"
+            f"• Server/app filtering support in workflow queries[/dim]",
+            title="Workflow Listing Not Available",
+            border_style="red",
             expand=False,
         )
     )
