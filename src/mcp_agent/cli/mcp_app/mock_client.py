@@ -16,6 +16,7 @@ from .api_client import (
 MOCK_APP_NAME = "Test App"
 MOCK_APP_ID = "app_aece3598-d229-46d8-83fb-8c61ca7cd435"
 MOCK_APP_CONFIG_ID = "apcnf_55b256a8-3077-431c-9211-b931633bf4c0"
+MOCK_APP_SERVER_URL = "https://mockappaece3598.deployments.mcp-agent.com"
 
 
 class MockMCPAppClient:
@@ -124,35 +125,35 @@ class MockMCPAppClient:
 
     async def configure_app(
         self,
-        app_id: str,
+        app_server_url: str,
         config_params: Dict[str, Any],
     ) -> MCPAppConfiguration:
         """Create a mock MCPAppConfiguration.
 
         Args:
-            app_id: The UUID of the app to configure
+            app_server_url: The server URL of the app to configure
             config_params: Dictionary of configuration parameters (e.g. user secrets)
 
         Returns:
             MCPAppConfiguration: The configured MCP App
 
         Raises:
-            ValueError: If the app_id or config_params is invalid
+            ValueError: If the app_server_url or config_params is invalid
         """
-        if not app_id or not isinstance(app_id, str):
-            raise ValueError(f"Invalid app ID format: {app_id}")
+        if not app_server_url or not isinstance(app_server_url, str):
+            raise ValueError(f"Invalid app server URL format: {app_server_url}")
 
         if not config_params or not isinstance(config_params, dict):
             raise ValueError("Configuration parameters must be a non-empty dictionary")
 
-        if app_id == MOCK_APP_ID:
+        if app_server_url == MOCK_APP_SERVER_URL:
             config_id = MOCK_APP_CONFIG_ID
         else:
-            # Generate a predictable, production-format UUID based on the app ID
+            # Generate a predictable, production-format UUID based on the app server URL
             # This ensures consistent UUIDs in the correct format for testing
-            app_id_hash = hash(app_id)
+            app_server_url_hash = hash(app_server_url)
             # Generate proper UUID using the hash as a seed
-            raw_uuid = uuid.UUID(int=abs(app_id_hash) % (2**128 - 1))
+            raw_uuid = uuid.UUID(int=abs(app_server_url_hash) % (2**128 - 1))
             # Format to standard UUID string
             uuid_str = str(raw_uuid)
 
@@ -162,8 +163,8 @@ class MockMCPAppClient:
         return MCPAppConfiguration(
             appConfigurationId=config_id,
             app=MCPApp(
-                appId=app_id,
-                name=MOCK_APP_NAME if app_id == MOCK_APP_ID else "App",
+                appId=MOCK_APP_ID,
+                name=MOCK_APP_NAME if app_server_url == MOCK_APP_SERVER_URL else "App",
                 creatorId="u_12345678-1234-1234-1234-123456789012",
                 createdAt=datetime.datetime(
                     2025, 6, 16, 0, 0, 0, tzinfo=datetime.timezone.utc
@@ -175,22 +176,22 @@ class MockMCPAppClient:
             creatorId="u_12345678-1234-1234-1234-123456789012",
         )
 
-    async def list_config_params(self, app_id: str) -> List[str]:
+    async def list_config_params(self, app_server_url: str) -> List[str]:
         """List required configuration parameters (e.g. user secrets) for an MCP App via the API.
 
         Args:
-            app_id: The UUID of the app to retrieve config params for
+            app_server_url: The server URL of the app to retrieve config params for
 
         Returns:
             List[str]: List of configuration parameter names
 
         Raises:
-            ValueError: If the app_id is invalid
+            ValueError: If the app_server_url is invalid
         """
-        if not app_id or not isinstance(app_id, str):
-            raise ValueError(f"Invalid app ID format: {app_id}")
+        if not app_server_url or not isinstance(app_server_url, str):
+            raise ValueError(f"Invalid app server URL format: {app_server_url}")
 
-        if app_id == MOCK_APP_ID:
+        if app_server_url == MOCK_APP_SERVER_URL:
             return ["anthropic.api_key", "openai.api_key"]
         else:
             return ["mock-params"]
