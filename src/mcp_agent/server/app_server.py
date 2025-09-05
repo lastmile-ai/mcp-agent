@@ -25,7 +25,10 @@ from mcp_agent.executor.workflow_registry import (
     WorkflowRegistry,
     InMemoryWorkflowRegistry,
 )
-from mcp_agent.executor.temporal.temporal_context import set_execution_id
+from mcp_agent.executor.temporal.temporal_context import (
+    set_execution_id,
+    get_execution_id,
+)
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.logging.logger import LoggingConfig
 from mcp_agent.mcp.mcp_server_registry import ServerRegistry
@@ -608,25 +611,6 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             _install_internal_routes(mcp)
         except Exception:
             pass
-
-    # Register logging/setLevel handler so client can adjust verbosity dynamically
-    # This enables MCP logging capability in InitializeResult.capabilities.logging
-    lowlevel_server = getattr(mcp, "_mcp_server", None)
-    try:
-        if lowlevel_server is not None:
-
-            @lowlevel_server.set_logging_level()
-            async def _set_level(
-                level: str,
-            ) -> None:  # mcp.types.LoggingLevel is a Literal[str]
-                try:
-                    LoggingConfig.set_min_level(level)
-                except Exception:
-                    # Best-effort, do not crash server on invalid level
-                    pass
-    except Exception:
-        # If handler registration fails, continue without dynamic level updates
-        pass
 
     # Register logging/setLevel handler so client can adjust verbosity dynamically
     # This enables MCP logging capability in InitializeResult.capabilities.logging
@@ -1355,6 +1339,7 @@ async def _workflow_run(
     # Generate a unique execution ID to track this run. We need to pass this to the workflow, and the run_id is only established
     # after we create the workflow
     execution_id = str(uuid.uuid4())
+    _prev_exec_id = get_execution_id()
     set_execution_id(execution_id)
 
     # Resolve workflows and app context irrespective of startup mode
@@ -1472,6 +1457,12 @@ async def _workflow_run(
     except Exception as e:
         logger.error(f"Error creating workflow {workflow_name}: {str(e)}")
         raise ToolError(f"Error creating workflow {workflow_name}: {str(e)}") from e
+    finally:
+        # Restore previous execution id to avoid leaking into other requests
+        try:
+            set_execution_id(_prev_exec_id)
+        except Exception:
+            pass
 
 
 async def _workflow_status(
@@ -1498,8 +1489,10 @@ async def _workflow_status(
     try:
         state = str(status.get("status", "")).lower()
         if state in ("completed", "error", "cancelled"):
-            # await _unregister_session(run_id)
-            pass
+            try:
+                await _unregister_session(run_id)
+            except Exception:
+                pass
     except Exception:
         pass
 
