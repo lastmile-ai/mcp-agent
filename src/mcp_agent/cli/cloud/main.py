@@ -20,6 +20,7 @@ from mcp_agent.cli.cloud.commands import (
     logout,
     whoami,
 )
+from mcp_agent.cli.cloud.commands.logger import tail_logs
 from mcp_agent.cli.cloud.commands.app import (
     delete_app,
     get_app_status,
@@ -164,9 +165,24 @@ app_cmd_cloud_auth.command(name="whoami", help="Print current identity and org(s
     whoami
 )
 app_cmd_cloud_auth.command(name="logout", help="Clear credentials.")(logout)
-# Add auth sub-typer to cloud
+# Sub-typer for `mcp-agent cloud logger` commands
+app_cmd_cloud_logger = typer.Typer(
+    help="Log configuration and streaming commands",
+    no_args_is_help=True,
+    cls=HelpfulTyperGroup,
+)
+# Register logger commands under cloud logger
+app_cmd_cloud_logger.command(
+    name="tail",
+    help="Retrieve and stream logs from deployed MCP apps",
+)(tail_logs)
+
+# Add sub-typers to cloud
 app_cmd_cloud.add_typer(app_cmd_cloud_auth, name="auth", help="Authentication commands")
-# Register cloud commands (only containing auth for now)
+app_cmd_cloud.add_typer(
+    app_cmd_cloud_logger, name="logger", help="Logging and observability"
+)
+# Register cloud commands
 app.add_typer(app_cmd_cloud, name="cloud", help="Cloud operations and management")
 # Top-level auth commands that map to cloud auth commands
 app.command(

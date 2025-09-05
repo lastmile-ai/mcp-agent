@@ -6,7 +6,7 @@ for the application configuration.
 import sys
 from io import StringIO
 from pathlib import Path
-from typing import Dict, List, Literal, Optional
+from typing import Dict, List, Literal, Optional, Set
 import threading
 import warnings
 
@@ -104,6 +104,10 @@ class MCPServerSettings(BaseModel):
 
     env: Dict[str, str] | None = None
     """Environment variables to pass to the server process."""
+
+    allowed_tools: Set[str] | None = None
+    """Set of tool names to allow from this server. If specified, only these tools will be exposed to agents. 
+    Tool names should match exactly. [WARNING] Empty list will result LLM have no access to tools."""
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 

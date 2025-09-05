@@ -345,7 +345,26 @@ class MCPAggregator(ContextDependent):
             # Process tools
             async with self._tool_map_lock:
                 self._server_to_tool_map[server_name] = []
+                
+                # Get server configuration to check for tool filtering
+                allowed_tools = None
+                disabled_tool_count = 0
+                if (self.context is None or self.context.server_registry is None
+                        or not hasattr(self.context.server_registry, "get_server_config")):
+                    logger.warning(f"No config found for server '{server_name}', no tool filter will be applied...")
+                else:
+                    allowed_tools = self.context.server_registry.get_server_config(server_name).allowed_tools
+
+                    if allowed_tools is not None and len(allowed_tools) == 0:
+                        logger.warning(f"Allowed tool list is explicitly empty for server '{server_name}'")
+                
                 for tool in tools:
+                    # Apply tool filtering if configured - O(1) lookup with set
+                    if allowed_tools is not None and tool.name not in allowed_tools:
+                        logger.debug(f"Filtering out tool '{tool.name}' from server '{server_name}' (not in allowed_tools)")
+                        disabled_tool_count += 1
+                        continue
+                        
                     namespaced_tool_name = f"{server_name}{SEP}{tool.name}"
                     namespaced_tool = NamespacedTool(
                         tool=tool,
@@ -394,6 +413,7 @@ class MCPAggregator(ContextDependent):
                 "server_name": server_name,
                 "agent_name": self.agent_name,
                 "tool_count": len(tools),
+                "disabled_tool_count": disabled_tool_count,
                 "prompt_count": len(prompts),
                 "resource_count": len(resources),
             }
