@@ -213,7 +213,6 @@ class TestAnthropicAugmentedLLM:
         Tests structured output generation using native Anthropic API.
         """
         from unittest.mock import patch
-        import json
 
         # Define a simple response model
         class TestResponseModel(BaseModel):
@@ -805,7 +804,6 @@ class TestAnthropicAugmentedLLM:
         Tests generate_structured() method with mixed message types.
         """
         from unittest.mock import patch
-        import json
 
         # Define a simple response model
         class TestResponseModel(BaseModel):

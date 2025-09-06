@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from pydantic import BaseModel
@@ -185,13 +185,12 @@ class TestGoogleAugmentedLLM:
 
         # Create a proper GenerateContentResponse with JSON content
         import json
+
         json_content = json.dumps({"name": "Test", "value": 42})
         response = self.create_text_response(json_content)
 
         # Patch executor.execute to return the GenerateContentResponse with JSON
-        mock_llm.executor.execute = AsyncMock(
-            return_value=response
-        )
+        mock_llm.executor.execute = AsyncMock(return_value=response)
 
         # Call the method
         result = await mock_llm.generate_structured("Test query", TestResponseModel)
@@ -769,13 +768,12 @@ class TestGoogleAugmentedLLM:
 
         # Create a proper GenerateContentResponse with JSON content
         import json
+
         json_content = json.dumps({"name": "MixedTypes", "value": 123})
         response = self.create_text_response(json_content)
 
         # Patch executor.execute to return the GenerateContentResponse with JSON
-        mock_llm.executor.execute = AsyncMock(
-            return_value=response
-        )
+        mock_llm.executor.execute = AsyncMock(return_value=response)
 
         result = await mock_llm.generate_structured(messages, TestResponseModel)
         assert isinstance(result, TestResponseModel)

@@ -1,7 +1,6 @@
 import asyncio
 import functools
 import json
-import logging
 from typing import Any, Iterable, Optional, Type, Union
 from azure.core.exceptions import HttpResponseError
 from azure.ai.inference import ChatCompletionsClient
@@ -550,7 +549,7 @@ class AzureCompletionTasks:
                 None, functools.partial(azure_client.complete, **payload)
             )
         except HttpResponseError as e:
-            logger = logging.getLogger(__name__)
+            logger = get_logger(__name__)
 
             if e.status_code != 400:
                 logger.error(f"Azure API call failed: {e}")

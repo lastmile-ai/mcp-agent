@@ -1,5 +1,5 @@
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from openai.types.chat.chat_completion import Choice
@@ -190,9 +190,7 @@ class TestOpenAIAugmentedLLM:
         )
 
         # Patch executor.execute to return the ChatCompletion with JSON
-        mock_llm.executor.execute = AsyncMock(
-            return_value=completion_response
-        )
+        mock_llm.executor.execute = AsyncMock(return_value=completion_response)
 
         # Call the method
         result = await mock_llm.generate_structured("Test query", TestResponseModel)
@@ -627,17 +625,14 @@ class TestOpenAIAugmentedLLM:
         # Create a proper ChatCompletion response with JSON content
         json_content = json.dumps({"name": "MixedTypes", "value": 123})
         completion_response = self.create_text_response(
-            json_content, usage=CompletionUsage(
-                completion_tokens=100,
-                prompt_tokens=150,
-                total_tokens=250
-            )
+            json_content,
+            usage=CompletionUsage(
+                completion_tokens=100, prompt_tokens=150, total_tokens=250
+            ),
         )
 
         # Patch executor.execute to return the ChatCompletion with JSON
-        mock_llm.executor.execute = AsyncMock(
-            return_value=completion_response
-        )
+        mock_llm.executor.execute = AsyncMock(return_value=completion_response)
 
         # Call generate_structured with mixed message types
         result = await mock_llm.generate_structured(messages, TestResponseModel)
