@@ -855,40 +855,6 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         else:
             logger.error(f"Failed to cancel workflow {workflow_name} with ID {run_id}")
 
-    # region Proxy tools for external runners (e.g., Temporal workers)
-
-    # Removed MCP tools for internal proxying in favor of private HTTP routes
-
-    @mcp.tool(name="human_input.submit")
-    async def human_input_submit(request_id: str, text: str) -> Dict[str, Any]:
-        """Client replies to a human_input_request; signal the Temporal workflow."""
-        app_ref = _get_attached_app(mcp)
-        if app_ref is None or app_ref.context is None:
-            return {"ok": False, "error": "server not ready"}
-        async with _PENDING_PROMPTS_LOCK:
-            info = _PENDING_PROMPTS.pop(request_id, None)
-        if not info:
-            return {"ok": False, "error": "unknown request_id"}
-        try:
-            from mcp_agent.executor.temporal import TemporalExecutor
-
-            executor = app_ref.context.executor
-            if not isinstance(executor, TemporalExecutor):
-                return {"ok": False, "error": "temporal executor not active"}
-            client = await executor.ensure_client()
-            handle = client.get_workflow_handle(
-                workflow_id=info.get("workflow_id"), run_id=info.get("execution_id")
-            )
-            await handle.signal(
-                info.get("signal_name", "human_input"),
-                {"request_id": request_id, "text": text},
-            )
-            return {"ok": True}
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
-
-    # endregion
-
     # endregion
 
     return mcp
