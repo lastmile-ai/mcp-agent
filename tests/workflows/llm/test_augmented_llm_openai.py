@@ -174,38 +174,33 @@ class TestOpenAIAugmentedLLM:
     @pytest.mark.asyncio
     async def test_generate_structured(self, mock_llm, default_usage):
         """
-        Tests structured output generation using Instructor.
+        Tests structured output generation using native OpenAI API.
         """
+        import json
 
         # Define a simple response model
         class TestResponseModel(BaseModel):
             name: str
             value: int
 
-        # Set up mocks for the two-stage process
-        # First for the text generation
-        mock_llm.generate_str = AsyncMock(return_value="name: Test, value: 42")
+        # Create a proper ChatCompletion response with JSON content
+        json_content = json.dumps({"name": "Test", "value": 42})
+        completion_response = self.create_text_response(
+            json_content, usage=default_usage
+        )
 
-        # Then for Instructor's structured data extraction
-        with patch("instructor.from_openai") as mock_instructor:
-            mock_client = MagicMock()
-            mock_client.chat.completions.create.return_value = TestResponseModel(
-                name="Test", value=42
-            )
-            mock_instructor.return_value = mock_client
+        # Patch executor.execute to return the ChatCompletion with JSON
+        mock_llm.executor.execute = AsyncMock(
+            return_value=completion_response
+        )
 
-            # Patch executor.execute to be an async mock returning the expected value
-            mock_llm.executor.execute = AsyncMock(
-                return_value=TestResponseModel(name="Test", value=42)
-            )
+        # Call the method
+        result = await mock_llm.generate_structured("Test query", TestResponseModel)
 
-            # Call the method
-            result = await mock_llm.generate_structured("Test query", TestResponseModel)
-
-            # Assertions
-            assert isinstance(result, TestResponseModel)
-            assert result.name == "Test"
-            assert result.value == 42
+        # Assertions
+        assert isinstance(result, TestResponseModel)
+        assert result.name == "Test"
+        assert result.value == 42
 
     # Test 4: With History
     @pytest.mark.asyncio
@@ -612,6 +607,7 @@ class TestOpenAIAugmentedLLM:
         """
         Tests generate_structured() method with mixed message types.
         """
+        import json
 
         # Define a simple response model
         class TestResponseModel(BaseModel):
@@ -628,10 +624,19 @@ class TestOpenAIAugmentedLLM:
             ),
         ]
 
-        mock_llm.generate_str = AsyncMock(return_value="name: MixedTypes, value: 123")
-        # Patch executor.execute to return the expected TestResponseModel instance
+        # Create a proper ChatCompletion response with JSON content
+        json_content = json.dumps({"name": "MixedTypes", "value": 123})
+        completion_response = self.create_text_response(
+            json_content, usage=CompletionUsage(
+                completion_tokens=100,
+                prompt_tokens=150,
+                total_tokens=250
+            )
+        )
+
+        # Patch executor.execute to return the ChatCompletion with JSON
         mock_llm.executor.execute = AsyncMock(
-            return_value=TestResponseModel(name="MixedTypes", value=123)
+            return_value=completion_response
         )
 
         # Call generate_structured with mixed message types

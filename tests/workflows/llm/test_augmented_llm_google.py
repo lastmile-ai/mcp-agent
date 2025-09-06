@@ -183,29 +183,23 @@ class TestGoogleAugmentedLLM:
             name: str
             value: int
 
-        # Mock the generate_str method
-        mock_llm.generate_str = AsyncMock(return_value="name: Test, value: 42")
+        # Create a proper GenerateContentResponse with JSON content
+        import json
+        json_content = json.dumps({"name": "Test", "value": 42})
+        response = self.create_text_response(json_content)
 
-        # Mock instructor from_genai
-        with patch("instructor.from_genai") as mock_instructor:
-            mock_client = MagicMock()
-            mock_client.chat.completions.create.return_value = TestResponseModel(
-                name="Test", value=42
-            )
-            mock_instructor.return_value = mock_client
+        # Patch executor.execute to return the GenerateContentResponse with JSON
+        mock_llm.executor.execute = AsyncMock(
+            return_value=response
+        )
 
-            # Patch executor.execute to be an async mock returning the expected value
-            mock_llm.executor.execute = AsyncMock(
-                return_value=TestResponseModel(name="Test", value=42)
-            )
+        # Call the method
+        result = await mock_llm.generate_structured("Test query", TestResponseModel)
 
-            # Call the method
-            result = await mock_llm.generate_structured("Test query", TestResponseModel)
-
-            # Assertions
-            assert isinstance(result, TestResponseModel)
-            assert result.name == "Test"
-            assert result.value == 42
+        # Assertions
+        assert isinstance(result, TestResponseModel)
+        assert result.name == "Test"
+        assert result.value == 42
 
     # Test 4: With History
     @pytest.mark.asyncio
@@ -773,26 +767,20 @@ class TestGoogleAugmentedLLM:
             ),
         ]
 
-        # Mock the generate_str method
-        mock_llm.generate_str = AsyncMock(return_value="name: MixedTypes, value: 123")
+        # Create a proper GenerateContentResponse with JSON content
+        import json
+        json_content = json.dumps({"name": "MixedTypes", "value": 123})
+        response = self.create_text_response(json_content)
 
-        # Patch instructor.from_genai to return the expected model
-        with patch("instructor.from_genai") as mock_instructor:
-            mock_client = MagicMock()
-            mock_client.chat.completions.create.return_value = TestResponseModel(
-                name="MixedTypes", value=123
-            )
-            mock_instructor.return_value = mock_client
+        # Patch executor.execute to return the GenerateContentResponse with JSON
+        mock_llm.executor.execute = AsyncMock(
+            return_value=response
+        )
 
-            # Patch executor.execute to be an async mock returning the expected value
-            mock_llm.executor.execute = AsyncMock(
-                return_value=TestResponseModel(name="MixedTypes", value=123)
-            )
-
-            result = await mock_llm.generate_structured(messages, TestResponseModel)
-            assert isinstance(result, TestResponseModel)
-            assert result.name == "MixedTypes"
-            assert result.value == 123
+        result = await mock_llm.generate_structured(messages, TestResponseModel)
+        assert isinstance(result, TestResponseModel)
+        assert result.name == "MixedTypes"
+        assert result.value == 123
 
     @pytest.mark.asyncio
     async def test_parallel_tool_calls(self, mock_llm: GoogleAugmentedLLM):

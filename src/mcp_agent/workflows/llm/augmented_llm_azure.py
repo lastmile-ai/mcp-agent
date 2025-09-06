@@ -365,7 +365,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
 
     @classmethod
     def convert_message_to_message_param(
-        cls, message: ResponseMessage, **kwargs
+        cls, message: ResponseMessage
     ) -> AssistantMessage:
         """Convert a response object to an input parameter object to allow LLM calls to be chained."""
         assistant_message = AssistantMessage(
