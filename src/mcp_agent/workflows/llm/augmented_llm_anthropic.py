@@ -468,8 +468,9 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             else:
                 client = AsyncAnthropic()
 
-            async with client.messages.stream(**args) as stream:
-                final = await stream.get_final_message()
+            async with client:
+                async with client.messages.stream(**args) as stream:
+                    final = await stream.get_final_message()
 
             # Extract tool_use input and validate
             for block in final.content:
