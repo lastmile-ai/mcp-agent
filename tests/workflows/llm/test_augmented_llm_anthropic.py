@@ -840,8 +840,6 @@ class TestAnthropicAugmentedLLM:
                 cache_read_input_tokens=0,
                 input_tokens=100,
                 output_tokens=50,
-                server_tool_use=None,
-                service_tier=None,
             ),
         )
 
