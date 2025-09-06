@@ -2,6 +2,7 @@ import asyncio
 import functools
 import json
 from typing import Any, Iterable, Optional, Type, Union
+from azure.core.exceptions import HttpResponseError
 from azure.ai.inference import ChatCompletionsClient
 from azure.ai.inference.models import (
     ChatCompletions,
@@ -351,6 +352,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
             name=response_model.__name__,
             description=response_model.__doc__,
             schema=json_schema,
+            strict=request_params.strict,
         )
         request_params.metadata = metadata
 
@@ -362,7 +364,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
 
     @classmethod
     def convert_message_to_message_param(
-        cls, message: ResponseMessage, **kwargs
+        cls, message: ResponseMessage
     ) -> AssistantMessage:
         """Convert a response object to an input parameter object to allow LLM calls to be chained."""
         assistant_message = AssistantMessage(
@@ -539,12 +541,37 @@ class AzureCompletionTasks:
                 ),
             )
 
-        payload = request.payload
-        # Offload sync SDK call to a thread to avoid blocking the event loop
+        payload = request.payload.copy()
         loop = asyncio.get_running_loop()
-        response = await loop.run_in_executor(
-            None, functools.partial(azure_client.complete, **payload)
-        )
+
+        try:
+            response = await loop.run_in_executor(
+                None, functools.partial(azure_client.complete, **payload)
+            )
+        except HttpResponseError as e:
+            logger = get_logger(__name__)
+
+            if e.status_code != 400:
+                logger.error(f"Azure API call failed: {e}")
+                raise
+
+            logger.warning(
+                f"Initial Azure API call failed: {e}. Retrying with fallback parameters."
+            )
+
+            # Create a new payload with fallback values for commonly problematic parameters
+            fallback_payload = {**payload, "max_tokens": None, "temperature": 1}
+
+            try:
+                response = await loop.run_in_executor(
+                    None, functools.partial(azure_client.complete, **fallback_payload)
+                )
+            except Exception as retry_error:
+                # If retry also fails, raise a more informative error
+                raise RuntimeError(
+                    f"Azure API call failed even with fallback parameters. "
+                    f"Original error: {e}. Retry error: {retry_error}"
+                ) from retry_error
         return response
 
 

@@ -168,6 +168,11 @@ class RequestParams(CreateMessageRequestParams):
     This is used to stably identify the user in the LLM provider's logs.
     """
 
+    strict: bool = False
+    """
+    Whether models that support strict mode should strictly enforce the response schema.
+    """
+
 
 class AugmentedLLMProtocol(Protocol, Generic[MessageParamT, MessageT]):
     """Protocol defining the interface for augmented LLMs"""

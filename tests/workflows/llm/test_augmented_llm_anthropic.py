@@ -210,31 +210,55 @@ class TestAnthropicAugmentedLLM:
     @pytest.mark.asyncio
     async def test_generate_structured(self, mock_llm, default_usage):
         """
-        Tests structured output generation using Instructor.
+        Tests structured output generation using native Anthropic API.
         """
+        from unittest.mock import patch
 
         # Define a simple response model
         class TestResponseModel(BaseModel):
             name: str
             value: int
 
-        # Mock the generate_str method to return a string that will be parsed by the instructor mock
-        mock_llm.generate_str = AsyncMock(return_value="name: Test, value: 42")
-
-        # Patch executor.execute to return the expected TestResponseModel instance
-        mock_llm.executor.execute = AsyncMock(
-            return_value=TestResponseModel(name="Test", value=42)
+        # Create a mock Message with tool_use block containing the structured data
+        tool_use_block = ToolUseBlock(
+            type="tool_use",
+            id="tool_123",
+            name="return_structured_output",
+            input={"name": "Test", "value": 42},
         )
 
-        # Call the method
-        result = await AnthropicAugmentedLLM.generate_structured(
-            mock_llm, "Test query", TestResponseModel
+        mock_message = Message(
+            type="message",
+            id="msg_123",
+            role="assistant",
+            content=[tool_use_block],
+            model="claude-3-7-sonnet-latest",
+            stop_reason="tool_use",
+            usage=default_usage,
         )
 
-        # Assertions
-        assert isinstance(result, TestResponseModel)
-        assert result.name == "Test"
-        assert result.value == 42
+        # Mock the AsyncAnthropic client and streaming
+        with patch(
+            "mcp_agent.workflows.llm.augmented_llm_anthropic.AsyncAnthropic"
+        ) as MockAsyncAnthropic:
+            mock_client = MockAsyncAnthropic.return_value
+            mock_stream = AsyncMock()
+            mock_stream.get_final_message = AsyncMock(return_value=mock_message)
+            mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
+            mock_stream.__aexit__ = AsyncMock(return_value=None)
+            mock_client.messages.stream = MagicMock(return_value=mock_stream)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=None)
+
+            # Call the method
+            result = await AnthropicAugmentedLLM.generate_structured(
+                mock_llm, "Test query", TestResponseModel
+            )
+
+            # Assertions
+            assert isinstance(result, TestResponseModel)
+            assert result.name == "Test"
+            assert result.value == 42
 
     # Test 4: With History
     @pytest.mark.asyncio
@@ -779,6 +803,7 @@ class TestAnthropicAugmentedLLM:
         """
         Tests generate_structured() method with mixed message types.
         """
+        from unittest.mock import patch
 
         # Define a simple response model
         class TestResponseModel(BaseModel):
@@ -795,19 +820,49 @@ class TestAnthropicAugmentedLLM:
             ),
         ]
 
-        mock_llm.generate_str = AsyncMock(return_value="name: MixedTypes, value: 123")
-        # Patch executor.execute to return the expected TestResponseModel instance
-        mock_llm.executor.execute = AsyncMock(
-            return_value=TestResponseModel(name="MixedTypes", value=123)
+        # Create a mock Message with tool_use block containing the structured data
+        tool_use_block = ToolUseBlock(
+            type="tool_use",
+            id="tool_456",
+            name="return_structured_output",
+            input={"name": "MixedTypes", "value": 123},
         )
 
-        # Call generate_structured with mixed message types
-        result = await mock_llm.generate_structured(messages, TestResponseModel)
+        mock_message = Message(
+            type="message",
+            id="msg_456",
+            role="assistant",
+            content=[tool_use_block],
+            model="claude-3-7-sonnet-latest",
+            stop_reason="tool_use",
+            usage=Usage(
+                cache_creation_input_tokens=0,
+                cache_read_input_tokens=0,
+                input_tokens=100,
+                output_tokens=50,
+            ),
+        )
 
-        # Assertions
-        assert isinstance(result, TestResponseModel)
-        assert result.name == "MixedTypes"
-        assert result.value == 123
+        # Mock the AsyncAnthropic client and streaming
+        with patch(
+            "mcp_agent.workflows.llm.augmented_llm_anthropic.AsyncAnthropic"
+        ) as MockAsyncAnthropic:
+            mock_client = MockAsyncAnthropic.return_value
+            mock_stream = AsyncMock()
+            mock_stream.get_final_message = AsyncMock(return_value=mock_message)
+            mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
+            mock_stream.__aexit__ = AsyncMock(return_value=None)
+            mock_client.messages.stream = MagicMock(return_value=mock_stream)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=None)
+
+            # Call generate_structured with mixed message types
+            result = await mock_llm.generate_structured(messages, TestResponseModel)
+
+            # Assertions
+            assert isinstance(result, TestResponseModel)
+            assert result.name == "MixedTypes"
+            assert result.value == 123
 
     # Test 25: System Prompt Not None in API Call
     @pytest.mark.asyncio
