@@ -539,12 +539,20 @@ class AzureCompletionTasks:
                 ),
             )
 
-        payload = request.payload
+        payload = request.payload.copy()
+        # Remove user from kwargs - Azure SDK expects it in request body, not as kwarg
+        user = payload.pop('user', None)
+        
         # Offload sync SDK call to a thread to avoid blocking the event loop
         loop = asyncio.get_running_loop()
-        response = await loop.run_in_executor(
-            None, functools.partial(azure_client.complete, **payload)
-        )
+        if user:
+            response = await loop.run_in_executor(
+                None, functools.partial(azure_client.complete, user=user, **payload)
+            )
+        else:
+            response = await loop.run_in_executor(
+                None, functools.partial(azure_client.complete, **payload)
+            )
         return response
 
 
