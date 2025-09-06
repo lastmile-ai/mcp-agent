@@ -170,7 +170,7 @@ class RequestParams(CreateMessageRequestParams):
 
     strict: bool = False
     """
-    Whether model should adhere strictly to the response format when generating structured outputs.
+    Whether models that support strict mode should strictly enforce the response schema.
     """
 
 
