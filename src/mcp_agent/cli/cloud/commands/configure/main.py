@@ -24,8 +24,6 @@ from mcp_agent.cli.core.utils import run_async
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.mcp_app.api_client import (
     MCPAppClient,
-    is_valid_app_id_format,
-    is_valid_server_url_format,
 )
 from mcp_agent.cli.mcp_app.mock_client import MockMCPAppClient
 from mcp_agent.cli.secrets.mock_client import MockSecretsClient
@@ -41,11 +39,11 @@ from mcp_agent.cli.utils.ux import (
 
 
 def configure_app(
-    app_id_or_url: str = typer.Option(
+    app_server_url: str = typer.Option(
         None,
         "--id",
         "-i",
-        help="ID or server URL of the app to configure.",
+        help="Server URL of the app to configure.",
     ),
     secrets_file: Optional[Path] = typer.Option(
         None,
@@ -90,7 +88,7 @@ def configure_app(
     """Configure an MCP app with the required params (e.g. user secrets).
 
     Args:
-        app_id_or_url: ID or server URL of the MCP App to configure
+        app_server_url: Server URL of the MCP App to configure
         secrets_file: Path to an existing secrets file containing processed user secrets to use for configuring the app
         secrets_output_file: Path to write processed secrets to, if secrets are prompted. Defaults to mcp-agent.configured.secrets.yaml
         dry_run: Don't actually store secrets, just validate
@@ -101,8 +99,8 @@ def configure_app(
         Configured app ID.
     """
     # Check what params the app requires (doubles as an access check)
-    if not app_id_or_url:
-        raise CLIError("You must provide an app ID or server URL to configure.")
+    if not app_server_url:
+        raise CLIError("You must provide a server URL to configure.")
 
     effective_api_key = api_key or settings.API_KEY or load_api_key_credentials()
     if not effective_api_key:
@@ -122,30 +120,6 @@ def configure_app(
             api_url=api_url or DEFAULT_API_BASE_URL, api_key=effective_api_key
         )
 
-    app_id = app_server_url = None
-    if is_valid_app_id_format(app_id_or_url):
-        app_id = app_id_or_url
-    elif is_valid_server_url_format(app_id_or_url):
-        app_server_url = app_id_or_url
-
-    try:
-        app = client.get_app(app_id=app_id, server_url=app_server_url)
-        app = run_async(client.get_app(app_id=app_id, server_url=app_server_url))
-
-        if not app:
-            raise CLIError(f"App with ID or URL '{app_id_or_url}' not found.")
-
-        app_id = app.appId
-
-    except UnauthenticatedError as e:
-        raise CLIError(
-            "Invalid API key. Run 'mcp-agent login' or set MCP_API_KEY environment variable with new API key."
-        ) from e
-    except Exception as e:
-        raise CLIError(
-            f"Error retrieving app to configure with ID or URL {app_id_or_url}",
-        ) from e
-
     # Cannot provide both secrets_file and secrets_output_file; either must be yaml files
     if secrets_file and secrets_output_file:
         raise CLIError(
@@ -162,9 +136,17 @@ def configure_app(
 
     required_params = []
     try:
-        required_params = run_async(client.list_config_params(app_id=app_id))
+        required_params = run_async(
+            client.list_config_params(app_server_url=app_server_url)
+        )
+    except UnauthenticatedError as e:
+        raise CLIError(
+            "Invalid API key. Run 'mcp-agent login' or set MCP_API_KEY environment variable with new API key."
+        ) from e
     except Exception as e:
-        raise CLIError(f"Failed to retrieve required secrets for app {app_id}: {e}")
+        raise CLIError(
+            f"Failed to retrieve required secrets for app {app_server_url}: {e}"
+        ) from e
 
     requires_secrets = len(required_params) > 0
     configured_secrets = {}
@@ -172,10 +154,10 @@ def configure_app(
     if params:
         if requires_secrets:
             print_info(
-                f"App {app_id} requires the following ({len(required_params)}) user secrets: {', '.join(required_params)}"
+                f"App {app_server_url} requires the following ({len(required_params)}) user secrets: {', '.join(required_params)}"
             )
         else:
-            print_info(f"App {app_id} does not require any user secrets.")
+            print_info(f"App {app_server_url} does not require any user secrets.")
         raise typer.Exit(0)
 
     if requires_secrets:
@@ -187,7 +169,7 @@ def configure_app(
         print_configuration_header(secrets_file, secrets_output_file, dry_run)
 
         print_info(
-            f"App {app_id} requires the following ({len(required_params)}) user secrets: {', '.join(required_params)}"
+            f"App {app_server_url} requires the following ({len(required_params)}) user secrets: {', '.join(required_params)}"
         )
 
         try:
@@ -238,10 +220,10 @@ def configure_app(
             raise CLIError(f"{str(e)}") from e
 
     else:
-        print_info(f"App {app_id} does not require any parameters.")
+        print_info(f"App {app_server_url} does not require any parameters.")
         if secrets_file:
             raise CLIError(
-                f"App {app_id} does not require any parameters, but a secrets file was provided: {secrets_file}"
+                f"App {app_server_url} does not require any parameters, but a secrets file was provided: {secrets_file}"
             )
 
     if dry_run:
@@ -257,7 +239,9 @@ def configure_app(
 
         try:
             config = run_async(
-                client.configure_app(app_id=app_id, config_params=configured_secrets)
+                client.configure_app(
+                    app_server_url=app_server_url, config_params=configured_secrets
+                )
             )
             progress.update(task, description="✅ MCP App configured successfully!")
             console.print(
@@ -273,4 +257,4 @@ def configure_app(
 
         except Exception as e:
             progress.update(task, description="❌ MCP App configuration failed")
-            raise CLIError(f"Failed to configure app {app_id}: {str(e)}") from e
+            raise CLIError(f"Failed to configure app {app_server_url}: {str(e)}") from e
