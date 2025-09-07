@@ -91,7 +91,7 @@ class TemporalSignalHandler(BaseSignalHandler[SignalValueT]):
             TimeoutError: If timeout is reached
             ValueError: If no value exists for the signal after waiting
         """
-        if not workflow._Runtime.current():
+        if not workflow.in_workflow():
             raise RuntimeError("wait_for_signal must be called from within a workflow")
 
         # Get the mailbox safely from ContextVar
@@ -156,7 +156,7 @@ class TemporalSignalHandler(BaseSignalHandler[SignalValueT]):
         # Validate the signal (already checks workflow_id is not None)
         self.validate_signal(signal)
 
-        if workflow._Runtime.current() is not None:
+        if workflow.in_workflow():
             workflow_info = workflow.info()
             if (
                 signal.workflow_id == workflow_info.workflow_id

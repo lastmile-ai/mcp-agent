@@ -17,11 +17,10 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.auth import load_credentials, UserCredentials
-from mcp_agent.cli.core.constants import DEFAULT_API_BASE_URL
-from mcp_agent.cli.cloud.commands.logger.utils import (
-    parse_app_identifier,
-    resolve_server_url,
-)
+from mcp_agent.cli.cloud.commands.servers.utils import setup_authenticated_client
+from mcp_agent.cli.core.api_client import UnauthenticatedError
+from mcp_agent.cli.core.utils import parse_app_identifier, resolve_server_url
+from mcp_agent.cli.utils.ux import print_error
 
 console = Console()
 
@@ -30,7 +29,7 @@ DEFAULT_LOG_LIMIT = 100
 
 def tail_logs(
     app_identifier: str = typer.Argument(
-        help="Server ID, URL, or app configuration ID to retrieve logs for"
+        help="App ID or app configuration ID to retrieve logs for"
     ),
     since: Optional[str] = typer.Option(
         None,
@@ -85,7 +84,7 @@ def tail_logs(
         mcp-agent cloud logger tail app_abc123 --limit 50
 
         # Stream logs continuously
-        mcp-agent cloud logger tail https://app.mcpac.dev/abc123 --follow
+        mcp-agent cloud logger tail app_abc123 --follow
 
         # Show logs from the last hour with error filtering
         mcp-agent cloud logger tail app_abc123 --since 1h --grep "ERROR|WARN"
@@ -96,52 +95,42 @@ def tail_logs(
 
     credentials = load_credentials()
     if not credentials:
-        console.print(
-            "[red]Error: Not authenticated. Run 'mcp-agent login' first.[/red]"
-        )
+        print_error("Not authenticated. Run 'mcp-agent login' first.")
         raise typer.Exit(4)
 
     # Validate conflicting options
     if follow and since:
-        console.print(
-            "[red]Error: --since cannot be used with --follow (streaming mode)[/red]"
-        )
+        print_error("--since cannot be used with --follow (streaming mode)")
         raise typer.Exit(6)
 
     if follow and limit != DEFAULT_LOG_LIMIT:
-        console.print(
-            "[red]Error: --limit cannot be used with --follow (streaming mode)[/red]"
-        )
+        print_error("--limit cannot be used with --follow (streaming mode)")
         raise typer.Exit(6)
 
     if follow and order_by:
-        console.print(
-            "[red]Error: --order-by cannot be used with --follow (streaming mode)[/red]"
-        )
+        print_error("--order-by cannot be used with --follow (streaming mode)")
         raise typer.Exit(6)
 
     if follow and (asc or desc):
-        console.print(
-            "[red]Error: --asc/--desc cannot be used with --follow (streaming mode)[/red]"
-        )
+        print_error("--asc/--desc cannot be used with --follow (streaming mode)")
         raise typer.Exit(6)
 
     # Validate order_by values
     if order_by and order_by not in ["timestamp", "severity"]:
-        console.print("[red]Error: --order-by must be 'timestamp' or 'severity'[/red]")
+        print_error("--order-by must be 'timestamp' or 'severity'")
         raise typer.Exit(6)
 
     # Validate that both --asc and --desc are not used together
     if asc and desc:
-        console.print("[red]Error: Cannot use both --asc and --desc together[/red]")
+        print_error("Cannot use both --asc and --desc together")
         raise typer.Exit(6)
 
     # Validate format values
     if format and format not in ["text", "json", "yaml"]:
-        console.print("[red]Error: --format must be 'text', 'json', or 'yaml'[/red]")
+        print_error("--format must be 'text', 'json', or 'yaml'")
         raise typer.Exit(6)
 
-    app_id, config_id, server_url = parse_app_identifier(app_identifier)
+    app_id, config_id = parse_app_identifier(app_identifier)
 
     try:
         if follow:
@@ -149,7 +138,6 @@ def tail_logs(
                 _stream_logs(
                     app_id=app_id,
                     config_id=config_id,
-                    server_url=server_url,
                     credentials=credentials,
                     grep_pattern=grep,
                     app_identifier=app_identifier,
@@ -161,7 +149,6 @@ def tail_logs(
                 _fetch_logs(
                     app_id=app_id,
                     config_id=config_id,
-                    server_url=server_url,
                     credentials=credentials,
                     since=since,
                     grep_pattern=grep,
@@ -177,14 +164,12 @@ def tail_logs(
         console.print("\n[yellow]Interrupted by user[/yellow]")
         sys.exit(0)
     except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(5)
+        raise CLIError(str(e))
 
 
 async def _fetch_logs(
     app_id: Optional[str],
     config_id: Optional[str],
-    server_url: Optional[str],
     credentials: UserCredentials,
     since: Optional[str],
     grep_pattern: Optional[str],
@@ -196,38 +181,22 @@ async def _fetch_logs(
 ) -> None:
     """Fetch logs one-time via HTTP API."""
 
-    api_base = DEFAULT_API_BASE_URL
-    headers = {
-        "Authorization": f"Bearer {credentials.api_key}",
-        "Content-Type": "application/json",
-    }
+    client = setup_authenticated_client()
 
-    payload = {}
-
-    if app_id:
-        payload["app_id"] = app_id
-    elif config_id:
-        payload["app_configuration_id"] = config_id
-    else:
-        raise CLIError(
-            "Unable to determine app or configuration ID from provided identifier"
-        )
-
-    if since:
-        payload["since"] = since
-    if limit:
-        payload["limit"] = limit
-
+    # Map order_by parameter from CLI to API format
+    order_by_param = None
     if order_by:
         if order_by == "timestamp":
-            payload["orderBy"] = "LOG_ORDER_BY_TIMESTAMP"
+            order_by_param = "LOG_ORDER_BY_TIMESTAMP"
         elif order_by == "severity":
-            payload["orderBy"] = "LOG_ORDER_BY_LEVEL"
+            order_by_param = "LOG_ORDER_BY_LEVEL"
 
+    # Map order parameter from CLI to API format
+    order_param = None
     if asc:
-        payload["order"] = "LOG_ORDER_ASC"
+        order_param = "LOG_ORDER_ASC"
     elif desc:
-        payload["order"] = "LOG_ORDER_DESC"
+        order_param = "LOG_ORDER_DESC"
 
     with Progress(
         SpinnerColumn(),
@@ -238,27 +207,28 @@ async def _fetch_logs(
         progress.add_task("Fetching logs...", total=None)
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    f"{api_base}/mcp_app/get_app_logs",
-                    json=payload,
-                    headers=headers,
+            response = await client.get_app_logs(
+                app_id=app_id,
+                app_configuration_id=config_id,
+                since=since,
+                limit=limit,
+                order_by=order_by_param,
+                order=order_param,
+            )
+            # Convert LogEntry models to dictionaries for compatibility with display functions
+            log_entries = [entry.model_dump() for entry in response.log_entries_list]
+
+        except UnauthenticatedError:
+            raise CLIError("Authentication failed. Try running 'mcp-agent login'")
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                raise CLIError("App or configuration not found")
+            elif e.response.status_code == 401:
+                raise CLIError("Authentication failed. Try running 'mcp-agent login'")
+            else:
+                raise CLIError(
+                    f"API request failed: {e.response.status_code} {e.response.text}"
                 )
-
-                if response.status_code == 401:
-                    raise CLIError(
-                        "Authentication failed. Try running 'mcp-agent login'"
-                    )
-                elif response.status_code == 404:
-                    raise CLIError("App or configuration not found")
-                elif response.status_code != 200:
-                    raise CLIError(
-                        f"API request failed: {response.status_code} {response.text}"
-                    )
-
-                data = response.json()
-                log_entries = data.get("logEntries", [])
-
         except httpx.RequestError as e:
             raise CLIError(f"Failed to connect to API: {e}")
 
@@ -276,7 +246,6 @@ async def _fetch_logs(
 async def _stream_logs(
     app_id: Optional[str],
     config_id: Optional[str],
-    server_url: Optional[str],
     credentials: UserCredentials,
     grep_pattern: Optional[str],
     app_identifier: str,
@@ -284,8 +253,7 @@ async def _stream_logs(
 ) -> None:
     """Stream logs continuously via SSE."""
 
-    if not server_url:
-        server_url = await resolve_server_url(app_id, config_id, credentials)
+    server_url = await resolve_server_url(app_id, config_id, credentials)
 
     parsed = urlparse(server_url)
     stream_url = f"{parsed.scheme}://{parsed.netloc}/logs"

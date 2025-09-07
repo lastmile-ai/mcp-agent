@@ -104,6 +104,27 @@ def is_valid_server_url_format(server_url: str) -> bool:
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
+class LogEntry(BaseModel):
+    """Represents a single log entry."""
+    timestamp: Optional[str] = None
+    level: Optional[str] = None
+    message: Optional[str] = None
+    # Allow additional fields that might be present
+    
+    class Config:
+        extra = "allow"
+
+
+class GetAppLogsResponse(BaseModel):
+    """Response from get_app_logs API endpoint."""
+    logEntries: Optional[List[LogEntry]] = []
+    
+    @property
+    def log_entries_list(self) -> List[LogEntry]:
+        """Get log entries regardless of field name format."""
+        return self.logEntries or []
+
+
 class MCPAppClient(APIClient):
     """Client for interacting with the MCP App API service over HTTP."""
 
@@ -588,3 +609,62 @@ class MCPAppClient(APIClient):
             resource_name=f"MCP_APP_CONFIG:{app_config_id}",
             action="MANAGE:MCP_APP_CONFIG",
         )
+
+    async def get_app_logs(
+        self,
+        app_id: Optional[str] = None,
+        app_configuration_id: Optional[str] = None,
+        since: Optional[str] = None,
+        limit: Optional[int] = None,
+        order_by: Optional[str] = None,
+        order: Optional[str] = None,
+    ) -> GetAppLogsResponse:
+        """Get logs for an MCP App or App Configuration via the API.
+
+        Args:
+            app_id: The UUID of the app to get logs for (mutually exclusive with app_configuration_id)
+            app_configuration_id: The UUID of the app configuration to get logs for (mutually exclusive with app_id)
+            since: Time filter for logs (e.g., "1h", "24h", "7d")
+            limit: Maximum number of log entries to return
+            order_by: Field to order by ("LOG_ORDER_BY_TIMESTAMP" or "LOG_ORDER_BY_LEVEL")
+            order: Log ordering direction ("LOG_ORDER_ASC" or "LOG_ORDER_DESC")
+
+        Returns:
+            GetAppLogsResponse: The retrieved log entries
+
+        Raises:
+            ValueError: If neither or both app_id and app_configuration_id are provided, or if IDs are invalid
+            httpx.HTTPStatusError: If the API returns an error (e.g., 404, 403)
+            httpx.HTTPError: If the request fails
+        """
+        # Validate inputs
+        if not app_id and not app_configuration_id:
+            raise ValueError("Either app_id or app_configuration_id must be provided")
+        if app_id and app_configuration_id:
+            raise ValueError("Only one of app_id or app_configuration_id can be provided")
+        
+        if app_id and not is_valid_app_id_format(app_id):
+            raise ValueError(f"Invalid app ID format: {app_id}")
+        if app_configuration_id and not is_valid_app_config_id_format(app_configuration_id):
+            raise ValueError(f"Invalid app configuration ID format: {app_configuration_id}")
+
+        # Prepare request payload
+        payload = {}
+        if app_id:
+            payload["app_id"] = app_id
+        if app_configuration_id:
+            payload["app_configuration_id"] = app_configuration_id
+        if since:
+            payload["since"] = since
+        if limit:
+            payload["limit"] = limit
+        if order_by:
+            payload["order_by"] = order_by
+        if order:
+            payload["order"] = order
+
+        response = await self.post("/mcp_app/get_app_logs", payload)
+
+        # Parse the response
+        data = response.json()
+        return GetAppLogsResponse(**data)

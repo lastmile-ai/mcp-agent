@@ -28,18 +28,15 @@ def whoami() -> None:
 
     console = Console()
 
-    # Create user info table
     user_table = Table(show_header=False, box=None)
     user_table.add_column("Field", style="bold")
     user_table.add_column("Value")
 
-    # Add user information
     if credentials.username:
         user_table.add_row("Username", credentials.username)
     if credentials.email:
         user_table.add_row("Email", credentials.email)
 
-    # Add token expiry if available
     if credentials.token_expires_at:
         user_table.add_row(
             "Token Expires",
@@ -48,6 +45,5 @@ def whoami() -> None:
     else:
         user_table.add_row("Token Expires", "Never")
 
-    # Create user panel
     user_panel = Panel(user_table, title="User Information", title_align="left")
     console.print(user_panel)

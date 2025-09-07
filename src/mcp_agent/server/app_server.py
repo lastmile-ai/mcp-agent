@@ -7,8 +7,13 @@ import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional, Set, Tuple, Type, TYPE_CHECKING
+import os
+import secrets
+import asyncio
 
 from mcp.server.fastmcp import Context as MCPContext, FastMCP
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.fastmcp.tools import Tool as FastTool
 
@@ -20,6 +25,7 @@ from mcp_agent.executor.workflow_registry import (
     WorkflowRegistry,
     InMemoryWorkflowRegistry,
 )
+
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.logging.logger import LoggingConfig
 from mcp_agent.mcp.mcp_server_registry import ServerRegistry
@@ -28,6 +34,33 @@ if TYPE_CHECKING:
     from mcp_agent.core.context import Context
 
 logger = get_logger(__name__)
+# Simple in-memory registry mapping workflow execution_id -> upstream session handle.
+# Allows external workers (e.g., Temporal) to relay logs/prompts through MCPApp.
+_RUN_SESSION_REGISTRY: Dict[str, Any] = {}
+_RUN_EXECUTION_ID_REGISTRY: Dict[str, str] = {}
+_RUN_SESSION_LOCK = asyncio.Lock()
+_PENDING_PROMPTS: Dict[str, Dict[str, Any]] = {}
+_PENDING_PROMPTS_LOCK = asyncio.Lock()
+_IDEMPOTENCY_KEYS_SEEN: Dict[str, Set[str]] = {}
+_IDEMPOTENCY_KEYS_LOCK = asyncio.Lock()
+
+
+async def _register_session(run_id: str, execution_id: str, session: Any) -> None:
+    async with _RUN_SESSION_LOCK:
+        _RUN_SESSION_REGISTRY[execution_id] = session
+        _RUN_EXECUTION_ID_REGISTRY[run_id] = execution_id
+
+
+async def _unregister_session(run_id: str) -> None:
+    async with _RUN_SESSION_LOCK:
+        execution_id = _RUN_EXECUTION_ID_REGISTRY.pop(run_id, None)
+        if execution_id:
+            _RUN_SESSION_REGISTRY.pop(execution_id, None)
+
+
+async def _get_session(execution_id: str) -> Any | None:
+    async with _RUN_SESSION_LOCK:
+        return _RUN_SESSION_REGISTRY.get(execution_id)
 
 
 class ServerContext(ContextDependent):
@@ -287,6 +320,259 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             # Don't clean up the MCPApp here - let the caller handle that
             pass
 
+    # Helper: install internal HTTP routes (not MCP tools)
+    def _install_internal_routes(mcp_server: FastMCP) -> None:
+        @mcp_server.custom_route(
+            "/internal/session/by-run/{execution_id}/notify",
+            methods=["POST"],
+            include_in_schema=False,
+        )
+        async def _relay_notify(request: Request):
+            body = await request.json()
+            execution_id = request.path_params.get("execution_id")
+            method = body.get("method")
+            params = body.get("params") or {}
+
+            # Optional shared-secret auth
+            gw_token = os.environ.get("MCP_GATEWAY_TOKEN")
+            if gw_token and not secrets.compare_digest(
+                request.headers.get("X-MCP-Gateway-Token", ""), gw_token
+            ):
+                return JSONResponse(
+                    {"ok": False, "error": "unauthorized"}, status_code=401
+                )
+
+            # Optional idempotency handling
+            idempotency_key = params.get("idempotency_key")
+            if idempotency_key:
+                async with _IDEMPOTENCY_KEYS_LOCK:
+                    seen = _IDEMPOTENCY_KEYS_SEEN.setdefault(execution_id or "", set())
+                    if idempotency_key in seen:
+                        return JSONResponse({"ok": True, "idempotent": True})
+                    seen.add(idempotency_key)
+
+            session = await _get_session(execution_id)
+            if not session:
+                return JSONResponse(
+                    {"ok": False, "error": "session_not_available"}, status_code=503
+                )
+
+            try:
+                # Special-case the common logging notification helper
+                if method == "notifications/message":
+                    level = str(params.get("level", "info"))
+                    data = params.get("data")
+                    logger_name = params.get("logger")
+                    related_request_id = params.get("related_request_id")
+                    await session.send_log_message(  # type: ignore[attr-defined]
+                        level=level,  # type: ignore[arg-type]
+                        data=data,
+                        logger=logger_name,
+                        related_request_id=related_request_id,
+                    )
+                elif method == "notifications/progress":
+                    # Minimal support for progress relay
+                    progress_token = params.get("progressToken")
+                    progress = params.get("progress")
+                    total = params.get("total")
+                    message = params.get("message")
+                    await session.send_progress_notification(  # type: ignore[attr-defined]
+                        progress_token=progress_token,
+                        progress=progress,
+                        total=total,
+                        message=message,
+                    )
+                else:
+                    # Generic passthrough using low-level RPC if available
+                    rpc = getattr(session, "rpc", None)
+                    if rpc and hasattr(rpc, "notify"):
+                        await rpc.notify(method, params)
+                    else:
+                        return JSONResponse(
+                            {"ok": False, "error": f"unsupported method: {method}"},
+                            status_code=400,
+                        )
+
+                return JSONResponse({"ok": True})
+            except Exception as e:
+                return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+        @mcp_server.custom_route(
+            "/internal/session/by-run/{execution_id}/request",
+            methods=["POST"],
+            include_in_schema=False,
+        )
+        async def _relay_request(request: Request):
+            from mcp.types import (
+                CreateMessageRequest,
+                CreateMessageRequestParams,
+                CreateMessageResult,
+                ElicitRequest,
+                ElicitRequestParams,
+                ElicitResult,
+                ListRootsRequest,
+                ListRootsResult,
+                PingRequest,
+                EmptyResult,
+                ServerRequest,
+            )
+
+            body = await request.json()
+            execution_id = request.path_params.get("execution_id")
+            method = body.get("method")
+            params = body.get("params") or {}
+
+            session = await _get_session(execution_id)
+            if not session:
+                return JSONResponse({"error": "session_not_available"}, status_code=503)
+
+            try:
+                # Prefer generic request passthrough if available
+                rpc = getattr(session, "rpc", None)
+                if rpc and hasattr(rpc, "request"):
+                    result = await rpc.request(method, params)
+                    return JSONResponse(result)
+                # Fallback: Map a small set of supported server->client requests
+                if method == "sampling/createMessage":
+                    req = ServerRequest(
+                        CreateMessageRequest(
+                            method="sampling/createMessage",
+                            params=CreateMessageRequestParams(**params),
+                        )
+                    )
+                    result = await session.send_request(  # type: ignore[attr-defined]
+                        request=req,
+                        result_type=CreateMessageResult,
+                    )
+                    return JSONResponse(
+                        result.model_dump(by_alias=True, mode="json", exclude_none=True)
+                    )
+                elif method == "elicitation/create":
+                    req = ServerRequest(
+                        ElicitRequest(
+                            method="elicitation/create",
+                            params=ElicitRequestParams(**params),
+                        )
+                    )
+                    result = await session.send_request(  # type: ignore[attr-defined]
+                        request=req,
+                        result_type=ElicitResult,
+                    )
+                    return JSONResponse(
+                        result.model_dump(by_alias=True, mode="json", exclude_none=True)
+                    )
+                elif method == "roots/list":
+                    req = ServerRequest(ListRootsRequest(method="roots/list"))
+                    result = await session.send_request(  # type: ignore[attr-defined]
+                        request=req,
+                        result_type=ListRootsResult,
+                    )
+                    return JSONResponse(
+                        result.model_dump(by_alias=True, mode="json", exclude_none=True)
+                    )
+                elif method == "ping":
+                    req = ServerRequest(PingRequest(method="ping"))
+                    result = await session.send_request(  # type: ignore[attr-defined]
+                        request=req,
+                        result_type=EmptyResult,
+                    )
+                    return JSONResponse(
+                        result.model_dump(by_alias=True, mode="json", exclude_none=True)
+                    )
+                else:
+                    return JSONResponse(
+                        {"error": f"unsupported method: {method}"}, status_code=400
+                    )
+            except Exception as e:
+                return JSONResponse({"error": str(e)}, status_code=500)
+
+        @mcp_server.custom_route(
+            "/internal/workflows/log", methods=["POST"], include_in_schema=False
+        )
+        async def _internal_workflows_log(request: Request):
+            body = await request.json()
+            execution_id = body.get("execution_id")
+            level = str(body.get("level", "info")).lower()
+            namespace = body.get("namespace") or "mcp_agent"
+            message = body.get("message") or ""
+            data = body.get("data") or {}
+
+            # Optional shared-secret auth
+            gw_token = os.environ.get("MCP_GATEWAY_TOKEN")
+            if gw_token and not secrets.compare_digest(
+                request.headers.get("X-MCP-Gateway-Token", ""), gw_token
+            ):
+                return JSONResponse(
+                    {"ok": False, "error": "unauthorized"}, status_code=401
+                )
+
+            session = await _get_session(execution_id)
+            if not session:
+                return JSONResponse(
+                    {"ok": False, "error": "session_not_available"}, status_code=503
+                )
+            if level not in ("debug", "info", "warning", "error"):
+                level = "info"
+            try:
+                await session.send_log_message(
+                    level=level,  # type: ignore[arg-type]
+                    data={
+                        "message": message,
+                        "namespace": namespace,
+                        "data": data,
+                    },
+                    logger=namespace,
+                )
+                return JSONResponse({"ok": True})
+            except Exception as e:
+                return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+        @mcp_server.custom_route(
+            "/internal/human/prompts", methods=["POST"], include_in_schema=False
+        )
+        async def _internal_human_prompts(request: Request):
+            body = await request.json()
+            execution_id = body.get("execution_id")
+            prompt = body.get("prompt") or {}
+            metadata = body.get("metadata") or {}
+
+            # Optional shared-secret auth
+            gw_token = os.environ.get("MCP_GATEWAY_TOKEN")
+            if gw_token and not secrets.compare_digest(
+                request.headers.get("X-MCP-Gateway-Token", ""), gw_token
+            ):
+                return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+            session = await _get_session(execution_id)
+            if not session:
+                return JSONResponse({"error": "session_not_available"}, status_code=503)
+            import uuid
+
+            request_id = str(uuid.uuid4())
+            payload = {
+                "kind": "human_input_request",
+                "request_id": request_id,
+                "prompt": prompt if isinstance(prompt, dict) else {"text": str(prompt)},
+                "metadata": metadata,
+            }
+            try:
+                # Store pending prompt correlation for submit tool
+                async with _PENDING_PROMPTS_LOCK:
+                    _PENDING_PROMPTS[request_id] = {
+                        "workflow_id": metadata.get("workflow_id"),
+                        "execution_id": execution_id,
+                        "signal_name": metadata.get("signal_name", "human_input"),
+                        "session_id": metadata.get("session_id"),
+                    }
+                await session.send_log_message(
+                    level="info",  # type: ignore[arg-type]
+                    data=payload,
+                    logger="mcp_agent.human",
+                )
+                return JSONResponse({"request_id": request_id})
+            except Exception as e:
+                return JSONResponse({"error": str(e)}, status_code=500)
+
     # Create or attach FastMCP server
     if app.mcp:
         # Using an externally provided FastMCP instance: attach app and context
@@ -305,6 +591,11 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         create_workflow_tools(mcp, server_context)
         # Register function-declared tools (from @app.tool/@app.async_tool)
         create_declared_function_tools(mcp, server_context)
+        # Install internal HTTP routes
+        try:
+            _install_internal_routes(mcp)
+        except Exception:
+            pass
     else:
         mcp = FastMCP(
             name=app.name or "mcp_agent_server",
@@ -318,6 +609,11 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         # Store the server on the app so it's discoverable and can be extended further
         app.mcp = mcp
         setattr(mcp, "_mcp_agent_app", app)
+        # Install internal HTTP routes
+        try:
+            _install_internal_routes(mcp)
+        except Exception:
+            pass
 
     # Register logging/setLevel handler so client can adjust verbosity dynamically
     # This enables MCP logging capability in InitializeResult.capabilities.logging
@@ -347,6 +643,11 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         Returns information about each workflow type including name, description, and parameters.
         This helps in making an informed decision about which workflow to run.
         """
+        # Ensure upstream session is set for any logs emitted during this call
+        try:
+            _set_upstream_from_request_ctx_if_available(ctx)
+        except Exception:
+            pass
         result: Dict[str, Dict[str, Any]] = {}
         workflows, _ = _resolve_workflows_and_context(ctx)
         workflows = workflows or {}
@@ -391,6 +692,12 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         Returns:
             A dictionary mapping workflow instance IDs to their detailed status information.
         """
+        # Ensure upstream session is set for any logs emitted during this call
+        try:
+            _set_upstream_from_request_ctx_if_available(ctx)
+        except Exception:
+            pass
+
         server_context = getattr(
             ctx.request_context, "lifespan_context", None
         ) or _get_attached_server_context(ctx.fastmcp)
@@ -423,6 +730,11 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             A dict with workflow_id and run_id for the started workflow run, can be passed to
             workflows/get_status, workflows/resume, and workflows/cancel.
         """
+        # Ensure upstream session is set before starting the workflow
+        try:
+            _set_upstream_from_request_ctx_if_available(ctx)
+        except Exception:
+            pass
         return await _workflow_run(ctx, workflow_name, run_parameters, **kwargs)
 
     @mcp.tool(name="workflows-get_status")
@@ -444,6 +756,11 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         Returns:
             A dictionary with comprehensive information about the workflow status.
         """
+        # Ensure upstream session is available for any status-related logs
+        try:
+            _set_upstream_from_request_ctx_if_available(ctx)
+        except Exception:
+            pass
         return await _workflow_status(ctx, run_id=run_id, workflow_name=workflow_id)
 
     @mcp.tool(name="workflows-resume")
@@ -471,6 +788,11 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         Returns:
             True if the workflow was resumed, False otherwise.
         """
+        # Ensure upstream session is available for any status-related logs
+        try:
+            _set_upstream_from_request_ctx_if_available(ctx)
+        except Exception:
+            pass
         server_context: ServerContext = ctx.request_context.lifespan_context
         workflow_registry = server_context.workflow_registry
 
@@ -513,6 +835,11 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         Returns:
             True if the workflow was cancelled, False otherwise.
         """
+        # Ensure upstream session is available for any status-related logs
+        try:
+            _set_upstream_from_request_ctx_if_available(ctx)
+        except Exception:
+            pass
         server_context: ServerContext = ctx.request_context.lifespan_context
         workflow_registry = server_context.workflow_registry
 
@@ -910,6 +1237,7 @@ def create_workflow_specific_tools(
         ctx: MCPContext,
         run_parameters: Dict[str, Any] | None = None,
     ) -> Dict[str, str]:
+        _set_upstream_from_request_ctx_if_available(ctx)
         return await _workflow_run(ctx, workflow_name, run_parameters)
 
     @mcp.tool(
@@ -922,6 +1250,7 @@ def create_workflow_specific_tools(
         """,
     )
     async def get_status(ctx: MCPContext, run_id: str) -> Dict[str, Any]:
+        _set_upstream_from_request_ctx_if_available(ctx)
         return await _workflow_status(ctx, run_id=run_id, workflow_name=workflow_name)
 
 
@@ -976,6 +1305,9 @@ async def _workflow_run(
     run_parameters: Dict[str, Any] | None = None,
     **kwargs: Any,
 ) -> Dict[str, str]:
+    # Use Temporal run_id as the routing key for gateway callbacks.
+    # We don't have it until after the workflow is started; we'll register mapping post-start.
+
     # Resolve workflows and app context irrespective of startup mode
     # This now returns a context with upstream_session already set
     workflows_dict, app_context = _resolve_workflows_and_context(ctx)
@@ -1016,16 +1348,76 @@ async def _workflow_run(
         if task_queue:
             run_parameters["__mcp_agent_task_queue"] = task_queue
 
-        # Run the workflow asynchronously and get its ID
-        execution = await workflow.run_async(**run_parameters)
+        # Build memo for Temporal runs if gateway info is available
+        workflow_memo = None
+        try:
+            # Prefer explicit kwargs, else infer from request headers/environment
+            # FastMCP keeps raw request under ctx.request_context.request if available
+            gateway_url = kwargs.get("gateway_url")
+            gateway_token = kwargs.get("gateway_token")
 
-        logger.info(
-            f"Workflow {workflow_name} started with workflow ID {execution.workflow_id} and run ID {execution.run_id}. Parameters: {run_parameters}"
+            if gateway_url is None:
+                try:
+                    req = getattr(ctx.request_context, "request", None)
+                    if req is not None:
+                        # Custom header if present
+                        h = req.headers
+                        gateway_url = (
+                            h.get("X-MCP-Gateway-URL")
+                            or h.get("X-Forwarded-Url")
+                            or h.get("X-Forwarded-Proto")
+                        )
+                        # Best-effort reconstruction if only proto/host provided
+                        if gateway_url is None:
+                            proto = h.get("X-Forwarded-Proto") or "http"
+                            host = h.get("X-Forwarded-Host") or h.get("Host")
+                            if host:
+                                gateway_url = f"{proto}://{host}"
+                except Exception:
+                    pass
+
+            if gateway_token is None:
+                try:
+                    req = getattr(ctx.request_context, "request", None)
+                    if req is not None:
+                        gateway_token = req.headers.get("X-MCP-Gateway-Token")
+                except Exception:
+                    pass
+
+            if gateway_url or gateway_token:
+                workflow_memo = {
+                    "gateway_url": gateway_url,
+                    "gateway_token": gateway_token,
+                }
+        except Exception:
+            workflow_memo = None
+
+        # Run the workflow asynchronously and get its ID
+        execution = await workflow.run_async(
+            __mcp_agent_workflow_memo=workflow_memo,
+            **run_parameters,
         )
+
+        execution_id = execution.run_id
+        logger.info(
+            f"Workflow {workflow_name} started execution {execution_id} for workflow ID {execution.workflow_id}, "
+            f"run ID {execution.run_id}. Parameters: {run_parameters}"
+        )
+
+        # Register upstream session for this run so external workers can proxy logs/prompts
+        try:
+            await _register_session(
+                run_id=execution.run_id,
+                execution_id=execution_id,
+                session=getattr(ctx, "session", None),
+            )
+        except Exception:
+            pass
 
         return {
             "workflow_id": execution.workflow_id,
             "run_id": execution.run_id,
+            "execution_id": execution_id,
         }
 
     except Exception as e:
@@ -1037,6 +1429,10 @@ async def _workflow_status(
     ctx: MCPContext, run_id: str, workflow_name: str | None = None
 ) -> Dict[str, Any]:
     # Ensure upstream session so status-related logs are forwarded
+    try:
+        _set_upstream_from_request_ctx_if_available(ctx)
+    except Exception:
+        pass
     workflow_registry: WorkflowRegistry | None = _resolve_workflow_registry(ctx)
 
     if not workflow_registry:
@@ -1048,6 +1444,17 @@ async def _workflow_status(
     status = await workflow_registry.get_workflow_status(
         run_id=run_id, workflow_id=workflow_id
     )
+
+    # Cleanup run registry on terminal states
+    try:
+        state = str(status.get("status", "")).lower()
+        if state in ("completed", "error", "cancelled"):
+            try:
+                await _unregister_session(run_id)
+            except Exception:
+                pass
+    except Exception:
+        pass
 
     return status
 

@@ -17,19 +17,16 @@ def logout() -> None:
         print_info("Not currently logged in.")
         return
 
-    # Show who is being logged out
     user_info = "current user"
     if credentials.username:
         user_info = f"user '{credentials.username}'"
     elif credentials.email:
         user_info = f"user '{credentials.email}'"
 
-    # Confirm logout action
     if not Confirm.ask(f"Are you sure you want to logout {user_info}?", default=False):
         print_info("Logout cancelled.")
         return
 
-    # Clear credentials
     if clear_credentials():
         print_success("Successfully logged out.")
     else:

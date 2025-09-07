@@ -10,6 +10,7 @@ from rich.console import Console
 from rich.panel import Panel
 
 from mcp_agent.cli.exceptions import CLIError
+from mcp_agent.cli.utils.ux import print_error
 
 console = Console()
 
@@ -42,7 +43,7 @@ def configure_logger(
         mcp-agent cloud logger configure --test  # Test current configuration
     """
     if not endpoint and not test:
-        console.print("[red]Error: Must specify endpoint or use --test[/red]")
+        print_error("Must specify endpoint or use --test")
         raise typer.Exit(1)
 
     config_path = _find_config_file()
@@ -66,9 +67,7 @@ def configure_logger(
                     key, value = header_pair.strip().split("=", 1)
                     headers_dict[key.strip()] = value.strip()
             except ValueError:
-                console.print(
-                    "[red]Error: Headers must be in format 'key=value,key2=value2'[/red]"
-                )
+                print_error("Headers must be in format 'key=value,key2=value2'")
                 raise typer.Exit(1)
 
     if endpoint:
@@ -94,7 +93,7 @@ def configure_logger(
                     )
 
         except httpx.RequestError as e:
-            console.print(f"[red]✗ Connection failed: {e}[/red]")
+            print_error(f"✗ Connection failed: {e}")
             if not test:
                 console.print(
                     "[yellow]Configuration will be saved anyway. Check your endpoint URL and network connection.[/yellow]"
@@ -129,8 +128,7 @@ def configure_logger(
             )
 
         except Exception as e:
-            console.print(f"[red]Error saving configuration: {e}[/red]")
-            raise typer.Exit(1)
+            raise CLIError(f"Error saving configuration: {e}")
 
 
 def _find_config_file() -> Optional[Path]:
