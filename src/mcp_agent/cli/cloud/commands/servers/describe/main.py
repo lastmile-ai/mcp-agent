@@ -7,7 +7,7 @@ from rich.panel import Panel
 
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.mcp_app.api_client import MCPApp, MCPAppConfiguration
-from ..utils import (
+from ...utils import (
     setup_authenticated_client,
     validate_output_format, 
     resolve_server,

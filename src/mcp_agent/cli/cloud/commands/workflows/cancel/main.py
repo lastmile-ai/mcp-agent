@@ -10,7 +10,7 @@ from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.utils.ux import console
 from mcp_agent.config import MCPServerSettings, Settings, LoggerSettings
 from mcp_agent.mcp.gen_client import gen_client
-from ...servers.utils import setup_authenticated_client, resolve_server, handle_server_api_errors
+from ...utils import setup_authenticated_client, resolve_server, handle_server_api_errors
 
 
 async def _cancel_workflow_async(

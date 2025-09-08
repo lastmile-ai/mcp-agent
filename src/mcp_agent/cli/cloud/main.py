@@ -30,6 +30,7 @@ from mcp_agent.cli.cloud.commands.apps import list_apps
 from mcp_agent.cli.cloud.commands.workflows import (
     describe_workflow,
     resume_workflow,
+    suspend_workflow,
     cancel_workflow,
 )
 from mcp_agent.cli.cloud.commands.servers import (
@@ -150,6 +151,7 @@ app_cmd_workflows = typer.Typer(
 app_cmd_workflows.command(name="describe")(describe_workflow)
 app_cmd_workflows.command(name="status")(describe_workflow)  # alias for describe
 app_cmd_workflows.command(name="resume")(resume_workflow)
+app_cmd_workflows.command(name="suspend")(suspend_workflow)
 app_cmd_workflows.command(name="cancel")(cancel_workflow)
 
 # Sub-typer for `mcp-agent servers` commands

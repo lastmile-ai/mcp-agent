@@ -5,7 +5,7 @@ from rich.panel import Panel
 from mcp_agent.cli.core.utils import run_async
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.mcp_app.api_client import MCPApp
-from ..utils import (
+from ...utils import (
     setup_authenticated_client,
     resolve_server,
     handle_server_api_errors,
