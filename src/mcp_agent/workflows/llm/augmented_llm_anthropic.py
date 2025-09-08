@@ -48,7 +48,7 @@ from mcp_agent.tracing.semconv import (
 from mcp_agent.tracing.telemetry import get_tracer, is_otel_serializable, telemetry
 from mcp_agent.tracing.token_tracking_decorator import track_tokens
 from mcp_agent.utils.common import ensure_serializable, typed_dict_extras, to_string
-from mcp_agent.utils.pydantic_type_serializer import serialize_model, deserialize_model
+
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     ModelT,
@@ -81,15 +81,6 @@ MessageParamContent = Union[
 class RequestCompletionRequest(BaseModel):
     config: AnthropicSettings
     payload: dict
-
-
-class RequestStructuredCompletionRequest(BaseModel):
-    config: AnthropicSettings
-    params: RequestParams
-    response_model: Type[ModelT] | None = None
-    serialized_response_model: str | None = None
-    response_str: str
-    model: str
 
 
 def create_anthropic_instance(settings: AnthropicSettings):
@@ -419,10 +410,9 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         response_model: Type[ModelT],
         request_params: RequestParams | None = None,
     ) -> ModelT:
-        # First we invoke the LLM to generate a string response
-        # We need to do this in a two-step process because Instructor doesn't
-        # know how to invoke MCP tools via call_tool, so we'll handle all the
-        # processing first and then pass the final response through Instructor
+        # Use Anthropic's native structured output via a forced tool call carrying JSON input
+        import json
+
         tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.generate_structured"
@@ -430,57 +420,76 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
             self._annotate_span_for_generation_message(span, message)
 
-            response = await self.generate_str(
-                message=message,
-                request_params=request_params,
-            )
-
             params = self.get_request_params(request_params)
-
             if self.context.tracing_enabled:
                 AugmentedLLM.annotate_span_with_request_params(span, params)
 
-            model = await self.select_model(params)
-            span.set_attribute(GEN_AI_REQUEST_MODEL, model)
+            model_name = (
+                await self.select_model(params) or self.default_request_params.model
+            )
+            span.set_attribute(GEN_AI_REQUEST_MODEL, model_name)
 
-            span.set_attribute("response_model", response_model.__name__)
-
-            serialized_response_model: str | None = None
-
-            if self.executor and self.executor.execution_engine == "temporal":
-                # Serialize the response model to a string
-                serialized_response_model = serialize_model(response_model)
-
-            structured_response = await self.executor.execute(
-                AnthropicCompletionTasks.request_structured_completion_task,
-                RequestStructuredCompletionRequest(
-                    config=self.context.config.anthropic,
-                    params=params,
-                    response_model=response_model
-                    if not serialized_response_model
-                    else None,
-                    serialized_response_model=serialized_response_model,
-                    response_str=response,
-                    model=model,
-                ),
+            # Convert message(s) to Anthropic format
+            messages: List[MessageParam] = []
+            if params.use_history:
+                messages.extend(self.history.get())
+            messages.extend(
+                AnthropicConverter.convert_mixed_messages_to_anthropic(message)
             )
 
-            # TODO: saqadri (MAC) - fix request_structured_completion_task to return ensure_serializable
-            # Convert dict back to the proper model instance if needed
-            if isinstance(structured_response, dict):
-                structured_response = response_model.model_validate(structured_response)
+            # Define a single tool that matches the Pydantic schema
+            schema = response_model.model_json_schema()
+            tools: List[ToolParam] = [
+                {
+                    "name": "return_structured_output",
+                    "description": "Return the response in the required JSON format",
+                    "input_schema": schema,
+                }
+            ]
 
-            if self.context.tracing_enabled:
-                try:
-                    span.set_attribute(
-                        "structured_response_json",
-                        structured_response.model_dump_json(),
-                    )
-                # pylint: disable=broad-exception-caught
-                except Exception:
-                    span.set_attribute("unstructured_response", response)
+            args = {
+                "model": model_name,
+                "messages": messages,
+                "system": self.instruction or params.systemPrompt,
+                "tools": tools,
+                "tool_choice": {"type": "tool", "name": "return_structured_output"},
+            }
+            if params.maxTokens is not None:
+                args["max_tokens"] = params.maxTokens
+            if params.stopSequences:
+                args["stop_sequences"] = params.stopSequences
 
-            return structured_response
+            # Call Anthropic directly (one-turn streaming for consistency)
+            base_url = None
+            if self.context and self.context.config and self.context.config.anthropic:
+                base_url = self.context.config.anthropic.base_url
+                api_key = self.context.config.anthropic.api_key
+                client = AsyncAnthropic(api_key=api_key, base_url=base_url)
+            else:
+                client = AsyncAnthropic()
+
+            async with client:
+                async with client.messages.stream(**args) as stream:
+                    final = await stream.get_final_message()
+
+            # Extract tool_use input and validate
+            for block in final.content:
+                if (
+                    getattr(block, "type", None) == "tool_use"
+                    and getattr(block, "name", "") == "return_structured_output"
+                ):
+                    data = getattr(block, "input", None)
+                    try:
+                        if isinstance(data, str):
+                            return response_model.model_validate(json.loads(data))
+                        return response_model.model_validate(data)
+                    except Exception:
+                        # Fallthrough to error
+                        break
+
+            raise ValueError(
+                "Failed to obtain structured output from Anthropic response"
+            )
 
     @classmethod
     def convert_message_to_message_param(
@@ -769,44 +778,6 @@ class AnthropicCompletionTasks:
             )
             response = ensure_serializable(response)
             return response
-
-    @staticmethod
-    @workflow_task
-    @telemetry.traced()
-    async def request_structured_completion_task(
-        request: RequestStructuredCompletionRequest,
-    ):
-        """
-        Request a structured completion using Instructor's Anthropic API.
-        """
-        import instructor
-
-        if request.response_model:
-            response_model = request.response_model
-        elif request.serialized_response_model:
-            response_model = deserialize_model(request.serialized_response_model)
-        else:
-            raise ValueError(
-                "Either response_model or serialized_response_model must be provided for structured completion."
-            )
-
-        # We pass the text through instructor to extract structured data
-        client = instructor.from_anthropic(create_anthropic_instance(request.config))
-
-        # Extract structured data from natural language without blocking the loop
-        loop = asyncio.get_running_loop()
-        structured_response = await loop.run_in_executor(
-            None,
-            functools.partial(
-                client.chat.completions.create,
-                model=request.model,
-                response_model=response_model,
-                messages=[{"role": "user", "content": request.response_str}],
-                max_tokens=request.params.maxTokens,
-            ),
-        )
-
-        return structured_response
 
 
 class AnthropicMCPTypeConverter(ProviderToMCPConverter[MessageParam, Message]):
