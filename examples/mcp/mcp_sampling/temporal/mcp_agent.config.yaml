@@ -1,6 +1,7 @@
 $schema: ../../../schema/mcp-agent.config.schema.json
 
-execution_engine: asyncio
+execution_engine: "asyncio"
+
 logger:
   transports: [console, file]
   level: debug
@@ -15,10 +16,6 @@ mcp:
     demo_server_sse:
       transport: sse
       url: http://localhost:8000/sse
-    demo_server:
-      command: "uv"
-      args: ["run", "demo_server.py"]
-      description: "Demo MCP server for resources and prompts"
 
 openai:
   # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored

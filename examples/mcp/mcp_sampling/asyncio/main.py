@@ -21,8 +21,7 @@ async def example_usage():
         agent = Agent(
             name="agent",
             instruction="Demo agent for MCP sampling",
-            server_names=["demo_server"],    # stdio transport
-            # server_names=["demo_server_sse"],  # SSE transport
+            server_names=["demo_server"],
         )
 
         async with agent:

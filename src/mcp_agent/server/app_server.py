@@ -10,13 +10,16 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Type, TYPE_CHECKING
 import os
 import secrets
 import asyncio
+from pydantic import BaseModel, ValidationError
 
 from mcp.server.fastmcp import Context as MCPContext, FastMCP
+from pydantic_core._pydantic_core import from_json
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.fastmcp.tools import Tool as FastTool
 from mcp.server.session import ServerSession
+from mcp.types import ModelPreferences, SamplingMessage, TextContent
 
 from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
@@ -334,6 +337,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
 
     # Helper: install internal HTTP routes (not MCP tools)
     def _install_internal_routes(mcp_server: FastMCP) -> None:
+        print("Installing internal routes")
         @mcp_server.custom_route(
             "/internal/session/by-run/{execution_id}/notify",
             methods=["POST"],
@@ -428,11 +432,13 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                 EmptyResult,
                 ServerRequest,
             )
-
             body = await request.json()
             execution_id = request.path_params.get("execution_id")
             method = body.get("method")
             params = body.get("params") or {}
+
+            print(f"XX /internal/session/by-run/{execution_id}/request")
+            print(f"XX {method} {params}")
 
             session = await _get_session(execution_id)
             if not session:
@@ -446,6 +452,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                     return JSONResponse(result)
                 # Fallback: Map a small set of supported server->client requests
                 if method == "sampling/createMessage":
+                    print(f"XX sampling/createMessage: {params}")
                     req = ServerRequest(
                         CreateMessageRequest(
                             method="sampling/createMessage",
@@ -584,6 +591,71 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                 return JSONResponse({"request_id": request_id})
             except Exception as e:
                 return JSONResponse({"error": str(e)}, status_code=500)
+        #
+        # @mcp.custom_route("/internal/sampling", methods=["POST"])
+        # async def _internal_sampling(request: Request):
+        #     """
+        #     Custom route for sampling from the MCPApp's context.
+        #
+        #     Returns:
+        #         A dictionary containing sampled data from the app's context.
+        #     """
+        #     class SamplingRequest(BaseModel):
+        #         execution_id: str
+        #         messages: List[SamplingMessage]=[]
+        #         system_prompt: str = "You are a helpful assistant."
+        #         model_preferences: ModelPreferences
+        #         max_tokens: int = 100
+        #         temperature: float = 0.7
+        #
+        #     body = await request.body()
+        #
+        #     # Optional shared-secret auth
+        #     gw_token = os.environ.get("MCP_GATEWAY_TOKEN")
+        #     if gw_token and not secrets.compare_digest(
+        #         request.headers.get("X-MCP-Gateway-Token", ""), gw_token
+        #     ):
+        #         return JSONResponse({"error": "unauthorized"}, status_code=401)
+        #
+        #     try:
+        #         req = SamplingRequest.model_validate(from_json(body))
+        #         execution_id = req.run_id
+        #         messages = req.messages
+        #         system_prompt = req.system_prompt
+        #         model_preferences = req.model_preferences
+        #         max_tokens = req.max_tokens
+        #         temperature = req.temperature
+        #     except ValidationError as e:
+        #         return JSONResponse({"error":"Invalid request format: {str(e)}"}, status_code=400)
+        #
+        #     if not execution_id:
+        #         return JSONResponse({"error":"Missing execution_id in request"}, status_code=400)
+        #
+        #     session = await _get_session(execution_id)
+        #     if not server_context:
+        #         return JSONResponse({"error": "session_not_available"}, status_code=503)
+        #
+        #
+        #     async def task():
+        #         response = await session.create_message(
+        #             messages=messages,
+        #             system_prompt=system_prompt,
+        #             max_tokens=max_tokens,
+        #             temperature=temperature,
+        #             model_preferences=model_preferences
+        #         )
+        #
+        #         logger.info(f"Sampling response: {response.content}")
+        #         if isinstance(response.content, TextContent):
+        #             return response.content.text
+        #         else:
+        #             return f"Sampling failed, unexpected content type '{type(response.content)}'."
+        #
+        #     # asyncio.create_task(task())
+        #
+        #     return JSONResponse({"response": await task()})
+
+
 
     # Create or attach FastMCP server
     if app.mcp:
@@ -871,83 +943,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
 
     # endregion
 
-    logger.info("Creating custom routes")
-
-    @mcp.custom_route("/health", methods=["GET"])
-    async def health_route(request: Request) -> PlainTextResponse:
-        """
-        Health check route for the MCPApp server.
-
-        This route can be used by monitoring systems to check if the server is running.
-
-        Returns:
-            A plain text response indicating the server is healthy.
-        """
-        if "name" in request.query_params:
-            return PlainTextResponse(f"OK {request.query_params['name']}")
-        else:
-            return PlainTextResponse("OK")
-
-    @mcp.custom_route("/sampling", methods=["POST"])
-    async def sampling_route(request: Request) -> PlainTextResponse:
-        """
-        Custom route for sampling from the MCPApp's context.
-
-        Returns:
-            A dictionary containing sampled data from the app's context.
-        """
-        class SamplingRequest(BaseModel):
-            run_id: str
-            messages: List[SamplingMessage]=[]
-            system_prompt: str = "You are a helpful assistant."
-            model_preferences: ModelPreferences
-            max_tokens: int = 100
-            temperature: float = 0.7
-
-        body = await request.body()
-
-        server_context = _get_attached_server_context(mcp)
-        if not server_context:
-            return PlainTextResponse("Server context not found", status_code=500)
-
-        try:
-            req = SamplingRequest.model_validate(from_json(body))
-            run_id = req.run_id
-            messages = req.messages
-            system_prompt = req.system_prompt
-            model_preferences = req.model_preferences
-            max_tokens = req.max_tokens
-            temperature = req.temperature
-        except ValidationError as e:
-            return PlainTextResponse(f"Invalid request format: {str(e)}", status_code=400)
-
-        if not run_id:
-            return PlainTextResponse("Missing run_id in request", status_code=400)
-
-        upstream_session = server_context.get_upstream_session(run_id)
-        # if not upstream_session:
-        #     return PlainTextResponse(f"No upstream session found for run_id {run_id}", status_code=404)
-
-        async def task():
-            response = await upstream_session.create_message(
-                messages=messages,
-                system_prompt=system_prompt,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                model_preferences=model_preferences
-            )
-
-            logger.info(f"Sampling response: {response.content}")
-            if isinstance(response.content, TextContent):
-                return response.content.text
-            else:
-                return f"Sampling failed, unexpected content type '{type(response.content)}'."
-
-        # asyncio.create_task(task())
-
-        return PlainTextResponse(await task())
-
     return mcp
+
+
 
 
 # region per-Workflow Tools
@@ -1438,7 +1436,7 @@ async def _workflow_run(
             run_parameters["__mcp_agent_workflow_id"] = workflow_id
         if task_queue:
             run_parameters["__mcp_agent_task_queue"] = task_queue
-        run_parameters["__mcp_agent_upstream_session"] = ctx.session
+        # run_parameters["__mcp_agent_upstream_session"] = ctx.session
 
         # Build memo for Temporal runs if gateway info is available
         workflow_memo = None

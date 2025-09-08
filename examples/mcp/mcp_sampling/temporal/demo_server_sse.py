@@ -9,7 +9,7 @@ import yaml
 from mcp.server.fastmcp import FastMCP
 
 from mcp_agent.app import MCPApp
-from mcp_agent.config import Settings, LoggerSettings, MCPSettings, MCPServerSettings, LogPathSettings
+from mcp_agent.config import Settings, LoggerSettings, MCPSettings, MCPServerSettings, LogPathSettings, TemporalSettings
 from mcp_agent.server.app_server import create_mcp_server_for_app
 from mcp_agent.agents.agent import Agent
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
@@ -18,6 +18,16 @@ from mcp_agent.executor.workflow import Workflow, WorkflowResult
 # Initialize logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# from http.client import HTTPConnection
+#
+# HTTPConnection.debuglevel = 1
+#
+# logging.basicConfig()
+# logging.getLogger().setLevel(logging.DEBUG)
+# requests_log = logging.getLogger("requests.packages.urllib3")
+# requests_log.setLevel(logging.DEBUG)
+# requests_log.propagate = True
 
 # Note: This is purely optional:
 # if not provided, a default FastMCP server will be created by MCPApp using create_mcp_server_for_app()
@@ -30,14 +40,19 @@ if secrets_file and secrets_file.exists():
         yaml_secrets = yaml.safe_load(f) or {}
         openai_secret = yaml_secrets["openai"]
 
-
 settings = Settings(
-    execution_engine="asyncio",
+    execution_engine="temporal",
+    temporal=TemporalSettings(
+        host="localhost:7233",
+        namespace="default",
+        task_queue="mcp-agent",
+        max_concurrent_activities=10,
+    ),
     logger=LoggerSettings(
         type="file",
         level="debug",
         path_settings=LogPathSettings(
-            path_pattern="logs/demo_server-{unique_id}.jsonl",
+            path_pattern="logs/demo_server_sse-{unique_id}.jsonl",
             unique_id="timestamp",
             timestamp_format="%Y%m%d_%H%M%S"),
     ),
@@ -81,6 +96,7 @@ class HaikuWorkflow(Workflow[str]):
 
         logger = app.logger
 
+        logger.info("Running HaikuWorkflow")
         haiku_agent = Agent(
             name="poet",
             instruction="""You are an agent with access to a tool that helps you write haikus.""",
@@ -112,7 +128,7 @@ async def main():
         logger.info(f"MCP Server settings: {mcp_server.settings}")
 
         # Run the server
-        await mcp_server.run_stdio_async()
+        await mcp_server.run_sse_async()
 
 
 if __name__ == "__main__":

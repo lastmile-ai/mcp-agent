@@ -93,10 +93,8 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
         message_handler: MessageHandlerFnT | None = None,
         client_info: Implementation | None = None,
         context: Optional["Context"] = None,
-        upstream_session: Optional[ServerSession] = None,
     ):
         ContextDependent.__init__(self, context=context)
-        self.context.upstream_session.set(upstream_session)
 
         if sampling_callback is None:
             sampling_callback = self._handle_sampling_callback
@@ -339,15 +337,24 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
         params: CreateMessageRequestParams,
     ) -> CreateMessageResult | ErrorData:
         logger.info(f"Handling sampling request: {params}")
-        server_session = self.context.upstream_session.get()
+        server_session = self.context.upstream_session
         if server_session:
             logger.info("Passing sampling request to upstream server session")
+            print("XX Passing sampling request to upstream server session")
         else:
             logger.info("No upstream server session, handling sampling locally")
 
         if server_session is None:
             # Enhanced sampling with human approval workflow
-            return await self._sampling_handler.handle_sampling_with_human_approval(params)
+            print("XX No upstream server session, handling sampling locally")
+            try:
+                # handle_sampling() missing 2 required positional arguments: 'request_context' and 'params'
+                return await self._sampling_handler.handle_sampling(
+                    context=self.context,
+                    params=params)
+            except:
+                import traceback
+                print(f"XX Error in local sampling handler: {traceback.format_exc()}")
         else:
             try:
                 # If a server_session is available, we'll pass-through the sampling request to the upstream client

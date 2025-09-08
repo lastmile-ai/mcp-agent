@@ -66,6 +66,7 @@ class Context(BaseModel):
     human_input_handler: Optional[HumanInputCallback] = None
     elicitation_handler: Optional[ElicitationCallback] = None
     signal_notification: Optional[SignalWaitCallback] = None
+    upstream_session: Optional[ServerSession] = None  # TODO: saqadri - figure this out
     model_selector: Optional[ModelSelector] = None
     session_id: str | None = None
     app: Optional["MCPApp"] = None

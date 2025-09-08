@@ -5,7 +5,7 @@ Handles sampling requests from MCP servers with human-in-the-loop approval workf
 and direct LLM provider integration.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from mcp.types import (
@@ -14,9 +14,10 @@ from mcp.types import (
     ErrorData,
     TextContent,
     ImageContent,
-    SamplingMessage,
+    SamplingMessage, CreateMessageRequest, ServerRequest,
 )
 from mcp.server.fastmcp.exceptions import ToolError
+from mcp.shared.context import RequestContext
 
 from mcp_agent.core.context_dependent import ContextDependent
 from mcp_agent.logging.logger import get_logger
@@ -38,8 +39,47 @@ class SamplingHandler(ContextDependent):
     def __init__(self, context: "Context"):
         super().__init__(context=context)
 
-    async def handle_sampling_with_human_approval(
-        self, params: CreateMessageRequestParams
+    async def handle_sampling(self,
+                              context: "Context",
+                              params: CreateMessageRequestParams) -> CreateMessageResult | ErrorData:
+        logger.info(f"Handling sampling request: {params}")
+        try:
+            server_session = context.upstream_session
+            logger.info(f"Current upstream server session: {type(server_session)}")
+            print(f"XX Current upstream server session: {type(server_session)}")
+        except:
+            import traceback
+            logger.error(f"Error getting upstream server session: {traceback.format_exc()}")
+            print(f"XX Error getting upstream server session: {traceback.format_exc()}")
+
+        if server_session is None:
+            # Enhanced sampling with human approval workflow
+            logger.info("No upstream server session, handling sampling locally")
+            return await self._handle_sampling_with_human_approval(params)
+        else:
+            logger.info("Passing sampling request to upstream server session")
+            try:
+                # If a server_session is available, we'll pass-through the sampling request to the upstream client
+                result = await server_session.send_request(
+                    request=ServerRequest(
+                        CreateMessageRequest(
+                            method="sampling/createMessage", params=params
+                        )
+                    ),
+                    result_type=CreateMessageResult,
+                )
+
+                logger.info(f"Received sampling response from upstream server: {result}")
+
+                # Pass the result from the upstream client back to the server. We just act as a pass-through client here
+                return result
+            except Exception as e:
+                import traceback
+                logger.error(f"XX Error passing sampling request to upstream server session: {traceback.format_exc()}")
+                return ErrorData(code=-32603, message=str(e))
+
+    async def _handle_sampling_with_human_approval(
+            self, params: CreateMessageRequestParams
     ) -> CreateMessageResult | ErrorData:
         """Handle sampling with human-in-the-loop approval workflow"""
         try:
@@ -73,7 +113,7 @@ class SamplingHandler(ContextDependent):
             return ErrorData(code=-32603, message=str(e))
 
     async def _request_human_approval_for_sampling_request(
-        self, params: CreateMessageRequestParams
+            self, params: CreateMessageRequestParams
     ) -> tuple[CreateMessageRequestParams | None, str]:
         """Present sampling request to user for approval/modification"""
         try:
@@ -113,7 +153,7 @@ Respond with:
             return params, ""  # Fallback to original params
 
     async def _request_human_approval_for_sampling_response(
-        self, result: CreateMessageResult
+            self, result: CreateMessageResult
     ) -> tuple[CreateMessageResult | None, str]:
         """Present LLM response to user for approval/modification"""
         try:
@@ -153,7 +193,7 @@ Respond with:
             return result, ""  # Fallback to original result
 
     async def _generate_with_active_llm_provider(
-        self, params: CreateMessageRequestParams
+            self, params: CreateMessageRequestParams
     ) -> CreateMessageResult | None:
         """Generate response using the active LLM provider directly to avoid recursion"""
 
@@ -176,7 +216,6 @@ Respond with:
             else:
                 # fall back to default
                 raise ToolError("Model preferences must be provided for sampling requests")
-
 
             messages = self._extract_message_content(params.messages)
             request_params = self._build_llm_request_params(params)
@@ -203,7 +242,7 @@ Respond with:
             return None
 
     def _create_provider_instance(
-        self, provider_class: type[AugmentedLLM]
+            self, provider_class: type[AugmentedLLM]
     ) -> AugmentedLLM | None:
         """Create a minimal LLM instance for direct calls"""
         try:
@@ -230,7 +269,7 @@ Respond with:
             return str(content)
 
     def _build_llm_request_params(
-        self, params: CreateMessageRequestParams
+            self, params: CreateMessageRequestParams
     ) -> LLMRequestParams:
         """Build LLM request parameters with safe defaults"""
         return LLMRequestParams(
@@ -240,11 +279,11 @@ Respond with:
             parallel_tool_calls=False,
             use_history=False,
             messages=None,
-            modelPreferences = params.modelPreferences,
+            modelPreferences=params.modelPreferences,
         )
 
     def _format_sampling_request_for_human(
-        self, params: CreateMessageRequestParams
+            self, params: CreateMessageRequestParams
     ) -> str:
         """Format sampling request for human review"""
         messages_text = ""
@@ -252,7 +291,7 @@ Respond with:
             content = (
                 msg.content.text if hasattr(msg.content, "text") else str(msg.content)
             )
-            messages_text += f"  Message {i+1} ({msg.role}): {content[:200]}{'...' if len(content) > 200 else ''}\n"
+            messages_text += f"  Message {i + 1} ({msg.role}): {content[:200]}{'...' if len(content) > 200 else ''}\n"
 
         system_prompt_display = (
             "None"
@@ -311,7 +350,7 @@ CONTENT:
 {content}"""
 
     def _parse_human_modified_params(
-        self, response: str, original_params: CreateMessageRequestParams
+            self, response: str, original_params: CreateMessageRequestParams
     ) -> tuple[CreateMessageRequestParams | None, str]:
         """Parse human response and return modified params or None if rejected"""
         response_stripped = response.strip().lower()
@@ -324,7 +363,7 @@ CONTENT:
             return None, rejection_reason
 
     def _parse_human_modified_result(
-        self, response: str, original_result: CreateMessageResult
+            self, response: str, original_result: CreateMessageResult
     ) -> tuple[CreateMessageResult | None, str]:
         """Parse human response and return modified result or None if rejected"""
         response_stripped = response.strip().lower()

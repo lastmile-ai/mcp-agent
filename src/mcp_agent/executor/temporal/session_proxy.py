@@ -268,6 +268,8 @@ class SessionProxy(ServerSession):
             params["related_request_id"] = related_request_id
 
         result = await self.request("sampling/createMessage", params)
+
+
         return types.CreateMessageResult.model_validate(result)
 
     async def elicit(
