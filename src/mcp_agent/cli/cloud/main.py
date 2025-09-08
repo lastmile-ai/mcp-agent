@@ -110,17 +110,7 @@ app.command(
 # Deployment command
 app.command(
     name="deploy",
-    help="""
-Deploy an MCP agent using the specified configuration.
-
-An MCP App is deployed from bundling the code at the specified config directory.\n\n
-
-This directory must contain an 'mcp_agent.config.yaml' at its root.\n\n
-
-If secrets are required (i.e. `no_secrets` is not set), a secrets file named 'mcp_agent.secrets.yaml' must also be present.\n
-The secrets file is processed to replace secret tags with secret handles before deployment and that transformed 
-file is included in the deployment bundle in place of the original secrets file.
-""".strip(),
+    help="Deploy an MCP agent (alias for 'cloud deploy')"
 )(deploy_config)
 
 
@@ -213,6 +203,22 @@ app_cmd_cloud_logger.command(
     name="tail",
     help="Retrieve and stream logs from deployed MCP apps",
 )(tail_logs)
+
+# Add deploy command to cloud namespace
+app_cmd_cloud.command(
+    name="deploy",
+    help="""
+Deploy an MCP agent using the specified configuration.
+
+An MCP App is deployed from bundling the code at the specified config directory.\n\n
+
+This directory must contain an 'mcp_agent.config.yaml' at its root.\n\n
+
+If secrets are required (i.e. `no_secrets` is not set), a secrets file named 'mcp_agent.secrets.yaml' must also be present.\n
+The secrets file is processed to replace secret tags with secret handles before deployment and that transformed 
+file is included in the deployment bundle in place of the original secrets file.
+""".strip(),
+)(deploy_config)
 
 # Add sub-typers to cloud
 app_cmd_cloud.add_typer(app_cmd_cloud_auth, name="auth", help="Authentication commands")
