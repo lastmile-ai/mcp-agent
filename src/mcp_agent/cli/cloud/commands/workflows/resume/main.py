@@ -9,21 +9,49 @@ from mcp_agent.app import MCPApp
 from mcp_agent.cli.core.utils import run_async
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.utils.ux import console
+from mcp_agent.config import MCPServerSettings, Settings, LoggerSettings
 from mcp_agent.mcp.gen_client import gen_client
+from ...servers.utils import setup_authenticated_client, resolve_server, handle_server_api_errors
 
 
-async def _resume_workflow_async(
+async def _signal_workflow_async(
+    server_id_or_url: str,
     run_id: str,
+    signal_name: str = "resume",
     payload: Optional[str] = None
 ) -> None:
-    """Resume a workflow using MCP tool calls."""
-    # Create a temporary MCP app to connect to temporal server
-    app = MCPApp(name="workflows_cli")
+    """Send a signal to a workflow using MCP tool calls to a deployed server."""
+    if server_id_or_url.startswith(('http://', 'https://')):
+        server_url = server_id_or_url
+    else:
+        client = setup_authenticated_client()
+        server = resolve_server(client, server_id_or_url)
+        
+        if hasattr(server, 'appServerInfo') and server.appServerInfo:
+            server_url = server.appServerInfo.serverUrl
+        else:
+            raise CLIError(f"Server '{server_id_or_url}' is not deployed or has no server URL")
+        
+        if not server_url:
+            raise CLIError(f"No server URL found for server '{server_id_or_url}'")
+    
+    quiet_settings = Settings(logger=LoggerSettings(level="error"))
+    app = MCPApp(name="workflows_cli", settings=quiet_settings)
     
     try:
         async with app.run() as workflow_app:
-            async with gen_client("temporal", server_registry=workflow_app.context.server_registry) as client:
-                tool_params = {"run_id": run_id}
+            context = workflow_app.context
+            
+            sse_url = f"{server_url.rstrip('/')}/sse" if not server_url.endswith('/sse') else server_url
+            context.server_registry.registry["workflow_server"] = MCPServerSettings(
+                name="workflow_server",
+                description=f"Deployed MCP server {server_url}",
+                url=sse_url,
+                transport="sse"
+            )
+            
+            async with gen_client("workflow_server", server_registry=context.server_registry) as client:
+                tool_params = {"run_id": run_id, "signal_name": signal_name}
                 if payload:
                     tool_params["payload"] = payload
                 
@@ -34,16 +62,21 @@ async def _resume_workflow_async(
                     success = success.lower() == 'true'
                 
                 if success:
-                    console.print(f"[green]✓[/green] Successfully resumed workflow")
+                    action_past = "resumed" if signal_name == "resume" else "suspended" if signal_name == "suspend" else f"signaled ({signal_name})"
+                    action_color = "green" if signal_name == "resume" else "yellow" if signal_name == "suspend" else "blue"
+                    action_icon = "✓" if signal_name == "resume" else "⏸" if signal_name == "suspend" else "📡"
+                    console.print(f"[{action_color}]{action_icon}[/{action_color}] Successfully {action_past} workflow")
                     console.print(f"  Run ID: [cyan]{run_id}[/cyan]")
                 else:
-                    raise CLIError(f"Failed to resume workflow with run ID {run_id}")
+                    raise CLIError(f"Failed to {signal_name} workflow with run ID {run_id}")
                     
     except Exception as e:
-        raise CLIError(f"Error resuming workflow with run ID {run_id}: {str(e)}") from e
+        raise CLIError(f"Error {signal_name}ing workflow with run ID {run_id}: {str(e)}") from e
 
 
+@handle_server_api_errors
 def resume_workflow(
+    server_id_or_url: str = typer.Argument(..., help="Server ID or URL hosting the workflow"),
     run_id: str = typer.Argument(..., help="Run ID of the workflow to resume"),
     payload: Optional[str] = typer.Option(None, "--payload", help="JSON or text payload to pass to resumed workflow"),
 ) -> None:
@@ -53,9 +86,9 @@ def resume_workflow(
     a payload (JSON or text) to pass data to the resumed workflow.
     
     Examples:
-        mcp-agent cloud workflows resume run_abc123
-        mcp-agent cloud workflows resume run_abc123 --payload '{"data": "value"}'
-        mcp-agent cloud workflows resume run_abc123 --payload "simple text"
+        mcp-agent cloud workflows resume app_abc123 run_xyz789
+        mcp-agent cloud workflows resume https://server.example.com run_xyz789 --payload '{"data": "value"}'
+        mcp-agent cloud workflows resume app_abc123 run_xyz789 --payload "simple text"
     """
     if payload:
         try:
@@ -64,4 +97,30 @@ def resume_workflow(
         except json.JSONDecodeError:
             console.print(f"[dim]Resuming with text payload...[/dim]")
 
-    run_async(_resume_workflow_async(run_id, payload))
+    run_async(_signal_workflow_async(server_id_or_url, run_id, "resume", payload))
+
+
+@handle_server_api_errors
+def suspend_workflow(
+    server_id_or_url: str = typer.Argument(..., help="Server ID or URL hosting the workflow"),
+    run_id: str = typer.Argument(..., help="Run ID of the workflow to suspend"),
+    payload: Optional[str] = typer.Option(None, "--payload", help="JSON or text payload to pass to suspended workflow"),
+) -> None:
+    """Suspend a workflow execution.
+    
+    Temporarily pauses a workflow execution, which can later be resumed.
+    Optionally accepts a payload (JSON or text) to pass data to the suspended workflow.
+    
+    Examples:
+        mcp-agent cloud workflows suspend app_abc123 run_xyz789
+        mcp-agent cloud workflows suspend https://server.example.com run_xyz789 --payload '{"reason": "maintenance"}'
+        mcp-agent cloud workflows suspend app_abc123 run_xyz789 --payload "paused for review"
+    """
+    if payload:
+        try:
+            json.loads(payload)
+            console.print(f"[dim]Suspending with JSON payload...[/dim]")
+        except json.JSONDecodeError:
+            console.print(f"[dim]Suspending with text payload...[/dim]")
+
+    run_async(_signal_workflow_async(server_id_or_url, run_id, "suspend", payload))
