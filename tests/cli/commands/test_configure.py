@@ -3,19 +3,26 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from mcp_agent.cli.cloud.commands import configure_app
+import yaml
+from mcp_agent.cli.cloud.commands.configure.main import configure_app
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.mcp_app.mock_client import (
     MOCK_APP_CONFIG_ID,
-    MOCK_APP_ID, MockMCPAppClient,
+    MOCK_APP_ID,
+    MOCK_APP_SERVER_URL,
 )
+from mcp_agent.cli.secrets.processor import nest_keys
 
 
 @pytest.fixture
 def mock_mcp_client():
     """Create a mock MCP app client."""
-    client = MockMCPAppClient()
+    client = MagicMock()
     client.list_config_params = AsyncMock(return_value=[])
+
+    mock_app = MagicMock()
+    mock_app.appId = MOCK_APP_ID
+    client.get_app = AsyncMock(return_value=mock_app)
 
     mock_config = MagicMock()
     mock_config.appConfigurationId = MOCK_APP_CONFIG_ID
@@ -35,6 +42,13 @@ def patched_configure_app(mock_mcp_client):
 
     # Create a wrapped function that doesn't use typer but has same logic
     def wrapped_configure_app(**kwargs):
+        # Provide default values for typer parameters
+        defaults = {
+            "api_url": kwargs.get("api_url", "http://test-api"),
+            "api_key": kwargs.get("api_key", "test-token"),
+        }
+        kwargs.update(defaults)
+
         with (
             patch(
                 "mcp_agent.cli.cloud.commands.configure.main.MCPAppClient",
@@ -64,7 +78,7 @@ def test_no_required_secrets(patched_configure_app, mock_mcp_client):
 
     # Test the function
     result = patched_configure_app(
-        app_id_or_url=MOCK_APP_ID,
+        app_server_url=MOCK_APP_SERVER_URL,
         secrets_file=None,
         secrets_output_file=None,
         dry_run=False,
@@ -75,9 +89,11 @@ def test_no_required_secrets(patched_configure_app, mock_mcp_client):
 
     # Verify results
     assert result == MOCK_APP_CONFIG_ID
-    mock_mcp_client.list_config_params.assert_called_once_with(app_id=MOCK_APP_ID)
+    mock_mcp_client.list_config_params.assert_called_once_with(
+        app_server_url=MOCK_APP_SERVER_URL
+    )
     mock_mcp_client.configure_app.assert_called_once_with(
-        app_id=MOCK_APP_ID, config_params={}
+        app_server_url=MOCK_APP_SERVER_URL, config_params={}
     )
 
 
@@ -107,7 +123,7 @@ def test_with_required_secrets_from_file(
     ) as mock_retrieve:
         # Test the function
         result = patched_configure_app(
-            app_id_or_url=MOCK_APP_ID,
+            app_server_url=MOCK_APP_SERVER_URL,
             secrets_file=secrets_file,
             secrets_output_file=None,
             dry_run=False,
@@ -118,10 +134,12 @@ def test_with_required_secrets_from_file(
 
         # Verify results
         assert result == MOCK_APP_CONFIG_ID
-        mock_mcp_client.list_config_params.assert_called_once_with(app_id=MOCK_APP_ID)
+        mock_mcp_client.list_config_params.assert_called_once_with(
+            app_server_url=MOCK_APP_SERVER_URL
+        )
         mock_retrieve.assert_called_once_with(str(secrets_file), required_secrets)
         mock_mcp_client.configure_app.assert_called_once_with(
-            app_id=MOCK_APP_ID, config_params=secret_values
+            app_server_url=MOCK_APP_SERVER_URL, config_params=secret_values
         )
 
 
@@ -131,7 +149,7 @@ def test_missing_app_id(patched_configure_app):
     # Test with empty app_id
     with pytest.raises(CLIError):
         patched_configure_app(
-            app_id_or_url="",
+            app_server_url="",
             secrets_file=None,
             secrets_output_file=None,
             dry_run=False,
@@ -141,7 +159,7 @@ def test_missing_app_id(patched_configure_app):
     # Test with None app_id
     with pytest.raises(CLIError):
         patched_configure_app(
-            app_id_or_url=None,
+            app_server_url=None,
             secrets_file=None,
             secrets_output_file=None,
             dry_run=False,
@@ -158,7 +176,7 @@ def test_invalid_file_types(patched_configure_app, tmp_path):
 
     with pytest.raises(CLIError):
         patched_configure_app(
-            app_id_or_url=MOCK_APP_ID,
+            app_server_url=MOCK_APP_SERVER_URL,
             secrets_file=invalid_secrets_file,
             secrets_output_file=None,
             dry_run=False,
@@ -170,7 +188,7 @@ def test_invalid_file_types(patched_configure_app, tmp_path):
 
     with pytest.raises(CLIError):
         patched_configure_app(
-            app_id_or_url=MOCK_APP_ID,
+            app_server_url=MOCK_APP_SERVER_URL,
             secrets_file=None,
             secrets_output_file=invalid_output_file,
             dry_run=False,
@@ -188,7 +206,7 @@ def test_both_input_output_files(patched_configure_app, tmp_path):
 
     with pytest.raises(CLIError):
         patched_configure_app(
-            app_id_or_url=MOCK_APP_ID,
+            app_server_url=MOCK_APP_SERVER_URL,
             secrets_file=secrets_file,
             secrets_output_file=secrets_output_file,
             dry_run=False,
@@ -210,7 +228,7 @@ def test_missing_api_key(patched_configure_app):
         ):
             with pytest.raises(CLIError):
                 patched_configure_app(
-                    app_id_or_url=MOCK_APP_ID,
+                    app_server_url=MOCK_APP_SERVER_URL,
                     secrets_file=None,
                     secrets_output_file=None,
                     dry_run=False,
@@ -227,7 +245,7 @@ def test_list_config_params_error(patched_configure_app, mock_mcp_client):
 
     with pytest.raises(CLIError):
         patched_configure_app(
-            app_id_or_url=MOCK_APP_ID,
+            app_server_url=MOCK_APP_SERVER_URL,
             secrets_file=None,
             secrets_output_file=None,
             dry_run=False,
@@ -249,7 +267,7 @@ def test_no_secrets_with_secrets_file(patched_configure_app, mock_mcp_client, tm
 
     with pytest.raises(CLIError):
         patched_configure_app(
-            app_id_or_url=MOCK_APP_ID,
+            app_server_url=MOCK_APP_SERVER_URL,
             secrets_file=secrets_file,
             secrets_output_file=None,
             dry_run=False,
@@ -270,8 +288,12 @@ def test_output_secrets_file_creation(tmp_path):
     }
 
     # Create mock client
-    mock_client = MockMCPAppClient()
+    mock_client = MagicMock()
     mock_client.list_config_params = AsyncMock(return_value=required_secrets)
+
+    mock_app = MagicMock()
+    mock_app.appId = MOCK_APP_ID
+    mock_client.get_app = AsyncMock(return_value=mock_app)
 
     # Mock app configuration response
     mock_config = MagicMock()
@@ -293,6 +315,10 @@ def test_output_secrets_file_creation(tmp_path):
             return_value=mock_client,
         ),
         patch(
+            "mcp_agent.cli.cloud.commands.configure.main.MockMCPAppClient",
+            return_value=mock_client,
+        ),
+        patch(
             "mcp_agent.cli.cloud.commands.configure.main.configure_user_secrets",
             AsyncMock(return_value=processed_secrets),
         ),
@@ -304,17 +330,20 @@ def test_output_secrets_file_creation(tmp_path):
         # Now test the function by creating a file that matches what would have been created
         # Skip the interactive parts by using a pre-created file
         try:
-            # Call the function directly
-            from mcp_agent.cli.cloud.commands import configure_app
+            # Call the function directly, but we need to patch it to work as a direct call
+            def direct_configure_app(**kwargs):
+                # Ensure api_url and api_key are provided
+                kwargs.setdefault("api_url", "http://test-api")
+                kwargs.setdefault("api_key", "test-token")
 
-            result = configure_app(
-                app_id_or_url=MOCK_APP_ID,
+                return configure_app(**kwargs)
+
+            result = direct_configure_app(
+                app_server_url=MOCK_APP_SERVER_URL,
                 secrets_file=None,
                 secrets_output_file=secrets_output_file,
                 dry_run=False,
                 params=False,
-                api_url="http://test-api",
-                api_key="test-token",
             )
 
             # Verify the expected result
@@ -324,7 +353,7 @@ def test_output_secrets_file_creation(tmp_path):
             assert secrets_output_file.exists()
 
             # Read and verify file contents
-            with open(secrets_output_file, "r") as f:
+            with open(secrets_output_file, "r", encoding="utf-8") as f:
                 content = f.read()
 
             # Check that the file contains our secret IDs
@@ -332,8 +361,6 @@ def test_output_secrets_file_creation(tmp_path):
             assert "mcpac_sc_87654321-4321-4321-4321-210987654321" in content
 
             # Check that the YAML structure is valid
-            import yaml
-
             yaml_content = yaml.safe_load(content)
 
             # Verify the nested structure is correct
@@ -354,8 +381,6 @@ def test_output_secrets_file_creation(tmp_path):
 
 def _create_test_secrets_file(file_path, processed_secrets):
     """Helper to create a test secrets file with proper structure."""
-    import yaml
-    from mcp_agent.cli.secrets.processor import nest_keys
 
     # Create the nested structure
     nested_secrets = nest_keys(processed_secrets)

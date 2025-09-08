@@ -1,11 +1,15 @@
 from contextvars import ContextVar
-from dataclasses import dataclass
 from datetime import timedelta
-from typing import Any, Callable, Dict, Generic, Optional, TYPE_CHECKING
+from typing import Any, Callable, Optional, TYPE_CHECKING
 
 from temporalio import exceptions, workflow
 
-from mcp_agent.executor.workflow_signal import BaseSignalHandler, Signal, SignalValueT
+from mcp_agent.executor.workflow_signal import (
+    BaseSignalHandler,
+    Signal,
+    SignalValueT,
+    SignalMailbox,
+)
 from mcp_agent.logging.logger import get_logger
 
 if TYPE_CHECKING:
@@ -13,62 +17,6 @@ if TYPE_CHECKING:
     from mcp_agent.executor.workflow import Workflow
 
 logger = get_logger(__name__)
-
-
-@dataclass(slots=True)
-class _Record(Generic[SignalValueT]):
-    """Record for tracking signal values with versioning for broadcast semantics"""
-
-    value: Optional[SignalValueT] = None
-    version: int = 0  # monotonic counter
-
-
-class SignalMailbox(Generic[SignalValueT]):
-    """
-    Deterministic broadcast mailbox that stores signal values with versioning.
-    Each workflow run has its own mailbox instance.
-    """
-
-    def __init__(self) -> None:
-        self._store: Dict[str, _Record[SignalValueT]] = {}
-
-    def push(self, name: str, value: SignalValueT) -> None:
-        """
-        Store a signal value and increment its version counter.
-        This enables broadcast semantics where all waiters see the same value.
-        """
-        rec = self._store.setdefault(name, _Record())
-        rec.value = value
-        rec.version += 1
-
-        logger.debug(
-            f"SignalMailbox.push: name={name}, value={value}, version={rec.version}"
-        )
-
-    def version(self, name: str) -> int:
-        """Get the current version counter for a signal name"""
-        return self._store.get(name, _Record()).version
-
-    def value(self, name: str) -> SignalValueT:
-        """
-        Get the current value for a signal name
-
-        Returns:
-            The signal value
-
-        Raises:
-            ValueError: If no value exists for the signal
-        """
-        value = self._store.get(name, _Record()).value
-
-        if value is None:
-            raise ValueError(f"No value for signal {name}")
-
-        logger.debug(
-            f"SignalMailbox.value: name={name}, value={value}, version={self._store.get(name, _Record()).version}"
-        )
-
-        return value
 
 
 class TemporalSignalHandler(BaseSignalHandler[SignalValueT]):
@@ -143,7 +91,7 @@ class TemporalSignalHandler(BaseSignalHandler[SignalValueT]):
             TimeoutError: If timeout is reached
             ValueError: If no value exists for the signal after waiting
         """
-        if not workflow._Runtime.current():
+        if not workflow.in_workflow():
             raise RuntimeError("wait_for_signal must be called from within a workflow")
 
         # Get the mailbox safely from ContextVar
@@ -208,7 +156,7 @@ class TemporalSignalHandler(BaseSignalHandler[SignalValueT]):
         # Validate the signal (already checks workflow_id is not None)
         self.validate_signal(signal)
 
-        if workflow._Runtime.current() is not None:
+        if workflow.in_workflow():
             workflow_info = workflow.info()
             if (
                 signal.workflow_id == workflow_info.workflow_id

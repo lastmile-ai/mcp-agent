@@ -1,6 +1,6 @@
 [project]
 name = "mcp-agent"
-version = "0.1.14"
+version = "0.1.17"
 description = "Build effective agents with Model Context Protocol (MCP) using simple, composable patterns."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -16,7 +16,6 @@ requires-python = ">=3.10"
 dependencies = [
     "aiohttp>=3.11.13",
     "fastapi>=0.115.6",
-    "instructor>=1.7.9",
     "jsonref>=1.1.0",
     "mcp>=1.10.1",
     "numpy>=2.1.3",

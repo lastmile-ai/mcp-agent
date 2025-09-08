@@ -89,10 +89,9 @@ class Context(BaseModel):
     # Token counting and cost tracking
     token_counter: Optional[TokenCounter] = None
 
-    # Use a ContextVar to store the upstream session, so different invocations do not clash
-    upstream_session: ContextVar[ServerSession | None] = ContextVar(
-        "upstream_session", default=None
-    )
+    # Dynamic gateway configuration (per-run overrides via Temporal memo)
+    gateway_url: str | None = None
+    gateway_token: str | None = None
 
     model_config = ConfigDict(
         extra="allow",

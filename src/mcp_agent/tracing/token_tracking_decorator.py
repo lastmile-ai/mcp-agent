@@ -38,7 +38,7 @@ def track_tokens(
                 try:
                     from temporalio import workflow as _twf  # type: ignore
 
-                    if _twf._Runtime.current():  # type: ignore[attr-defined]
+                    if _twf.in_workflow():
                         is_temporal_replay = _twf.unsafe.is_replaying()  # type: ignore[attr-defined]
                 except Exception:
                     is_temporal_replay = False

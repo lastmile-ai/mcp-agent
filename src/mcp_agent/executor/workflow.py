@@ -7,6 +7,7 @@ from typing import (
     Any,
     Dict,
     Generic,
+    Literal,
     Optional,
     TypeVar,
     TYPE_CHECKING,
@@ -15,17 +16,16 @@ from typing import (
 
 from pydantic import BaseModel, ConfigDict, Field
 from mcp_agent.core.context_dependent import ContextDependent
-from mcp_agent.executor.temporal import TemporalExecutor
-from mcp_agent.executor.temporal.workflow_signal import (
+from mcp_agent.executor.workflow_signal import (
+    Signal,
     SignalMailbox,
-    TemporalSignalHandler,
 )
-from mcp_agent.executor.workflow_signal import Signal
 from mcp_agent.logging.logger import get_logger
 
 if TYPE_CHECKING:
     from temporalio.client import WorkflowHandle
     from mcp_agent.core.context import Context
+    from mcp_agent.executor.temporal import TemporalExecutor
 
 T = TypeVar("T")
 
@@ -53,6 +53,8 @@ class WorkflowState(BaseModel):
 
 
 class WorkflowResult(BaseModel, Generic[T]):
+    # Discriminator to disambiguate from arbitrary dicts
+    kind: Literal["workflow_result"] = "workflow_result"
     value: Optional[T] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
     start_time: float | None = None
@@ -94,7 +96,9 @@ class Workflow(ABC, Generic[T], ContextDependent):
         ContextDependent.__init__(self, context=context)
 
         self.name = name or self.__class__.__name__
-        self._logger = get_logger(f"workflow.{self.name}")
+        # Bind workflow logger to the provided context so events can carry
+        # the current upstream_session even when emitted from background tasks.
+        self._logger = get_logger(f"workflow.{self.name}", context=context)
         self._initialized = False
         self._workflow_id = None  # Will be set during run_async
         self._run_id = None  # Will be set during run_async
@@ -215,7 +219,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
         # Using __mcp_agent_ prefix to avoid conflicts with user parameters
         provided_workflow_id = kwargs.pop("__mcp_agent_workflow_id", None)
         provided_task_queue = kwargs.pop("__mcp_agent_task_queue", None)
-        provided_upstream_session = kwargs.pop("__mcp_agent_upstream_session", None)
+        workflow_memo = kwargs.pop("__mcp_agent_workflow_memo", None)
 
         self.update_status("scheduled")
 
@@ -227,12 +231,13 @@ class Workflow(ABC, Generic[T], ContextDependent):
                 self._run_id = str(self.executor.uuid())
         elif self.context.config.execution_engine == "temporal":
             # For Temporal workflows, we'll start the workflow immediately
-            executor: TemporalExecutor = self.executor
+            executor: "TemporalExecutor" = self.executor
             handle = await executor.start_workflow(
                 self.name,
                 *args,
                 workflow_id=provided_workflow_id,
                 task_queue=provided_task_queue,
+                workflow_memo=workflow_memo,
                 **kwargs,
             )
             self._workflow_id = handle.id
@@ -719,13 +724,83 @@ class Workflow(ABC, Generic[T], ContextDependent):
         self._logger.debug(f"Initializing workflow {self.name}")
 
         if self.context.config.execution_engine == "temporal":
-            if isinstance(self.executor.signal_bus, TemporalSignalHandler):
-                # Attach the signal handler to the workflow
-                self.executor.signal_bus.attach_to_workflow(self)
-            else:
-                self._logger.warning(
-                    "Signal handler not attached: executor.signal_bus is not a TemporalSignalHandler"
+            # Lazy import to avoid requiring Temporal unless engine is set to temporal
+            try:
+                from mcp_agent.executor.temporal.workflow_signal import (
+                    TemporalSignalHandler,
                 )
+
+                if isinstance(self.executor.signal_bus, TemporalSignalHandler):
+                    # Attach the signal handler to the workflow
+                    self.executor.signal_bus.attach_to_workflow(self)
+                else:
+                    self._logger.warning(
+                        "Signal handler not attached: executor.signal_bus is not a TemporalSignalHandler"
+                    )
+            except Exception:
+                self._logger.warning(
+                    "Signal handler not attached: Temporal support unavailable"
+                )
+
+            # Read memo (if any) and set gateway overrides on context for activities
+            try:
+                from temporalio import workflow as _twf
+
+                # Preferred API: direct memo mapping from Temporal runtime
+                memo_map = None
+                try:
+                    memo_map = _twf.memo()
+                except Exception:
+                    # Fallback to info().memo if available
+                    try:
+                        _info = _twf.info()
+                        memo_map = getattr(_info, "memo", None)
+                    except Exception:
+                        memo_map = None
+
+                if isinstance(memo_map, dict):
+                    gateway_url = memo_map.get("gateway_url")
+                    gateway_token = memo_map.get("gateway_token")
+
+                    self._logger.debug(
+                        f"Proxy parameters: gateway_url={gateway_url}, gateway_token={gateway_token}"
+                    )
+
+                    if gateway_url:
+                        try:
+                            self.context.gateway_url = gateway_url
+                        except Exception:
+                            pass
+                    if gateway_token:
+                        try:
+                            self.context.gateway_token = gateway_token
+                        except Exception:
+                            pass
+            except Exception:
+                # Safe to ignore if called outside workflow sandbox or memo unavailable
+                pass
+
+            # Expose a virtual upstream session (passthrough) bound to this run via activities
+            # This lets any code use context.upstream_session like a real session.
+            try:
+                from mcp_agent.executor.temporal.session_proxy import SessionProxy
+
+                upstream_session = getattr(self.context, "upstream_session", None)
+
+                if upstream_session is None:
+                    self.context.upstream_session = SessionProxy(
+                        executor=self.executor,
+                        context=self.context,
+                    )
+
+                    app = self.context.app
+                    if app:
+                        # Ensure the app's logger is bound to the current context with upstream_session
+                        if app._logger and hasattr(app._logger, "_bound_context"):
+                            app._logger._bound_context = self.context
+            except Exception:
+                # Non-fatal if context is immutable early; will be set after run_id assignment in run_async
+                pass
 
         self._initialized = True
         self.state.updated_at = datetime.now(timezone.utc).timestamp()

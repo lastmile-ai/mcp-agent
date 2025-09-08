@@ -14,6 +14,7 @@ import os
 
 from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
+from mcp_agent.core.context import Context
 from mcp_agent.executor.workflow_signal import Signal
 from mcp_agent.server.app_server import create_mcp_server_for_app
 from mcp_agent.executor.workflow import Workflow, WorkflowResult
@@ -58,14 +59,64 @@ class BasicAgentWorkflow(Workflow[str]):
         context = app.context
         context.config.mcp.servers["filesystem"].args.extend([os.getcwd()])
 
+        # Use of the app.logger will forward logs back to the mcp client
+        app_logger = app.logger
+
+        app_logger.info("Starting finder agent")
         async with finder_agent:
             finder_llm = await finder_agent.attach_llm(OpenAIAugmentedLLM)
 
             result = await finder_llm.generate_str(
                 message=input,
             )
+
+            # forwards the log to the caller
+            app_logger.info(f"Finder agent completed with result {result}")
+            # print to the console (for when running locally)
             print(f"Agent result: {result}")
             return WorkflowResult(value=result)
+
+
+@app.tool
+async def finder_tool(request: str, app_ctx: Context | None = None) -> str:
+    """
+    Run the basic agent workflow using the app.tool decorator to set up the workflow.
+    The code in this function is run in workflow context.
+    LLM calls are executed in the activity context.
+    You can use the app_ctx to access the executor to run activities explicitly.
+    Functions decorated with @app.workflow_task will be run in activity context.
+
+    Args:
+        input: The input string to prompt the agent.
+
+    Returns:
+        The result of the agent call. This tool will be run syncronously and block until workflow completion.
+        To create this as an async tool, use @app.async_tool instead, which will return the workflow ID and run ID.
+    """
+
+    app = app_ctx.app
+
+    logger = app.logger
+    logger.info(f"Running finder_tool with input: {request}")
+
+    finder_agent = Agent(
+        name="finder",
+        instruction="""You are a helpful assistant.""",
+        server_names=["fetch", "filesystem"],
+    )
+
+    context = app.context
+    context.config.mcp.servers["filesystem"].args.extend([os.getcwd()])
+
+    async with finder_agent:
+        finder_llm = await finder_agent.attach_llm(OpenAIAugmentedLLM)
+
+        result = await finder_llm.generate_str(
+            message=request,
+        )
+        logger.info(f"Agent result: {result}")
+
+    return result
 
 
 @app.workflow

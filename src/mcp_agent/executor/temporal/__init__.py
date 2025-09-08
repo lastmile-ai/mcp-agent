@@ -32,10 +32,13 @@ from temporalio.worker import Worker
 
 from mcp_agent.config import TemporalSettings
 from mcp_agent.executor.executor import Executor, ExecutorConfig, R
+
 from mcp_agent.executor.temporal.workflow_signal import TemporalSignalHandler
 from mcp_agent.executor.workflow_signal import SignalHandler
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.utils.common import unwrap
+from mcp_agent.executor.temporal.interceptor import ContextPropagationInterceptor
+from mcp_agent.executor.temporal.system_activities import SystemActivities
 
 if TYPE_CHECKING:
     from mcp_agent.app import MCPApp
@@ -119,7 +122,7 @@ class TemporalExecutor(Executor):
                     return await task(*args, **kwargs)
                 else:
                     # Check if we're in a Temporal workflow context
-                    if workflow._Runtime.current():
+                    if workflow.in_workflow():
                         wrapped_task = functools.partial(task, *args, **kwargs)
                         result = wrapped_task()
                     else:
@@ -175,7 +178,7 @@ class TemporalExecutor(Executor):
         try:
             result = await workflow.execute_activity(
                 activity_task,
-                args=args,
+                *args,
                 task_queue=self.config.task_queue,
                 schedule_to_close_timeout=schedule_to_close,
                 retry_policy=retry_policy,
@@ -196,7 +199,7 @@ class TemporalExecutor(Executor):
         """Execute multiple tasks (activities) in parallel."""
 
         # Must be called from within a workflow
-        if not workflow._Runtime.current():
+        if not workflow.in_workflow():
             raise RuntimeError(
                 "TemporalExecutor.execute must be called from within a workflow"
             )
@@ -214,7 +217,7 @@ class TemporalExecutor(Executor):
         """Execute multiple tasks (activities) in parallel."""
 
         # Must be called from within a workflow
-        if not workflow._Runtime.current():
+        if not workflow.in_workflow():
             raise RuntimeError(
                 "TemporalExecutor.execute must be called from within a workflow"
             )
@@ -232,7 +235,7 @@ class TemporalExecutor(Executor):
         *args,
         **kwargs,
     ) -> AsyncIterator[R | BaseException]:
-        if not workflow._Runtime.current():
+        if not workflow.in_workflow():
             raise RuntimeError(
                 "TemporalExecutor.execute_streaming must be called from within a workflow"
             )
@@ -263,9 +266,9 @@ class TemporalExecutor(Executor):
                 api_key=self.config.api_key,
                 tls=self.config.tls,
                 data_converter=pydantic_data_converter,
-                interceptors=[TracingInterceptor()]
+                interceptors=[TracingInterceptor(), ContextPropagationInterceptor()]
                 if self.context.tracing_enabled
-                else [],
+                else [ContextPropagationInterceptor()],
                 rpc_metadata=self.config.rpc_metadata or {},
             )
 
@@ -278,6 +281,7 @@ class TemporalExecutor(Executor):
         wait_for_result: bool = False,
         workflow_id: str | None = None,
         task_queue: str | None = None,
+        workflow_memo: Dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> WorkflowHandle:
         """
@@ -304,38 +308,45 @@ class TemporalExecutor(Executor):
 
         # Inspect the `run(self, …)` signature
         sig = inspect.signature(wf.run)
+        # Work with a signature that excludes any leading 'self' for binding/validation
         params = [p for p in sig.parameters.values() if p.name != "self"]
-
-        # Bind args in declaration order
-        bound_args = []
-        for idx, param in enumerate(params):
-            if idx < len(args):
-                bound_args.append(args[idx])
-            elif param.name in kwargs:
-                bound_args.append(kwargs[param.name])
-            elif param.default is not inspect.Parameter.empty:
-                # optional param, skip if not provided
-                continue
-            else:
-                raise ValueError(f"Missing required workflow argument '{param.name}'")
-
-        # Too many positionals?
-        if len(args) > len(params):
-            raise ValueError(
-                f"Got {len(args)} positional args but run() only takes {len(params)}"
-            )
+        has_var_positional = any(
+            p.kind == inspect.Parameter.VAR_POSITIONAL for p in params
+        )
+        has_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params)
+        sig_no_self = inspect.Signature(parameters=params)
 
         # Determine what to pass to the start_workflow function
-        input_arg = None
-        if not bound_args:
-            # zero-arg workflow
-            pass
-        elif len(bound_args) == 1:
-            # single-arg workflow
-            input_arg = bound_args[0]
+        # If the workflow run is varargs/kwargs (AutoWorkflow), pass kwargs as a single payload
+        if has_var_keyword or has_var_positional:
+            input_arg = kwargs if kwargs else (args[0] if args else None)
         else:
-            # multi-arg workflow - pack into a sequence
-            input_arg = bound_args
+            # Bind provided args/kwargs to validate and order them against signature without 'self'
+            try:
+                bound = sig_no_self.bind_partial(*args, **kwargs)
+            except TypeError as e:
+                raise ValueError(str(e))
+
+            # Check for missing required (non-default) parameters
+            for p in params:
+                if p.default is inspect._empty and p.name not in bound.arguments:
+                    raise ValueError(f"Missing required workflow argument '{p.name}'")
+
+            bound_vals = [
+                bound.arguments.get(p.name) for p in params if p.name in bound.arguments
+            ]
+            if len(bound_vals) == 0:
+                input_arg = None
+            elif len(bound_vals) == 1:
+                input_arg = bound_vals[0]
+            else:
+                input_arg = bound_vals
+        # Too many positionals for strict (non-varargs) run signatures?
+        if not (has_var_positional or has_var_keyword):
+            if len(args) > len(params):
+                raise ValueError(
+                    f"Got {len(args)} positional args but run() only takes {len(params)}"
+                )
 
         # Use provided workflow_id or generate a unique one
         if workflow_id is None:
@@ -362,6 +373,7 @@ class TemporalExecutor(Executor):
                 task_queue=task_queue,
                 id_reuse_policy=id_reuse_policy,
                 rpc_metadata=self.config.rpc_metadata or {},
+                memo=workflow_memo or {},
             )
         else:
             handle: WorkflowHandle = await self.client.start_workflow(
@@ -370,6 +382,7 @@ class TemporalExecutor(Executor):
                 task_queue=task_queue,
                 id_reuse_policy=id_reuse_policy,
                 rpc_metadata=self.config.rpc_metadata or {},
+                memo=workflow_memo or {},
             )
 
         # Wait for the result if requested
@@ -490,6 +503,15 @@ async def create_temporal_worker_for_app(app: "MCPApp"):
         # Collect activities from the global registry
         activity_registry = running_app.context.task_registry
 
+        # Register system activities (logging, human input proxy, generic relays)
+        system_activities = SystemActivities(context=running_app.context)
+        app.workflow_task(name="mcp_forward_log")(system_activities.forward_log)
+        app.workflow_task(name="mcp_request_user_input")(
+            system_activities.request_user_input
+        )
+        app.workflow_task(name="mcp_relay_notify")(system_activities.relay_notify)
+        app.workflow_task(name="mcp_relay_request")(system_activities.relay_request)
+
         for name in activity_registry.list_activities():
             activities.append(activity_registry.get_activity(name))
 
@@ -501,6 +523,7 @@ async def create_temporal_worker_for_app(app: "MCPApp"):
             task_queue=running_app.executor.config.task_queue,
             activities=activities,
             workflows=workflows,
+            interceptors=[ContextPropagationInterceptor()],
         )
 
         try:

@@ -14,6 +14,7 @@ from mcp_agent.config import Settings, get_settings
 from mcp_agent.executor.signal_registry import SignalRegistry
 from mcp_agent.logging.event_progress import ProgressAction
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.logging.logger import set_default_bound_context
 from mcp_agent.executor.decorator_registry import (
     DecoratorRegistry,
     register_asyncio_decorators,
@@ -111,6 +112,17 @@ class MCPApp:
         self._model_selector = model_selector
 
         self._workflows: Dict[str, Type["Workflow"]] = {}  # id to workflow class
+        # Deferred tool declarations to register with MCP server when available
+        # Each entry: {
+        #   "name": str,
+        #   "mode": "sync" | "async",
+        #   "workflow_name": str,
+        #   "workflow_cls": Type[Workflow],
+        #   "tool_wrapper": Callable | None,
+        #   "structured_output": bool | None,
+        #   "description": str | None,
+        # }
+        self._declared_tools: list[dict[str, Any]] = []
 
         self._logger = None
         self._context: Optional[Context] = None
@@ -166,7 +178,20 @@ class MCPApp:
     def logger(self):
         if self._logger is None:
             session_id = self._context.session_id if self._context else None
+            # Do not pass context kwarg to match expected call signature in tests
             self._logger = get_logger(f"mcp_agent.{self.name}", session_id=session_id)
+            # Bind context for upstream forwarding and other contextual logging
+            try:
+                if self._context is not None:
+                    self._logger._bound_context = self._context  # type: ignore[attr-defined]
+
+            except Exception:
+                pass
+        else:
+            # Update the logger's bound context in case upstream_session was set after logger creation
+            if self._context and hasattr(self._logger, "_bound_context"):
+                self._logger._bound_context = self._context
+
         return self._logger
 
     async def initialize(self):
@@ -195,6 +220,12 @@ class MCPApp:
 
         # Store a reference to this app instance in the context for easier access
         self._context.app = self
+
+        # Provide a safe default bound context for loggers created after init without explicit context
+        try:
+            set_default_bound_context(self._context)
+        except Exception:
+            pass
 
         # Auto-load subagents if enabled in settings
         try:
@@ -499,6 +530,263 @@ class MCPApp:
 
         return wrapper
 
+    def _create_workflow_from_function(
+        self,
+        fn: Callable[..., Any],
+        *,
+        workflow_name: str,
+        description: str | None = None,
+        mark_sync_tool: bool = False,
+    ) -> Type:
+        """
+        Create a Workflow subclass dynamically from a plain function.
+
+        The generated workflow class will:
+        - Have `run` implemented to call the provided function
+        - Be decorated with engine-specific run decorators via workflow_run
+        - Expose the original function for parameter schema generation
+        """
+
+        import asyncio as _asyncio
+        from mcp_agent.executor.workflow import Workflow as _Workflow
+
+        async def _invoke_target(workflow_self, *args, **kwargs):
+            # Inject app_ctx (AppContext) and shim ctx (FastMCP Context) if requested by the function
+            import inspect as _inspect
+
+            call_kwargs = dict(kwargs)
+
+            # If Temporal passed a single positional dict payload, merge into kwargs
+            if len(args) == 1 and isinstance(args[0], dict):
+                try:
+                    call_kwargs = {**args[0], **call_kwargs}
+                    args = ()
+                except Exception:
+                    pass
+
+            # Detect if function expects an AppContext parameter (named 'app_ctx' or annotated with our Context)
+            try:
+                sig = _inspect.signature(fn)
+                app_context_param_name = None
+
+                for param_name, param in sig.parameters.items():
+                    if param_name == "app_ctx":
+                        app_context_param_name = param_name
+                        break
+                    if param.annotation != _inspect.Parameter.empty:
+                        ann_str = str(param.annotation)
+                        if "mcp_agent.core.context.Context" in ann_str:
+                            app_context_param_name = param_name
+                            break
+                # If requested, inject the workflow's context (use property for fallback)
+                if app_context_param_name:
+                    try:
+                        _ctx_obj = workflow_self.context
+                    except Exception:
+                        _ctx_obj = getattr(workflow_self, "_context", None)
+                    if _ctx_obj is not None:
+                        call_kwargs[app_context_param_name] = _ctx_obj
+            except Exception:
+                pass
+
+            # If the function expects a FastMCP Context (ctx/context), ensure it's present (None inside workflow)
+            try:
+                from mcp.server.fastmcp import Context as _Ctx  # type: ignore
+            except Exception:
+                _Ctx = None  # type: ignore
+
+            try:
+                sig = sig if "sig" in locals() else _inspect.signature(fn)
+                for p in sig.parameters.values():
+                    if (
+                        p.annotation is not _inspect._empty
+                        and _Ctx is not None
+                        and p.annotation is _Ctx
+                    ):
+                        if p.name not in call_kwargs:
+                            call_kwargs[p.name] = None
+                    if p.name in ("ctx", "context") and p.name not in call_kwargs:
+                        call_kwargs[p.name] = None
+            except Exception:
+                pass
+
+            # If user passed a single positional dict (Temporal AutoWorkflow payload), merge it
+            if not call_kwargs and len(args) == 1 and isinstance(args[0], dict):
+                call_kwargs = dict(args[0])
+                args = ()
+
+            # Support both async and sync callables
+            res = fn(*args, **call_kwargs)
+            if _asyncio.iscoroutine(res):
+                res = await res
+
+            # Ensure WorkflowResult return type
+            try:
+                from mcp_agent.executor.workflow import (
+                    WorkflowResult as _WorkflowResult,
+                )
+            except Exception:
+                _WorkflowResult = None  # type: ignore[assignment]
+
+            if _WorkflowResult is not None and not isinstance(res, _WorkflowResult):
+                return _WorkflowResult(value=res)
+            return res
+
+        async def _run(self, *args, **kwargs):  # type: ignore[no-redef]
+            return await _invoke_target(self, *args, **kwargs)
+
+        # Decorate run with engine-specific decorator
+        engine_type = self.config.execution_engine
+        if engine_type == "temporal":
+            # Temporal requires the @workflow.run to be applied on a top-level
+            # class method, not on a local function. We'll assign _run as-is
+            # for now and decorate it after creating and publishing the class.
+            decorated_run = _run
+        else:
+            decorated_run = self.workflow_run(_run)
+
+        # Build the Workflow subclass dynamically
+        cls_dict: Dict[str, Any] = {
+            "__doc__": description or (fn.__doc__ or ""),
+            "run": decorated_run,
+            "__mcp_agent_param_source_fn__": fn,
+        }
+        if mark_sync_tool:
+            cls_dict["__mcp_agent_sync_tool__"] = True
+        else:
+            cls_dict["__mcp_agent_async_tool__"] = True
+
+        auto_cls = type(f"AutoWorkflow_{workflow_name}", (_Workflow,), cls_dict)
+
+        # Workaround for Temporal: publish the dynamically created class as a
+        # top-level (module global) so it is not considered a "local class".
+        # Temporal requires workflow classes to be importable from a module.
+        try:
+            import sys as _sys
+
+            target_module = getattr(fn, "__module__", __name__)
+            auto_cls.__module__ = target_module
+            _mod = _sys.modules.get(target_module)
+            if _mod is not None:
+                setattr(_mod, auto_cls.__name__, auto_cls)
+        except Exception:
+            pass
+
+        # For Temporal, now that the class exists and is published at module-level,
+        # decorate the run method with the engine-specific run decorator.
+        if engine_type == "temporal":
+            try:
+                run_decorator = self._decorator_registry.get_workflow_run_decorator(
+                    engine_type
+                )
+                if run_decorator:
+                    fn_run = getattr(auto_cls, "run")
+                    # Ensure method appears as top-level for Temporal
+                    target_module = getattr(fn, "__module__", __name__)
+                    try:
+                        fn_run.__module__ = target_module  # type: ignore[attr-defined]
+                        fn_run.__qualname__ = f"{auto_cls.__name__}.run"  # type: ignore[attr-defined]
+                    except Exception:
+                        pass
+                    setattr(auto_cls, "run", run_decorator(fn_run))
+            except Exception:
+                pass
+
+        # Register with app (and apply engine-specific workflow decorator)
+        self.workflow(auto_cls, workflow_id=workflow_name)
+        return auto_cls
+
+    def tool(
+        self,
+        name: str | None = None,
+        *,
+        description: str | None = None,
+        structured_output: bool | None = None,
+    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+        """
+        Decorator to declare a synchronous MCP tool that runs via an auto-generated
+        Workflow and waits for completion before returning.
+
+        Also registers an async Workflow under the same name so that run/get_status
+        endpoints are available.
+        """
+
+        def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
+            tool_name = name or fn.__name__
+            # Construct the workflow from function
+            workflow_cls = self._create_workflow_from_function(
+                fn,
+                workflow_name=tool_name,
+                description=description,
+                mark_sync_tool=True,
+            )
+
+            # Defer tool registration until the MCP server is created
+            self._declared_tools.append(
+                {
+                    "name": tool_name,
+                    "mode": "sync",
+                    "workflow_name": tool_name,
+                    "workflow_cls": workflow_cls,
+                    "source_fn": fn,
+                    "structured_output": structured_output,
+                    "description": description or (fn.__doc__ or ""),
+                }
+            )
+
+            return fn
+
+        # Support bare usage: @app.tool without parentheses
+        if callable(name) and description is None and structured_output is None:
+            fn = name  # type: ignore[assignment]
+            name = None
+            return decorator(fn)  # type: ignore[arg-type]
+
+        return decorator
+
+    def async_tool(
+        self,
+        name: str | None = None,
+        *,
+        description: str | None = None,
+    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+        """
+        Decorator to declare an asynchronous MCP tool.
+
+        Creates a Workflow class from the function and registers it so that
+        the standard per-workflow tools (run/get_status) are exposed by the server.
+        """
+
+        def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
+            workflow_name = name or fn.__name__
+            workflow_cls = self._create_workflow_from_function(
+                fn,
+                workflow_name=workflow_name,
+                description=description,
+                mark_sync_tool=False,
+            )
+            # Defer alias tool registration for run/get_status
+            self._declared_tools.append(
+                {
+                    "name": workflow_name,
+                    "mode": "async",
+                    "workflow_name": workflow_name,
+                    "workflow_cls": workflow_cls,
+                    "source_fn": fn,
+                    "structured_output": None,
+                    "description": description or (fn.__doc__ or ""),
+                }
+            )
+            return fn
+
+        # Support bare usage: @app.async_tool without parentheses
+        if callable(name) and description is None:
+            fn = name  # type: ignore[assignment]
+            name = None
+            return decorator(fn)  # type: ignore[arg-type]
+
+        return decorator
+
     def workflow_task(
         self,
         name: str | None = None,
@@ -548,7 +836,15 @@ class MCPApp:
             )
 
             if task_defn:
-                if isinstance(target, MethodType):
+                # Prevent re-decoration of an already temporal-decorated function,
+                # but still register it with the app.
+                if hasattr(target, "__temporal_activity_definition"):
+                    self.logger.debug(
+                        "Skipping redecorate for already-temporal activity",
+                        data={"activity_name": activity_name},
+                    )
+                    task_callable = target
+                elif isinstance(target, MethodType):
                     self_ref = target.__self__
 
                     @functools.wraps(func)
@@ -611,7 +907,15 @@ class MCPApp:
             )
 
             if task_defn:  # Engine-specific decorator available
-                if isinstance(target, MethodType):
+                # Prevent re-decoration of an already temporal-decorated function,
+                # but still register it with the app.
+                if hasattr(target, "__temporal_activity_definition"):
+                    self.logger.debug(
+                        "Skipping redecorate for already-temporal activity",
+                        data={"activity_name": activity_name},
+                    )
+                    task_callable = target
+                elif isinstance(target, MethodType):
                     self_ref = target.__self__
 
                     @functools.wraps(func)
