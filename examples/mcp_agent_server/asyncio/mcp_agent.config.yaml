@@ -7,11 +7,11 @@ logger:
 mcp:
   servers:
     fetch:
-      command: "/Users/saqadri/.local/bin/uvx"
+      command: "uvx"
       args: ["mcp-server-fetch"]
       description: "Fetch content at URLs from the world wide web"
     filesystem:
-      command: "/Users/saqadri/.nvm/versions/node/v20.3.0/bin/npx"
+      command: "npx"
       args: [
           "-y",
           "@modelcontextprotocol/server-filesystem",
