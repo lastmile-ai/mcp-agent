@@ -17,7 +17,7 @@ from rich.table import Table
 from rich.prompt import Prompt, Confirm
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from mcp_agent.config import Settings
+from mcp_agent.config import Settings, get_settings
 
 
 app = typer.Typer(help="Configuration utilities")
@@ -148,7 +148,7 @@ def check(
 
     # Load and check settings
     try:
-        settings = Settings()
+        settings = get_settings()
 
         # Basic configuration
         table.add_row("", "")  # Separator
@@ -663,7 +663,7 @@ def validate(
 
     # Validate settings can be loaded
     try:
-        settings = Settings()
+        settings = get_settings()
         console.print("[green]✅[/green] Settings load successfully")
 
         # Check for common issues
