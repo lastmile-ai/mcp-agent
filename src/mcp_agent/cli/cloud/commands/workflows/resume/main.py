@@ -5,13 +5,42 @@ from typing import Optional
 
 import typer
 
-from mcp_agent.cli.auth import load_api_key_credentials
-from mcp_agent.cli.core.api_client import UnauthenticatedError
-from mcp_agent.cli.core.constants import DEFAULT_API_BASE_URL
+from mcp_agent.app import MCPApp
 from mcp_agent.cli.core.utils import run_async
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.utils.ux import console
-from mcp_agent.cli.workflows.api_client import WorkflowAPIClient
+from mcp_agent.mcp.gen_client import gen_client
+
+
+async def _resume_workflow_async(
+    run_id: str,
+    payload: Optional[str] = None
+) -> None:
+    """Resume a workflow using MCP tool calls."""
+    # Create a temporary MCP app to connect to temporal server
+    app = MCPApp(name="workflows_cli")
+    
+    try:
+        async with app.run() as workflow_app:
+            async with gen_client("temporal", server_registry=workflow_app.context.server_registry) as client:
+                tool_params = {"run_id": run_id}
+                if payload:
+                    tool_params["payload"] = payload
+                
+                result = await client.call_tool("workflows-resume", tool_params)
+                
+                success = result.content[0].text if result.content else False
+                if isinstance(success, str):
+                    success = success.lower() == 'true'
+                
+                if success:
+                    console.print(f"[green]✓[/green] Successfully resumed workflow")
+                    console.print(f"  Run ID: [cyan]{run_id}[/cyan]")
+                else:
+                    raise CLIError(f"Failed to resume workflow with run ID {run_id}")
+                    
+    except Exception as e:
+        raise CLIError(f"Error resuming workflow with run ID {run_id}: {str(e)}") from e
 
 
 def resume_workflow(
@@ -28,56 +57,11 @@ def resume_workflow(
         mcp-agent cloud workflows resume run_abc123 --payload '{"data": "value"}'
         mcp-agent cloud workflows resume run_abc123 --payload "simple text"
     """
-    effective_api_key = load_api_key_credentials()
-    if not effective_api_key:
-        raise CLIError(
-            "Must be logged in to resume workflow. Run 'mcp-agent login' or set MCP_API_KEY environment variable."
-        )
-
-    # Validate payload if provided
     if payload:
         try:
-            # Try to parse as JSON to validate format
             json.loads(payload)
             console.print(f"[dim]Resuming with JSON payload...[/dim]")
         except json.JSONDecodeError:
-            # If not JSON, treat as plain text
             console.print(f"[dim]Resuming with text payload...[/dim]")
 
-    client = WorkflowAPIClient(api_url=DEFAULT_API_BASE_URL, api_key=effective_api_key)
-
-    try:
-        workflow_info = run_async(client.resume_workflow(workflow_id=run_id, payload=payload))
-
-        console.print(f"[green]✓[/green] Successfully resumed workflow")
-        console.print(f"  Workflow ID: [cyan]{workflow_info.workflowId}[/cyan]")
-        console.print(f"  Run ID: [cyan]{workflow_info.runId or 'N/A'}[/cyan]")
-        console.print(f"  Status: [cyan]{_execution_status_text(workflow_info.executionStatus)}[/cyan]")
-
-    except UnauthenticatedError as e:
-        raise CLIError(
-            "Authentication failed. Try running 'mcp-agent login'"
-        ) from e
-    except Exception as e:
-        raise CLIError(f"Error resuming workflow with run ID {run_id}: {str(e)}") from e
-
-
-def _execution_status_text(status: str | None) -> str:
-    """Format the execution status text."""
-    match status:
-        case "WORKFLOW_EXECUTION_STATUS_RUNNING":
-            return "🔄 Running"
-        case "WORKFLOW_EXECUTION_STATUS_FAILED":
-            return "❌ Failed"
-        case "WORKFLOW_EXECUTION_STATUS_TIMED_OUT":
-            return "⌛ Timed Out"
-        case "WORKFLOW_EXECUTION_STATUS_CANCELED":
-            return "🚫 Cancelled"
-        case "WORKFLOW_EXECUTION_STATUS_TERMINATED":
-            return "🛑 Terminated"
-        case "WORKFLOW_EXECUTION_STATUS_COMPLETED":
-            return "✅ Completed"
-        case "WORKFLOW_EXECUTION_STATUS_CONTINUED_AS_NEW":
-            return "🔁 Continued as New"
-        case _:
-            return "❓ Unknown"
+    run_async(_resume_workflow_async(run_id, payload))

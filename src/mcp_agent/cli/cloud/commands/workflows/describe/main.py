@@ -7,13 +7,44 @@ import typer
 import yaml
 from rich.panel import Panel
 
-from mcp_agent.cli.auth import load_api_key_credentials
-from mcp_agent.cli.core.api_client import UnauthenticatedError
-from mcp_agent.cli.core.constants import DEFAULT_API_BASE_URL
+from mcp_agent.app import MCPApp
 from mcp_agent.cli.core.utils import run_async
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.utils.ux import console
-from mcp_agent.cli.workflows.api_client import WorkflowAPIClient, WorkflowInfo
+from mcp_agent.mcp.gen_client import gen_client
+
+
+async def _describe_workflow_async(
+    run_id: str,
+    format: str = "text"
+) -> None:
+    """Describe a workflow using MCP tool calls."""
+    # Create a temporary MCP app to connect to temporal server
+    app = MCPApp(name="workflows_cli")
+    
+    try:
+        async with app.run() as workflow_app:
+            async with gen_client("temporal", server_registry=workflow_app.context.server_registry) as client:
+                result = await client.call_tool("workflows-get_status", {
+                    "run_id": run_id
+                })
+                
+                workflow_status = result.content[0].text if result.content else {}
+                if isinstance(workflow_status, str):
+                    workflow_status = json.loads(workflow_status)
+                
+                if not workflow_status:
+                    raise CLIError(f"Workflow with run ID '{run_id}' not found.")
+
+                if format == "json":
+                    print(json.dumps(workflow_status, indent=2))
+                elif format == "yaml":
+                    print(yaml.dump(workflow_status, default_flow_style=False))
+                else:  # text format
+                    print_workflow_status(workflow_status)
+                    
+    except Exception as e:
+        raise CLIError(f"Error describing workflow with run ID {run_id}: {str(e)}") from e
 
 
 def describe_workflow(
@@ -25,50 +56,36 @@ def describe_workflow(
     Shows detailed information about a workflow execution including its current status,
     creation time, and other metadata.
     """
-    # Validate format
     if format not in ["text", "json", "yaml"]:
         console.print("[red]Error: --format must be 'text', 'json', or 'yaml'[/red]")
         raise typer.Exit(6)
 
-    effective_api_key = load_api_key_credentials()
-    if not effective_api_key:
-        raise CLIError(
-            "Must be logged in to describe workflow. Run 'mcp-agent login' or set MCP_API_KEY environment variable."
-        )
-
-    client = WorkflowAPIClient(api_url=DEFAULT_API_BASE_URL, api_key=effective_api_key)
-
-    try:
-        workflow_info = run_async(client.get_workflow(run_id))
-
-        if not workflow_info:
-            raise CLIError(f"Workflow with run ID '{run_id}' not found.")
-
-        if format == "json":
-            print(json.dumps(_workflow_to_dict(workflow_info), indent=2))
-        elif format == "yaml":
-            print(yaml.dump(_workflow_to_dict(workflow_info), default_flow_style=False))
-        else:  # text format
-            print_workflow_info(workflow_info)
-
-    except UnauthenticatedError as e:
-        raise CLIError(
-            "Authentication failed. Try running 'mcp-agent login'"
-        ) from e
-    except Exception as e:
-        raise CLIError(f"Error describing workflow with run ID {run_id}: {str(e)}") from e
+    run_async(_describe_workflow_async(run_id, format))
 
 
-def print_workflow_info(workflow_info: WorkflowInfo) -> None:
-    """Print workflow information in text format."""
+def print_workflow_status(workflow_status: dict) -> None:
+    """Print workflow status information in text format."""
+    name = workflow_status.get("name", "N/A")
+    workflow_id = workflow_status.get("workflow_id", workflow_status.get("workflowId", "N/A"))
+    run_id = workflow_status.get("run_id", workflow_status.get("runId", "N/A"))
+    status = workflow_status.get("status", "N/A")
+    
+    created_at = workflow_status.get("created_at", workflow_status.get("createdAt", "N/A"))
+    if created_at != "N/A" and isinstance(created_at, str):
+        try:
+            from datetime import datetime
+            created_dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+            created_at = created_dt.strftime('%Y-%m-%d %H:%M:%S')
+        except:
+            pass  # Keep original format if parsing fails
+    
     console.print(
         Panel(
-            f"Name: [cyan]{workflow_info.name}[/cyan]\n"
-            f"Workflow ID: [cyan]{workflow_info.workflowId}[/cyan]\n"
-            f"Run ID: [cyan]{workflow_info.runId or 'N/A'}[/cyan]\n"
-            f"Created: [cyan]{workflow_info.createdAt.strftime('%Y-%m-%d %H:%M:%S')}[/cyan]\n"
-            f"Creator: [cyan]{workflow_info.principalId}[/cyan]\n"
-            f"Status: [cyan]{_execution_status_text(workflow_info.executionStatus)}[/cyan]",
+            f"Name: [cyan]{name}[/cyan]\n"
+            f"Workflow ID: [cyan]{workflow_id}[/cyan]\n"
+            f"Run ID: [cyan]{run_id}[/cyan]\n"
+            f"Created: [cyan]{created_at}[/cyan]\n"
+            f"Status: [cyan]{_format_status(status)}[/cyan]",
             title="Workflow",
             border_style="blue",
             expand=False,
@@ -76,35 +93,23 @@ def print_workflow_info(workflow_info: WorkflowInfo) -> None:
     )
 
 
-def _workflow_to_dict(workflow_info: WorkflowInfo) -> dict:
-    """Convert workflow info to dictionary for JSON/YAML output."""
-    return {
-        "name": workflow_info.name,
-        "workflowId": workflow_info.workflowId,
-        "runId": workflow_info.runId,
-        "createdAt": workflow_info.createdAt.isoformat(),
-        "creator": workflow_info.principalId,
-        "executionStatus": workflow_info.executionStatus,
-        "status": _execution_status_text(workflow_info.executionStatus),
-    }
-
-
-def _execution_status_text(status: Optional[str]) -> str:
+def _format_status(status: str) -> str:
     """Format the execution status text."""
-    match status:
-        case "WORKFLOW_EXECUTION_STATUS_RUNNING":
-            return "🔄 Running"
-        case "WORKFLOW_EXECUTION_STATUS_FAILED":
-            return "❌ Failed"
-        case "WORKFLOW_EXECUTION_STATUS_TIMED_OUT":
-            return "⌛ Timed Out"
-        case "WORKFLOW_EXECUTION_STATUS_CANCELED":
-            return "🚫 Cancelled"
-        case "WORKFLOW_EXECUTION_STATUS_TERMINATED":
-            return "🛑 Terminated"
-        case "WORKFLOW_EXECUTION_STATUS_COMPLETED":
-            return "✅ Completed"
-        case "WORKFLOW_EXECUTION_STATUS_CONTINUED_AS_NEW":
-            return "🔁 Continued as New"
-        case _:
-            return "❓ Unknown"
+    status_lower = str(status).lower()
+    
+    if "running" in status_lower:
+        return "🔄 Running"
+    elif "failed" in status_lower or "error" in status_lower:
+        return "❌ Failed"
+    elif "timeout" in status_lower or "timed_out" in status_lower:
+        return "⌛ Timed Out"
+    elif "cancel" in status_lower:
+        return "🚫 Cancelled"
+    elif "terminat" in status_lower:
+        return "🛑 Terminated"
+    elif "complet" in status_lower:
+        return "✅ Completed"
+    elif "continued" in status_lower:
+        return "🔁 Continued as New"
+    else:
+        return f"❓ {status}"
