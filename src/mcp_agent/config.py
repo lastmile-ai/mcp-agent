@@ -825,6 +825,9 @@ def get_settings(config_path: str | None = None) -> Settings:
         """Recursively merge two dictionaries, preserving nested structures."""
         merged = base.copy()
         for key, value in update.items():
+            # Skip None values to avoid overwriting valid config with empty YAML values
+            if value is None:
+                continue
             if (
                 key in merged
                 and isinstance(merged[key], dict)
