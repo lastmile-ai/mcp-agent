@@ -109,7 +109,7 @@ def print_workflow_status(workflow_status: dict) -> None:
             from datetime import datetime
             created_dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
             created_at = created_dt.strftime('%Y-%m-%d %H:%M:%S')
-        except:
+        except (ValueError, TypeError):
             pass  # Keep original format if parsing fails
     
     console.print(

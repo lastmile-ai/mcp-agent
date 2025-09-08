@@ -93,9 +93,9 @@ def resume_workflow(
     if payload:
         try:
             json.loads(payload)
-            console.print(f"[dim]Resuming with JSON payload...[/dim]")
+            console.print("[dim]Resuming with JSON payload...[/dim]")
         except json.JSONDecodeError:
-            console.print(f"[dim]Resuming with text payload...[/dim]")
+            console.print("[dim]Resuming with text payload...[/dim]")
 
     run_async(_signal_workflow_async(server_id_or_url, run_id, "resume", payload))
 
@@ -119,8 +119,8 @@ def suspend_workflow(
     if payload:
         try:
             json.loads(payload)
-            console.print(f"[dim]Suspending with JSON payload...[/dim]")
+            console.print("[dim]Suspending with JSON payload...[/dim]")
         except json.JSONDecodeError:
-            console.print(f"[dim]Suspending with text payload...[/dim]")
+            console.print("[dim]Suspending with text payload...[/dim]")
 
     run_async(_signal_workflow_async(server_id_or_url, run_id, "suspend", payload))
