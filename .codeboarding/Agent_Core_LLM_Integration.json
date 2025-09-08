@@ -1,0 +1,141 @@
+{
+  "description": "This subsystem defines the fundamental interface and capabilities of an AI agent, encapsulating interactions with Large Language Models (LLMs), external tools, prompts, and resources. It provides a consistent and extensible model for agent behavior and offers a standardized, augmented interface for interacting with various LLM providers.",
+  "components": [
+    {
+      "name": "Agent Core",
+      "description": "This is the foundational interface for all AI agents within the `mcp-agent` framework. It defines the core capabilities and interaction points of an agent, serving as the base for more specialized agent types. It encapsulates the agent's logic, its interaction with LLMs, and its ability to utilize external tools and resources.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent.agents.agent.Agent",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/agents/agent.py",
+          "reference_start_line": 56,
+          "reference_end_line": 934
+        }
+      ]
+    },
+    {
+      "name": "Augmented LLM Interface",
+      "description": "This abstract component provides a unified and enhanced interface for interacting with different LLM providers. It abstracts away the vendor-specific details of LLM APIs, allowing the rest of the framework to interact with LLMs in a consistent manner, regardless of the underlying provider. It supports various LLM operations, including completion and structured completion requests.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent.workflows.llm.augmented_llm.AugmentedLLM",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/llm/augmented_llm.py",
+          "reference_start_line": 218,
+          "reference_end_line": 668
+        }
+      ]
+    },
+    {
+      "name": "LLM Selector",
+      "description": "This component is responsible for intelligently selecting the most suitable LLM model for a given task. It considers various criteria such as cost, latency, and performance benchmarks to make informed decisions, optimizing resource utilization and response quality.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent.workflows.llm.llm_selector.ModelSelector",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/llm/llm_selector.py",
+          "reference_start_line": 96,
+          "reference_end_line": 413
+        }
+      ]
+    },
+    {
+      "name": "LLM Provider Implementations",
+      "description": "These are concrete implementations of the `Augmented LLM Interface`, providing the actual connectivity and interaction logic for specific LLM providers (e.g., Anthropic, Azure, Bedrock, Google, OpenAI, Ollama). Each implementation handles the nuances of its respective LLM API and translates requests and responses to and from the framework's internal format.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent.workflows.llm.augmented_llm_anthropic.AnthropicAugmentedLLM",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/llm/augmented_llm_anthropic.py",
+          "reference_start_line": 110,
+          "reference_end_line": 722
+        },
+        {
+          "qualified_name": "mcp_agent.workflows.llm.augmented_llm_azure.AzureAugmentedLLM",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/llm/augmented_llm_azure.py",
+          "reference_start_line": 82,
+          "reference_end_line": 491
+        },
+        {
+          "qualified_name": "mcp_agent.workflows.llm.augmented_llm_bedrock.BedrockAugmentedLLM",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/llm/augmented_llm_bedrock.py",
+          "reference_start_line": 48,
+          "reference_end_line": 349
+        },
+        {
+          "qualified_name": "mcp_agent.workflows.llm.augmented_llm_google.GoogleAugmentedLLM",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/llm/augmented_llm_google.py",
+          "reference_start_line": 34,
+          "reference_end_line": 319
+        },
+        {
+          "qualified_name": "mcp_agent.workflows.llm.augmented_llm_ollama.OllamaAugmentedLLM",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/llm/augmented_llm_ollama.py",
+          "reference_start_line": 16,
+          "reference_end_line": 78
+        },
+        {
+          "qualified_name": "mcp_agent.workflows.llm.augmented_llm_openai.OpenAIAugmentedLLM",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/llm/augmented_llm_openai.py",
+          "reference_start_line": 80,
+          "reference_end_line": 845
+        }
+      ]
+    },
+    {
+      "name": "Provider to MCP Converters",
+      "description": "These utility classes are crucial for ensuring data consistency and interoperability across different LLM providers. They are responsible for converting provider-specific data structures (e.g., Anthropic's messages, OpenAI's chat completions) into the framework's standardized Model Context Protocol (MCP) types.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent.workflows.llm.augmented_llm_anthropic.AnthropicMCPTypeConverter",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/llm/augmented_llm_anthropic.py",
+          "reference_start_line": 777,
+          "reference_end_line": 886
+        },
+        {
+          "qualified_name": "mcp_agent.workflows.llm.augmented_llm_azure.MCPAzureTypeConverter",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/llm/augmented_llm_azure.py",
+          "reference_start_line": 524,
+          "reference_end_line": 614
+        },
+        {
+          "qualified_name": "mcp_agent.workflows.llm.augmented_llm_bedrock.BedrockMCPTypeConverter",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/llm/augmented_llm_bedrock.py",
+          "reference_start_line": 437,
+          "reference_end_line": 499
+        },
+        {
+          "qualified_name": "mcp_agent.workflows.llm.augmented_llm_google.GoogleMCPTypeConverter",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/llm/augmented_llm_google.py",
+          "reference_start_line": 403,
+          "reference_end_line": 518
+        },
+        {
+          "qualified_name": "mcp_agent.workflows.llm.augmented_llm_openai.MCPOpenAITypeConverter",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/llm/augmented_llm_openai.py",
+          "reference_start_line": 949,
+          "reference_end_line": 1055
+        }
+      ]
+    }
+  ],
+  "components_relations": [
+    {
+      "relation": "uses",
+      "src_name": "Agent Core",
+      "dst_name": "Augmented LLM Interface"
+    },
+    {
+      "relation": "uses",
+      "src_name": "Augmented LLM Interface",
+      "dst_name": "LLM Selector"
+    },
+    {
+      "relation": "implements",
+      "src_name": "LLM Provider Implementations",
+      "dst_name": "Augmented LLM Interface"
+    },
+    {
+      "relation": "uses",
+      "src_name": "LLM Provider Implementations",
+      "dst_name": "Provider to MCP Converters"
+    }
+  ]
+}

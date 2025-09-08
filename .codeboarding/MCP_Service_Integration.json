@@ -1,0 +1,102 @@
+{
+  "description": "Abstract Components Overview",
+  "components": [
+    {
+      "name": "MCPAggregator",
+      "description": "The MCPAggregator serves as the central hub for collecting and consolidating capabilities from various MCP servers. It's responsible for presenting a unified view of available tools, prompts, and resources to the rest of the `mcp_agent` application, abstracting away the complexities of interacting with individual MCP services. This component is fundamental because it provides the agent with a comprehensive understanding of its available external capabilities, enabling dynamic tool and resource utilization.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent.mcp.mcp_aggregator.MCPAggregator",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/mcp/mcp_aggregator.py",
+          "reference_start_line": 77,
+          "reference_end_line": 1357
+        }
+      ]
+    },
+    {
+      "name": "MCPConnectionManager",
+      "description": "This component is responsible for the lifecycle management of network connections and communication sessions with MCP servers. It handles the establishment, maintenance, and termination of these connections, ensuring reliable and efficient communication. Its importance lies in providing a robust and abstract layer for network interactions, preventing other components from needing to manage low-level connection details.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent.mcp.mcp_connection_manager.MCPConnectionManager",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/mcp/mcp_connection_manager.py",
+          "reference_start_line": 0,
+          "reference_end_line": 0
+        }
+      ]
+    },
+    {
+      "name": "ServerRegistry",
+      "description": "The ServerRegistry acts as a persistent store for information about known MCP servers. It maintains their configurations, status, and other metadata, enabling the MCPConnectionManager and other components to discover and retrieve details about available MCP services. This component is fundamental for the dynamic discovery and management of external services, supporting the extensibility of the framework.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent.mcp.mcp_server_registry.ServerRegistry",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/mcp/mcp_server_registry.py",
+          "reference_start_line": 0,
+          "reference_end_line": 0
+        }
+      ]
+    },
+    {
+      "name": "MCPClientSession",
+      "description": "This component encapsulates the details of an individual client session with a specific MCP server. It handles the low-level mechanics of sending requests and receiving responses over a single connection. This separation of concerns ensures that the complexities of interacting with a single MCP server are isolated, promoting reusability and testability.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent.mcp.mcp_agent_client_session.MCPClientSession",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/mcp/mcp_agent_client_session.py",
+          "reference_start_line": 0,
+          "reference_end_line": 0
+        }
+      ]
+    },
+    {
+      "name": "gen_client",
+      "description": "This module contains auto-generated client code that provides concrete methods for interacting with MCP servers based on their defined protocols. It abstracts the underlying communication details, allowing higher-level components to make API calls to MCP services using a type-safe and convenient interface. This component is crucial for ensuring correct and efficient communication with diverse MCP servers.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent.mcp.gen_client",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/mcp/gen_client.py",
+          "reference_start_line": 15,
+          "reference_end_line": 40
+        }
+      ]
+    }
+  ],
+  "components_relations": [
+    {
+      "relation": "Uses",
+      "src_name": "MCPAggregator",
+      "dst_name": "MCPConnectionManager"
+    },
+    {
+      "relation": "Uses",
+      "src_name": "mcp_agent.agents.agent",
+      "dst_name": "MCPAggregator"
+    },
+    {
+      "relation": "Uses",
+      "src_name": "mcp_agent.app",
+      "dst_name": "MCPAggregator"
+    },
+    {
+      "relation": "Uses",
+      "src_name": "MCPConnectionManager",
+      "dst_name": "ServerRegistry"
+    },
+    {
+      "relation": "Uses",
+      "src_name": "MCPConnectionManager",
+      "dst_name": "MCPClientSession"
+    },
+    {
+      "relation": "Uses",
+      "src_name": "gen_client",
+      "dst_name": "MCPClientSession"
+    },
+    {
+      "relation": "Uses",
+      "src_name": "MCPClientSession",
+      "dst_name": "mcp_agent.config"
+    }
+  ]
+}

@@ -1,0 +1,195 @@
+{
+  "description": "This component is the foundational layer of the `mcp-agent` application. It is responsible for the initial bootstrapping of the entire agent framework, establishing the global application context, and managing the loading, parsing, and provision of all application settings and sensitive information. It acts as the central orchestrator for the agent's environment, ensuring that all subsequent components operate with the correct parameters and have access to essential services. Its design emphasizes modularity and extensibility, crucial for an AI agent development framework.",
+  "components": [
+    {
+      "name": "Application Core (MCPApp)",
+      "description": "The primary entry point and orchestrator of the `mcp-agent` application. It initializes and coordinates all other core services and components, setting up the runtime environment for agents and workflows.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent.app.MCPApp",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/app.py",
+          "reference_start_line": 34,
+          "reference_end_line": 508
+        }
+      ]
+    },
+    {
+      "name": "Configuration Management (Settings)",
+      "description": "Centralized management for all application configurations, including API keys, service endpoints, and operational parameters. It ensures that all components have access to the necessary settings in a structured and secure manner, supporting various LLM providers and external services.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent.config.Settings",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/config.py",
+          "reference_start_line": 0,
+          "reference_end_line": 0
+        },
+        {
+          "qualified_name": "mcp_agent.config.AnthropicSettings",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/config.py",
+          "reference_start_line": 0,
+          "reference_end_line": 0
+        },
+        {
+          "qualified_name": "mcp_agent.config.OpenAISettings",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/config.py",
+          "reference_start_line": 0,
+          "reference_end_line": 0
+        },
+        {
+          "qualified_name": "mcp_agent.config.TemporalSettings",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/config.py",
+          "reference_start_line": 0,
+          "reference_end_line": 0
+        },
+        {
+          "qualified_name": "mcp_agent.config.AzureSettings",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/config.py",
+          "reference_start_line": 0,
+          "reference_end_line": 0
+        },
+        {
+          "qualified_name": "mcp_agent.config.BedrockSettings",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/config.py",
+          "reference_start_line": 0,
+          "reference_end_line": 0
+        },
+        {
+          "qualified_name": "mcp_agent.config.GoogleSettings",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/config.py",
+          "reference_start_line": 0,
+          "reference_end_line": 0
+        }
+      ]
+    },
+    {
+      "name": "Decorator Registry",
+      "description": "A central registry for managing and retrieving decorators, enabling dynamic extension and modification of component behavior across the framework. This supports the \"Strategy Pattern\" and extensibility by allowing new functionalities to be plugged in without altering core code.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent.executor.decorator_registry.DecoratorRegistry",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/executor/decorator_registry.py",
+          "reference_start_line": 0,
+          "reference_end_line": 0
+        }
+      ]
+    },
+    {
+      "name": "Signal Registry",
+      "description": "Provides a mechanism for registering and dispatching signals, facilitating event-driven communication and coordination between different parts of the agent framework. This is crucial for implementing the \"Observer Pattern\" and asynchronous interactions.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent.executor.signal_registry.SignalRegistry",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/executor/signal_registry.py",
+          "reference_start_line": 3,
+          "reference_end_line": 29
+        }
+      ]
+    },
+    {
+      "name": "Task Registry (ActivityRegistry)",
+      "description": "A registry for managing and retrieving executable tasks or activities, allowing the framework to dynamically discover and invoke operations. This is key for defining and executing agent capabilities.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent.executor.task_registry.ActivityRegistry",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/executor/task_registry.py",
+          "reference_start_line": 0,
+          "reference_end_line": 0
+        }
+      ]
+    },
+    {
+      "name": "MCP Server Management",
+      "description": "Manages the lifecycle and connections to various Model Context Protocol (MCP) servers, enabling the agent to interact with external models and services. This component is critical for the \"Microservices/Service-Oriented Architecture\" aspect of the framework.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent.mcp.mcp_connection_manager.MCPConnectionManager",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/mcp/mcp_connection_manager.py",
+          "reference_start_line": 0,
+          "reference_end_line": 0
+        },
+        {
+          "qualified_name": "mcp_agent.mcp.mcp_server_registry.ServerRegistry",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/mcp/mcp_server_registry.py",
+          "reference_start_line": 0,
+          "reference_end_line": 0
+        },
+        {
+          "qualified_name": "mcp_agent.mcp.mcp_aggregator.MCPAggregator",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/mcp/mcp_aggregator.py",
+          "reference_start_line": 77,
+          "reference_end_line": 1357
+        }
+      ]
+    },
+    {
+      "name": "LLM Selection",
+      "description": "Responsible for selecting and managing Large Language Models (LLMs), including their configuration and augmentation, to provide the core AI capabilities for the agents. It allows for flexible integration of different LLM providers.",
+      "referenced_source_code": [
+        {
+          "qualified_name": "mcp_agent.workflows.llm.llm_selector.ModelSelector",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/llm/llm_selector.py",
+          "reference_start_line": 96,
+          "reference_end_line": 413
+        },
+        {
+          "qualified_name": "mcp_agent.workflows.llm.augmented_llm.AugmentedLLM",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/llm/augmented_llm.py",
+          "reference_start_line": 218,
+          "reference_end_line": 668
+        }
+      ]
+    }
+  ],
+  "components_relations": [
+    {
+      "relation": "uses",
+      "src_name": "Application Core (MCPApp)",
+      "dst_name": "Configuration Management (Settings)"
+    },
+    {
+      "relation": "manages",
+      "src_name": "Application Core (MCPApp)",
+      "dst_name": "Decorator Registry"
+    },
+    {
+      "relation": "manages",
+      "src_name": "Application Core (MCPApp)",
+      "dst_name": "Signal Registry"
+    },
+    {
+      "relation": "manages",
+      "src_name": "Application Core (MCPApp)",
+      "dst_name": "Task Registry (ActivityRegistry)"
+    },
+    {
+      "relation": "orchestrates",
+      "src_name": "Application Core (MCPApp)",
+      "dst_name": "MCP Server Management"
+    },
+    {
+      "relation": "integrates",
+      "src_name": "Application Core (MCPApp)",
+      "dst_name": "LLM Selection"
+    },
+    {
+      "relation": "configures",
+      "src_name": "Configuration Management (Settings)",
+      "dst_name": "LLM Selection"
+    },
+    {
+      "relation": "configures",
+      "src_name": "Configuration Management (Settings)",
+      "dst_name": "MCP Server Management"
+    },
+    {
+      "relation": "depends on",
+      "src_name": "MCP Server Management",
+      "dst_name": "Configuration Management (Settings)"
+    },
+    {
+      "relation": "depends on",
+      "src_name": "LLM Selection",
+      "dst_name": "Configuration Management (Settings)"
+    }
+  ]
+}
