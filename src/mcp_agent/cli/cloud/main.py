@@ -21,6 +21,7 @@ from mcp_agent.cli.cloud.commands import (
     whoami,
 )
 from mcp_agent.cli.cloud.commands.logger import tail_logs
+from mcp_agent.cli.cloud.commands.logger.configure import configure_logger
 from mcp_agent.cli.cloud.commands.app import (
     delete_app,
     get_app_status,
@@ -190,6 +191,10 @@ app_cmd_cloud_logger = typer.Typer(
     cls=HelpfulTyperGroup,
 )
 # Register logger commands under cloud logger
+app_cmd_cloud_logger.command(
+    name="configure",
+    help="Set OTEL endpoint and headers; test and apply configuration",
+)(configure_logger)
 app_cmd_cloud_logger.command(
     name="tail",
     help="Retrieve and stream logs from deployed MCP apps",

@@ -38,7 +38,7 @@ def configure_logger(
     that will be used for collecting logs from your deployed MCP apps.
 
     Examples:
-        mcp-agent cloud logger configure https://otel.example.com:4318/v1/logs
+        mcp-agent cloud logger configure https://otel.example.com:4318/v1/traces
         mcp-agent cloud logger configure https://otel.example.com --headers "Authorization=Bearer token,X-Custom=value"
         mcp-agent cloud logger configure --test  # Test current configuration
     """
@@ -52,8 +52,13 @@ def configure_logger(
         if config_path and config_path.exists():
             config = _load_config(config_path)
             otel_config = config.get("otel", {})
-            endpoint = otel_config.get("endpoint")
-            headers_dict = otel_config.get("headers", {})
+            otlp_settings = otel_config.get("otlp_settings", {})
+            endpoint = otlp_settings.get("endpoint")
+            headers_dict = otlp_settings.get("headers", {})
+            if not endpoint:
+                # Fallback to old format for backward compatibility
+                endpoint = otel_config.get("endpoint")
+                headers_dict = otel_config.get("headers", {})
         else:
             console.print(
                 "[yellow]No configuration file found. Use --endpoint to set up OTEL configuration.[/yellow]"
@@ -75,17 +80,15 @@ def configure_logger(
 
         try:
             with httpx.Client(timeout=10.0) as client:
-                response = client.get(
-                    endpoint.replace("/v1/logs", "/health")
-                    if "/v1/logs" in endpoint
-                    else f"{endpoint}/health",
-                    headers=headers_dict,
-                )
+                test_url = endpoint
+                if "/v1/traces" in endpoint or "/v1/logs" in endpoint:
+                    test_url = endpoint.replace("/v1/traces", "/health").replace("/v1/logs", "/health")
+                else:
+                    test_url = f"{endpoint.rstrip('/')}/health"
+                
+                response = client.get(test_url, headers=headers_dict)
 
-                if response.status_code in [
-                    200,
-                    404,
-                ]:  # 404 is fine, means endpoint exists
+                if response.status_code in [200, 404]:  # 404 is fine, means endpoint exists
                     console.print("[green]✓ Connection successful[/green]")
                 else:
                     console.print(
@@ -107,9 +110,22 @@ def configure_logger(
 
         if "otel" not in config:
             config["otel"] = {}
-
-        config["otel"]["endpoint"] = endpoint
-        config["otel"]["headers"] = headers_dict
+        
+        otel_config = config["otel"]
+        
+        otel_config["enabled"] = True
+        
+        exporters = otel_config.get("exporters", [])
+        if "otlp" not in exporters:
+            exporters.append("otlp")
+        otel_config["exporters"] = exporters
+        
+        if "otlp_settings" not in otel_config:
+            otel_config["otlp_settings"] = {}
+        
+        otel_config["otlp_settings"]["endpoint"] = endpoint
+        if headers_dict:
+            otel_config["otlp_settings"]["headers"] = headers_dict
 
         try:
             config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -119,6 +135,8 @@ def configure_logger(
             console.print(
                 Panel(
                     f"[green]✓ OTEL configuration saved to {config_path}[/green]\n\n"
+                    f"Enabled: true\n"
+                    f"Exporters: {otel_config['exporters']}\n"
                     f"Endpoint: {endpoint}\n"
                     f"Headers: {len(headers_dict)} configured"
                     + (f" ({', '.join(headers_dict.keys())})" if headers_dict else ""),
