@@ -32,12 +32,13 @@ from mcp_agent.cli.cloud.commands.workflows import (
     resume_workflow,
     suspend_workflow,
     cancel_workflow,
+    list_workflows,
+    list_workflow_runs,
 )
 from mcp_agent.cli.cloud.commands.servers import (
     list_servers,
     describe_server,
     delete_server,
-    list_workflows_for_server,
 )
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.utils.ux import print_error
@@ -150,10 +151,14 @@ app_cmd_workflows = typer.Typer(
     cls=HelpfulTyperGroup,
 )
 app_cmd_workflows.command(name="describe")(describe_workflow)
-app_cmd_workflows.command(name="status")(describe_workflow)  # alias for describe
+app_cmd_workflows.command(
+    name="status", help="Describe a workflow execution (alias for 'describe')"
+)(describe_workflow)
 app_cmd_workflows.command(name="resume")(resume_workflow)
 app_cmd_workflows.command(name="suspend")(suspend_workflow)
 app_cmd_workflows.command(name="cancel")(cancel_workflow)
+app_cmd_workflows.command(name="list")(list_workflows)
+app_cmd_workflows.command(name="runs")(list_workflow_runs)
 
 # Sub-typer for `mcp-agent servers` commands
 app_cmd_servers = typer.Typer(
@@ -164,7 +169,10 @@ app_cmd_servers = typer.Typer(
 app_cmd_servers.command(name="list")(list_servers)
 app_cmd_servers.command(name="describe")(describe_server)
 app_cmd_servers.command(name="delete")(delete_server)
-app_cmd_servers.command(name="workflows")(list_workflows_for_server)
+app_cmd_servers.command(
+    name="workflows",
+    help="List available workflows for a server (alias for 'workflows list')",
+)(list_workflows)
 app.add_typer(app_cmd_servers, name="servers", help="Manage MCP Servers")
 
 # Alias for servers - apps should behave identically
