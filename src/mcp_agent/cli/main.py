@@ -114,19 +114,21 @@ app.add_typer(check_cmd.app, name="check", help="Check configuration and environ
 app.add_typer(config_cmd.app, name="config", help="Manage and inspect configuration")
 app.add_typer(keys_cmd.app, name="keys", help="Manage provider API keys")
 app.add_typer(models_cmd.app, name="models", help="List and manage models")
-app.add_typer(chat_cmd.app, name="chat", help="Ephemeral REPL for quick iteration")
-app.add_typer(dev_cmd.app, name="dev", help="Run app locally with live reload")
-app.add_typer(
-    invoke_cmd.app, name="invoke", help="Invoke agent/workflow programmatically"
-)
-app.add_typer(serve_cmd.app, name="serve", help="Serve app as an MCP server")
-app.add_typer(server_cmd.app, name="server", help="Local server helpers")
-app.add_typer(
-    build_cmd.app, name="build", help="Preflight and bundle prep for deployment"
-)
-app.add_typer(logs_cmd.app, name="logs", help="Tail local logs")
-app.add_typer(doctor_cmd.app, name="doctor", help="Comprehensive diagnostics")
-app.add_typer(configure_cmd.app, name="configure", help="Client integration helpers")
+
+# TODO: Uncomment after testing - Local Development and beyond
+# app.add_typer(chat_cmd.app, name="chat", help="Ephemeral REPL for quick iteration")
+# app.add_typer(dev_cmd.app, name="dev", help="Run app locally with live reload")
+# app.add_typer(
+#     invoke_cmd.app, name="invoke", help="Invoke agent/workflow programmatically"
+# )
+# app.add_typer(serve_cmd.app, name="serve", help="Serve app as an MCP server")
+# app.add_typer(server_cmd.app, name="server", help="Local server helpers")
+# app.add_typer(
+#     build_cmd.app, name="build", help="Preflight and bundle prep for deployment"
+# )
+# app.add_typer(logs_cmd.app, name="logs", help="Tail local logs")
+# app.add_typer(doctor_cmd.app, name="doctor", help="Comprehensive diagnostics")
+# app.add_typer(configure_cmd.app, name="configure", help="Client integration helpers")
 
 # Mount cloud commands
 app.add_typer(cloud_app, name="cloud", help="MCP Agent Cloud commands")
