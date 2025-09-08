@@ -21,6 +21,8 @@ console = Console()
 def list_models(format: str = typer.Option("text", "--format")) -> None:
     """List known model catalog (from embedded benchmarks)."""
     models = load_default_models()
+    # Sort models alphabetically by provider, then by model name
+    models = sorted(models, key=lambda m: (m.provider, m.name))
     if format.lower() == "json":
         data = [m.model_dump() for m in models]
         console.print_json(json.dumps(data))
