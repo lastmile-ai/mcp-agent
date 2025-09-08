@@ -58,14 +58,14 @@ class WorkflowRegistry(ABC):
 
     @abstractmethod
     async def get_workflow(
-        self, run_id: str, workflow_id: str | None = None
+        self, run_id: str | None = None, workflow_id: str | None = None
     ) -> Optional["Workflow"]:
         """
-        Get a workflow instance by run ID.
+        Get a workflow instance by run ID or workflow ID.
 
         Args:
-            run_id: The unique ID for this specific workflow run.
-            workflow_id: The ID of the workflow to retrieve
+            run_id: The unique ID for a specific workflow run to retrieve.
+            workflow_id: The ID of the workflow to retrieve.
 
         Returns:
             The workflow instance, or None if not found
@@ -75,7 +75,7 @@ class WorkflowRegistry(ABC):
     @abstractmethod
     async def resume_workflow(
         self,
-        run_id: str,
+        run_id: str | None = None,
         workflow_id: str | None = None,
         signal_name: str | None = "resume",
         payload: Any | None = None,
@@ -96,7 +96,7 @@ class WorkflowRegistry(ABC):
 
     @abstractmethod
     async def cancel_workflow(
-        self, run_id: str, workflow_id: str | None = None
+        self, run_id: str | None = None, workflow_id: str | None = None
     ) -> bool:
         """
         Cancel (terminate) a running workflow.
@@ -112,7 +112,7 @@ class WorkflowRegistry(ABC):
 
     @abstractmethod
     async def get_workflow_status(
-        self, run_id: str, workflow_id: str | None = None
+        self, run_id: str | None = None, workflow_id: str | None = None
     ) -> Optional[Dict[str, Any]]:
         """
         Get the status of a workflow run.
@@ -210,50 +210,61 @@ class InMemoryWorkflowRegistry(WorkflowRegistry):
                     del self._workflow_ids[workflow_id]
 
     async def get_workflow(
-        self, run_id: str, workflow_id: str | None = None
+        self, run_id: str | None = None, workflow_id: str | None = None
     ) -> Optional["Workflow"]:
-        return self._workflows.get(run_id)
+        if not (run_id or workflow_id):
+            raise ValueError("Either run_id or workflow_id must be provided.")
+        if run_id:
+            return self._workflows.get(run_id)
+        if workflow_id:
+            run_ids = self._workflow_ids.get(workflow_id, [])
+            if run_ids:
+                return self._workflows.get(run_ids[-1])
+        return None
 
     async def resume_workflow(
         self,
-        run_id: str,
+        run_id: str | None = None,
         workflow_id: str | None = None,
         signal_name: str | None = "resume",
         payload: Any | None = None,
     ) -> bool:
-        workflow = await self.get_workflow(run_id)
+        workflow = await self.get_workflow(run_id, workflow_id)
         if not workflow:
             logger.error(
-                f"Cannot resume workflow run {run_id}: workflow not found in registry"
+                f"Cannot resume workflow with run ID {run_id or 'unknown'}, workflow ID {workflow_id or 'unknown'}: workflow not found in registry"
             )
             return False
 
         return await workflow.resume(signal_name, payload)
 
     async def cancel_workflow(
-        self, run_id: str, workflow_id: str | None = None
+        self, run_id: str | None = None, workflow_id: str | None = None
     ) -> bool:
-        workflow = await self.get_workflow(run_id)
+        workflow = await self.get_workflow(run_id, workflow_id)
         if not workflow:
             logger.error(
-                f"Cannot cancel workflow run {run_id}: workflow not found in registry"
+                f"Cannot cancel workflow with run ID {run_id or 'unknown'}, workflow ID {workflow_id or 'unknown'}: workflow not found in registry"
             )
             return False
 
         return await workflow.cancel()
 
     async def get_workflow_status(
-        self, run_id: str, workflow_id: str | None = None
+        self, run_id: str | None = None, workflow_id: str | None = None
     ) -> Optional[Dict[str, Any]]:
-        workflow = await self.get_workflow(run_id)
+        workflow = await self.get_workflow(run_id, workflow_id)
         if not workflow:
+            logger.error(
+                f"Cannot get status for workflow with run ID {run_id or 'unknown'}, workflow ID {workflow_id or 'unknown'}: workflow not found in registry"
+            )
             return None
 
         return await workflow.get_status()
 
     async def list_workflow_statuses(self) -> List[Dict[str, Any]]:
         result = []
-        for run_id, workflow in self._workflows.items():
+        for workflow in self._workflows.values():
             # Get the workflow status directly to have consistent behavior
             status = await workflow.get_status()
             result.append(status)

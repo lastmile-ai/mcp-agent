@@ -739,7 +739,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
 
     @mcp.tool(name="workflows-get_status")
     async def get_workflow_status(
-        ctx: MCPContext, run_id: str, workflow_id: str | None = None
+        ctx: MCPContext,
+        run_id: str | None = None,
+        workflow_id: str | None = None,
     ) -> Dict[str, Any]:
         """
         Get the status of a running workflow.
@@ -748,10 +750,12 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         whether it's running or completed, and any results or errors encountered.
 
         Args:
-            run_id: The run ID of the workflow to check.
+            run_id: Optional run ID of the workflow to check.
+                If omitted, the server will use the latest run for the workflow_id provided.
+                Received from workflows/run or workflows/runs/list.
             workflow_id: Optional workflow identifier (usually the tool/workflow name).
                 If omitted, the server will infer it from the run metadata when possible.
-                received from workflows/run or workflows/runs/list.
+                Received from workflows/run or workflows/runs/list.
 
         Returns:
             A dictionary with comprehensive information about the workflow status.
@@ -761,13 +765,17 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             _set_upstream_from_request_ctx_if_available(ctx)
         except Exception:
             pass
-        return await _workflow_status(ctx, run_id=run_id, workflow_name=workflow_id)
+
+        if run_id is None and workflow_id is None:
+            raise ToolError("Either run_id or workflow_id must be provided.")
+
+        return await _workflow_status(ctx, run_id=run_id, workflow_id=workflow_id)
 
     @mcp.tool(name="workflows-resume")
     async def resume_workflow(
         ctx: MCPContext,
-        run_id: str,
-        workflow_name: str | None = None,
+        run_id: str | None = None,
+        workflow_id: str | None = None,
         signal_name: str | None = "resume",
         payload: str | None = None,
     ) -> bool:
@@ -777,7 +785,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         Args:
             run_id: The ID of the workflow to resume,
                 received from workflows/run or workflows/runs/list.
-            workflow_name: The name of the workflow to resume.
+                If not specified, the latest run for the workflow_id will be used.
+            workflow_id: The ID of the workflow to resume,
+                received from workflows/run or workflows/runs/list.
             signal_name: Optional name of the signal to send to resume the workflow.
                 This will default to "resume", but can be a custom signal name
                 if the workflow was paused on a specific signal.
@@ -793,6 +803,10 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             _set_upstream_from_request_ctx_if_available(ctx)
         except Exception:
             pass
+
+        if run_id is None and workflow_id is None:
+            raise ToolError("Either run_id or workflow_id must be provided.")
+
         server_context: ServerContext = ctx.request_context.lifespan_context
         workflow_registry = server_context.workflow_registry
 
@@ -800,29 +814,29 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             raise ToolError("Workflow registry not found for MCPApp Server.")
 
         logger.info(
-            f"Resuming workflow {workflow_name} with ID {run_id} with signal '{signal_name}' and payload '{payload}'"
+            f"Resuming workflow ID {workflow_id or 'unknown'}, run ID {run_id or 'unknown'} with signal '{signal_name}' and payload '{payload}'"
         )
 
         # Get the workflow instance from the registry
         result = await workflow_registry.resume_workflow(
             run_id=run_id,
-            workflow_id=workflow_name,
+            workflow_id=workflow_id,
             signal_name=signal_name,
             payload=payload,
         )
 
         if result:
             logger.debug(
-                f"Signaled workflow {workflow_name} with ID {run_id} with signal '{signal_name}' and payload '{payload}'"
+                f"Signaled workflow ID {workflow_id or 'unknown'}, run ID {run_id or 'unknown'} with signal '{signal_name}' and payload '{payload}'"
             )
         else:
             logger.error(
-                f"Failed to signal workflow {workflow_name} with ID {run_id} with signal '{signal_name}' and payload '{payload}'"
+                f"Failed to signal workflow ID {workflow_id or 'unknown'}, run ID {run_id or 'unknown'} with signal '{signal_name}' and payload '{payload}'"
             )
 
     @mcp.tool(name="workflows-cancel")
     async def cancel_workflow(
-        ctx: MCPContext, run_id: str, workflow_name: str | None = None
+        ctx: MCPContext, run_id: str | None = None, workflow_id: str | None = None
     ) -> bool:
         """
         Cancel a running workflow.
@@ -830,7 +844,10 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         Args:
             run_id: The ID of the workflow instance to cancel,
                 received from workflows/run or workflows/runs/list.
-            workflow_name: The name of the workflow to cancel.
+                If not provided, will attempt to cancel the latest run for the
+                provided workflow ID.
+            workflow_id: The ID of the workflow to cancel,
+                received from workflows/run or workflows/runs/list.
 
         Returns:
             True if the workflow was cancelled, False otherwise.
@@ -840,20 +857,33 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             _set_upstream_from_request_ctx_if_available(ctx)
         except Exception:
             pass
+
+        if run_id is None and workflow_id is None:
+            raise ToolError("Either run_id or workflow_id must be provided.")
+
         server_context: ServerContext = ctx.request_context.lifespan_context
         workflow_registry = server_context.workflow_registry
 
-        logger.info(f"Cancelling workflow {workflow_name} with ID {run_id}")
+        if not workflow_registry:
+            raise ToolError("Workflow registry not found for MCPApp Server.")
+
+        logger.info(
+            f"Cancelling workflow ID {workflow_id or 'unknown'}, run ID {run_id or 'unknown'}"
+        )
 
         # Get the workflow instance from the registry
         result = await workflow_registry.cancel_workflow(
-            run_id=run_id, workflow_id=workflow_name
+            run_id=run_id, workflow_id=workflow_id
         )
 
         if result:
-            logger.debug(f"Cancelled workflow {workflow_name} with ID {run_id}")
+            logger.debug(
+                f"Cancelled workflow ID {workflow_id or 'unknown'}, run ID {run_id or 'unknown'}"
+            )
         else:
-            logger.error(f"Failed to cancel workflow {workflow_name} with ID {run_id}")
+            logger.error(
+                f"Failed to cancel workflow {workflow_id or 'unknown'} with ID {run_id or 'unknown'}"
+            )
 
     # endregion
 
@@ -1426,7 +1456,7 @@ async def _workflow_run(
 
 
 async def _workflow_status(
-    ctx: MCPContext, run_id: str, workflow_name: str | None = None
+    ctx: MCPContext, run_id: str | None = None, workflow_id: str | None = None
 ) -> Dict[str, Any]:
     # Ensure upstream session so status-related logs are forwarded
     try:
@@ -1438,8 +1468,11 @@ async def _workflow_status(
     if not workflow_registry:
         raise ToolError("Workflow registry not found for MCPApp Server.")
 
-    workflow = await workflow_registry.get_workflow(run_id)
-    workflow_id = workflow.id if workflow and workflow.id else workflow_name
+    if not workflow_id:
+        workflow = await workflow_registry.get_workflow(
+            run_id=run_id, workflow_id=workflow_id
+        )
+        workflow_id = workflow.id if workflow else None
 
     status = await workflow_registry.get_workflow_status(
         run_id=run_id, workflow_id=workflow_id
