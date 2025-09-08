@@ -182,7 +182,6 @@ class InMemoryWorkflowRegistry(WorkflowRegistry):
                 self._tasks[run_id] = task
 
             # Add run_id to the list for this workflow_id
-            self._workflow_ids.setdefault(workflow_id, []).append(run_id)
             if workflow_id not in self._workflow_ids:
                 self._workflow_ids[workflow_id] = []
             self._workflow_ids[workflow_id].append(run_id)
