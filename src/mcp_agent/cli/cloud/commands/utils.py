@@ -1,4 +1,4 @@
-"""Shared utilities for server commands."""
+"""Shared utilities for cloud commands."""
 
 from functools import wraps
 from typing import Union
@@ -17,60 +17,60 @@ from mcp_agent.cli.mcp_app.api_client import (
 
 def setup_authenticated_client() -> MCPAppClient:
     """Setup authenticated MCP App client.
-    
+
     Returns:
         Configured MCPAppClient instance
-        
+
     Raises:
         CLIError: If authentication fails
     """
     effective_api_key = load_api_key_credentials()
 
     if not effective_api_key:
-        raise CLIError(
-            "Must be logged in to access servers. Run 'mcp-agent login'."
-        )
+        raise CLIError("Must be logged in to access servers. Run 'mcp-agent login'.")
 
-    return MCPAppClient(
-        api_url=DEFAULT_API_BASE_URL, api_key=effective_api_key
-    )
+    return MCPAppClient(api_url=DEFAULT_API_BASE_URL, api_key=effective_api_key)
 
 
 def validate_output_format(format: str) -> None:
     """Validate output format parameter.
-    
+
     Args:
         format: Output format to validate
-        
+
     Raises:
         CLIError: If format is invalid
     """
     valid_formats = ["text", "json", "yaml"]
     if format not in valid_formats:
-        raise CLIError(f"Invalid format '{format}'. Valid options are: {', '.join(valid_formats)}")
+        raise CLIError(
+            f"Invalid format '{format}'. Valid options are: {', '.join(valid_formats)}"
+        )
 
 
-def resolve_server(client: MCPAppClient, id_or_url: str) -> Union[MCPApp, MCPAppConfiguration]:
+def resolve_server(
+    client: MCPAppClient, id_or_url: str
+) -> Union[MCPApp, MCPAppConfiguration]:
     """Resolve server from ID.
-    
+
     Args:
         client: Authenticated MCP App client
         id_or_url: Server identifier (app ID or app config ID)
-        
+
     Returns:
         Server object (MCPApp or MCPAppConfiguration)
-        
+
     Raises:
         CLIError: If server resolution fails
     """
     try:
         app_id, config_id = parse_app_identifier(id_or_url)
-        
+
         if config_id:
             return run_async(client.get_app_configuration(app_config_id=config_id))
         else:
             return run_async(client.get_app(app_id=app_id))
-            
+
     except ValueError as e:
         raise CLIError(str(e)) from e
     except Exception as e:
@@ -79,13 +79,14 @@ def resolve_server(client: MCPAppClient, id_or_url: str) -> Union[MCPApp, MCPApp
 
 def handle_server_api_errors(func):
     """Decorator to handle common API errors for server commands.
-    
+
     Args:
         func: Function to wrap with error handling
-        
+
     Returns:
         Wrapped function with error handling
     """
+
     @wraps(func)
     def wrapper(*args, **kwargs):
         try:
@@ -99,18 +100,18 @@ def handle_server_api_errors(func):
             raise
         except Exception as e:
             # Get the original function name for better error messages
-            func_name = func.__name__.replace('_', ' ')
+            func_name = func.__name__.replace("_", " ")
             raise CLIError(f"Error in {func_name}: {str(e)}") from e
-    
+
     return wrapper
 
 
 def get_server_name(server: Union[MCPApp, MCPAppConfiguration]) -> str:
     """Get display name for a server.
-    
+
     Args:
         server: Server object
-        
+
     Returns:
         Server display name
     """
@@ -122,10 +123,10 @@ def get_server_name(server: Union[MCPApp, MCPAppConfiguration]) -> str:
 
 def get_server_id(server: Union[MCPApp, MCPAppConfiguration]) -> str:
     """Get ID for a server.
-    
+
     Args:
         server: Server object
-        
+
     Returns:
         Server ID
     """
@@ -137,10 +138,10 @@ def get_server_id(server: Union[MCPApp, MCPAppConfiguration]) -> str:
 
 def clean_server_status(status: str) -> str:
     """Convert server status from API format to clean format.
-    
+
     Args:
         status: API status string
-        
+
     Returns:
         Clean status string
     """

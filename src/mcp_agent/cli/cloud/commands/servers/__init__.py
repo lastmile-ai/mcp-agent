@@ -6,6 +6,6 @@ from .delete.main import delete_server
 
 __all__ = [
     "list_servers",
-    "describe_server", 
+    "describe_server",
     "delete_server",
 ]
