@@ -2040,12 +2040,11 @@ wheels = [
 
 [[package]]
 name = "mcp-agent"
-version = "0.1.15"
+version = "0.1.17"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
     { name = "fastapi" },
-    { name = "instructor" },
     { name = "jsonref" },
     { name = "mcp" },
     { name = "numpy" },
@@ -2138,7 +2137,6 @@ requires-dist = [
     { name = "google-genai", marker = "extra == 'google'", specifier = ">=1.10.0" },
     { name = "httpx", marker = "extra == 'cli'", specifier = ">=0.28.1" },
     { name = "hvac", marker = "extra == 'cli'", specifier = ">=1.1.1" },
-    { name = "instructor", specifier = ">=1.7.9" },
     { name = "jsonref", specifier = ">=1.1.0" },
     { name = "langchain-core", marker = "extra == 'langchain'", specifier = ">=0.3.64" },
     { name = "mcp", specifier = ">=1.10.1" },

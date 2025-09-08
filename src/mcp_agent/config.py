@@ -10,6 +10,7 @@ from typing import Dict, List, Literal, Optional, Union, Annotated
 import threading
 import warnings
 
+from httpx import URL
 from pydantic import (
     AliasChoices,
     BaseModel,
@@ -112,6 +113,10 @@ class MCPServerSettings(BaseModel):
     env: Dict[str, str] | None = None
     """Environment variables to pass to the server process."""
 
+    allowed_tools: Set[str] | None = None
+    """Set of tool names to allow from this server. If specified, only these tools will be exposed to agents. 
+    Tool names should match exactly. [WARNING] Empty list will result LLM have no access to tools."""
+
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 
@@ -212,6 +217,7 @@ class AnthropicSettings(BaseSettings, VertexAIMixin, BedrockMixin):
             "provider", "ANTHROPIC_PROVIDER", "anthropic__provider"
         ),
     )
+    base_url: str | URL | None = Field(default=None)
 
     model_config = SettingsConfigDict(
         env_prefix="ANTHROPIC_",

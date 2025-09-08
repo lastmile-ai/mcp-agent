@@ -89,6 +89,10 @@ class Context(BaseModel):
     # Token counting and cost tracking
     token_counter: Optional[TokenCounter] = None
 
+    # Dynamic gateway configuration (per-run overrides via Temporal memo)
+    gateway_url: str | None = None
+    gateway_token: str | None = None
+
     model_config = ConfigDict(
         extra="allow",
         arbitrary_types_allowed=True,  # Tell Pydantic to defer type evaluation
