@@ -81,7 +81,9 @@ def cancel_workflow(
     cannot be resumed and will be marked as cancelled.
     
     Examples:
+    
         mcp-agent cloud workflows cancel app_abc123 run_xyz789
-        mcp-agent cloud workflows cancel https://server.example.com run_xyz789 --reason "User requested cancellation"
+        
+        mcp-agent cloud workflows cancel app_abc123 run_xyz789 --reason "User requested"
     """
     run_async(_cancel_workflow_async(server_id_or_url, run_id, reason))

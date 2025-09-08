@@ -28,16 +28,13 @@ def list_servers(
     """List MCP Servers with optional filtering and sorting.
     
     Examples:
-        # Filter servers containing 'api'
+    
         mcp-agent cloud servers list --filter api
         
-        # Sort by creation date (newest first)
         mcp-agent cloud servers list --sort-by -created
         
-        # Filter active servers and sort by name
         mcp-agent cloud servers list --filter active --sort-by name
         
-        # Get JSON output with filtering
         mcp-agent cloud servers list --filter production --format json
     """
     validate_output_format(format)
