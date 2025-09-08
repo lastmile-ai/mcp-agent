@@ -27,7 +27,12 @@ from mcp_agent.cli.cloud.commands.app import (
     list_app_workflows,
 )
 from mcp_agent.cli.cloud.commands.apps import list_apps
-from mcp_agent.cli.cloud.commands.workflow import get_workflow_status
+from mcp_agent.cli.cloud.commands.workflows import (
+    describe_workflow,
+    resume_workflow,
+    suspend_workflow,
+    cancel_workflow,
+)
 from mcp_agent.cli.cloud.commands.servers import (
     list_servers,
     describe_server,
@@ -137,14 +142,17 @@ app_cmd_app.command(name="status")(get_app_status)
 app_cmd_app.command(name="workflows")(list_app_workflows)
 app.add_typer(app_cmd_app, name="app", help="Manage an MCP App")
 
-# Sub-typer for `mcp-agent workflow` commands
-app_cmd_workflow = typer.Typer(
+# Sub-typer for `mcp-agent workflows` commands
+app_cmd_workflows = typer.Typer(
     help="Management commands for MCP Workflows",
     no_args_is_help=True,
     cls=HelpfulTyperGroup,
 )
-app_cmd_workflow.command(name="status")(get_workflow_status)
-app.add_typer(app_cmd_workflow, name="workflow", help="Manage MCP Workflows")
+app_cmd_workflows.command(name="describe")(describe_workflow)
+app_cmd_workflows.command(name="status")(describe_workflow)  # alias for describe
+app_cmd_workflows.command(name="resume")(resume_workflow)
+app_cmd_workflows.command(name="suspend")(suspend_workflow)
+app_cmd_workflows.command(name="cancel")(cancel_workflow)
 
 # Sub-typer for `mcp-agent servers` commands
 app_cmd_servers = typer.Typer(
@@ -200,6 +208,9 @@ app_cmd_cloud_logger.command(
 app_cmd_cloud.add_typer(app_cmd_cloud_auth, name="auth", help="Authentication commands")
 app_cmd_cloud.add_typer(
     app_cmd_cloud_logger, name="logger", help="Logging and observability"
+)
+app_cmd_cloud.add_typer(
+    app_cmd_workflows, name="workflows", help="Workflow management commands"
 )
 app_cmd_cloud.add_typer(
     app_cmd_servers, name="servers", help="Server management commands"

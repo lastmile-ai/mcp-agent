@@ -1,4 +1,4 @@
-"""Shared utilities for server commands."""
+"""Shared utilities for cloud commands."""
 
 from functools import wraps
 from typing import Union
