@@ -121,7 +121,7 @@ async def test_get_workflow_by_workflow_id(registry):
     run_id = "run-id"
     workflow_id = "workflow-id"
     await registry.register(mock_workflow, run_id, workflow_id)
-    
+
     # Test getting workflow by workflow_id only
     workflow = await registry.get_workflow(workflow_id=workflow_id)
     assert workflow == mock_workflow
@@ -132,11 +132,11 @@ async def test_get_workflow_by_workflow_id_latest_run(registry):
     mock_workflow1 = MagicMock(name="test_workflow1")
     mock_workflow2 = MagicMock(name="test_workflow2")
     workflow_id = "workflow-id"
-    
+
     # Register two runs for the same workflow
     await registry.register(mock_workflow1, "run-id-1", workflow_id)
     await registry.register(mock_workflow2, "run-id-2", workflow_id)
-    
+
     # Should return the latest run (run-id-2)
     workflow = await registry.get_workflow(workflow_id=workflow_id)
     assert workflow == mock_workflow2
@@ -144,7 +144,9 @@ async def test_get_workflow_by_workflow_id_latest_run(registry):
 
 @pytest.mark.asyncio
 async def test_get_workflow_raises_error_when_no_params(registry):
-    with pytest.raises(ValueError, match="Either run_id or workflow_id must be provided"):
+    with pytest.raises(
+        ValueError, match="Either run_id or workflow_id must be provided"
+    ):
         await registry.get_workflow()
 
 
@@ -159,11 +161,11 @@ async def test_resume_workflow_by_workflow_id(registry, mock_executor):
     mock_handle = MagicMock()
     mock_handle.signal = AsyncMock()
     mock_executor.client.get_workflow_handle = MagicMock(return_value=mock_handle)
-    
+
     result = await registry.resume_workflow(
         workflow_id=workflow_id, signal_name="resume", payload={"data": "value"}
     )
-    
+
     assert result is True
     mock_handle.signal.assert_awaited_once_with("resume", {"data": "value"})
     mock_executor.client.get_workflow_handle.assert_called_with(
@@ -173,7 +175,9 @@ async def test_resume_workflow_by_workflow_id(registry, mock_executor):
 
 @pytest.mark.asyncio
 async def test_resume_workflow_raises_error_when_no_params(registry):
-    with pytest.raises(ValueError, match="Either run_id or workflow_id must be provided"):
+    with pytest.raises(
+        ValueError, match="Either run_id or workflow_id must be provided"
+    ):
         await registry.resume_workflow()
 
 
@@ -188,9 +192,9 @@ async def test_cancel_workflow_by_workflow_id(registry, mock_executor):
     mock_handle = MagicMock()
     mock_handle.cancel = AsyncMock()
     mock_executor.client.get_workflow_handle = MagicMock(return_value=mock_handle)
-    
+
     result = await registry.cancel_workflow(workflow_id=workflow_id)
-    
+
     assert result is True
     mock_handle.cancel.assert_awaited_once()
     mock_executor.client.get_workflow_handle.assert_called_with(
@@ -200,7 +204,9 @@ async def test_cancel_workflow_by_workflow_id(registry, mock_executor):
 
 @pytest.mark.asyncio
 async def test_cancel_workflow_raises_error_when_no_params(registry):
-    with pytest.raises(ValueError, match="Either run_id or workflow_id must be provided"):
+    with pytest.raises(
+        ValueError, match="Either run_id or workflow_id must be provided"
+    ):
         await registry.cancel_workflow()
 
 
@@ -211,17 +217,21 @@ async def test_get_workflow_status_by_workflow_id(registry, mock_executor):
     mock_workflow.name = "workflow-id"
     run_id = "run-id"
     workflow_id = "workflow-id"
-    
+
     # Mock workflow.get_status()
-    mock_workflow.get_status = AsyncMock(return_value={"status": "running", "id": workflow_id})
-    
+    mock_workflow.get_status = AsyncMock(
+        return_value={"status": "running", "id": workflow_id}
+    )
+
     await registry.register(mock_workflow, run_id, workflow_id)
 
     # Mock the _get_temporal_workflow_status method
-    registry._get_temporal_workflow_status = AsyncMock(return_value={"temporal_status": "active"})
-    
+    registry._get_temporal_workflow_status = AsyncMock(
+        return_value={"temporal_status": "active"}
+    )
+
     result = await registry.get_workflow_status(workflow_id=workflow_id)
-    
+
     assert result is not False
     assert result["status"] == "running"
     assert result["temporal"]["temporal_status"] == "active"
@@ -229,7 +239,9 @@ async def test_get_workflow_status_by_workflow_id(registry, mock_executor):
 
 @pytest.mark.asyncio
 async def test_get_workflow_status_raises_error_when_no_params(registry):
-    with pytest.raises(ValueError, match="Either run_id or workflow_id must be provided"):
+    with pytest.raises(
+        ValueError, match="Either run_id or workflow_id must be provided"
+    ):
         await registry.get_workflow_status()
 
 
@@ -255,7 +267,9 @@ async def test_cancel_workflow_with_nonexistent_workflow_id(registry, mock_execu
 
 
 @pytest.mark.asyncio
-async def test_get_workflow_status_with_nonexistent_workflow_id(registry, mock_executor):
+async def test_get_workflow_status_with_nonexistent_workflow_id(
+    registry, mock_executor
+):
     # Test that getting status of nonexistent workflow_id returns False
     result = await registry.get_workflow_status(workflow_id="nonexistent")
     assert result is False

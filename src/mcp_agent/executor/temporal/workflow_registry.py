@@ -82,7 +82,7 @@ class TemporalWorkflowRegistry(WorkflowRegistry):
     ) -> bool:
         if not (run_id or workflow_id):
             raise ValueError("Either run_id or workflow_id must be provided.")
-            
+
         # Ensure the Temporal client is connected
         await self._executor.ensure_client()
 
@@ -90,20 +90,20 @@ class TemporalWorkflowRegistry(WorkflowRegistry):
             workflow = await self.get_workflow(run_id, workflow_id)
             if workflow and not workflow_id:
                 workflow_id = workflow.name
-            
+
             # For temporal operations, we need to have both workflow_id and run_id
             if not workflow_id:
                 logger.error(
                     f"Cannot resume workflow: workflow_id not found for run_id {run_id or 'unknown'}"
                 )
                 return False
-            
+
             if not run_id:
                 # Get the run_id from the workflow_ids dict if we have a workflow_id
                 run_ids = self._workflow_ids.get(workflow_id, [])
                 if run_ids:
                     run_id = run_ids[-1]  # Use the latest run
-            
+
             if not run_id:
                 logger.error(
                     f"Cannot resume workflow: run_id not found for workflow_id {workflow_id}"
@@ -130,7 +130,7 @@ class TemporalWorkflowRegistry(WorkflowRegistry):
     ) -> bool:
         if not (run_id or workflow_id):
             raise ValueError("Either run_id or workflow_id must be provided.")
-            
+
         # Ensure the Temporal client is connected
         await self._executor.ensure_client()
 
@@ -138,20 +138,20 @@ class TemporalWorkflowRegistry(WorkflowRegistry):
             workflow = await self.get_workflow(run_id, workflow_id)
             if workflow and not workflow_id:
                 workflow_id = workflow.name
-            
+
             # For temporal operations, we need to have both workflow_id and run_id
             if not workflow_id:
                 logger.error(
                     f"Cannot cancel workflow: workflow_id not found for run_id {run_id or 'unknown'}"
                 )
                 return False
-            
+
             if not run_id:
                 # Get the run_id from the workflow_ids dict if we have a workflow_id
                 run_ids = self._workflow_ids.get(workflow_id, [])
                 if run_ids:
                     run_id = run_ids[-1]  # Use the latest run
-            
+
             if not run_id:
                 logger.error(
                     f"Cannot cancel workflow: run_id not found for workflow_id {workflow_id}"
@@ -174,24 +174,24 @@ class TemporalWorkflowRegistry(WorkflowRegistry):
     ) -> Optional[Dict[str, Any]]:
         if not (run_id or workflow_id):
             raise ValueError("Either run_id or workflow_id must be provided.")
-            
+
         workflow = await self.get_workflow(run_id, workflow_id)
         if workflow and not workflow_id:
             workflow_id = workflow.id or workflow.name
-        
+
         # For temporal operations, we need to have both workflow_id and run_id
         if not workflow_id:
             logger.error(
                 f"Cannot get status: workflow_id not found for run_id {run_id or 'unknown'}"
             )
             return False
-        
+
         if not run_id:
             # Get the run_id from the workflow_ids dict if we have a workflow_id
             run_ids = self._workflow_ids.get(workflow_id, [])
             if run_ids:
                 run_id = run_ids[-1]  # Use the latest run
-        
+
         if not run_id:
             logger.error(
                 f"Cannot get status: run_id not found for workflow_id {workflow_id}"

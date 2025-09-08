@@ -958,7 +958,7 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
         ctx: MCPContext,
         run_id: str,
         *,
-        workflow_name: str | None = None,
+        workflow_id: str | None = None,
         timeout: float | None = None,
         registration_grace: float = 1.0,
         poll_initial: float = 0.05,
@@ -980,7 +980,7 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
 
         # Fast path: immediate local task
         try:
-            wf = await registry.get_workflow(run_id)
+            wf = await registry.get_workflow(run_id, workflow_id)
             if wf is not None:
                 task = getattr(wf, "_run_task", None)
                 if isinstance(task, asyncio.Task):
@@ -1009,7 +1009,7 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
             if remaining() <= 0:
                 raise ToolError("Timed out waiting for workflow completion")
 
-            status = await _workflow_status(ctx, run_id, workflow_name)
+            status = await _workflow_status(ctx, run_id, workflow_id)
             s = str(
                 status.get("status") or (status.get("state") or {}).get("status") or ""
             ).lower()
@@ -1046,9 +1046,7 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
                     ctx: MCPContext = kwargs.pop("__context__")
                     result_ids = await _workflow_run(ctx, bound_wname, kwargs)
                     run_id = result_ids["run_id"]
-                    result = await _wait_for_completion(
-                        ctx, run_id, workflow_name=bound_wname
-                    )
+                    result = await _wait_for_completion(ctx, run_id)
                     try:
                         from mcp_agent.executor.workflow import WorkflowResult as _WFRes
                     except Exception:
