@@ -86,8 +86,10 @@ def describe_workflow(
     creation time, and other metadata.
     
     Examples:
+    
         mcp-agent cloud workflows describe app_abc123 run_xyz789
-        mcp-agent cloud workflows describe https://server.example.com run_xyz789 --format json
+        
+        mcp-agent cloud workflows describe app_abc123 run_xyz789 --format json
     """
     if format not in ["text", "json", "yaml"]:
         console.print("[red]Error: --format must be 'text', 'json', or 'yaml'[/red]")

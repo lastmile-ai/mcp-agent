@@ -86,8 +86,11 @@ def resume_workflow(
     a payload (JSON or text) to pass data to the resumed workflow.
     
     Examples:
+    
         mcp-agent cloud workflows resume app_abc123 run_xyz789
-        mcp-agent cloud workflows resume https://server.example.com run_xyz789 --payload '{"data": "value"}'
+        
+        mcp-agent cloud workflows resume app_abc123 run_xyz789 --payload '{"data": "value"}'
+        
         mcp-agent cloud workflows resume app_abc123 run_xyz789 --payload "simple text"
     """
     if payload:

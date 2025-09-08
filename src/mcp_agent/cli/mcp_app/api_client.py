@@ -3,6 +3,7 @@
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional, Union
 from urllib.parse import urlparse
+from enum import Enum
 
 from pydantic import BaseModel
 
@@ -61,6 +62,35 @@ class CanDoActionCheck(BaseModel):
 
 class CanDoActionsResponse(BaseModel):
     canDoActions: Optional[List[CanDoActionCheck]] = []
+
+
+class WorkflowExecutionStatus(Enum):
+    """From temporal.api.enums.v1.WorkflowExecutionStatus"""
+    WORKFLOW_EXECUTION_STATUS_UNSPECIFIED = "WORKFLOW_EXECUTION_STATUS_UNSPECIFIED"
+    WORKFLOW_EXECUTION_STATUS_RUNNING = "WORKFLOW_EXECUTION_STATUS_RUNNING"
+    WORKFLOW_EXECUTION_STATUS_FAILED = "WORKFLOW_EXECUTION_STATUS_FAILED"
+    WORKFLOW_EXECUTION_STATUS_TIMED_OUT = "WORKFLOW_EXECUTION_STATUS_TIMED_OUT"
+    WORKFLOW_EXECUTION_STATUS_CANCELED = "WORKFLOW_EXECUTION_STATUS_CANCELED"
+    WORKFLOW_EXECUTION_STATUS_TERMINATED = "WORKFLOW_EXECUTION_STATUS_TERMINATED"
+    WORKFLOW_EXECUTION_STATUS_COMPLETED = "WORKFLOW_EXECUTION_STATUS_COMPLETED"
+    WORKFLOW_EXECUTION_STATUS_CONTINUED_AS_NEW = "WORKFLOW_EXECUTION_STATUS_CONTINUED_AS_NEW"
+
+
+class WorkflowInfo(BaseModel):
+    """Information about a workflow execution instance"""
+    workflow_id: str
+    run_id: Optional[str] = None
+    name: str
+    created_at: datetime
+    principal_id: str
+    execution_status: Optional[WorkflowExecutionStatus] = None
+
+
+class ListWorkflowsResponse(BaseModel):
+    """Response for listing workflows"""
+    workflows: Optional[List[WorkflowInfo]] = []
+    next_page_token: Optional[str] = None
+    total_count: Optional[int] = 0
 
 
 APP_ID_PREFIX = "app_"
@@ -463,6 +493,47 @@ class MCPAppClient(APIClient):
 
         response = await self.post("/mcp_app/list_app_configurations", payload)
         return ListAppConfigurationsResponse(**response.json())
+
+    async def list_workflows(
+        self,
+        app_id_or_config_id: str,
+        name_filter: Optional[str] = None,
+        max_results: int = 100,
+        page_token: Optional[str] = None,
+    ) -> ListWorkflowsResponse:
+        """List workflows for a specific app or app configuration.
+        
+        Args:
+            app_id_or_config_id: The app ID (e.g. app_abc123) or app config ID (e.g. apcnf_xyz789)
+            name_filter: Optional workflow name filter
+            max_results: Maximum number of results to return
+            page_token: Pagination token
+            
+        Returns:
+            ListWorkflowsResponse: The list of workflows
+            
+        Raises:
+            ValueError: If the app_id_or_config_id is invalid
+            httpx.HTTPError: If the API request fails
+        """
+        payload: Dict[str, Any] = {
+            "max_results": max_results,
+        }
+        
+        if is_valid_app_id_format(app_id_or_config_id):
+            payload["app_specifier"] = {"app_id": app_id_or_config_id}
+        elif is_valid_app_config_id_format(app_id_or_config_id):
+            payload["app_specifier"] = {"app_config_id": app_id_or_config_id}
+        else:
+            raise ValueError(f"Invalid app ID or app config ID format: {app_id_or_config_id}. Expected format: app_xxx or apcnf_xxx")
+        
+        if name_filter:
+            payload["name"] = name_filter
+        if page_token:
+            payload["page_token"] = page_token
+        
+        response = await self.post("/workflow/list", payload)
+        return ListWorkflowsResponse(**response.json())
 
     async def delete_app(self, app_id: str) -> str:
         """Delete an MCP App via the API.
