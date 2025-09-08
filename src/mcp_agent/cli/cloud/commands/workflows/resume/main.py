@@ -96,7 +96,7 @@ async def _signal_workflow_async(
                         else "📡"
                     )
                     console.print(
-                        f"[{action_color}]{action_icon}[/{action_color}] Successfully {action_past} workflow"
+                        f"[{action_color}]{action_icon} Successfully {action_past} workflow[/{action_color}]"
                     )
                     console.print(f"  Run ID: [cyan]{run_id}[/cyan]")
                 else:
