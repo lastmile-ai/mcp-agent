@@ -18,9 +18,30 @@ console = Console()
 
 
 @app.command("list")
-def list_models(format: str = typer.Option("text", "--format")) -> None:
+def list_models(
+    format: str = typer.Option("text", "--format"),
+    min_context: int = typer.Option(
+        None, "--min-context", help="Minimum context window size"
+    ),
+    tool_use: bool = typer.Option(
+        None, "--tool-use", help="Filter by tool calling capability"
+    ),
+    provider: str = typer.Option(
+        None, "--provider", help="Filter by provider name (case-insensitive)"
+    ),
+) -> None:
     """List known model catalog (from embedded benchmarks)."""
     models = load_default_models()
+
+    if min_context is not None:
+        models = [
+            m for m in models if m.context_window and m.context_window >= min_context
+        ]
+    if tool_use is not None:
+        models = [m for m in models if m.tool_calling == tool_use]
+    if provider is not None:
+        models = [m for m in models if provider.lower() in m.provider.lower()]
+
     # Sort models alphabetically by provider, then by model name
     models = sorted(models, key=lambda m: (m.provider, m.name))
     if format.lower() == "json":
