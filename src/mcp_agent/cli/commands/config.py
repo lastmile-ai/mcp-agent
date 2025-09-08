@@ -299,6 +299,10 @@ def edit(
         if not cmd:
             continue
         try:
+            # Inform user about validation behavior
+            console.print(f"\n[cyan]Opening {target.name} in editor...[/cyan]")
+            console.print("[dim]Save and close the editor to continue.[/dim]\n")
+            
             # Handle editors with arguments
             if " " in cmd:
                 parts = cmd.split()
