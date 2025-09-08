@@ -21,7 +21,7 @@ async def test_register_and_get_workflow(registry):
     run_id = "run-id"
     workflow_id = "workflow-id"
     await registry.register(mock_workflow, run_id, workflow_id)
-    workflow = await registry.get_workflow(run_id)
+    workflow = await registry.get_workflow(run_id=run_id)
     assert workflow == mock_workflow
     assert registry._workflow_ids[workflow_id] == [run_id]
 
@@ -50,7 +50,7 @@ async def test_resume_workflow(registry, mock_executor):
     mock_handle.signal = AsyncMock()
     mock_executor.client.get_workflow_handle = MagicMock(return_value=mock_handle)
     result = await registry.resume_workflow(
-        run_id, signal_name="resume", payload={"data": "value"}
+        run_id=run_id, signal_name="resume", payload={"data": "value"}
     )
     assert result is True
     mock_handle.signal.assert_awaited_once_with("resume", {"data": "value"})
@@ -78,7 +78,7 @@ async def test_resume_workflow_signal_error(registry, mock_executor, caplog):
 
     with caplog.at_level("ERROR"):
         result = await registry.resume_workflow(
-            run_id, signal_name="resume", payload={"data": "value"}
+            run_id=run_id, signal_name="resume", payload={"data": "value"}
         )
     assert result is False
 
@@ -92,7 +92,7 @@ async def test_cancel_workflow(registry, mock_executor):
     mock_handle = MagicMock()
     mock_handle.cancel = AsyncMock()
     mock_executor.client.get_workflow_handle = MagicMock(return_value=mock_handle)
-    result = await registry.cancel_workflow(run_id)
+    result = await registry.cancel_workflow(run_id=run_id)
     assert result is True
     mock_handle.cancel.assert_awaited_once()
 
