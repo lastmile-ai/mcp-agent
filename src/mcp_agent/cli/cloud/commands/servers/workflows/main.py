@@ -20,7 +20,7 @@ from mcp_agent.cli.utils.ux import console, print_info
 
 @handle_server_api_errors
 def list_workflows_for_server(
-    app_id_or_config_id: str = typer.Argument(..., help="App ID (app_xxx) or app config ID (apcnf_xxx) to list workflows for"),
+    server_id_or_url: str = typer.Argument(..., help="Server ID, app config ID, or server URL to list workflows for"),
     limit: Optional[int] = typer.Option(None, "--limit", help="Maximum number of results to return"),
     status: Optional[str] = typer.Option(None, "--status", help="Filter by status: running|failed|timed_out|canceled|terminated|completed|continued"),
     format: Optional[str] = typer.Option("text", "--format", help="Output format (text|json|yaml)"),
@@ -31,18 +31,24 @@ def list_workflows_for_server(
     
         mcp-agent cloud servers workflows app_abc123
         
-        mcp-agent cloud servers workflows apcnf_xyz789 --status running
+        mcp-agent cloud servers workflows https://server.example.com --status running
         
-        mcp-agent cloud servers workflows app_abc123 --limit 10 --format json
+        mcp-agent cloud servers workflows apcnf_xyz789 --limit 10 --format json
     """
     validate_output_format(format)
     client = setup_authenticated_client()
     
-    server = None
-    try:
-        server = resolve_server(client, app_id_or_config_id)
-    except Exception:
-        pass
+    if server_id_or_url.startswith(('http://', 'https://')):
+        resolved_server = resolve_server(client, server_id_or_url)
+        
+        if hasattr(resolved_server, 'appId'):
+            app_id_or_config_id = resolved_server.appId
+        elif hasattr(resolved_server, 'appConfigurationId'):
+            app_id_or_config_id = resolved_server.appConfigurationId
+        else:
+            raise ValueError(f"Could not extract app ID or config ID from server: {server_id_or_url}")
+    else:
+        app_id_or_config_id = server_id_or_url
     
     max_results = limit or 100
     
@@ -82,15 +88,12 @@ def list_workflows_for_server(
     elif format == "yaml":
         _print_workflows_yaml(workflows)
     else:
-        _print_workflows_text(workflows, server, status, app_id_or_config_id)
+        _print_workflows_text(workflows, status, server_id_or_url)
 
 
-def _print_workflows_text(workflows, server, status_filter, app_id_or_config_id):
+def _print_workflows_text(workflows, status_filter, server_id_or_url):
     """Print workflows in text format."""
-    if server and hasattr(server, 'name') and server.name:
-        server_name = server.name
-    else:
-        server_name = app_id_or_config_id
+    server_name = server_id_or_url
     
     console.print(f"\n[bold blue]📊 Workflows for Server: {server_name}[/bold blue]")
     
