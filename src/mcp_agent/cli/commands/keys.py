@@ -28,7 +28,7 @@ PROVIDERS = {
     "openai": {
         "env": "OPENAI_API_KEY",
         "name": "OpenAI",
-        "pattern": r"^sk-[a-zA-Z0-9]{48}$",
+        "pattern": r"^sk-[A-Za-z0-9_-]+$",
         "format": "sk-XXXXXXXX... (48 chars)",
         "models": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
         "test_endpoint": "https://api.openai.com/v1/models",
@@ -37,7 +37,7 @@ PROVIDERS = {
     "anthropic": {
         "env": "ANTHROPIC_API_KEY",
         "name": "Anthropic",
-        "pattern": r"^sk-ant-[a-zA-Z0-9\-]{80,}$",
+        "pattern": r"^sk-ant-[a-zA-Z0-9_-]{80,}$",
         "format": "sk-ant-XXXXXXXX... (80+ chars)",
         "models": [
             "claude-3-5-sonnet-20241022",
@@ -59,8 +59,8 @@ PROVIDERS = {
     "azure": {
         "env": "AZURE_API_KEY",
         "name": "Azure OpenAI",
-        "pattern": r"^[a-f0-9]{32}$",
-        "format": "32 hex characters",
+        "pattern": r"^[a-f0-9]{32,}$",
+        "format": "32+ hex characters",
         "additional_env": {
             "AZURE_BASE_URL": "Azure endpoint URL",
             "AZURE_API_VERSION": "API version (e.g., 2024-02-01)",
