@@ -885,6 +885,8 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                 f"Failed to cancel workflow {workflow_id or 'unknown'} with ID {run_id or 'unknown'}"
             )
 
+        return result
+
     # endregion
 
     return mcp
