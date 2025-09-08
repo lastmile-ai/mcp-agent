@@ -109,7 +109,7 @@ def init(
 
     # Create secrets file
     secrets_path = dir / "mcp_agent.secrets.yaml"
-    secrets_content = _load_template("mcp_agent.secrets.yaml")
+    secrets_content = _load_template("secrets.yaml")
     if secrets_content and _write(secrets_path, secrets_content, force):
         files_created.append("mcp_agent.secrets.yaml")
 
