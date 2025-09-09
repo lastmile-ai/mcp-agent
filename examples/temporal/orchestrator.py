@@ -30,7 +30,8 @@ async def run_orchestrator(input: str, app_ctx: Optional[AppContext]) -> str:
     Run the workflow, processing the input data.
 
     Args:
-        input_data: The data to process
+        input: Task description or instruction text.
+        app_ctx: Optional application context for the workflow.
 
     Returns:
         A WorkflowResult containing the processed data
@@ -58,7 +59,7 @@ async def run_orchestrator(input: str, app_ctx: Optional[AppContext]) -> str:
 
     proofreader = Agent(
         name="proofreader",
-        instruction=""""Review the short story for grammar, spelling, and punctuation errors.
+        instruction="""Review the short story for grammar, spelling, and punctuation errors.
         Identify any awkward phrasing or structural issues that could improve clarity. 
         Provide detailed feedback on corrections.""",
         server_names=["fetch"],
@@ -91,7 +92,7 @@ async def run_orchestrator(input: str, app_ctx: Optional[AppContext]) -> str:
         ],
         # We will let the orchestrator iteratively plan the task at every step
         plan_type="full",
-        context=app.context,
+        context=context,
     )
 
     return await orchestrator.generate_str(
