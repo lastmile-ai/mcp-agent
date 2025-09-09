@@ -119,6 +119,10 @@ class MCPSettings(BaseModel):
     servers: Dict[str, MCPServerSettings] = Field(default_factory=dict)
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
+    @field_validator("servers", mode="before")
+    def none_to_dict(cls, v):
+        return {} if v is None else v
+
 
 class VertexAIMixin(BaseModel):
     """Common fields for Vertex AI-compatible settings."""
@@ -589,7 +593,7 @@ class Settings(BaseSettings):
         nested_model_default_partial_update=True,
     )  # Customize the behavior of settings here
 
-    mcp: MCPSettings | None = MCPSettings()
+    mcp: MCPSettings | None = Field(default_factory=MCPSettings)
     """MCP config, such as MCP servers"""
 
     execution_engine: Literal["asyncio", "temporal"] = "asyncio"

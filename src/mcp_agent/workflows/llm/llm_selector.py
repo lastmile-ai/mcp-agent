@@ -2,6 +2,7 @@ import json
 from difflib import SequenceMatcher
 from importlib import resources
 from typing import Dict, List, Optional, TYPE_CHECKING
+import os
 
 from numpy import average
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
@@ -448,18 +449,35 @@ class ModelSelector(ContextDependent):
         return max_dict
 
 
+_MODELS_CACHE: List[ModelInfo] | None = None
+
+
 def load_default_models() -> List[ModelInfo]:
     """
-    We use ArtificialAnalysis benchmarks for determining the best model.
+    Load the embedded model catalog (ArtificialAnalysis benchmarks) once and cache it.
+    Allows override via env var MCP_AGENT_MODELS_FILE pointing to a JSON file of ModelInfo records.
     """
-    with (
-        resources.files("mcp_agent.data")
-        .joinpath("artificial_analysis_llm_benchmarks.json")
-        .open() as file
-    ):
-        data = json.load(file)  # Array of ModelInfo objects
+    global _MODELS_CACHE
+    if _MODELS_CACHE is not None:
+        return _MODELS_CACHE
+
+    override = os.environ.get("MCP_AGENT_MODELS_FILE")
+    try:
+        if override:
+            with open(override, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        else:
+            with (
+                resources.files("mcp_agent.data")
+                .joinpath("artificial_analysis_llm_benchmarks.json")
+                .open()
+            ) as file:
+                data = json.load(file)
         adapter = TypeAdapter(List[ModelInfo])
-        return adapter.validate_python(data)
+        _MODELS_CACHE = adapter.validate_python(data)
+    except Exception:
+        _MODELS_CACHE = []
+    return _MODELS_CACHE
 
 
 def _fuzzy_match(str1: str, str2: str, threshold: float = 0.8) -> bool:

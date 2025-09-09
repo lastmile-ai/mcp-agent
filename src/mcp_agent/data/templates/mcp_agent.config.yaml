@@ -1,0 +1,56 @@
+# MCP-Agent Configuration File
+# Schema reference for IDE autocomplete and validation
+$schema: https://raw.githubusercontent.com/lastmile-ai/mcp-agent/refs/heads/main/schema/mcp-agent.config.schema.json
+
+# Execution engine: asyncio or temporal
+execution_engine: asyncio
+
+# Logger configuration
+logger:
+  transports: [console]  # Options: console, file
+  level: info  # Options: debug, info, warning, error
+  progress_display: true  # Show progress bars for token usage
+  path_settings:
+    path_pattern: "logs/mcp-agent-{unique_id}.jsonl"
+    unique_id: "timestamp"  # Options: "timestamp" or "session_id"
+    timestamp_format: "%Y%m%d_%H%M%S"
+
+# MCP Servers configuration
+mcp:
+  servers:
+    # Filesystem access server
+    filesystem:
+      command: npx
+      args: ["-y", "@modelcontextprotocol/server-filesystem"]
+      # Add current directory at runtime with: context.config.mcp.servers["filesystem"].args.extend(["."])
+    
+    # Web fetch server
+    fetch:
+      command: uvx
+      args: ["mcp-server-fetch"]
+    
+    # GitHub server (requires GITHUB_PERSONAL_ACCESS_TOKEN in secrets)
+    # github:
+    #   command: npx
+    #   args: ["-y", "@modelcontextprotocol/server-github"]
+    
+    # Brave search server (requires BRAVE_API_KEY in secrets)
+    # brave-search:
+    #   command: npx
+    #   args: ["-y", "@modelcontextprotocol/server-brave-search"]
+
+# Model provider defaults (API keys go in mcp_agent.secrets.yaml)
+openai:
+  default_model: "gpt-4o-mini"
+  
+anthropic:
+  default_model: "claude-3-5-sonnet-20241022"
+
+# google:
+#   default_model: "gemini-1.5-pro"
+
+# OpenTelemetry configuration (optional)
+# otel:
+#   endpoint: "http://localhost:4317"
+#   service_name: "mcp-agent"
+#   export_interval: 10
