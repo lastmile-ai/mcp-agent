@@ -1282,7 +1282,7 @@ def create_workflow_specific_tools(
         workflow_id: str | None = None,
         signal_name: str | None = "resume",
         payload: str | None = None,
-    ) -> Dict[str, Any]:
+    ) -> bool:
         _set_upstream_from_request_ctx_if_available(ctx)
         return await _workflow_resume(
             ctx,
@@ -1309,7 +1309,7 @@ def create_workflow_specific_tools(
     )
     async def cancel(
         ctx: MCPContext, run_id: str | None = None, workflow_id: str | None = None
-    ) -> Dict[str, Any]:
+    ) -> bool:
         _set_upstream_from_request_ctx_if_available(ctx)
         return await _workflow_cancel(ctx, run_id=run_id, workflow_id=workflow_id)
 
