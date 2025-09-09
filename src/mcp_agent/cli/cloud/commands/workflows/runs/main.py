@@ -144,7 +144,13 @@ def _get_status_filter(status: str) -> str:
 
 
 def _matches_status(workflow: dict, status_filter: str) -> bool:
-    """Check if workflow matches the status filter."""
+    """Check if workflow matches the status filter.
+    
+    Note: We use string-based matching instead of protobuf enum values because
+    the MCP tool response format returns status as strings, not enum objects.
+    This approach is more flexible and doesn't require maintaining sync with
+    the protobuf definitions.
+    """
     workflow_status = workflow.get("execution_status", "")
     if isinstance(workflow_status, str):
         return status_filter.lower() in workflow_status.lower()
