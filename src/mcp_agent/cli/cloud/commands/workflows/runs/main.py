@@ -5,7 +5,6 @@ from typing import Optional
 
 import typer
 import yaml
-from rich.table import Table
 
 from mcp_agent.app import MCPApp
 from mcp_agent.cli.core.utils import run_async
@@ -159,38 +158,32 @@ def _matches_status(workflow: dict, status_filter: str) -> bool:
 
 def _print_workflows_text(workflows, status_filter, server_id_or_url):
     """Print workflows in text format."""
-    server_name = server_id_or_url
-
     console.print(
-        f"\n[bold blue]📊 Workflow Runs for Server: {server_name}[/bold blue]"
+        f"\n[bold blue]📊 Workflow Runs ({len(workflows)})[/bold blue]"
     )
 
     if not workflows:
         print_info("No workflow runs found for this server.")
         return
 
-    console.print(f"\nFound {len(workflows)} workflow run(s):")
-
-    table = Table(show_header=True, header_style="bold blue")
-    table.add_column("Workflow ID", style="cyan", width=20)
-    table.add_column("Name", style="green", width=20)
-    table.add_column("Status", style="yellow", width=15)
-    table.add_column("Run ID", style="dim", width=15)
-    table.add_column("Created", style="dim", width=20)
-
-    for workflow in workflows:
+    for i, workflow in enumerate(workflows):
+        if i > 0:
+            console.print()
+        
         if isinstance(workflow, dict):
             workflow_id = workflow.get("workflow_id", "N/A")
             name = workflow.get("name", "N/A")
             execution_status = workflow.get("execution_status", "N/A")
             run_id = workflow.get("run_id", "N/A")
             created_at = workflow.get("created_at", "N/A")
+            principal_id = workflow.get("principal_id", "N/A")
         else:
             workflow_id = getattr(workflow, "workflow_id", "N/A")
             name = getattr(workflow, "name", "N/A")
             execution_status = getattr(workflow, "execution_status", "N/A")
             run_id = getattr(workflow, "run_id", "N/A")
             created_at = getattr(workflow, "created_at", "N/A")
+            principal_id = getattr(workflow, "principal_id", "N/A")
         
         status_display = _get_status_display(execution_status)
         
@@ -207,17 +200,13 @@ def _print_workflows_text(workflows, status_filter, server_id_or_url):
         else:
             created_display = "N/A"
         
-        run_id_display = _truncate_string(str(run_id) if run_id else "N/A", 15)
-
-        table.add_row(
-            _truncate_string(str(workflow_id) if workflow_id else "N/A", 20),
-            _truncate_string(str(name) if name else "N/A", 20),
-            status_display,
-            run_id_display,
-            created_display,
-        )
-
-    console.print(table)
+        console.print(f"[bold cyan]{name or 'Unnamed'}[/bold cyan] {status_display}")
+        console.print(f"  Workflow ID: {workflow_id}")
+        console.print(f"  Run ID: {run_id}")
+        console.print(f"  Created: {created_display}")
+        
+        if principal_id and principal_id != "N/A":
+            console.print(f"  Principal: {principal_id}")
 
     if status_filter:
         console.print(f"\n[dim]Filtered by status: {status_filter}[/dim]")
@@ -247,13 +236,6 @@ def _workflow_to_dict(workflow):
         "created_at": getattr(workflow, "created_at", None).isoformat() if getattr(workflow, "created_at", None) else None,
         "execution_status": getattr(workflow, "execution_status", None).value if getattr(workflow, "execution_status", None) else None,
     }
-
-
-def _truncate_string(text: str, max_length: int) -> str:
-    """Truncate string to max_length, adding ellipsis if truncated."""
-    if len(text) <= max_length:
-        return text
-    return text[: max_length - 3] + "..."
 
 
 def _get_status_display(status):
