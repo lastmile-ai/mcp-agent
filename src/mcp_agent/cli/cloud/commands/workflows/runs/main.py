@@ -71,7 +71,9 @@ async def _list_workflow_runs_async(
                 workflows = workflows_data
                 if status:
                     status_filter = _get_status_filter(status)
-                    workflows = [w for w in workflows if _matches_status(w, status_filter)]
+                    workflows = [
+                        w for w in workflows if _matches_status(w, status_filter)
+                    ]
 
                 if limit:
                     workflows = workflows[:limit]
@@ -144,7 +146,7 @@ def _get_status_filter(status: str) -> str:
 
 def _matches_status(workflow: dict, status_filter: str) -> bool:
     """Check if workflow matches the status filter.
-    
+
     Note: We use string-based matching instead of protobuf enum values because
     the MCP tool response format returns status as strings, not enum objects.
     This approach is more flexible and doesn't require maintaining sync with
@@ -158,9 +160,7 @@ def _matches_status(workflow: dict, status_filter: str) -> bool:
 
 def _print_workflows_text(workflows, status_filter, server_id_or_url):
     """Print workflows in text format."""
-    console.print(
-        f"\n[bold blue]📊 Workflow Runs ({len(workflows)})[/bold blue]"
-    )
+    console.print(f"\n[bold blue]📊 Workflow Runs ({len(workflows)})[/bold blue]")
 
     if not workflows:
         print_info("No workflow runs found for this server.")
@@ -169,7 +169,7 @@ def _print_workflows_text(workflows, status_filter, server_id_or_url):
     for i, workflow in enumerate(workflows):
         if i > 0:
             console.print()
-        
+
         if isinstance(workflow, dict):
             workflow_id = workflow.get("workflow_id", "N/A")
             name = workflow.get("name", "N/A")
@@ -184,27 +184,28 @@ def _print_workflows_text(workflows, status_filter, server_id_or_url):
             run_id = getattr(workflow, "run_id", "N/A")
             created_at = getattr(workflow, "created_at", "N/A")
             principal_id = getattr(workflow, "principal_id", "N/A")
-        
+
         status_display = _get_status_display(execution_status)
-        
+
         if created_at and created_at != "N/A":
             if hasattr(created_at, "strftime"):
                 created_display = created_at.strftime("%Y-%m-%d %H:%M:%S")
             else:
                 try:
                     from datetime import datetime
+
                     dt = datetime.fromisoformat(str(created_at).replace("Z", "+00:00"))
                     created_display = dt.strftime("%Y-%m-%d %H:%M:%S")
                 except (ValueError, TypeError):
                     created_display = str(created_at)
         else:
             created_display = "N/A"
-        
+
         console.print(f"[bold cyan]{name or 'Unnamed'}[/bold cyan] {status_display}")
         console.print(f"  Workflow ID: {workflow_id}")
         console.print(f"  Run ID: {run_id}")
         console.print(f"  Created: {created_display}")
-        
+
         if principal_id and principal_id != "N/A":
             console.print(f"  Principal: {principal_id}")
 
@@ -228,13 +229,17 @@ def _workflow_to_dict(workflow):
     """Convert workflow dict to standardized dictionary format."""
     if isinstance(workflow, dict):
         return workflow
-    
+
     return {
         "workflow_id": getattr(workflow, "workflow_id", None),
         "run_id": getattr(workflow, "run_id", None),
         "name": getattr(workflow, "name", None),
-        "created_at": getattr(workflow, "created_at", None).isoformat() if getattr(workflow, "created_at", None) else None,
-        "execution_status": getattr(workflow, "execution_status", None).value if getattr(workflow, "execution_status", None) else None,
+        "created_at": getattr(workflow, "created_at", None).isoformat()
+        if getattr(workflow, "created_at", None)
+        else None,
+        "execution_status": getattr(workflow, "execution_status", None).value
+        if getattr(workflow, "execution_status", None)
+        else None,
     }
 
 
@@ -242,9 +247,9 @@ def _get_status_display(status):
     """Convert status to display string with emoji."""
     if not status:
         return "❓ Unknown"
-    
+
     status_str = str(status).lower()
-    
+
     if "running" in status_str:
         return "[green]🟢 Running[/green]"
     elif "completed" in status_str:

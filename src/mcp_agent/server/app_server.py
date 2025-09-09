@@ -667,15 +667,12 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             else:
                 endpoints = [
                     f"workflows-{workflow_name}-run",
-                    f"workflows-{workflow_name}-get_status",
-                    f"workflows-{workflow_name}-cancel",
-                    f"workflows-{workflow_name}-resume",
                 ]
 
             result[workflow_name] = {
                 "name": workflow_name,
                 "description": workflow_cls.__doc__ or run_fn_tool.description,
-                "capabilities": ["run", "resume", "cancel", "get_status"],
+                "capabilities": ["run"],
                 "tool_endpoints": endpoints,
                 "run_parameters": run_fn_tool.parameters,
             }
@@ -1465,7 +1462,8 @@ async def _workflow_status(
         workflow = await workflow_registry.get_workflow(
             run_id=run_id, workflow_id=workflow_id
         )
-        workflow_id = workflow.id if workflow else None
+        if workflow:
+            workflow_id = workflow.id or workflow.name
 
     status = await workflow_registry.get_workflow_status(
         run_id=run_id, workflow_id=workflow_id

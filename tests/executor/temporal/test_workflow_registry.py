@@ -42,7 +42,7 @@ async def test_resume_workflow(registry, mock_executor):
     mock_workflow = MagicMock(name="test_workflow")
     run_id = "run-id"
     workflow_id = "workflow-id"
-    mock_workflow.name = workflow_id  # Ensure workflow.name matches workflow_id
+    mock_workflow.name = "test_workflow"
     await registry.register(mock_workflow, run_id, workflow_id)
 
     # Use MagicMock with async signal method
@@ -61,7 +61,7 @@ async def test_resume_workflow_signal_error(registry, mock_executor, caplog):
     mock_workflow = MagicMock(name="test_workflow")
     run_id = "run-id"
     workflow_id = "workflow-id"
-    mock_workflow.name = workflow_id
+    mock_workflow.name = "test_workflow"
     await registry.register(mock_workflow, run_id, workflow_id)
 
     # Mock handle whose signal method raises an exception
@@ -155,7 +155,7 @@ async def test_resume_workflow_by_workflow_id(registry, mock_executor):
     mock_workflow = MagicMock(name="test_workflow")
     run_id = "run-id"
     workflow_id = "workflow-id"
-    mock_workflow.name = workflow_id
+    mock_workflow.name = "test_workflow"
     await registry.register(mock_workflow, run_id, workflow_id)
 
     mock_handle = MagicMock()
@@ -186,7 +186,7 @@ async def test_cancel_workflow_by_workflow_id(registry, mock_executor):
     mock_workflow = MagicMock(name="test_workflow")
     run_id = "run-id"
     workflow_id = "workflow-id"
-    mock_workflow.name = workflow_id
+    mock_workflow.name = "test_workflow"
     await registry.register(mock_workflow, run_id, workflow_id)
 
     mock_handle = MagicMock()
@@ -214,7 +214,7 @@ async def test_cancel_workflow_raises_error_when_no_params(registry):
 async def test_get_workflow_status_by_workflow_id(registry, mock_executor):
     mock_workflow = MagicMock(name="test_workflow")
     mock_workflow.id = "workflow-id"
-    mock_workflow.name = "workflow-id"
+    mock_workflow.name = "test_workflow"
     run_id = "run-id"
     workflow_id = "workflow-id"
 

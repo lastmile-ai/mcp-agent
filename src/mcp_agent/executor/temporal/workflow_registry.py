@@ -40,6 +40,8 @@ class TemporalWorkflowRegistry(WorkflowRegistry):
     ) -> None:
         self._local_workflows[run_id] = workflow
 
+        workflow_id = workflow_id or workflow.id or workflow.name
+
         # Add run_id to the list for this workflow_id
         if workflow_id not in self._workflow_ids:
             self._workflow_ids[workflow_id] = []
@@ -48,7 +50,7 @@ class TemporalWorkflowRegistry(WorkflowRegistry):
     async def unregister(self, run_id: str, workflow_id: str | None = None) -> None:
         if run_id in self._local_workflows:
             workflow = self._local_workflows[run_id]
-            workflow_id = workflow.name if workflow_id is None else workflow_id
+            workflow_id = workflow_id or workflow.id or workflow.name
 
             # Remove from workflow_ids mapping
             if workflow_id in self._workflow_ids:

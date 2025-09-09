@@ -63,7 +63,6 @@ class CanDoActionsResponse(BaseModel):
     canDoActions: Optional[List[CanDoActionCheck]] = []
 
 
-
 APP_ID_PREFIX = "app_"
 APP_CONFIG_ID_PREFIX = "apcnf_"
 
@@ -466,7 +465,6 @@ class MCPAppClient(APIClient):
 
         response = await self.post("/mcp_app/list_app_configurations", payload)
         return ListAppConfigurationsResponse(**response.json())
-
 
     async def delete_app(self, app_id: str) -> str:
         """Delete an MCP App via the API.

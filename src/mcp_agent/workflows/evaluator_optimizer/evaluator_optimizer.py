@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class QualityRating(int, Enum):
+class QualityRating(str, Enum):
     """Enum for evaluation quality ratings"""
 
     POOR = 0  # Major improvements needed
