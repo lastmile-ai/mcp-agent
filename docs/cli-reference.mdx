@@ -205,36 +205,36 @@ mcp-agent models set-default claude-3-5-sonnet-20241022
 
 ## Cloud Commands
 
-### Top-level Shortcuts
+### Top-level Aliases
 
 These commands are available at the top level for convenience:
-- `mcp-agent deploy <app>` → `mcp-agent cloud deploy <app>`
-- `mcp-agent login` → `mcp-agent cloud auth login`
-- `mcp-agent logout` → `mcp-agent cloud auth logout`
-- `mcp-agent whoami` → `mcp-agent cloud auth whoami`
+- `mcp-agent deploy` - Deploy to cloud (alias for `cloud deploy`)
+- `mcp-agent login` - Authenticate (alias for `cloud auth login`)
+- `mcp-agent logout` - Sign out (alias for `cloud auth logout`)
+- `mcp-agent whoami` - Show current identity (alias for `cloud auth whoami`)
 
-### mcp-agent cloud auth
+### mcp-agent login/logout/whoami
 
 Authenticate with MCP Agent Cloud.
 
 ```bash
-mcp-agent cloud auth <COMMAND>
+mcp-agent login    # Authenticate
+mcp-agent whoami   # Show current user
+mcp-agent logout   # Sign out
+
+# Also available under cloud auth:
+mcp-agent cloud auth login
+mcp-agent cloud auth whoami
+mcp-agent cloud auth logout
 ```
 
-**Commands:**
-
-| Command | Description | Example |
-| :------ | :---------- | :------ |
-| `login` | Authenticate | `mcp-agent cloud auth login` |
-| `whoami` | Show current user | `mcp-agent cloud auth whoami` |
-| `logout` | Sign out | `mcp-agent cloud auth logout` |
-
-### mcp-agent cloud deploy
+### mcp-agent deploy
 
 Deploy agent to MCP Agent Cloud.
 
 ```bash
-mcp-agent cloud deploy <APP_NAME> [OPTIONS]
+mcp-agent deploy <APP_NAME> [OPTIONS]
+# Also available as: mcp-agent cloud deploy <APP_NAME> [OPTIONS]
 ```
 
 **Arguments:**
@@ -249,21 +249,21 @@ mcp-agent cloud deploy <APP_NAME> [OPTIONS]
 | `--no-secrets` | Skip secrets processing | `false` |
 | `--non-interactive` | Fail if prompting needed | `false` |
 | `--dry-run` | Validate without deploying | `false` |
-| `--api-url` | API base URL | From env or config |
+| `--api-url` | API base URL | `https://deployments.mcp-agent.com` |
 | `--api-key` | API key | From env or config |
 
 **Examples:**
 ```bash
 # Simple deployment
-mcp-agent cloud deploy my-agent
+mcp-agent deploy my-agent
 
 # With description and custom config
-mcp-agent cloud deploy my-agent \
+mcp-agent deploy my-agent \
   --app-description "Research assistant" \
   --config-dir ./config
 
 # Dry run
-mcp-agent cloud deploy my-agent --dry-run
+mcp-agent deploy my-agent --dry-run
 ```
 
 ### mcp-agent cloud configure
@@ -392,10 +392,10 @@ mcp-agent cloud logger tail srv_123 --orderby severity --desc --limit 100
 
 Configure CLI behavior:
 
-| Variable | Description |
-| :------- | :---------- |
-| `MCP_API_BASE_URL` | Cloud API endpoint |
-| `MCP_API_KEY` | Authentication key |
+| Variable | Description | Default |
+| :------- | :---------- | :------ |
+| `MCP_API_BASE_URL` | Cloud API endpoint | `https://deployments.mcp-agent.com` |
+| `MCP_API_KEY` | Authentication key | - |
 
 ## Configuration Files
 
@@ -443,10 +443,10 @@ mcp-agent quickstart workflow
 
 ```bash
 # Authenticate
-mcp-agent cloud auth login
+mcp-agent login
 
 # Deploy to cloud
-mcp-agent cloud deploy production-agent
+mcp-agent deploy production-agent
 
 # Check deployment
 mcp-agent cloud servers list
@@ -471,7 +471,7 @@ mcp-agent check
 mcp-agent keys test openai
 
 # Verbose deployment
-mcp-agent cloud deploy my-agent --verbose
+mcp-agent deploy my-agent --verbose
 
 # Check deployment logs with filtering
 mcp-agent cloud logger tail srv_123 \
@@ -480,7 +480,7 @@ mcp-agent cloud logger tail srv_123 \
   --limit 50
   
 # Dry run deployment
-mcp-agent cloud deploy my-agent --dry-run
+mcp-agent deploy my-agent --dry-run
 ```
 
 ## See Also
