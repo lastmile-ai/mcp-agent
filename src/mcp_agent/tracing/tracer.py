@@ -4,7 +4,6 @@ from opentelemetry import trace
 from opentelemetry.propagate import set_global_textmap
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.sampling import ParentBased, TraceIdRatioBased
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
@@ -92,51 +91,23 @@ class TracingConfig:
             }
         )
 
-        # Create provider with resource and sampler (respect sample_rate)
-        sample_rate = settings.sample_rate if settings.sample_rate is not None else 1.0
-        try:
-            sample_rate = max(0.0, min(1.0, float(sample_rate)))
-        except Exception:
-            sample_rate = 1.0
-        tracer_provider = TracerProvider(
-            resource=resource,
-            sampler=ParentBased(TraceIdRatioBased(sample_rate)),
-        )
+        # Create provider with resource
+        tracer_provider = TracerProvider(resource=resource)
 
         for exporter in settings.exporters:
-            # Exporter entries can be strings (legacy) or typed configs with a 'type' attribute
-            exporter_type = (
-                exporter
-                if isinstance(exporter, str)
-                else getattr(exporter, "type", None)
-            )
-            if exporter_type == "console":
+            if exporter == "console":
                 tracer_provider.add_span_processor(
                     BatchSpanProcessor(
                         ConsoleSpanExporter(service_name=settings.service_name)
                     )
                 )
-            elif exporter_type == "otlp":
-                # Merge endpoint/headers from typed config with legacy secrets (if provided)
-                endpoint = (
-                    getattr(exporter, "endpoint", None)
-                    if not isinstance(exporter, str)
-                    else None
-                )
-                headers = (
-                    getattr(exporter, "headers", None)
-                    if not isinstance(exporter, str)
-                    else None
-                )
+            elif exporter == "otlp":
                 if settings.otlp_settings:
-                    endpoint = endpoint or settings.otlp_settings.endpoint
-                    headers = headers or settings.otlp_settings.headers
-                if endpoint:
                     tracer_provider.add_span_processor(
                         BatchSpanProcessor(
                             OTLPSpanExporter(
-                                endpoint=endpoint,
-                                headers=headers,
+                                endpoint=settings.otlp_settings.endpoint,
+                                headers=settings.otlp_settings.headers,
                             )
                         )
                     )
@@ -144,32 +115,21 @@ class TracingConfig:
                     logger.error(
                         "OTLP exporter is enabled but no OTLP settings endpoint is provided."
                     )
-            elif exporter_type == "file":
-                # Use only per-exporter file settings
-                custom_path = (
-                    getattr(exporter, "path", None)
-                    if not isinstance(exporter, str)
-                    else None
-                )
-                path_settings = (
-                    getattr(exporter, "path_settings", None)
-                    if not isinstance(exporter, str)
-                    else None
-                )
+            elif exporter == "file":
                 tracer_provider.add_span_processor(
                     BatchSpanProcessor(
                         FileSpanExporter(
                             service_name=settings.service_name,
                             session_id=session_id,
-                            path_settings=path_settings,
-                            custom_path=custom_path,
+                            path_settings=settings.path_settings,
+                            custom_path=settings.path,
                         )
                     )
                 )
                 continue
             else:
                 logger.error(
-                    f"Unknown exporter '{exporter_type}' specified. Supported exporters: console, otlp, file."
+                    f"Unknown exporter '{exporter}' specified. Supported exporters: console, otlp, file."
                 )
 
         # Store the tracer provider instance
