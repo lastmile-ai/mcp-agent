@@ -1168,7 +1168,7 @@ class AgentTasks:
                 else:
                     # No way to reconstruct aggregator, fail clearly
                     raise ValueError(
-                        f"Server aggregrator for agent '{agent_name}' not found"
+                        f"Server aggregator for agent '{agent_name}' not found"
                     )
 
             # Increment in-flight usage
@@ -1392,10 +1392,16 @@ class AgentTasks:
         server_name = request.server_name
 
         async with self._with_aggregator(agent_name) as aggregator:
-            server_session: MCPAgentClientSession = await aggregator.get_server(
+            server_session: MCPAgentClientSession | None = await aggregator.get_server(
                 server_name=server_name
             )
-            session_id = server_session.get_session_id()
+            if server_session is None:
+                return GetServerSessionResponse(
+                    error=f"Session unavailable for '{server_name}'"
+                )
+            get_id = getattr(server_session, "get_session_id", None)
+            session_id = get_id() if callable(get_id) else None
+
             return GetServerSessionResponse(
                 session_id=session_id,
             )
