@@ -45,7 +45,7 @@ async def current_weather_resource():
     return {"temperature": 72, "condition": "sunny"}
 
 # Deploy with MCP Agent Cloud
-# mcp-agent deploy --app server:mcp
+# mcp-agent deploy my-weather-server
 ```
 
 ### Using mcp-agent Without Workflows
@@ -74,7 +74,7 @@ async def format_text(text: str, style: str) -> str:
     return text
 
 # No workflows defined - just tools
-# Deploy: mcp-agent deploy --app simple_server:app
+# Deploy: mcp-agent deploy simple-tools-server
 ```
 
 ## Comparison: MCP Server vs MCP Agent
@@ -116,6 +116,8 @@ async def encode_base64(text: str) -> str:
     """Encode text to base64."""
     import base64
     return base64.b64encode(text.encode()).decode()
+
+# Deploy: mcp-agent deploy utilities-server
 ```
 
 ### Resource Servers
@@ -136,6 +138,8 @@ async def list_users():
 async def api_status():
     """Get API status information."""
     return {"status": "healthy", "version": "1.0.0"}
+
+# Deploy: mcp-agent deploy data-server
 ```
 
 ### Integration Servers
