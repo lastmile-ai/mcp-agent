@@ -487,7 +487,7 @@ class OpenAIAugmentedLLM(
                 "messages": messages,
                 "response_format": response_format,
             }
-            
+
             # Use max_completion_tokens for reasoning models, max_tokens for others
             if self._reasoning(model):
                 # DEPRECATED: https://platform.openai.com/docs/api-reference/chat/create#chat-create-max_tokens

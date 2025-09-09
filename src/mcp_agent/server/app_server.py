@@ -762,42 +762,12 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         Returns:
             A dictionary with comprehensive information about the workflow status.
         """
-        # Ensure upstream session so status-related logs are forwarded
+        # Ensure upstream session is available for any status-related logs
         try:
             _set_upstream_from_request_ctx_if_available(ctx)
         except Exception:
             pass
-
-        if not (run_id or workflow_id):
-            raise ToolError("Either run_id or workflow_id must be provided.")
-
-        workflow_registry: WorkflowRegistry | None = _resolve_workflow_registry(ctx)
-
-        if not workflow_registry:
-            raise ToolError("Workflow registry not found for MCPApp Server.")
-
-        if not workflow_id:
-            workflow = await workflow_registry.get_workflow(
-                run_id=run_id, workflow_id=workflow_id
-            )
-            workflow_id = workflow.id if workflow else None
-
-        status = await workflow_registry.get_workflow_status(
-            run_id=run_id, workflow_id=workflow_id
-        )
-
-        # Cleanup run registry on terminal states
-        try:
-            state = str(status.get("status", "")).lower()
-            if state in ("completed", "error", "cancelled"):
-                try:
-                    await _unregister_session(run_id)
-                except Exception:
-                    pass
-        except Exception:
-            pass
-
-        return status
+        return await _workflow_status(ctx, run_id=run_id, workflow_id=workflow_id)
 
     @mcp.tool(name="workflows-resume")
     async def resume_workflow(
@@ -1474,6 +1444,47 @@ async def _workflow_run(
     except Exception as e:
         logger.error(f"Error creating workflow {workflow_name}: {str(e)}")
         raise ToolError(f"Error creating workflow {workflow_name}: {str(e)}") from e
+
+
+async def _workflow_status(
+    ctx: MCPContext, run_id: str | None = None, workflow_id: str | None = None
+) -> Dict[str, Any]:
+    # Ensure upstream session so status-related logs are forwarded
+    try:
+        _set_upstream_from_request_ctx_if_available(ctx)
+    except Exception:
+        pass
+
+    if not (run_id or workflow_id):
+        raise ValueError("Either run_id or workflow_id must be provided.")
+
+    workflow_registry: WorkflowRegistry | None = _resolve_workflow_registry(ctx)
+
+    if not workflow_registry:
+        raise ToolError("Workflow registry not found for MCPApp Server.")
+
+    if not workflow_id:
+        workflow = await workflow_registry.get_workflow(
+            run_id=run_id, workflow_id=workflow_id
+        )
+        workflow_id = workflow.id if workflow else None
+
+    status = await workflow_registry.get_workflow_status(
+        run_id=run_id, workflow_id=workflow_id
+    )
+
+    # Cleanup run registry on terminal states
+    try:
+        state = str(status.get("status", "")).lower()
+        if state in ("completed", "error", "cancelled"):
+            try:
+                await _unregister_session(run_id)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    return status
 
 
 # endregion
