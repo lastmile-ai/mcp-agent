@@ -242,6 +242,7 @@ class MCPConnectionManager(ContextDependent):
         self._loop: asyncio.AbstractEventLoop | None = None
         # Owner task + coordination events for safe TaskGroup lifecycle
         self._tg_owner_task: asyncio.Task | None = None
+        self._owner_tg: TaskGroup | None = None
         self._tg_ready_event: Event = Event()
         self._tg_close_event: Event = Event()
         self._tg_closed_event: Event = Event()
@@ -275,15 +276,25 @@ class MCPConnectionManager(ContextDependent):
                 await self.disconnect_all()
                 await anyio.sleep(0.5)
                 if self._tg_active:
+                    self._tg_close_event.set()
+                    # Wait for owner to report TaskGroup closed with an anyio timeout
                     try:
-                        self._tg_close_event.set()
-                        await asyncio.wait_for(
-                            self._tg_closed_event.wait(), timeout=5.0
-                        )
-                    except asyncio.TimeoutError:
+                        with anyio.fail_after(5.0):
+                            await self._tg_closed_event.wait()
+                    except TimeoutError:
                         logger.warning(
                             "MCPConnectionManager: Timeout waiting for TaskGroup owner to close"
                         )
+                # Now close the owner TaskGroup in the same task that created it
+                if self._owner_tg is not None:
+                    try:
+                        await self._owner_tg.__aexit__(exc_type, exc_val, exc_tb)
+                    except Exception as e:
+                        logger.warning(
+                            f"MCPConnectionManager: Error during owner TaskGroup cleanup: {e}"
+                        )
+                    finally:
+                        self._owner_tg = None
             else:
                 # Different thread – run entire shutdown on the original loop to avoid cross-thread Event.set
                 if self._loop is not None:
@@ -302,11 +313,11 @@ class MCPConnectionManager(ContextDependent):
                         cfut = asyncio.run_coroutine_threadsafe(
                             _shutdown_and_close(), self._loop
                         )
+                        # Wait in a worker thread to avoid blocking non-asyncio contexts
                         try:
-                            await asyncio.wait_for(
-                                asyncio.to_thread(cfut.result), timeout=6.0
-                            )
-                        except asyncio.TimeoutError:
+                            with anyio.fail_after(5.0):
+                                await anyio.to_thread.run_sync(cfut.result)
+                        except TimeoutError:
                             logger.warning(
                                 "MCPConnectionManager: Timeout during cross-thread shutdown/close"
                             )
@@ -337,8 +348,11 @@ class MCPConnectionManager(ContextDependent):
         except RuntimeError:
             self._loop = None
         self._thread_id = threading.get_ident()
-        # Start owner task
-        self._tg_owner_task = asyncio.create_task(self._tg_owner())
+        # Create an owner TaskGroup and start the owner task within it
+        owner_tg = create_task_group()
+        await owner_tg.__aenter__()
+        self._owner_tg = owner_tg
+        owner_tg.start_soon(self._tg_owner)
         # Wait until the TaskGroup is ready
         await self._tg_ready_event.wait()
 
