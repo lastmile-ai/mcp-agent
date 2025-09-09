@@ -19,7 +19,7 @@ from mcp.types import (
 from mcp_agent.config import GoogleSettings
 from mcp_agent.executor.workflow_task import workflow_task
 from mcp_agent.logging.logger import get_logger
-from mcp_agent.utils.pydantic_type_serializer import serialize_model, deserialize_model
+
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     MCPMessageParam,
@@ -244,40 +244,68 @@ class GoogleAugmentedLLM(
         response_model: Type[ModelT],
         request_params: RequestParams | None = None,
     ) -> ModelT:
-        response = await self.generate_str(
-            message=message,
-            request_params=request_params,
-        )
+        """
+        Use Gemini native structured outputs via response_schema and response_mime_type.
+        """
+        import json
 
         params = self.get_request_params(request_params)
-        model = await self.select_model(params) or "gemini-2.0-flash"
+        model = await self.select_model(params) or (params.model or "gemini-2.0-flash")
 
-        serialized_response_model: str | None = None
+        # Convert input messages and build config
+        messages = GoogleConverter.convert_mixed_messages_to_google(message)
 
-        if self.executor and self.executor.execution_engine == "temporal":
-            # Serialize the response model to a string
-            serialized_response_model = serialize_model(response_model)
+        # Schema can be dict or the Pydantic class; Gemini supports both.
+        try:
+            schema = response_model.model_json_schema()
+        except Exception:
+            schema = None
 
-        structured_response = await self.executor.execute(
-            GoogleCompletionTasks.request_structured_completion_task,
-            RequestStructuredCompletionRequest(
+        config = types.GenerateContentConfig(
+            max_output_tokens=params.maxTokens,
+            temperature=params.temperature,
+            stop_sequences=params.stopSequences or [],
+            system_instruction=self.instruction or params.systemPrompt,
+        )
+        config.response_mime_type = "application/json"
+        config.response_schema = schema if schema is not None else response_model
+
+        # Build conversation: include history if enabled
+        conversation: list[types.Content] = []
+        if params.use_history:
+            conversation.extend(self.history.get())
+        if isinstance(messages, list):
+            conversation.extend(messages)
+        else:
+            conversation.append(messages)
+
+        api_response: types.GenerateContentResponse = await self.executor.execute(
+            GoogleCompletionTasks.request_completion_task,
+            RequestCompletionRequest(
                 config=self.context.config.google,
-                params=params,
-                response_model=response_model
-                if not serialized_response_model
-                else None,
-                serialized_response_model=serialized_response_model,
-                response_str=response,
-                model=model,
+                payload={
+                    "model": model,
+                    "contents": conversation,
+                    "config": config,
+                },
             ),
         )
 
-        # TODO: saqadri (MAC) - fix request_structured_completion_task to return ensure_serializable
-        # Convert dict back to the proper model instance if needed
-        if isinstance(structured_response, dict):
-            structured_response = response_model.model_validate(structured_response)
+        # Extract JSON text from response
+        text = None
+        if api_response and api_response.candidates:
+            cand = api_response.candidates[0]
+            if cand.content and cand.content.parts:
+                for part in cand.content.parts:
+                    if part.text:
+                        text = part.text
+                        break
 
-        return structured_response
+        if not text:
+            raise ValueError("No structured response returned by Gemini")
+
+        data = json.loads(text)
+        return response_model.model_validate(data)
 
     @classmethod
     def convert_message_to_message_param(cls, message, **kwargs):
@@ -365,42 +393,11 @@ class GoogleCompletionTasks:
         request: RequestStructuredCompletionRequest,
     ):
         """
-        Request a structured completion using Instructor's Google API.
+        Deprecated: structured output is handled directly in generate_structured.
         """
-        import instructor
-
-        if request.response_model:
-            response_model = request.response_model
-        elif request.serialized_response_model:
-            response_model = deserialize_model(request.serialized_response_model)
-        else:
-            raise ValueError(
-                "Either response_model or serialized_response_model must be provided for structured completion."
-            )
-
-        if request.config and request.config.vertexai:
-            google_client = Client(
-                vertexai=request.config.vertexai,
-                project=request.config.project,
-                location=request.config.location,
-            )
-        else:
-            google_client = Client(api_key=request.config.api_key)
-
-        client = instructor.from_genai(
-            google_client, mode=instructor.Mode.GENAI_STRUCTURED_OUTPUTS
+        raise NotImplementedError(
+            "request_structured_completion_task is no longer used; use generate_structured instead."
         )
-
-        structured_response = client.chat.completions.create(
-            model=request.model,
-            response_model=response_model,
-            system="Convert the provided text into the required response model. Do not change the text or add any additional text. Just convert it into the required response model.",
-            messages=[
-                {"role": "user", "content": request.response_str},
-            ],
-        )
-
-        return structured_response
 
 
 class GoogleMCPTypeConverter(ProviderToMCPConverter[types.Content, types.Content]):

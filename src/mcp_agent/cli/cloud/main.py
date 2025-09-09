@@ -13,14 +13,33 @@ from rich.console import Console
 from rich.panel import Panel
 from typer.core import TyperGroup
 
-from mcp_agent.cli.cloud.commands import configure_app, deploy_config, login
+from mcp_agent.cli.cloud.commands import (
+    configure_app,
+    deploy_config,
+    login,
+    logout,
+    whoami,
+)
+from mcp_agent.cli.cloud.commands.logger import tail_logs
 from mcp_agent.cli.cloud.commands.app import (
     delete_app,
     get_app_status,
     list_app_workflows,
 )
 from mcp_agent.cli.cloud.commands.apps import list_apps
-from mcp_agent.cli.cloud.commands.workflow import get_workflow_status
+from mcp_agent.cli.cloud.commands.workflows import (
+    describe_workflow,
+    resume_workflow,
+    suspend_workflow,
+    cancel_workflow,
+    list_workflows,
+    list_workflow_runs,
+)
+from mcp_agent.cli.cloud.commands.servers import (
+    list_servers,
+    describe_server,
+    delete_server,
+)
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.utils.ux import print_error
 
@@ -89,31 +108,9 @@ app.command(
 
 
 # Deployment command
-app.command(
-    name="deploy",
-    help="""
-Deploy an MCP agent using the specified configuration.
-
-An MCP App is deployed from bundling the code at the specified config directory.\n\n
-
-This directory must contain an 'mcp_agent.config.yaml' at its root.\n\n
-
-If secrets are required (i.e. `no_secrets` is not set), a secrets file named 'mcp_agent.secrets.yaml' must also be present.\n
-The secrets file is processed to replace secret tags with secret handles before deployment and that transformed 
-file is included in the deployment bundle in place of the original secrets file.
-""".strip(),
-)(deploy_config)
-
-
-# Login command
-app.command(
-    name="login",
-    help="""
-Authenticate to MCP Agent Cloud API.\n\n
-
-Direct to the api keys page for obtaining credentials, routing through login.
-""".strip(),
-)(login)
+app.command(name="deploy", help="Deploy an MCP agent (alias for 'cloud deploy')")(
+    deploy_config
+)
 
 
 # Sub-typer for `mcp-agent apps` commands
@@ -136,14 +133,118 @@ app_cmd_app.command(name="status")(get_app_status)
 app_cmd_app.command(name="workflows")(list_app_workflows)
 app.add_typer(app_cmd_app, name="app", help="Manage an MCP App")
 
-# Sub-typer for `mcp-agent workflow` commands
-app_cmd_workflow = typer.Typer(
+# Sub-typer for `mcp-agent workflows` commands
+app_cmd_workflows = typer.Typer(
     help="Management commands for MCP Workflows",
     no_args_is_help=True,
     cls=HelpfulTyperGroup,
 )
-app_cmd_workflow.command(name="status")(get_workflow_status)
-app.add_typer(app_cmd_workflow, name="workflow", help="Manage MCP Workflows")
+app_cmd_workflows.command(name="describe")(describe_workflow)
+app_cmd_workflows.command(
+    name="status", help="Describe a workflow execution (alias for 'describe')"
+)(describe_workflow)
+app_cmd_workflows.command(name="resume")(resume_workflow)
+app_cmd_workflows.command(name="suspend")(suspend_workflow)
+app_cmd_workflows.command(name="cancel")(cancel_workflow)
+app_cmd_workflows.command(name="list")(list_workflows)
+app_cmd_workflows.command(name="runs")(list_workflow_runs)
+
+# Sub-typer for `mcp-agent servers` commands
+app_cmd_servers = typer.Typer(
+    help="Management commands for MCP Servers",
+    no_args_is_help=True,
+    cls=HelpfulTyperGroup,
+)
+app_cmd_servers.command(name="list")(list_servers)
+app_cmd_servers.command(name="describe")(describe_server)
+app_cmd_servers.command(name="delete")(delete_server)
+app_cmd_servers.command(
+    name="workflows",
+    help="List available workflows for a server (alias for 'workflows list')",
+)(list_workflows)
+app.add_typer(app_cmd_servers, name="servers", help="Manage MCP Servers")
+
+# Alias for servers - apps should behave identically
+app.add_typer(app_cmd_servers, name="apps", help="Manage MCP Apps (alias for servers)")
+
+# Sub-typer for `mcp-agent cloud` commands
+app_cmd_cloud = typer.Typer(
+    help="Cloud operations and management",
+    no_args_is_help=True,
+    cls=HelpfulTyperGroup,
+)
+# Sub-typer for `mcp-agent cloud auth` commands
+app_cmd_cloud_auth = typer.Typer(
+    help="Cloud authentication commands",
+    no_args_is_help=True,
+    cls=HelpfulTyperGroup,
+)
+# Register auth commands under cloud auth
+app_cmd_cloud_auth.command(
+    name="login",
+    help="""
+Authenticate to MCP Agent Cloud API.\n\n
+Direct to the api keys page for obtaining credentials, routing through login.
+""".strip(),
+)(login)
+app_cmd_cloud_auth.command(name="whoami", help="Print current identity and org(s).")(
+    whoami
+)
+app_cmd_cloud_auth.command(name="logout", help="Clear credentials.")(logout)
+# Sub-typer for `mcp-agent cloud logger` commands
+app_cmd_cloud_logger = typer.Typer(
+    help="Log configuration and streaming commands",
+    no_args_is_help=True,
+    cls=HelpfulTyperGroup,
+)
+# Register logger commands under cloud logger
+app_cmd_cloud_logger.command(
+    name="tail",
+    help="Retrieve and stream logs from deployed MCP apps",
+)(tail_logs)
+
+# Add deploy command to cloud namespace
+app_cmd_cloud.command(
+    name="deploy",
+    help="""
+Deploy an MCP agent using the specified configuration.
+
+An MCP App is deployed from bundling the code at the specified config directory.\n\n
+
+This directory must contain an 'mcp_agent.config.yaml' at its root.\n\n
+
+If secrets are required (i.e. `no_secrets` is not set), a secrets file named 'mcp_agent.secrets.yaml' must also be present.\n
+The secrets file is processed to replace secret tags with secret handles before deployment and that transformed 
+file is included in the deployment bundle in place of the original secrets file.
+""".strip(),
+)(deploy_config)
+
+# Add sub-typers to cloud
+app_cmd_cloud.add_typer(app_cmd_cloud_auth, name="auth", help="Authentication commands")
+app_cmd_cloud.add_typer(
+    app_cmd_cloud_logger, name="logger", help="Logging and observability"
+)
+app_cmd_cloud.add_typer(
+    app_cmd_workflows, name="workflows", help="Workflow management commands"
+)
+app_cmd_cloud.add_typer(
+    app_cmd_servers, name="servers", help="Server management commands"
+)
+app_cmd_cloud.add_typer(
+    app_cmd_servers, name="apps", help="App management commands (alias for servers)"
+)
+# Register cloud commands
+app.add_typer(app_cmd_cloud, name="cloud", help="Cloud operations and management")
+# Top-level auth commands that map to cloud auth commands
+app.command(
+    name="login",
+    help="""
+Authenticate to MCP Agent Cloud API.\n\n
+Direct to the api keys page for obtaining credentials, routing through login.
+""".strip(),
+)(login)
+app.command(name="whoami", help="Print current identity and org(s).")(whoami)
+app.command(name="logout", help="Clear credentials.")(logout)
 
 
 @app.callback(invoke_without_command=True)
