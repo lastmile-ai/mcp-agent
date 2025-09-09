@@ -68,7 +68,8 @@ async def _cancel_workflow_async(
                     success = success.lower() == "true"
 
                 if success:
-                    console.print("[yellow]⚠[/yellow] Successfully cancelled workflow")
+                    console.print()
+                    console.print("[yellow]🚫 Successfully cancelled workflow[/yellow]")
                     console.print(f"  Run ID: [cyan]{run_id}[/cyan]")
                     if reason:
                         console.print(f"  Reason: [dim]{reason}[/dim]")

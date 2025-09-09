@@ -5,7 +5,6 @@ from typing import Optional
 
 import typer
 import yaml
-from rich.panel import Panel
 
 from mcp_agent.app import MCPApp
 from mcp_agent.cli.core.utils import run_async
@@ -133,18 +132,12 @@ def print_workflow_status(workflow_status: dict) -> None:
         except (ValueError, TypeError):
             pass  # Keep original format if parsing fails
 
-    console.print(
-        Panel(
-            f"Name: [cyan]{name}[/cyan]\n"
-            f"Workflow ID: [cyan]{workflow_id}[/cyan]\n"
-            f"Run ID: [cyan]{run_id}[/cyan]\n"
-            f"Created: [cyan]{created_at}[/cyan]\n"
-            f"Status: [cyan]{_format_status(status)}[/cyan]",
-            title="Workflow",
-            border_style="blue",
-            expand=False,
-        )
-    )
+    console.print("\n[bold blue]🔍 Workflow Details[/bold blue]")
+    console.print()
+    console.print(f"[bold cyan]{name}[/bold cyan] {_format_status(status)}")
+    console.print(f"  Workflow ID: {workflow_id}")
+    console.print(f"  Run ID: {run_id}")
+    console.print(f"  Created: {created_at}")
 
 
 def _format_status(status: str) -> str:
@@ -152,18 +145,18 @@ def _format_status(status: str) -> str:
     status_lower = str(status).lower()
 
     if "running" in status_lower:
-        return "🔄 Running"
+        return "[green]🔄 Running[/green]"
     elif "failed" in status_lower or "error" in status_lower:
-        return "❌ Failed"
+        return "[red]❌ Failed[/red]"
     elif "timeout" in status_lower or "timed_out" in status_lower:
-        return "⌛ Timed Out"
+        return "[red]⌛ Timed Out[/red]"
     elif "cancel" in status_lower:
-        return "🚫 Cancelled"
+        return "[yellow]🚫 Cancelled[/yellow]"
     elif "terminat" in status_lower:
-        return "🛑 Terminated"
+        return "[red]🛑 Terminated[/red]"
     elif "complet" in status_lower:
-        return "✅ Completed"
+        return "[green]✅ Completed[/green]"
     elif "continued" in status_lower:
-        return "🔁 Continued as New"
+        return "[blue]🔁 Continued as New[/blue]"
     else:
         return f"❓ {status}"

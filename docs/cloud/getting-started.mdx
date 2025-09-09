@@ -4,7 +4,7 @@ description: "Deploy your first agent to the cloud in under 5 minutes"
 ---
 
 <Info>
-  MCP Agent Cloud is currently in open beta. Follow the instructions below to get started, or reach out to team@lastmileai.dev for feedback.
+  MCP Agent Cloud is currently in open beta. Follow the instructions below to get started. For feedback, issues and feature requests, visit https://github.com/lastmile-ai/mcp-agent/issues or join our Discord at https://lmai.link/discord/mcp-agent.
 </Info>
 
 ## Prerequisites
@@ -16,7 +16,6 @@ Before you begin, make sure you have:
     ```bash
     # Using uv (recommended)
     uv tool install mcp-agent
-    uv add mcp-agent
     
     # Or using pip
     pip install mcp-agent
@@ -82,14 +81,14 @@ Before you begin, make sure you have:
     
     The deployment process will:
     1. Check for existing app with this name or create a new one
-    2. Process your secrets file (transforming secret tags to handles)
-    3. Bundle and upload your code
-    4. Deploy to MCP Agent Cloud
+    2. Process your secrets file (transforming !developer_secret tags to secure handles)
+    3. Bundle and upload your code using Wrangler
+    4. Deploy to MCP Agent Cloud's managed infrastructure
     
     You'll see output like:
     ```
     App ID: app_abc123xyz
-    App URL: https://api.mcp-agent.cloud/servers/my-first-agent
+    App URL: https://deployments.mcp-agent.com/servers/my-first-agent
     App Status: ONLINE
     ```
   </Step>
@@ -202,6 +201,9 @@ openai:
 ```bash
 # Deploy the agent
 mcp-agent deploy web-summarizer
+
+# Or with description
+mcp-agent deploy web-summarizer --app-description "Web content summarizer agent"
 ```
 
 ### Use Your Cloud Agent
@@ -213,7 +215,7 @@ Your agent is now available as an MCP server. Here's how to use it:
     First configure the agent (this handles authentication and user secrets):
     
     ```bash
-    mcp-agent configure --id https://deployments.mcp-agent.com/servers/web-summarizer
+    mcp-agent cloud configure --id https://deployments.mcp-agent.com/servers/web-summarizer
     ```
     
     Then add to your Claude Desktop config (`~/.claude-desktop/config.json`):
@@ -244,7 +246,7 @@ Your agent is now available as an MCP server. Here's how to use it:
     
     async def use_cloud_agent():
         # Connect to your cloud agent
-        async with gen_client("https://api.mcp-agent.cloud/servers/web-summarizer") as server:
+        async with gen_client("https://deployments.mcp-agent.com/servers/web-summarizer") as server:
             # Run the workflow
             result = await server.call_tool(
                 "workflows-WebSummarizerWorkflow-run",
@@ -271,7 +273,7 @@ Your agent is now available as an MCP server. Here's how to use it:
   <Tab title="cURL">
     ```bash
     # Run workflow
-    curl -X POST https://api.mcp-agent.cloud/servers/web-summarizer/call_tool \
+    curl -X POST https://deployments.mcp-agent.com/servers/web-summarizer/call_tool \
       -H "Authorization: Bearer $MCP_AGENT_TOKEN" \
       -H "Content-Type: application/json" \
       -d '{
@@ -304,6 +306,9 @@ mcp-agent deploy my-agent --non-interactive
 
 # Dry run to validate without deploying
 mcp-agent deploy my-agent --dry-run
+
+# Deploy with description
+mcp-agent deploy my-agent --app-description "My production agent"
 ```
 
 ### Environment Variables
@@ -312,7 +317,7 @@ Environment variables for the CLI:
 
 ```bash
 # Set API base URL
-export MCP_API_BASE_URL="https://api.mcp-agent.cloud"
+export MCP_API_BASE_URL="https://deployments.mcp-agent.com"
 
 # Set API key (alternative to login)
 export MCP_API_KEY="your-api-key"
@@ -443,22 +448,16 @@ mcp-agent cloud servers delete srv_abc123xyz
 mcp-agent cloud servers delete srv_abc123xyz --force
 ```
 
-## Web Console
-
-<Note>
-The web console is coming soon. For now, use the CLI commands to manage your deployments.
-</Note>
-
 ## Client Integration
 
 Help users connect to your deployed agent:
 
 ```bash
 # Configure access for a deployed agent (handles auth and secrets)
-mcp-agent configure --id https://api.mcp-agent.cloud/servers/my-agent
+mcp-agent cloud configure --id https://deployments.mcp-agent.com/servers/my-agent
 
 # Show required parameters for configuration
-mcp-agent configure --id https://api.mcp-agent.cloud/servers/my-agent --params
+mcp-agent cloud configure --id https://deployments.mcp-agent.com/servers/my-agent --params
 ```
 
 After configuration, users can connect with their MCP client using the server URL and appropriate transport (SSE or streamable HTTP).
