@@ -38,8 +38,8 @@ class InteractiveWorkflow(Workflow[T], Generic[T]):
                 # etc.
     """
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
         self._lock = asyncio.Lock()
         self._request: HumanInputRequest = None
         self._response: str = None
