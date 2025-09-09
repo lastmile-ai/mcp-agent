@@ -38,7 +38,7 @@ class RouterWorkflow(Workflow[str]):
     """
 
     @app.workflow_run
-    async def run(self, input: str) -> WorkflowResult[str]:
+    async def run(self) -> WorkflowResult[str]:
         """
         Run the workflow, processing the input data.
 
@@ -81,7 +81,7 @@ class RouterWorkflow(Workflow[str]):
         # You can use any LLM with an LLMRouter
         llm = OpenAIAugmentedLLM(name="openai_router", instruction="You are a router")
         router = LLMRouter(
-            llm=llm,
+            llm_factory=lambda agent: llm,
             agents=[finder_agent, writer_agent, reasoning_agent],
             functions=[print_to_console, print_hello_world],
             context=app.context,
@@ -150,7 +150,6 @@ async def main():
 
         handle = await executor.start_workflow(
             "RouterWorkflow",
-            None,
         )
         a = await handle.result()
         print(a)

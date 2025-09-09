@@ -40,6 +40,8 @@ class TemporalWorkflowRegistry(WorkflowRegistry):
     ) -> None:
         self._local_workflows[run_id] = workflow
 
+        workflow_id = workflow_id or workflow.id or workflow.name
+
         # Add run_id to the list for this workflow_id
         if workflow_id not in self._workflow_ids:
             self._workflow_ids[workflow_id] = []
@@ -48,7 +50,7 @@ class TemporalWorkflowRegistry(WorkflowRegistry):
     async def unregister(self, run_id: str, workflow_id: str | None = None) -> None:
         if run_id in self._local_workflows:
             workflow = self._local_workflows[run_id]
-            workflow_id = workflow.name if workflow_id is None else workflow_id
+            workflow_id = workflow_id or workflow.id or workflow.name
 
             # Remove from workflow_ids mapping
             if workflow_id in self._workflow_ids:
@@ -61,30 +63,52 @@ class TemporalWorkflowRegistry(WorkflowRegistry):
             self._local_workflows.pop(run_id, None)
 
     async def get_workflow(
-        self, run_id: str, workflow_id: str | None = None
+        self, run_id: str | None = None, workflow_id: str | None = None
     ) -> Optional["Workflow"]:
-        return self._local_workflows.get(run_id)
+        if not (run_id or workflow_id):
+            raise ValueError("Either run_id or workflow_id must be provided.")
+        if run_id:
+            return self._local_workflows.get(run_id)
+        if workflow_id:
+            run_ids = self._workflow_ids.get(workflow_id, [])
+            if run_ids:
+                return self._local_workflows.get(run_ids[-1])
+        return None
 
     async def resume_workflow(
         self,
-        run_id: str,
+        run_id: str | None = None,
         workflow_id: str | None = None,
         signal_name: str | None = "resume",
         payload: Any | None = None,
     ) -> bool:
+        if not (run_id or workflow_id):
+            raise ValueError("Either run_id or workflow_id must be provided.")
+
         # Ensure the Temporal client is connected
         await self._executor.ensure_client()
 
         try:
-            workflow = await self.get_workflow(run_id)
-            workflow_id = (
-                workflow.name if workflow and workflow_id is None else workflow_id
-            )
+            workflow = await self.get_workflow(run_id, workflow_id)
+            if workflow and not workflow_id:
+                workflow_id = workflow.id or workflow.name
 
+            # For temporal operations, we need to have both workflow_id and run_id
             if not workflow_id:
-                # In Temporal, we need both workflow_id and run_id to target a specific run
                 logger.error(
-                    f"Workflow with run_id {run_id} not found in local registry and workflow_id not provided"
+                    f"Cannot resume workflow: workflow_id not found for run_id {run_id or 'unknown'}"
+                )
+                return False
+
+            if not run_id:
+                # Get the run_id from the workflow_ids dict if we have a workflow_id
+                run_ids = self._workflow_ids.get(workflow_id, [])
+                if run_ids:
+                    run_id = run_ids[-1]  # Use the latest run
+
+            if not run_id:
+                logger.error(
+                    f"Cannot resume workflow: run_id not found for workflow_id {workflow_id}"
                 )
                 return False
 
@@ -104,22 +128,35 @@ class TemporalWorkflowRegistry(WorkflowRegistry):
             return False
 
     async def cancel_workflow(
-        self, run_id: str, workflow_id: str | None = None
+        self, run_id: str | None = None, workflow_id: str | None = None
     ) -> bool:
+        if not (run_id or workflow_id):
+            raise ValueError("Either run_id or workflow_id must be provided.")
+
         # Ensure the Temporal client is connected
         await self._executor.ensure_client()
 
         try:
-            # Get the workflow from local registry
-            workflow = await self.get_workflow(run_id)
-            workflow_id = (
-                workflow.name if workflow and workflow_id is None else workflow_id
-            )
+            workflow = await self.get_workflow(run_id, workflow_id)
+            if workflow and not workflow_id:
+                workflow_id = workflow.id or workflow.name
 
+            # For temporal operations, we need to have both workflow_id and run_id
             if not workflow_id:
-                # In Temporal, we need both workflow_id and run_id to target a specific run
                 logger.error(
-                    f"Workflow with run_id {run_id} not found in local registry and workflow_id not provided"
+                    f"Cannot cancel workflow: workflow_id not found for run_id {run_id or 'unknown'}"
+                )
+                return False
+
+            if not run_id:
+                # Get the run_id from the workflow_ids dict if we have a workflow_id
+                run_ids = self._workflow_ids.get(workflow_id, [])
+                if run_ids:
+                    run_id = run_ids[-1]  # Use the latest run
+
+            if not run_id:
+                logger.error(
+                    f"Cannot cancel workflow: run_id not found for workflow_id {workflow_id}"
                 )
                 return False
 
@@ -135,19 +172,31 @@ class TemporalWorkflowRegistry(WorkflowRegistry):
             return False
 
     async def get_workflow_status(
-        self, run_id: str, workflow_id: str | None = None
+        self, run_id: str | None = None, workflow_id: str | None = None
     ) -> Optional[Dict[str, Any]]:
-        workflow = await self.get_workflow(run_id)
-        workflow_id = (
-            (workflow.id or workflow.name)
-            if workflow and workflow_id is None
-            else workflow_id
-        )
+        if not (run_id or workflow_id):
+            raise ValueError("Either run_id or workflow_id must be provided.")
 
+        workflow = await self.get_workflow(run_id, workflow_id)
+        if workflow and not workflow_id:
+            workflow_id = workflow.id or workflow.name
+
+        # For temporal operations, we need to have both workflow_id and run_id
         if not workflow_id:
-            # In Temporal, we need both workflow_id and run_id to target a specific run
             logger.error(
-                f"Workflow with run_id {run_id} not found in local registry and workflow_id not provided"
+                f"Cannot get status: workflow_id not found for run_id {run_id or 'unknown'}"
+            )
+            return False
+
+        if not run_id:
+            # Get the run_id from the workflow_ids dict if we have a workflow_id
+            run_ids = self._workflow_ids.get(workflow_id, [])
+            if run_ids:
+                run_id = run_ids[-1]  # Use the latest run
+
+        if not run_id:
+            logger.error(
+                f"Cannot get status: run_id not found for workflow_id {workflow_id}"
             )
             return False
 
