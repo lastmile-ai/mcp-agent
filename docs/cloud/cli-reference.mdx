@@ -1,0 +1,682 @@
+---
+title: MCP Agent Cloud CLI Reference
+description: "Complete reference for all MCP Agent Cloud CLI commands"
+---
+
+All cloud commands are under the `mcp-agent cloud` namespace. Top-level aliases exist for common commands.
+
+## Authentication
+
+### cloud auth login
+
+Authenticate with MCP Agent Cloud.
+
+```bash
+mcp-agent cloud auth login [OPTIONS]
+```
+
+**Options:**
+- `--org <id>` - Organization ID to log into
+- `--device` - Use device flow authentication
+- `--no-open` - Don't open browser automatically
+
+**Aliases:**
+- `mcp-agent login` → `mcp-agent cloud auth login`
+
+**Examples:**
+```bash
+# Browser-based login
+mcp-agent cloud auth login
+
+# Device flow (for headless environments)
+mcp-agent cloud auth login --device
+
+# Login to specific organization
+mcp-agent cloud auth login --org org_abc123
+```
+
+### cloud auth whoami
+
+Display current authenticated user and organization.
+
+```bash
+mcp-agent cloud auth whoami
+```
+
+**Aliases:**
+- `mcp-agent whoami` → `mcp-agent cloud auth whoami`
+
+**Example:**
+```bash
+$ mcp-agent cloud auth whoami
+User: john.doe@example.com
+Organization: Acme Corp (org_abc123)
+Role: Admin
+```
+
+### cloud auth logout
+
+Log out from MCP Agent Cloud.
+
+```bash
+mcp-agent cloud auth logout
+```
+
+**Aliases:**
+- `mcp-agent logout` → `mcp-agent cloud auth logout`
+
+## Deployment
+
+### cloud deploy
+
+Deploy current project as a managed MCP server.
+
+```bash
+mcp-agent cloud deploy [OPTIONS]
+```
+
+**Options:**
+- `--name <display-name>` - Name for the deployment
+- `--region <slug>` - Deployment region (us-east-1, us-west-2, eu-west-1)
+- `--env <K=V>` - Environment variables (repeatable)
+- `--secret <K=SECRET_NAME>` - Map secrets from vault (repeatable)
+- `--exclude <glob>` - Exclude files from deployment (repeatable)
+- `--instance-type <size>` - Instance size (small, medium, large)
+- `--min-replicas <N>` - Minimum replicas (default: 1)
+- `--max-replicas <N>` - Maximum replicas (default: 10)
+- `--tag <version>` - Version tag for deployment
+- `--async` - Don't wait for deployment to complete
+- `--wait` - Wait for deployment to complete (default)
+- `--open` - Open web console after deployment
+- `--format <text|json|yaml>` - Output format
+
+**Aliases:**
+- `mcp-agent deploy` → `mcp-agent cloud deploy`
+
+**Examples:**
+```bash
+# Basic deployment
+mcp-agent cloud deploy --name "my-agent"
+
+# Deploy with environment variables
+mcp-agent cloud deploy \
+  --name "production-agent" \
+  --env "LOG_LEVEL=info" \
+  --env "API_ENDPOINT=https://api.example.com" \
+  --region "us-west-2"
+
+# Deploy with scaling configuration
+mcp-agent cloud deploy \
+  --name "scalable-agent" \
+  --instance-type "medium" \
+  --min-replicas 2 \
+  --max-replicas 20
+
+# Deploy with secrets from vault
+mcp-agent cloud deploy \
+  --name "secure-agent" \
+  --secret "API_KEY=prod_api_key" \
+  --secret "DB_PASSWORD=prod_db_password"
+
+# Async deployment with tag
+mcp-agent cloud deploy \
+  --name "v2-agent" \
+  --tag "v2.0.0" \
+  --async
+```
+
+**Output:**
+```
+🚀 Deploying my-agent...
+📦 Uploading project files... done (2.3 MB)
+🔨 Building agent image... done (45s)
+⚡ Starting Temporal workers... done
+✅ Deployment successful!
+
+Server Details:
+  ID: srv_abc123xyz
+  URL: https://api.mcp-agent.cloud/servers/my-agent
+  Region: us-east-1
+  Status: running
+
+Available Tools:
+  • workflows-list
+  • workflows-MyWorkflow-run
+  • workflows-get_status
+  • workflows-cancel
+
+View in console: https://console.mcp-agent.cloud/servers/srv_abc123xyz
+```
+
+## Server Management
+
+### cloud servers list
+
+List deployed MCP servers.
+
+```bash
+mcp-agent cloud servers list [OPTIONS]
+```
+
+**Options:**
+- `--org <id>` - Filter by organization
+- `--limit <N>` - Maximum results to return
+- `--filter <expr>` - Filter expression
+- `--sort-by <field>` - Sort field (name, created, updated)
+- `--format <text|json|yaml>` - Output format
+
+**Aliases:**
+- `mcp-agent cloud apps list` → `mcp-agent cloud servers list`
+
+**Examples:**
+```bash
+# List all servers
+mcp-agent cloud servers list
+
+# List with filter
+mcp-agent cloud servers list --filter "status=running"
+
+# JSON output with limit
+mcp-agent cloud servers list --limit 10 --format json
+```
+
+### cloud servers describe
+
+Get detailed information about a server.
+
+```bash
+mcp-agent cloud servers describe <id|url> [OPTIONS]
+```
+
+**Options:**
+- `--format <text|json|yaml>` - Output format
+
+**Aliases:**
+- `mcp-agent cloud servers status` → `mcp-agent cloud servers describe`
+- `mcp-agent cloud apps describe` → `mcp-agent cloud servers describe`
+
+**Examples:**
+```bash
+# Describe by ID
+mcp-agent cloud servers describe srv_abc123xyz
+
+# Describe by URL
+mcp-agent cloud servers describe https://api.mcp-agent.cloud/servers/my-agent
+
+# JSON output
+mcp-agent cloud servers describe srv_abc123xyz --format json
+```
+
+### cloud servers delete
+
+Delete a deployed server.
+
+```bash
+mcp-agent cloud servers delete <id|url> [OPTIONS]
+```
+
+**Options:**
+- `--force` - Skip confirmation prompt
+
+**Aliases:**
+- `mcp-agent cloud apps delete` → `mcp-agent cloud servers delete`
+
+**Examples:**
+```bash
+# Delete with confirmation
+mcp-agent cloud servers delete srv_abc123xyz
+
+# Force delete
+mcp-agent cloud servers delete srv_abc123xyz --force
+```
+
+### cloud servers stats
+
+Get usage statistics for a server.
+
+```bash
+mcp-agent cloud servers stats <id|url> [OPTIONS]
+```
+
+**Options:**
+- `--range <period>` - Time range (1h, 24h, 7d, 30d)
+- `--format <text|json|yaml>` - Output format
+
+**Examples:**
+```bash
+# Last 24 hours statistics
+mcp-agent cloud servers stats srv_abc123xyz
+
+# Last week statistics
+mcp-agent cloud servers stats srv_abc123xyz --range 7d
+
+# JSON output
+mcp-agent cloud servers stats srv_abc123xyz --format json
+```
+
+### cloud servers workflows
+
+List workflow runs for a server.
+
+```bash
+mcp-agent cloud servers workflows <id|url> [OPTIONS]
+```
+
+**Options:**
+- `--limit <N>` - Maximum results
+- `--status <status>` - Filter by status (running, paused, failed, completed)
+- `--format <text|json|yaml>` - Output format
+
+**Examples:**
+```bash
+# List all workflows
+mcp-agent cloud servers workflows srv_abc123xyz
+
+# List running workflows
+mcp-agent cloud servers workflows srv_abc123xyz --status running
+
+# List last 50 workflows
+mcp-agent cloud servers workflows srv_abc123xyz --limit 50
+```
+
+### cloud servers scale
+
+Scale a server deployment.
+
+```bash
+mcp-agent cloud servers scale <id|url> [OPTIONS]
+```
+
+**Options:**
+- `--replicas <N>` - Set replica count
+- `--min-replicas <N>` - Set minimum replicas
+- `--max-replicas <N>` - Set maximum replicas
+
+**Examples:**
+```bash
+# Scale to specific replica count
+mcp-agent cloud servers scale srv_abc123xyz --replicas 5
+
+# Update autoscaling limits
+mcp-agent cloud servers scale srv_abc123xyz \
+  --min-replicas 2 \
+  --max-replicas 20
+```
+
+### cloud servers update
+
+Update server configuration.
+
+```bash
+mcp-agent cloud servers update <id|url> [OPTIONS]
+```
+
+**Options:**
+- `--env <K=V>` - Update environment variable
+- `--secret <K=SECRET_NAME>` - Update secret mapping
+- `--instance-type <size>` - Change instance type
+
+**Examples:**
+```bash
+# Update environment variables
+mcp-agent cloud servers update srv_abc123xyz \
+  --env "LOG_LEVEL=debug" \
+  --env "CACHE_ENABLED=true"
+
+# Change instance type
+mcp-agent cloud servers update srv_abc123xyz \
+  --instance-type "large"
+```
+
+## Workflow Management
+
+### cloud workflows describe
+
+Get workflow run details.
+
+```bash
+mcp-agent cloud workflows describe <server-id> <run-id> [OPTIONS]
+```
+
+**Options:**
+- `--format <text|json|yaml>` - Output format
+
+**Aliases:**
+- `mcp-agent cloud workflows status` → `mcp-agent cloud workflows describe`
+
+**Examples:**
+```bash
+# Get workflow status
+mcp-agent cloud workflows describe srv_abc123xyz run_def456
+
+# JSON output
+mcp-agent cloud workflows describe srv_abc123xyz run_def456 --format json
+```
+
+### cloud workflows suspend
+
+Pause a running workflow.
+
+```bash
+mcp-agent cloud workflows suspend <server-id> <run-id>
+```
+
+**Examples:**
+```bash
+# Suspend workflow
+mcp-agent cloud workflows suspend srv_abc123xyz run_def456
+```
+
+### cloud workflows resume
+
+Resume a paused workflow.
+
+```bash
+mcp-agent cloud workflows resume <server-id> <run-id> [OPTIONS]
+```
+
+**Options:**
+- `--payload <json-or-text>` - Data to pass when resuming
+
+**Examples:**
+```bash
+# Resume workflow
+mcp-agent cloud workflows resume srv_abc123xyz run_def456
+
+# Resume with data
+mcp-agent cloud workflows resume srv_abc123xyz run_def456 \
+  --payload '{"approved": true, "comments": "Looks good"}'
+```
+
+### cloud workflows cancel
+
+Cancel a running workflow.
+
+```bash
+mcp-agent cloud workflows cancel <server-id> <run-id>
+```
+
+**Examples:**
+```bash
+# Cancel workflow
+mcp-agent cloud workflows cancel srv_abc123xyz run_def456
+```
+
+## Logging & Monitoring
+
+### cloud logger configure
+
+Configure logging for a server.
+
+```bash
+mcp-agent cloud logger configure <id|url> [OPTIONS]
+```
+
+**Options:**
+- `--endpoint <url>` - OTEL endpoint
+- `--headers <json>` - OTEL headers
+- `--level <level>` - Log level (debug, info, warning, error)
+- `--test` - Test configuration without applying
+- `--apply` - Apply configuration
+
+**Examples:**
+```bash
+# Configure OTEL endpoint
+mcp-agent cloud logger configure srv_abc123xyz \
+  --endpoint "https://otel.example.com" \
+  --headers '{"Authorization": "Bearer token"}' \
+  --apply
+
+# Change log level
+mcp-agent cloud logger configure srv_abc123xyz \
+  --level debug \
+  --apply
+```
+
+### cloud logger tail
+
+View server logs.
+
+```bash
+mcp-agent cloud logger tail <id|url> [OPTIONS]
+```
+
+**Options:**
+- `--follow` - Follow log output
+- `--since <duration>` - Show logs since duration (1h, 30m, etc)
+- `--from <RFC3339>` - Start time
+- `--to <RFC3339>` - End time
+- `--limit <N>` - Maximum log entries
+- `--orderby <field>` - Sort field (time, severity, tokens)
+- `--desc/--asc` - Sort order
+- `--grep <pattern>` - Filter pattern
+- `--format <text|json|yaml>` - Output format
+
+**Examples:**
+```bash
+# Tail logs
+mcp-agent cloud logger tail srv_abc123xyz
+
+# Follow logs
+mcp-agent cloud logger tail srv_abc123xyz --follow
+
+# Last hour with filter
+mcp-agent cloud logger tail srv_abc123xyz \
+  --since 1h \
+  --grep "ERROR"
+
+# Time range with limit
+mcp-agent cloud logger tail srv_abc123xyz \
+  --from "2024-01-01T00:00:00Z" \
+  --to "2024-01-02T00:00:00Z" \
+  --limit 1000
+```
+
+## Secrets Management
+
+### cloud secrets set
+
+Store a secret in vault.
+
+```bash
+mcp-agent cloud secrets set <name> <value>
+```
+
+**Examples:**
+```bash
+# Set a secret
+mcp-agent cloud secrets set API_KEY "sk-abc123xyz"
+
+# Set from stdin
+echo "secret-value" | mcp-agent cloud secrets set DB_PASSWORD -
+```
+
+### cloud secrets list
+
+List stored secrets.
+
+```bash
+mcp-agent cloud secrets list
+```
+
+**Example:**
+```bash
+$ mcp-agent cloud secrets list
+NAME           CREATED              UPDATED
+API_KEY        2024-01-15 10:30:00  2024-01-15 10:30:00
+DB_PASSWORD    2024-01-14 09:15:00  2024-01-16 14:20:00
+SMTP_PASSWORD  2024-01-10 08:00:00  2024-01-10 08:00:00
+```
+
+### cloud secrets delete
+
+Delete a secret.
+
+```bash
+mcp-agent cloud secrets delete <name> [OPTIONS]
+```
+
+**Options:**
+- `--force` - Skip confirmation
+
+**Examples:**
+```bash
+# Delete with confirmation
+mcp-agent cloud secrets delete API_KEY
+
+# Force delete
+mcp-agent cloud secrets delete API_KEY --force
+```
+
+## Console Access
+
+### cloud open
+
+Open web console.
+
+```bash
+mcp-agent cloud open [OPTIONS]
+```
+
+**Options:**
+- `--server <id|url>` - Open specific server page
+
+**Examples:**
+```bash
+# Open console home
+mcp-agent cloud open
+
+# Open server details
+mcp-agent cloud open --server srv_abc123xyz
+```
+
+## Client Configuration
+
+### configure
+
+Help users configure MCP clients to connect to a server.
+
+```bash
+mcp-agent configure <server_url> [OPTIONS]
+```
+
+**Options:**
+- `--client <type>` - Client type (cursor, claude, vscode, smithery, mcp.run)
+- `--write` - Write configuration to client config file
+- `--open` - Open configuration in editor
+- `--format <text|json|yaml>` - Output format
+
+**Examples:**
+```bash
+# Generate Claude Desktop config
+mcp-agent configure https://api.mcp-agent.cloud/servers/my-agent \
+  --client claude
+
+# Write VS Code config
+mcp-agent configure https://api.mcp-agent.cloud/servers/my-agent \
+  --client vscode \
+  --write
+
+# Generate generic config
+mcp-agent configure https://api.mcp-agent.cloud/servers/my-agent \
+  --format json
+```
+
+## Global Options
+
+These options work with all commands:
+
+- `--verbose, -v` - Enable verbose output
+- `--quiet, -q` - Reduce output
+- `--color/--no-color` - Enable/disable color output
+- `--format <text|json|yaml>` - Output format (where applicable)
+
+## Environment Variables
+
+Configure CLI behavior with environment variables:
+
+- `MCP_AGENT_API_URL` - API endpoint (default: https://api.mcp-agent.cloud)
+- `MCP_AGENT_AUTH_TOKEN` - Authentication token
+- `MCP_AGENT_ORG` - Default organization
+- `MCP_AGENT_REGION` - Default deployment region
+- `MCP_AGENT_CONFIG_PATH` - Config file path
+- `MCP_AGENT_NO_COLOR` - Disable color output
+
+## Configuration Files
+
+The CLI stores configuration in:
+- `~/.config/mcp-agent/credentials.json` - Authentication credentials
+- `~/.config/mcp-agent/config.yaml` - CLI configuration
+
+## Exit Codes
+
+The CLI uses standard exit codes:
+
+- `0` - Success
+- `1` - General error
+- `2` - Configuration or secrets missing
+- `3` - Deployment failed
+- `4` - Authentication required or expired
+- `5` - Runtime error
+- `6` - Invalid arguments
+
+## Examples
+
+### Complete Deployment Workflow
+
+```bash
+# 1. Authenticate
+mcp-agent login
+
+# 2. Deploy agent
+mcp-agent deploy --name "production-agent" --wait
+
+# 3. Check status
+mcp-agent cloud servers list
+
+# 4. Monitor logs
+mcp-agent cloud logger tail srv_abc123xyz --follow
+
+# 5. View workflows
+mcp-agent cloud servers workflows srv_abc123xyz
+
+# 6. Scale if needed
+mcp-agent cloud servers scale srv_abc123xyz --replicas 5
+```
+
+### Debugging Failed Deployment
+
+```bash
+# Check deployment status
+mcp-agent cloud servers describe srv_abc123xyz
+
+# View recent logs
+mcp-agent cloud logger tail srv_abc123xyz --since 10m
+
+# Check workflow failures
+mcp-agent cloud servers workflows srv_abc123xyz --status failed
+
+# Get detailed workflow info
+mcp-agent cloud workflows describe srv_abc123xyz run_failed123
+```
+
+### Managing Multiple Environments
+
+```bash
+# Deploy to staging
+mcp-agent deploy \
+  --name "agent-staging" \
+  --env "ENVIRONMENT=staging" \
+  --tag "staging-latest"
+
+# Deploy to production
+mcp-agent deploy \
+  --name "agent-production" \
+  --env "ENVIRONMENT=production" \
+  --region "us-west-2" \
+  --min-replicas 3 \
+  --tag "v1.0.0"
+
+# Compare environments
+mcp-agent cloud servers list --filter "name=agent-*"
+```

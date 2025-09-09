@@ -1,0 +1,569 @@
+---
+title: Getting Started with MCP Agent Cloud
+description: "Deploy your first agent to the cloud in under 5 minutes"
+---
+
+<Info>
+  MCP Agent Cloud is currently in open beta. Follow the instructions below to get started, or reach out to team@lastmileai.dev for feedback or to get early access to new features.
+</Info>
+
+## Prerequisites
+
+Before you begin, make sure you have:
+
+<CardGroup cols={2}>
+  <Card title="mcp-agent installed" icon="package">
+    ```bash
+    pip install mcp-agent
+    # or
+    uv add mcp-agent
+    ```
+  </Card>
+  <Card title="A working agent" icon="robot">
+    An mcp-agent project that runs locally
+  </Card>
+</CardGroup>
+
+## Quick Start
+
+<Steps>
+  <Step title="Authenticate">
+    Log in to MCP Agent Cloud:
+    
+    ```bash
+    mcp-agent login
+    ```
+    
+    This will open your browser for authentication. If you prefer device flow:
+    
+    ```bash
+    mcp-agent login --device
+    ```
+  </Step>
+  
+  <Step title="Prepare Your Project">
+    Ensure your project has the required configuration files:
+    
+    ```yaml mcp_agent.config.yaml
+    execution_engine: temporal  # Cloud uses Temporal
+    logger:
+      transports: [console]
+      level: info
+    
+    mcp:
+      servers:
+        # Your MCP server configurations
+        fetch:
+          command: "uvx"
+          args: ["mcp-server-fetch"]
+    
+    # Your LLM provider config
+    openai:
+      default_model: gpt-4o
+    ```
+
+    > [!IMPORTANT] Swap your api_key with !developer_secret to mark what keys will be saved as secrets within mcp-agent cloud.
+
+    ```yaml mcp_agent.secrets.yaml
+    openai:
+      api_key: !developer_secret
+    # Other secrets
+    ```
+  </Step>
+  
+  <Step title="Deploy">
+    Deploy your agent with a single command:
+    
+    ```bash
+    mcp-agent deploy --name "my-first-agent"
+    ```
+    
+    You'll see output like:
+    ```
+    🚀 Deploying my-first-agent...
+    📦 Uploading project files...
+    🔨 Building agent image...
+    ⚡ Starting Temporal workers...
+    ✅ Deployment successful!
+    
+    🌐 Server URL: https://api.mcp-agent.cloud/servers/my-first-agent
+    🆔 Server ID: srv_abc123xyz
+    
+    Available tools:
+      • workflows-list
+      • workflows-MyWorkflow-run
+      • workflows-get_status
+    
+    View in console: https://console.mcp-agent.cloud/servers/srv_abc123xyz
+    ```
+  </Step>
+  
+  <Step title="Test Your Deployment">
+    List your deployed agents:
+    
+    ```bash
+    mcp-agent cloud servers list
+    ```
+    
+    Test your agent:
+    
+    ```bash
+    # Get server details
+    mcp-agent cloud servers describe srv_abc123xyz
+    
+    # View logs
+    mcp-agent cloud logger tail srv_abc123xyz
+    ```
+  </Step>
+</Steps>
+
+## Your First Cloud Workflow
+
+Let's create and deploy a simple agent that can fetch web content and summarize it.
+
+### Create the Agent
+
+<CodeGroup>
+```python main.py
+import asyncio
+from mcp_agent.app import MCPApp
+from mcp_agent.agents.agent import Agent
+from mcp_agent.workflows import Workflow, WorkflowResult
+from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
+
+app = MCPApp(name="web_summarizer")
+
+@app.workflow
+class WebSummarizerWorkflow(Workflow[str]):
+    """Fetches and summarizes web content."""
+    
+    @app.workflow_run
+    async def run(self, url: str) -> WorkflowResult[str]:
+        # Create an agent with fetch capabilities
+        agent = Agent(
+            name="summarizer",
+            instruction="Fetch and summarize web content concisely.",
+            server_names=["fetch"]
+        )
+        
+        async with agent:
+            llm = await agent.attach_llm(OpenAIAugmentedLLM)
+            
+            # Fetch and summarize
+            summary = await llm.generate_str(
+                f"Fetch {url} and provide a 3-sentence summary"
+            )
+            
+            return WorkflowResult(value=summary)
+
+# For local testing
+if __name__ == "__main__":
+    async def test():
+        async with app.run():
+            workflow = WebSummarizerWorkflow()
+            result = await workflow.run("https://example.com")
+            print(result.value)
+    
+    asyncio.run(test())
+```
+
+```yaml mcp_agent.config.yaml
+execution_engine: temporal
+logger:
+  transports: [console]
+  level: info
+
+temporal:
+  host: temporal.mcp-agent.cloud  # Cloud Temporal endpoint
+  namespace: default
+  task_queue: mcp-agent
+
+mcp:
+  servers:
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+
+openai:
+  default_model: gpt-4o
+```
+
+```yaml mcp_agent.secrets.yaml
+openai:
+  api_key: !developer_secret
+```
+</CodeGroup>
+
+### Deploy to Cloud
+
+```bash
+# Deploy the agent
+mcp-agent deploy --name "web-summarizer" --wait
+
+# The --wait flag waits for deployment to complete
+# Omit it for async deployment
+```
+
+### Use Your Cloud Agent
+
+Your agent is now available as an MCP server. Here's how to use it:
+
+<Tabs>
+  <Tab title="Claude Desktop">
+    Add to your Claude Desktop config (`~/.claude-desktop/config.json`):
+    
+    ```json
+    {
+      "servers": {
+        "web-summarizer": {
+          "command": "mcp-agent",
+          "args": ["cloud", "connect", "srv_abc123xyz"]
+        }
+      }
+    }
+    ```
+    
+    Restart Claude Desktop and your agent will appear in the tools menu.
+  </Tab>
+  
+  <Tab title="Python Client">
+    ```python
+    from mcp_agent.mcp.gen_client import gen_client
+    
+    async def use_cloud_agent():
+        # Connect to your cloud agent
+        async with gen_client("https://api.mcp-agent.cloud/servers/web-summarizer") as server:
+            # Run the workflow
+            result = await server.call_tool(
+                "workflows-WebSummarizerWorkflow-run",
+                arguments={
+                    "run_parameters": {
+                        "url": "https://www.anthropic.com/research/building-effective-agents"
+                    }
+                }
+            )
+            
+            # Get the run ID
+            run_id = result.content[0].text
+            
+            # Check status
+            status = await server.call_tool(
+                "workflows-get_status",
+                arguments={"run_id": run_id}
+            )
+            
+            print(f"Summary: {status.content[0].text}")
+    ```
+  </Tab>
+  
+  <Tab title="cURL">
+    ```bash
+    # Run workflow
+    curl -X POST https://api.mcp-agent.cloud/servers/web-summarizer/call_tool \
+      -H "Authorization: Bearer $MCP_AGENT_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "name": "workflows-WebSummarizerWorkflow-run",
+        "arguments": {
+          "run_parameters": {
+            "url": "https://example.com"
+          }
+        }
+      }'
+    ```
+  </Tab>
+</Tabs>
+
+## Advanced Deployment Options
+
+### Deployment Configuration
+
+Control your deployment with additional options:
+
+```bash
+# Deploy with custom settings
+mcp-agent deploy \
+  --name "my-agent" \
+  --region "us-west-2" \
+  --env "CUSTOM_VAR=value" \
+  --env "ANOTHER_VAR=value2" \
+  --instance-type "small" \
+  --min-replicas 2 \
+  --max-replicas 10
+```
+
+### Environment Variables
+
+Pass environment variables to your deployment:
+
+```bash
+# Single variable
+mcp-agent deploy --env "API_KEY=secret"
+
+# Multiple variables
+mcp-agent deploy \
+  --env "DATABASE_URL=postgres://..." \
+  --env "REDIS_URL=redis://..." \
+  --env "LOG_LEVEL=debug"
+```
+
+### Secrets Management
+
+MCP Agent Cloud provides secure secrets management:
+
+```bash
+# Set a secret
+mcp-agent cloud secrets set MY_API_KEY "secret-value"
+
+# List secrets
+mcp-agent cloud secrets list
+
+# Use in deployment
+mcp-agent deploy --secret "API_KEY=MY_API_KEY"
+```
+
+## Managing Deployments
+
+### View Deployments
+
+```bash
+# List all deployments
+mcp-agent cloud servers list
+
+# Get details
+mcp-agent cloud servers describe srv_abc123xyz
+
+# View statistics
+mcp-agent cloud servers stats srv_abc123xyz
+```
+
+### Monitor Workflows
+
+```bash
+# List workflow runs
+mcp-agent cloud servers workflows srv_abc123xyz
+
+# Get workflow status
+mcp-agent cloud workflows describe srv_abc123xyz run_123
+
+# Pause a workflow
+mcp-agent cloud workflows suspend srv_abc123xyz run_123
+
+# Resume with data
+mcp-agent cloud workflows resume srv_abc123xyz run_123 \
+  --payload '{"continue": true}'
+
+# Cancel a workflow
+mcp-agent cloud workflows cancel srv_abc123xyz run_123
+```
+
+### View Logs
+
+```bash
+# Tail logs
+mcp-agent cloud logger tail srv_abc123xyz
+
+# Follow logs
+mcp-agent cloud logger tail srv_abc123xyz --follow
+
+# Filter logs
+mcp-agent cloud logger tail srv_abc123xyz \
+  --since 1h \
+  --grep "ERROR" \
+  --limit 100
+```
+
+### Update Deployment
+
+```bash
+# Redeploy with latest code
+mcp-agent deploy --name "my-agent" --update
+
+# Scale deployment
+mcp-agent cloud servers scale srv_abc123xyz --replicas 5
+
+# Update environment
+mcp-agent cloud servers update srv_abc123xyz \
+  --env "NEW_VAR=value"
+```
+
+### Delete Deployment
+
+```bash
+# Delete a deployment
+mcp-agent cloud servers delete srv_abc123xyz
+
+# Force delete (skip confirmation)
+mcp-agent cloud servers delete srv_abc123xyz --force
+```
+
+## Web Console
+
+Access the web console for visual management:
+
+```bash
+# Open console home
+mcp-agent cloud open
+
+# Open specific server
+mcp-agent cloud open --server srv_abc123xyz
+```
+
+The web console provides:
+- Real-time workflow monitoring
+- Log visualization
+- Metrics and analytics
+- Team management
+- Billing and usage
+
+## Client Integration
+
+Help others connect to your deployed agent:
+
+```bash
+# Generate integration code for Claude Desktop
+mcp-agent configure https://api.mcp-agent.cloud/servers/my-agent \
+  --client claude \
+  --write
+
+# For VS Code
+mcp-agent configure https://api.mcp-agent.cloud/servers/my-agent \
+  --client vscode \
+  --write
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use Temporal Execution Engine">
+    Always set `execution_engine: temporal` in your config for cloud deployments. This enables durable execution and workflow management.
+  </Accordion>
+  
+  <Accordion title="Implement Health Checks">
+    Add health check endpoints to your workflows for better monitoring:
+    
+    ```python
+    @app.tool
+    async def health() -> str:
+        """Health check endpoint."""
+        return "healthy"
+    ```
+  </Accordion>
+  
+  <Accordion title="Use Structured Logging">
+    Use the app logger for better observability:
+    
+    ```python
+    logger = app.context.logger
+    logger.info("Processing request", data={"url": url})
+    ```
+  </Accordion>
+  
+  <Accordion title="Handle Secrets Properly">
+    Never hardcode secrets. Use environment variables or the secrets store:
+    
+    ```python
+    import os
+    api_key = os.getenv("API_KEY")
+    ```
+  </Accordion>
+  
+  <Accordion title="Version Your Deployments">
+    Tag your deployments for easy rollback:
+    
+    ```bash
+    mcp-agent deploy --name "my-agent" --tag "v1.2.0"
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Deployment Fails">
+    Check build logs:
+    ```bash
+    mcp-agent cloud logger tail srv_abc123xyz --since 10m
+    ```
+    
+    Common issues:
+    - Missing dependencies in requirements.txt
+    - Invalid configuration syntax
+    - Missing required secrets
+  </Accordion>
+  
+  <Accordion title="Workflow Not Starting">
+    Verify worker is running:
+    ```bash
+    mcp-agent cloud servers describe srv_abc123xyz
+    ```
+    
+    Check for "Workers: Running" in the output.
+  </Accordion>
+  
+  <Accordion title="Authentication Issues">
+    Refresh your authentication:
+    ```bash
+    mcp-agent logout
+    mcp-agent login
+    ```
+  </Accordion>
+  
+  <Accordion title="Connection Timeouts">
+    Check your network and firewall settings. MCP Agent Cloud requires:
+    - HTTPS (port 443) for API access
+    - WebSocket support for real-time features
+  </Accordion>
+</AccordionGroup>
+
+## Example Projects
+
+Explore complete examples:
+
+<CardGroup cols={2}>
+  <Card 
+    title="Web Research Agent" 
+    icon="magnifying-glass"
+    href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/cloud/web-research"
+  >
+    Multi-step research with citations
+  </Card>
+  <Card 
+    title="Customer Support Bot" 
+    icon="headset"
+    href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/cloud/support-bot"
+  >
+    Ticket handling with escalation
+  </Card>
+  <Card 
+    title="Data Pipeline" 
+    icon="pipe"
+    href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/cloud/data-pipeline"
+  >
+    ETL with multiple agents
+  </Card>
+  <Card 
+    title="Code Review Agent" 
+    icon="code"
+    href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/cloud/code-review"
+  >
+    Automated PR reviews
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Agent Server Concepts" icon="server" href="/cloud/agent-server">
+    Understand agents as MCP servers
+  </Card>
+  <Card title="Workflow Management" icon="diagram-project" href="/workflows/overview">
+    Manage long-running workflows
+  </Card>
+  <Card title="CLI Reference" icon="terminal" href="/cloud/cli-reference">
+    Complete command reference
+  </Card>
+  <Card title="Monitoring" icon="chart-line" href="/advanced/monitoring">
+    Set up logging and alerts
+  </Card>
+</CardGroup>
