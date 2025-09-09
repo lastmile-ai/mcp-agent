@@ -69,7 +69,6 @@ async def _list_workflow_runs_async(
                 if not workflows_data:
                     workflows_data = []
 
-                # Apply filtering
                 workflows = workflows_data
                 if status:
                     status_filter = _get_status_filter(status)
@@ -172,33 +171,27 @@ def _print_workflows_text(workflows, status_filter, server_id_or_url):
     table.add_column("Status", style="yellow", width=15)
     table.add_column("Run ID", style="dim", width=15)
     table.add_column("Created", style="dim", width=20)
-    table.add_column("Principal", style="dim", width=15)
 
     for workflow in workflows:
-        # Handle both dict and object formats
         if isinstance(workflow, dict):
             workflow_id = workflow.get("workflow_id", "N/A")
             name = workflow.get("name", "N/A")
             execution_status = workflow.get("execution_status", "N/A")
             run_id = workflow.get("run_id", "N/A")
             created_at = workflow.get("created_at", "N/A")
-            principal_id = workflow.get("principal_id", "N/A")
         else:
             workflow_id = getattr(workflow, "workflow_id", "N/A")
             name = getattr(workflow, "name", "N/A")
             execution_status = getattr(workflow, "execution_status", "N/A")
             run_id = getattr(workflow, "run_id", "N/A")
             created_at = getattr(workflow, "created_at", "N/A")
-            principal_id = getattr(workflow, "principal_id", "N/A")
         
         status_display = _get_status_display(execution_status)
         
-        # Handle created_at formatting
         if created_at and created_at != "N/A":
             if hasattr(created_at, "strftime"):
                 created_display = created_at.strftime("%Y-%m-%d %H:%M:%S")
             else:
-                # Try to parse ISO string
                 try:
                     from datetime import datetime
                     dt = datetime.fromisoformat(str(created_at).replace("Z", "+00:00"))
@@ -216,7 +209,6 @@ def _print_workflows_text(workflows, status_filter, server_id_or_url):
             status_display,
             run_id_display,
             created_display,
-            _truncate_string(str(principal_id) if principal_id else "N/A", 15),
         )
 
     console.print(table)
@@ -239,17 +231,14 @@ def _print_workflows_yaml(workflows):
 
 def _workflow_to_dict(workflow):
     """Convert workflow dict to standardized dictionary format."""
-    # If it's already a dict, just return it
     if isinstance(workflow, dict):
         return workflow
     
-    # Otherwise convert from object attributes
     return {
         "workflow_id": getattr(workflow, "workflow_id", None),
         "run_id": getattr(workflow, "run_id", None),
         "name": getattr(workflow, "name", None),
         "created_at": getattr(workflow, "created_at", None).isoformat() if getattr(workflow, "created_at", None) else None,
-        "principal_id": getattr(workflow, "principal_id", None),
         "execution_status": getattr(workflow, "execution_status", None).value if getattr(workflow, "execution_status", None) else None,
     }
 
@@ -266,7 +255,6 @@ def _get_status_display(status):
     if not status:
         return "❓ Unknown"
     
-    # Convert to string for comparison
     status_str = str(status).lower()
     
     if "running" in status_str:
