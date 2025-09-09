@@ -377,10 +377,11 @@ class MCPApp:
             await self._context.tracing_config.flush()
 
         try:
-            # Don't shutdown OTEL completely, just cleanup app-specific resources
-            await cleanup_context(shutdown_logger=False)
+            # Gracefully shutdown logging to stop background event bus/listener tasks
+            await cleanup_context(shutdown_logger=True)
         except asyncio.CancelledError:
-            self.logger.debug("Cleanup cancelled during shutdown")
+            # Avoid relying on logger during shutdown; use stderr for reliability
+            print("[cleanup] Cleanup cancelled during shutdown", file=sys.stderr)
 
         # Shutdown the tracer provider to stop background threads
         # This prevents dangling span exports after cleanup
@@ -390,6 +391,56 @@ class MCPApp:
         self._context = None
         self._initialized = False
         self._tracer_provider = None
+
+    async def _force_cancel_remaining_tasks(self) -> None:
+        """Forcefully cancel all remaining async tasks - no waiting, no mercy"""
+        # Get all running tasks except the current one
+        current_task = asyncio.current_task()
+        all_tasks = [task for task in asyncio.all_tasks() if task != current_task and not task.done()]
+        
+        if not all_tasks:
+            return
+
+        # Force cancel any remaining stubborn tasks as final safety net
+        print("[cleanup] Performing forceful cleanup of remaining tasks...", file=sys.stderr)
+
+        print(
+            f"[cleanup] FORCE KILLING {len(all_tasks)} remaining tasks - no grace period",
+            file=sys.stderr,
+        )
+        
+        # Debug: Log details about each pending task
+        for i, task in enumerate(all_tasks):
+            task_name = getattr(task, '_name', 'unnamed')
+            task_coro = getattr(task, '_coro', None)
+            coro_name = getattr(task_coro, '__name__', 'unknown') if task_coro else 'unknown'
+            coro_qualname = getattr(task_coro, '__qualname__', 'unknown') if task_coro else 'unknown'
+            
+            # Try to get more details about where the task is stuck
+            frame_info = "unknown"
+            if task_coro and hasattr(task_coro, 'gi_frame') and task_coro.gi_frame:
+                frame = task_coro.gi_frame
+                frame_info = f"{frame.f_code.co_filename}:{frame.f_lineno} in {frame.f_code.co_name}"
+            elif task_coro and hasattr(task_coro, 'cr_frame') and task_coro.cr_frame:
+                frame = task_coro.cr_frame
+                frame_info = f"{frame.f_code.co_filename}:{frame.f_lineno} in {frame.f_code.co_name}"
+            
+            print(
+                (
+                    f"[cleanup] Task {i+1}: name='{task_name}' coro='{coro_name}' "
+                    f"qualname='{coro_qualname}' done={task.done()} "
+                    f"cancelled={task.cancelled()} stuck_at='{frame_info}'"
+                ),
+                file=sys.stderr,
+            )
+        
+        # Hard cancel all tasks without waiting
+        for task in all_tasks:
+            if not task.done():
+                task.cancel()
+        
+        # Don't wait - just abandon them and let asyncio.run() handle the aftermath
+        print("[cleanup] All tasks cancelled - proceeding with shutdown", file=sys.stderr)
 
     @asynccontextmanager
     async def run(self):
@@ -415,7 +466,21 @@ class MCPApp:
                 # Pop token tracking context
                 if self.context.token_counter:
                     await self.context.token_counter.pop()
-                await self.cleanup()
+                
+                # Cleanup with timeout to prevent hanging
+                try:
+                    await asyncio.wait_for(self.cleanup(), timeout=3.0)
+                except asyncio.TimeoutError:
+                    # Use stderr to ensure this is logged even if logging is stopped
+                    print(
+                        "[cleanup] MCPApp cleanup timed out after 3s, proceeding with force cleanup",
+                        file=sys.stderr,
+                    )
+                except Exception as e:
+                    # Use stderr to ensure visibility even if logging is stopped
+                    print(f"[cleanup] MCPApp cleanup failed: {e}", file=sys.stderr)
+
+                await self._force_cancel_remaining_tasks()
 
     def workflow(
         self, cls: Type, *args, workflow_id: str | None = None, **kwargs

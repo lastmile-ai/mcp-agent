@@ -504,12 +504,16 @@ class OpenAIAugmentedLLM(
             if params.metadata:
                 payload.update(params.metadata)
 
-            completion: ChatCompletion = await self.executor.execute(
+            completion = await self.executor.execute(
                 OpenAICompletionTasks.request_completion_task,
                 RequestCompletionRequest(
                     config=self.context.config.openai, payload=payload
                 ),
             )
+
+            # Check if the executor returned an exception
+            if isinstance(completion, Exception):
+                raise completion
 
             if not completion.choices or completion.choices[0].message.content is None:
                 raise ValueError("No structured content returned by model")
