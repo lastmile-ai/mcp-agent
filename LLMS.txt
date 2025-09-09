@@ -1766,7 +1766,7 @@ Provides both global fallback and instance-specific context support.
 
 **Class: `MCPAgentError`**
 - **Inherits from**: Exception
-- **Description**: Base exception class for FastAgent errors
+-- **Description**: Base exception class for agent errors
 
 **Class: `ServerConfigError`**
 - **Inherits from**: MCPAgentError

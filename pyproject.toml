@@ -100,9 +100,9 @@ dev = [
 ]
 
 [project.scripts]
-mcp-agent = "mcp_agent.cli.cloud.main:run"
-mcp_agent = "mcp_agent.cli.cloud.main:run"
-mcpagent = "mcp_agent.cli.cloud.main:run"
+mcp-agent = "mcp_agent.cli.main:run"
+mcp_agent = "mcp_agent.cli.main:run"
+mcpagent = "mcp_agent.cli.main:run"
 silsila = "mcp_agent.cli.cloud.main:run"
 prompt-server = "mcp_agent.mcp.prompts.__main__:main"
 
