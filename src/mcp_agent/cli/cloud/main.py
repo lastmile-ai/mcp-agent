@@ -108,10 +108,9 @@ app.command(
 
 
 # Deployment command
-app.command(
-    name="deploy",
-    help="Deploy an MCP agent (alias for 'cloud deploy')"
-)(deploy_config)
+app.command(name="deploy", help="Deploy an MCP agent (alias for 'cloud deploy')")(
+    deploy_config
+)
 
 
 # Sub-typer for `mcp-agent apps` commands

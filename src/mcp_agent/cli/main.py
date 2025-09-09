@@ -22,20 +22,11 @@ except Exception:  # pragma: no cover - cloud is optional for non-cloud developm
 
 # Local command groups (scaffolded)
 from mcp_agent.cli.commands import (
-    chat as chat_cmd,
-    dev as dev_cmd,
-    invoke as invoke_cmd,
-    serve as serve_cmd,
     init as init_cmd,
     quickstart as quickstart_cmd,
     config as config_cmd,
     keys as keys_cmd,
     models as models_cmd,
-    server as server_cmd,
-    build as build_cmd,
-    logs as logs_cmd,
-    doctor as doctor_cmd,
-    configure as configure_cmd,
     go as go_cmd,
     check as check_cmd,
 )
