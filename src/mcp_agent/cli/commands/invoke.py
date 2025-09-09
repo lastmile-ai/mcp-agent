@@ -27,6 +27,9 @@ def invoke(
     vars: Optional[str] = typer.Option(None, "--vars", help="JSON structured inputs"),
     script: Optional[str] = typer.Option(None, "--script"),
     model: Optional[str] = typer.Option(None, "--model"),
+    servers: Optional[str] = typer.Option(
+        None, "--servers", help="Comma-separated list of MCP server names"
+    ),
 ) -> None:
     """Run either an agent (LLM) or a workflow from the user's app script."""
     if not agent and not workflow:
@@ -50,9 +53,11 @@ def invoke(
         async with app_obj.run():
             if agent:
                 # Run via LLM
+                server_list = servers.split(",") if servers else []
+                server_list = [s.strip() for s in server_list if s.strip()]
                 llm = create_llm(
                     agent_name=agent,
-                    server_names=[],
+                    server_names=server_list,
                     provider=None,
                     model=model,
                     context=app_obj.context,
