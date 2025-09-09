@@ -805,8 +805,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         if run_id is None and workflow_id is None:
             raise ToolError("Either run_id or workflow_id must be provided.")
 
-        server_context: ServerContext = ctx.request_context.lifespan_context
-        workflow_registry = server_context.workflow_registry
+        workflow_registry: WorkflowRegistry | None = _resolve_workflow_registry(ctx)
 
         if not workflow_registry:
             raise ToolError("Workflow registry not found for MCPApp Server.")
@@ -861,8 +860,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         if run_id is None and workflow_id is None:
             raise ToolError("Either run_id or workflow_id must be provided.")
 
-        server_context: ServerContext = ctx.request_context.lifespan_context
-        workflow_registry = server_context.workflow_registry
+        workflow_registry: WorkflowRegistry | None = _resolve_workflow_registry(ctx)
 
         if not workflow_registry:
             raise ToolError("Workflow registry not found for MCPApp Server.")
