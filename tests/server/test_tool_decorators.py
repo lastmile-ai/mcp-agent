@@ -6,7 +6,6 @@ from mcp_agent.server.app_server import (
     create_workflow_tools,
     create_declared_function_tools,
     _workflow_run,
-    _workflow_status,
 )
 
 
@@ -79,7 +78,7 @@ async def test_app_tool_registers_and_executes_sync_tool():
     _decorated_names = {name for name, _ in mcp.decorated_tools}
     added_names = {name for name, *_ in mcp.added_tools}
 
-    # No workflows-* or per-tool get_status aliases for sync tools; check only echo
+    # No workflows-* aliases for sync tools; check only echo
     assert "echo" in added_names  # synchronous tool
 
     # Execute the synchronous tool function and ensure it returns unwrapped value
@@ -95,7 +94,7 @@ async def test_app_tool_registers_and_executes_sync_tool():
     run_id = run_info["run_id"]
     # Poll status until completed (bounded wait)
     for _ in range(200):
-        status = await _workflow_status(ctx, run_id, "echo")
+        status = await app.context.workflow_registry.get_workflow_status(run_id)
         if status.get("completed"):
             break
         await asyncio.sleep(0.01)
@@ -132,7 +131,6 @@ async def test_app_async_tool_registers_aliases_and_workflow_tools():
     assert "long" in added_names
     # And we suppress workflows-* for async auto tools
     assert "workflows-long-run" not in decorated_names
-    assert "workflows-long-get_status" not in decorated_names
 
 
 @pytest.mark.asyncio
@@ -158,7 +156,7 @@ async def test_auto_workflow_wraps_plain_return_in_workflowresult():
 
     # Inspect workflow's task result type by polling status for completion
     for _ in range(100):
-        status = await _workflow_status(ctx, run_id, "wrapme")
+        status = await app.context.workflow_registry.get_workflow_status(run_id)
         if status.get("completed"):
             break
         await asyncio.sleep(0.01)
