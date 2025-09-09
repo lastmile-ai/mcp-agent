@@ -772,7 +772,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         run_id: str | None = None,
         workflow_id: str | None = None,
         signal_name: str | None = "resume",
-        payload: str | None = None,
+        payload: Dict[str, Any] | None = None,
     ) -> bool:
         """
         Resume a paused workflow.
