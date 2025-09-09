@@ -128,6 +128,7 @@ app_cmd_app = typer.Typer(
     no_args_is_help=True,
     cls=HelpfulTyperGroup,
 )
+app_cmd_app.command(name="list")(list_servers)
 app_cmd_app.command(name="delete")(delete_app)
 app_cmd_app.command(name="status")(get_app_status)
 app_cmd_app.command(name="workflows")(list_app_workflows)
@@ -164,15 +165,6 @@ app_cmd_servers.command(
 )(list_workflows)
 app.add_typer(app_cmd_servers, name="servers", help="Manage MCP Servers")
 
-# Alias for servers - apps should behave identically
-app.add_typer(app_cmd_servers, name="apps", help="Manage MCP Apps (alias for servers)")
-
-# Sub-typer for `mcp-agent cloud` commands
-app_cmd_cloud = typer.Typer(
-    help="Cloud operations and management",
-    no_args_is_help=True,
-    cls=HelpfulTyperGroup,
-)
 # Sub-typer for `mcp-agent cloud auth` commands
 app_cmd_cloud_auth = typer.Typer(
     help="Cloud authentication commands",
@@ -203,38 +195,10 @@ app_cmd_cloud_logger.command(
     help="Retrieve and stream logs from deployed MCP apps",
 )(tail_logs)
 
-# Add deploy command to cloud namespace
-app_cmd_cloud.command(
-    name="deploy",
-    help="""
-Deploy an MCP agent using the specified configuration.
-
-An MCP App is deployed from bundling the code at the specified config directory.\n\n
-
-This directory must contain an 'mcp_agent.config.yaml' at its root.\n\n
-
-If secrets are required (i.e. `no_secrets` is not set), a secrets file named 'mcp_agent.secrets.yaml' must also be present.\n
-The secrets file is processed to replace secret tags with secret handles before deployment and that transformed 
-file is included in the deployment bundle in place of the original secrets file.
-""".strip(),
-)(deploy_config)
-
-# Add sub-typers to cloud
-app_cmd_cloud.add_typer(app_cmd_cloud_auth, name="auth", help="Authentication commands")
-app_cmd_cloud.add_typer(
-    app_cmd_cloud_logger, name="logger", help="Logging and observability"
-)
-app_cmd_cloud.add_typer(
-    app_cmd_workflows, name="workflows", help="Workflow management commands"
-)
-app_cmd_cloud.add_typer(
-    app_cmd_servers, name="servers", help="Server management commands"
-)
-app_cmd_cloud.add_typer(
-    app_cmd_servers, name="apps", help="App management commands (alias for servers)"
-)
-# Register cloud commands
-app.add_typer(app_cmd_cloud, name="cloud", help="Cloud operations and management")
+# Add sub-typers directly to app (which is the cloud namespace when mounted)
+app.add_typer(app_cmd_cloud_auth, name="auth", help="Authentication commands")
+app.add_typer(app_cmd_cloud_logger, name="logger", help="Logging and observability")
+app.add_typer(app_cmd_workflows, name="workflows", help="Workflow management commands")
 # Top-level auth commands that map to cloud auth commands
 app.command(
     name="login",
