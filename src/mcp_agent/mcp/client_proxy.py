@@ -3,47 +3,53 @@ from typing import Any, Dict, Optional
 import os
 import httpx
 
-from mcp_agent.mcp.mcp_server_registry import ServerRegistry
 from urllib.parse import quote
 
 
 def _resolve_gateway_url(
-    server_registry: Optional[ServerRegistry] = None,
-    server_name: Optional[str] = None,
+    *,
     gateway_url: Optional[str] = None,
+    context_gateway_url: Optional[str] = None,
 ) -> str:
+    """Resolve the base URL for the MCP gateway.
+
+    Precedence:
+    1) Explicit override (gateway_url parameter)
+    2) Context-provided URL (context_gateway_url)
+    3) Environment variable MCP_GATEWAY_URL
+    4) Fallback to http://127.0.0.1:8000 (dev default)
+    """
     # Highest precedence: explicit override
     if gateway_url:
         return gateway_url.rstrip("/")
+
+    # Next: context-provided URL (e.g., from Temporal workflow memo)
+    if context_gateway_url:
+        return context_gateway_url.rstrip("/")
 
     # Next: environment variable
     env_url = os.environ.get("MCP_GATEWAY_URL")
     if env_url:
         return env_url.rstrip("/")
 
-    # Next: a registry entry (if provided)
-    if server_registry and server_name:
-        cfg = server_registry.get_server_config(server_name)
-        if cfg and getattr(cfg, "url", None):
-            return cfg.url.rstrip("/")
-
     # Fallback: default local server
     return "http://127.0.0.1:8000"
 
 
-async def log_via_proxy(
-    server_registry: Optional[ServerRegistry],
-    execution_id: str,
-    level: str,
-    namespace: str,
-    message: str,
-    data: Dict[str, Any] | None = None,
-    *,
-    server_name: Optional[str] = None,
-    gateway_url: Optional[str] = None,
-    gateway_token: Optional[str] = None,
-) -> bool:
-    base = _resolve_gateway_url(server_registry, server_name, gateway_url)
+async def log_via_proxy(*args, **kwargs) -> bool:
+    """Backward-compatible wrapper.
+
+    Accepts either:
+      - legacy: (server_registry, execution_id, level, namespace, message, data=None, *, gateway_url=None, gateway_token=None)
+      - new: (execution_id, level, namespace, message, data=None, *, gateway_url=None, gateway_token=None)
+    """
+    if args and (args[0] is None or not isinstance(args[0], str)):
+        args = args[1:]
+    execution_id, level, namespace, message, *rest = args
+    data = rest[0] if rest else None
+    gateway_url = kwargs.get("gateway_url")
+    gateway_token = kwargs.get("gateway_token")
+    base = _resolve_gateway_url(gateway_url=gateway_url, context_gateway_url=None)
     url = f"{base}/internal/workflows/log"
     headers: Dict[str, str] = {}
     tok = gateway_token or os.environ.get("MCP_GATEWAY_TOKEN")
@@ -74,17 +80,15 @@ async def log_via_proxy(
     return bool(resp.get("ok", True))
 
 
-async def ask_via_proxy(
-    server_registry: Optional[ServerRegistry],
-    execution_id: str,
-    prompt: str,
-    metadata: Dict[str, Any] | None = None,
-    *,
-    server_name: Optional[str] = None,
-    gateway_url: Optional[str] = None,
-    gateway_token: Optional[str] = None,
-) -> Dict[str, Any]:
-    base = _resolve_gateway_url(server_registry, server_name, gateway_url)
+async def ask_via_proxy(*args, **kwargs) -> Dict[str, Any]:
+    # legacy: (server_registry, execution_id, prompt, metadata=None, ...)
+    if args and (args[0] is None or not isinstance(args[0], str)):
+        args = args[1:]
+    execution_id, prompt, *rest = args
+    metadata = rest[0] if rest else None
+    gateway_url = kwargs.get("gateway_url")
+    gateway_token = kwargs.get("gateway_token")
+    base = _resolve_gateway_url(gateway_url=gateway_url, context_gateway_url=None)
     url = f"{base}/internal/human/prompts"
     headers: Dict[str, str] = {}
     tok = gateway_token or os.environ.get("MCP_GATEWAY_TOKEN")
@@ -112,17 +116,15 @@ async def ask_via_proxy(
         return {"error": "invalid_response"}
 
 
-async def notify_via_proxy(
-    server_registry: Optional[ServerRegistry],
-    execution_id: str,
-    method: str,
-    params: Dict[str, Any] | None = None,
-    *,
-    server_name: Optional[str] = None,
-    gateway_url: Optional[str] = None,
-    gateway_token: Optional[str] = None,
-) -> bool:
-    base = _resolve_gateway_url(server_registry, server_name, gateway_url)
+async def notify_via_proxy(*args, **kwargs) -> bool:
+    # legacy: (server_registry, execution_id, method, params=None, ...)
+    if args and (args[0] is None or not isinstance(args[0], str)):
+        args = args[1:]
+    execution_id, method, *rest = args
+    params = rest[0] if rest else None
+    gateway_url = kwargs.get("gateway_url")
+    gateway_token = kwargs.get("gateway_token")
+    base = _resolve_gateway_url(gateway_url=gateway_url, context_gateway_url=None)
     url = f"{base}/internal/session/by-run/{quote(execution_id, safe='')}/notify"
     headers: Dict[str, str] = {}
     tok = gateway_token or os.environ.get("MCP_GATEWAY_TOKEN")
@@ -146,17 +148,15 @@ async def notify_via_proxy(
     return bool(resp.get("ok", True))
 
 
-async def request_via_proxy(
-    server_registry: Optional[ServerRegistry],
-    execution_id: str,
-    method: str,
-    params: Dict[str, Any] | None = None,
-    *,
-    server_name: Optional[str] = None,
-    gateway_url: Optional[str] = None,
-    gateway_token: Optional[str] = None,
-) -> Dict[str, Any]:
-    base = _resolve_gateway_url(server_registry, server_name, gateway_url)
+async def request_via_proxy(*args, **kwargs) -> Dict[str, Any]:
+    # legacy: (server_registry, execution_id, method, params=None, ...)
+    if args and (args[0] is None or not isinstance(args[0], str)):
+        args = args[1:]
+    execution_id, method, *rest = args
+    params = rest[0] if rest else None
+    gateway_url = kwargs.get("gateway_url")
+    gateway_token = kwargs.get("gateway_token")
+    base = _resolve_gateway_url(gateway_url=gateway_url, context_gateway_url=None)
     url = f"{base}/internal/session/by-run/{quote(execution_id, safe='')}/request"
     headers: Dict[str, str] = {}
     tok = gateway_token or os.environ.get("MCP_GATEWAY_TOKEN")

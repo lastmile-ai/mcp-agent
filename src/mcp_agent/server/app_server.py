@@ -1367,38 +1367,56 @@ async def _workflow_run(
         # Build memo for Temporal runs if gateway info is available
         workflow_memo = None
         try:
-            # Prefer explicit kwargs, else infer from request headers/environment
-            # FastMCP keeps raw request under ctx.request_context.request if available
+            # Prefer explicit kwargs, else infer from request context/headers
             gateway_url = kwargs.get("gateway_url")
             gateway_token = kwargs.get("gateway_token")
 
-            if gateway_url is None:
-                try:
-                    req = getattr(ctx.request_context, "request", None)
-                    if req is not None:
-                        # Custom header if present
-                        h = req.headers
-                        gateway_url = (
-                            h.get("X-MCP-Gateway-URL")
-                            or h.get("X-Forwarded-Url")
-                            or h.get("X-Forwarded-Proto")
-                        )
-                        # Best-effort reconstruction if only proto/host provided
-                        if gateway_url is None:
-                            proto = h.get("X-Forwarded-Proto") or "http"
-                            host = h.get("X-Forwarded-Host") or h.get("Host")
-                            if host:
-                                gateway_url = f"{proto}://{host}"
-                except Exception:
-                    pass
+            req = getattr(ctx.request_context, "request", None)
+            if req is not None:
+                h = req.headers
+                # Highest precedence: caller-provided full base URL
+                header_url = h.get("X-MCP-Gateway-URL") or h.get("X-Forwarded-Url")
+                if gateway_url is None and header_url:
+                    gateway_url = header_url
 
-            if gateway_token is None:
-                try:
-                    req = getattr(ctx.request_context, "request", None)
-                    if req is not None:
-                        gateway_token = req.headers.get("X-MCP-Gateway-Token")
-                except Exception:
-                    pass
+                # Token may be provided by the gateway/proxy
+                if gateway_token is None:
+                    gateway_token = h.get("X-MCP-Gateway-Token")
+
+                # Prefer explicit reconstruction from X-Forwarded-* if present
+                if gateway_url is None and (h.get("X-Forwarded-Host") or h.get("Host")):
+                    proto = h.get("X-Forwarded-Proto") or "http"
+                    host = h.get("X-Forwarded-Host") or h.get("Host")
+                    prefix = h.get("X-Forwarded-Prefix") or ""
+                    if prefix and not prefix.startswith("/"):
+                        prefix = "/" + prefix
+                    if host:
+                        gateway_url = f"{proto}://{host}{prefix}"
+
+                # Fallback to request's base_url which already includes scheme/host and any mount prefix
+                if gateway_url is None:
+                    try:
+                        if getattr(req, "base_url", None):
+                            base_url = str(req.base_url).rstrip("/")
+                            if base_url and base_url.lower() != "none":
+                                gateway_url = base_url
+                    except Exception:
+                        gateway_url = None
+
+            # Final fallback: environment variables (useful if proxies don't set headers)
+            try:
+                import os as _os
+
+                if gateway_url is None:
+                    env_url = _os.environ.get("MCP_GATEWAY_URL")
+                    if env_url:
+                        gateway_url = env_url
+                if gateway_token is None:
+                    env_tok = _os.environ.get("MCP_GATEWAY_TOKEN")
+                    if env_tok:
+                        gateway_token = env_tok
+            except Exception:
+                pass
 
             if gateway_url or gateway_token:
                 workflow_memo = {
