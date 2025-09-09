@@ -31,6 +31,7 @@ from mcp_agent.cli.commands import (
     check as check_cmd,
 )
 
+from mcp_agent.cli.cloud.commands import deploy_config, login, logout, whoami
 
 app = typer.Typer(
     help="mcp-agent CLI",
@@ -124,36 +125,17 @@ app.add_typer(models_cmd.app, name="models", help="List and manage models")
 # Mount cloud commands
 app.add_typer(cloud_app, name="cloud", help="MCP Agent Cloud commands")
 
-
-# Back-compat top-level aliases -> cloud
-@app.command("deploy")
-def alias_deploy(*args: str) -> None:
-    """Alias for 'mcp-agent cloud deploy'."""
-    # Defer execution to cloud app main
-    from mcp_agent.cli.cloud.main import app as _cloud
-
-    # Re-invoke Typer subcommand programmatically
-    # Simple message to guide user
-    console.print("Use 'mcp-agent cloud deploy' (alias invoked).")
-    _cloud(
-        prog_name=f"{typer.get_app_dir('mcp-agent')}",
-        standalone_mode=False,
-    )
-
-
-@app.command("login")
-def alias_login() -> None:
-    console.print("Use 'mcp-agent cloud auth login' (alias).")
-
-
-@app.command("whoami")
-def alias_whoami() -> None:
-    console.print("Use 'mcp-agent cloud auth whoami' (alias).")
-
-
-@app.command("logout")
-def alias_logout() -> None:
-    console.print("Use 'mcp-agent cloud auth logout' (alias).")
+# Register some key cloud commands directly as top-level commands
+app.command("deploy", help="Deploy an MCP agent (alias for 'cloud deploy')")(
+    deploy_config
+)
+app.command(
+    "login", help="Authenticate to MCP Agent Cloud API (alias for 'cloud login')"
+)(login)
+app.command(
+    "whoami", help="Print current identity and org(s) (alias for 'cloud whoami')"
+)(whoami)
+app.command("logout", help="Clear credentials (alias for 'cloud logout')")(logout)
 
 
 def run() -> None:
