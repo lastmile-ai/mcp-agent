@@ -248,6 +248,8 @@ class MCPConnectionManager(ContextDependent):
         self._tg_closed_event: Event = Event()
         # Ensure a single close sequence at a time on the origin loop
         self._close_lock = Lock()
+        # Serialize owner startup to avoid races across tasks
+        self._owner_start_lock = Lock()
 
     async def __aenter__(self):
         # Start the TaskGroup owner task and wait until ready
@@ -346,41 +348,42 @@ class MCPConnectionManager(ContextDependent):
             logger.warning(f"MCPConnectionManager: Error during shutdown: {e}")
 
     async def _start_owner(self):
-        """Start the TaskGroup owner task if not already running."""
-        # If an owner is active or TaskGroup is already active, nothing to do
-        if (self._tg_owner_task and not self._tg_owner_task.done()) or (
-            self._tg_active and self._tg is not None
-        ):
-            return
-        # If previous owner exists but is done (possibly with error), log and restart
-        if self._tg_owner_task and self._tg_owner_task.done():
-            try:
-                exc = self._tg_owner_task.exception()
-                if exc:
+        """Start the TaskGroup owner task if not already running (task-safe)."""
+        async with self._owner_start_lock:
+            # If an owner is active or TaskGroup is already active, nothing to do
+            if (self._tg_owner_task and not self._tg_owner_task.done()) or (
+                self._tg_active and self._tg is not None
+            ):
+                return
+            # If previous owner exists but is done (possibly with error), log and restart
+            if self._tg_owner_task and self._tg_owner_task.done():
+                try:
+                    exc = self._tg_owner_task.exception()
+                    if exc:
+                        logger.warning(
+                            f"MCPConnectionManager: restarting owner after error: {exc}"
+                        )
+                except Exception:
                     logger.warning(
-                        f"MCPConnectionManager: restarting owner after error: {exc}"
+                        "MCPConnectionManager: restarting owner after unknown state"
                     )
-            except Exception:
-                logger.warning(
-                    "MCPConnectionManager: restarting owner after unknown state"
-                )
-        # Reset coordination events
-        self._tg_ready_event = Event()
-        self._tg_close_event = Event()
-        self._tg_closed_event = Event()
-        # Record loop and thread
-        try:
-            self._loop = asyncio.get_running_loop()
-        except RuntimeError:
-            self._loop = None
-        self._thread_id = threading.get_ident()
-        # Create an owner TaskGroup and start the owner task within it
-        owner_tg = create_task_group()
-        await owner_tg.__aenter__()
-        self._owner_tg = owner_tg
-        owner_tg.start_soon(self._tg_owner)
-        # Wait until the TaskGroup is ready
-        await self._tg_ready_event.wait()
+            # Reset coordination events (safe here since no active owner/TG)
+            self._tg_ready_event = Event()
+            self._tg_close_event = Event()
+            self._tg_closed_event = Event()
+            # Record loop and thread
+            try:
+                self._loop = asyncio.get_running_loop()
+            except RuntimeError:
+                self._loop = None
+            self._thread_id = threading.get_ident()
+            # Create an owner TaskGroup and start the owner task within it
+            owner_tg = create_task_group()
+            await owner_tg.__aenter__()
+            self._owner_tg = owner_tg
+            owner_tg.start_soon(self._tg_owner)
+            # Wait until the TaskGroup is ready
+            await self._tg_ready_event.wait()
 
     async def _tg_owner(self):
         """Own the TaskGroup lifecycle so __aexit__ runs in the same task it was entered."""
