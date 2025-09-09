@@ -2,9 +2,7 @@ import asyncio
 from typing import List, Optional
 
 import typer
-from rich.padding import Padding
 from rich.panel import Panel
-from rich.table import Table
 
 from mcp_agent.cli.auth import load_api_key_credentials
 from mcp_agent.cli.config import settings
@@ -73,7 +71,10 @@ def list_apps(
             print_info(f"Found {num_apps} deployed app(s):")
             print_apps(list_apps_res.apps)
         else:
+            console.print("\n[bold blue]📦 Deployed MCP Apps (0)[/bold blue]")
             print_info("No deployed apps found.")
+
+        console.print("\n" + "─" * 80 + "\n")
 
         if list_app_configs_res.appConfigurations:
             num_configs = list_app_configs_res.totalCount or len(
@@ -82,6 +83,7 @@ def list_apps(
             print_info(f"Found {num_configs} configured app(s):")
             print_app_configs(list_app_configs_res.appConfigurations)
         else:
+            console.print("\n[bold blue]⚙️  Configured MCP Apps (0)[/bold blue]")
             print_info("No configured apps found.")
 
     except UnauthenticatedError as e:
@@ -106,81 +108,71 @@ def print_info_header() -> None:
 
 
 def print_apps(apps: List[MCPApp]) -> None:
-    """Print a summary table of the app information."""
-    table = Table(
-        title="Deployed MCP Apps",
-        expand=False,
-        border_style="blue",
-        padding=(0, 1),
-    )
+    """Print a list of deployed apps in a clean, copyable format."""
+    console.print(f"\n[bold blue]📦 Deployed MCP Apps ({len(apps)})[/bold blue]")
 
-    table.add_column("Name", style="cyan", overflow="fold")
-    table.add_column("ID", style="bright_blue", no_wrap=True)
-    table.add_column("Description", style="cyan", overflow="fold")
-    table.add_column("Server URL", style="bright_blue", no_wrap=True)
-    table.add_column("Status", style="bright_blue", no_wrap=True)
-    table.add_column("Created", style="cyan", overflow="fold")
+    for i, app in enumerate(apps):
+        if i > 0:
+            console.print()
 
-    for idx, app in enumerate(apps):
-        is_last_row = idx == len(apps) - 1
-        table.add_row(
-            app.name,
-            app.appId,
-            app.description,
-            app.appServerInfo.serverUrl if app.appServerInfo else "",
-            _server_status_text(
-                (
-                    app.appServerInfo.status
-                    if app.appServerInfo
-                    else "APP_SERVER_STATUS_OFFLINE"
-                ),
-                is_last_row,
-            ),
-            app.createdAt.strftime("%Y-%m-%d %H:%M:%S"),
+        status = _server_status_text(
+            app.appServerInfo.status
+            if app.appServerInfo
+            else "APP_SERVER_STATUS_OFFLINE"
         )
 
-    console.print(table)
+        console.print(f"[bold cyan]{app.name or 'Unnamed'}[/bold cyan] {status}")
+        console.print(f"  App ID: {app.appId}")
+
+        if app.appServerInfo and app.appServerInfo.serverUrl:
+            console.print(f"  Server: {app.appServerInfo.serverUrl}")
+
+        if app.description:
+            console.print(f"  Description: {app.description}")
+
+        console.print(f"  Created: {app.createdAt.strftime('%Y-%m-%d %H:%M:%S')}")
 
 
 def print_app_configs(app_configs: List[MCPAppConfiguration]) -> None:
-    """Print a summary table of the app configuration information."""
-    table = Table(title="Configured MCP Apps", expand=False, border_style="blue")
+    """Print a list of configured apps in a clean, copyable format."""
+    console.print(
+        f"\n[bold blue]⚙️  Configured MCP Apps ({len(app_configs)})[/bold blue]"
+    )
 
-    table.add_column("Name", style="cyan", overflow="fold")
-    table.add_column("ID", style="bright_blue", no_wrap=True)
-    table.add_column("App ID", style="bright_blue", overflow="fold")
-    table.add_column("Description", style="cyan", overflow="fold")
-    table.add_column("Server URL", style="bright_blue", no_wrap=True)
-    table.add_column("Status", style="bright_blue", no_wrap=True)
-    table.add_column("Created", style="cyan", overflow="fold")
+    for i, config in enumerate(app_configs):
+        if i > 0:
+            console.print()
 
-    for idx, config in enumerate(app_configs):
-        is_last_row = idx == len(app_configs) - 1
-        table.add_row(
-            config.app.name if config.app else "",
-            config.appConfigurationId,
-            config.app.appId if config.app else "",
-            config.app.description if config.app else "",
-            config.appServerInfo.serverUrl if config.appServerInfo else "",
-            _server_status_text(
-                (
-                    config.appServerInfo.status
-                    if config.appServerInfo
-                    else "APP_SERVER_STATUS_OFFLINE"
-                ),
-                is_last_row=is_last_row,
-            ),
-            config.createdAt.strftime("%Y-%m-%d %H:%M:%S") if config.createdAt else "",
+        status = _server_status_text(
+            config.appServerInfo.status
+            if config.appServerInfo
+            else "APP_SERVER_STATUS_OFFLINE"
         )
 
-    console.print(table)
+        console.print(
+            f"[bold cyan]{config.app.name if config.app else 'Unnamed'}[/bold cyan] {status}"
+        )
+        console.print(f"  Config ID: {config.appConfigurationId}")
+
+        if config.app:
+            console.print(f"  App ID: {config.app.appId}")
+            if config.app.description:
+                console.print(f"  Description: {config.app.description}")
+
+        if config.appServerInfo and config.appServerInfo.serverUrl:
+            console.print(f"  Server: {config.appServerInfo.serverUrl}")
+
+        if config.createdAt:
+            console.print(
+                f"  Created: {config.createdAt.strftime('%Y-%m-%d %H:%M:%S')}"
+            )
 
 
 def _server_status_text(status: str, is_last_row: bool = False):
     """Convert server status code to emoji."""
     if status == "APP_SERVER_STATUS_ONLINE":
-        return "🟢 Online"
+        return "[green]🟢 Online[/green]"
     elif status == "APP_SERVER_STATUS_OFFLINE":
-        return Padding("🔴 Offline", (0, 0, 0 if is_last_row else 1, 0), style="red")
+        return "[red]🔴 Offline[/red]"
     else:
         return "❓ Unknown"

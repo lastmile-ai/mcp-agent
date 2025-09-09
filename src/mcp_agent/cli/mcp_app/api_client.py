@@ -3,6 +3,7 @@
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional, Union
 from urllib.parse import urlparse
+from enum import Enum
 
 from pydantic import BaseModel
 
@@ -63,6 +64,40 @@ class CanDoActionsResponse(BaseModel):
     canDoActions: Optional[List[CanDoActionCheck]] = []
 
 
+class WorkflowExecutionStatus(Enum):
+    """From temporal.api.enums.v1.WorkflowExecutionStatus"""
+
+    WORKFLOW_EXECUTION_STATUS_UNSPECIFIED = "WORKFLOW_EXECUTION_STATUS_UNSPECIFIED"
+    WORKFLOW_EXECUTION_STATUS_RUNNING = "WORKFLOW_EXECUTION_STATUS_RUNNING"
+    WORKFLOW_EXECUTION_STATUS_FAILED = "WORKFLOW_EXECUTION_STATUS_FAILED"
+    WORKFLOW_EXECUTION_STATUS_TIMED_OUT = "WORKFLOW_EXECUTION_STATUS_TIMED_OUT"
+    WORKFLOW_EXECUTION_STATUS_CANCELED = "WORKFLOW_EXECUTION_STATUS_CANCELED"
+    WORKFLOW_EXECUTION_STATUS_TERMINATED = "WORKFLOW_EXECUTION_STATUS_TERMINATED"
+    WORKFLOW_EXECUTION_STATUS_COMPLETED = "WORKFLOW_EXECUTION_STATUS_COMPLETED"
+    WORKFLOW_EXECUTION_STATUS_CONTINUED_AS_NEW = (
+        "WORKFLOW_EXECUTION_STATUS_CONTINUED_AS_NEW"
+    )
+
+
+class WorkflowInfo(BaseModel):
+    """Information about a workflow execution instance"""
+
+    workflow_id: str
+    run_id: Optional[str] = None
+    name: str
+    created_at: datetime
+    principal_id: str
+    execution_status: Optional[WorkflowExecutionStatus] = None
+
+
+class ListWorkflowsResponse(BaseModel):
+    """Response for listing workflows"""
+
+    workflows: Optional[List[WorkflowInfo]] = []
+    next_page_token: Optional[str] = None
+    total_count: Optional[int] = 0
+
+
 APP_ID_PREFIX = "app_"
 APP_CONFIG_ID_PREFIX = "apcnf_"
 
@@ -102,6 +137,29 @@ def is_valid_server_url_format(server_url: str) -> bool:
     """
     parsed = urlparse(server_url)
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+class LogEntry(BaseModel):
+    """Represents a single log entry."""
+
+    timestamp: Optional[str] = None
+    level: Optional[str] = None
+    message: Optional[str] = None
+    # Allow additional fields that might be present
+
+    class Config:
+        extra = "allow"
+
+
+class GetAppLogsResponse(BaseModel):
+    """Response from get_app_logs API endpoint."""
+
+    logEntries: Optional[List[LogEntry]] = []
+
+    @property
+    def log_entries_list(self) -> List[LogEntry]:
+        """Get log entries regardless of field name format."""
+        return self.logEntries or []
 
 
 class MCPAppClient(APIClient):
@@ -321,13 +379,13 @@ class MCPAppClient(APIClient):
 
     async def configure_app(
         self,
-        app_id: str,
+        app_server_url: str,
         config_params: Dict[str, Any] = {},
     ) -> MCPAppConfiguration:
         """Configure a deployed MCP App via the API.
 
         Args:
-            app_id: The UUID of the app to configure
+            app_server_url: The server URL of the app to configure
             config_params: Dictionary of configuration parameters (e.g. user secrets)
 
         Returns:
@@ -338,11 +396,11 @@ class MCPAppClient(APIClient):
             httpx.HTTPStatusError: If the API returns an error
             httpx.HTTPError: If the request fails
         """
-        if not app_id or not is_valid_app_id_format(app_id):
-            raise ValueError(f"Invalid app ID format: {app_id}")
+        if not app_server_url or not is_valid_server_url_format(app_server_url):
+            raise ValueError(f"Invalid app server URL format: {app_server_url}")
 
         payload = {
-            "appId": app_id,
+            "appServerUrl": app_server_url,
             "params": config_params,
         }
 
@@ -354,11 +412,11 @@ class MCPAppClient(APIClient):
 
         return MCPAppConfiguration(**res["appConfiguration"])
 
-    async def list_config_params(self, app_id: str) -> List[str]:
+    async def list_config_params(self, app_server_url: str) -> List[str]:
         """List required configuration parameters (e.g. user secrets) for an MCP App via the API.
 
         Args:
-            app_id: The UUID of the app to retrieve config params for
+            app_server_url: The server URL of the app to retrieve config params for
 
         Returns:
             List[str]: List of configuration parameter names
@@ -368,10 +426,12 @@ class MCPAppClient(APIClient):
             httpx.HTTPStatusError: If the API returns an error
             httpx.HTTPError: If the request fails
         """
-        if not app_id or not is_valid_app_id_format(app_id):
-            raise ValueError(f"Invalid app ID format: {app_id}")
+        if not app_server_url or not is_valid_server_url_format(app_server_url):
+            raise ValueError(f"Invalid app server URL format: {app_server_url}")
 
-        response = await self.post("/mcp_app/list_config_params", {"appId": app_id})
+        response = await self.post(
+            "/mcp_app/list_config_params", {"appServerUrl": app_server_url}
+        )
         return response.json().get("paramKeys", [])
 
     async def list_apps(
@@ -440,6 +500,49 @@ class MCPAppClient(APIClient):
 
         response = await self.post("/mcp_app/list_app_configurations", payload)
         return ListAppConfigurationsResponse(**response.json())
+
+    async def list_workflows(
+        self,
+        app_id_or_config_id: str,
+        name_filter: Optional[str] = None,
+        max_results: int = 100,
+        page_token: Optional[str] = None,
+    ) -> ListWorkflowsResponse:
+        """List workflows for a specific app or app configuration.
+
+        Args:
+            app_id_or_config_id: The app ID (e.g. app_abc123) or app config ID (e.g. apcnf_xyz789)
+            name_filter: Optional workflow name filter
+            max_results: Maximum number of results to return
+            page_token: Pagination token
+
+        Returns:
+            ListWorkflowsResponse: The list of workflows
+
+        Raises:
+            ValueError: If the app_id_or_config_id is invalid
+            httpx.HTTPError: If the API request fails
+        """
+        payload: Dict[str, Any] = {
+            "max_results": max_results,
+        }
+
+        if is_valid_app_id_format(app_id_or_config_id):
+            payload["app_specifier"] = {"app_id": app_id_or_config_id}
+        elif is_valid_app_config_id_format(app_id_or_config_id):
+            payload["app_specifier"] = {"app_config_id": app_id_or_config_id}
+        else:
+            raise ValueError(
+                f"Invalid app ID or app config ID format: {app_id_or_config_id}. Expected format: app_xxx or apcnf_xxx"
+            )
+
+        if name_filter:
+            payload["name"] = name_filter
+        if page_token:
+            payload["page_token"] = page_token
+
+        response = await self.post("/workflow/list", payload)
+        return ListWorkflowsResponse(**response.json())
 
     async def delete_app(self, app_id: str) -> str:
         """Delete an MCP App via the API.
@@ -586,3 +689,68 @@ class MCPAppClient(APIClient):
             resource_name=f"MCP_APP_CONFIG:{app_config_id}",
             action="MANAGE:MCP_APP_CONFIG",
         )
+
+    async def get_app_logs(
+        self,
+        app_id: Optional[str] = None,
+        app_configuration_id: Optional[str] = None,
+        since: Optional[str] = None,
+        limit: Optional[int] = None,
+        order_by: Optional[str] = None,
+        order: Optional[str] = None,
+    ) -> GetAppLogsResponse:
+        """Get logs for an MCP App or App Configuration via the API.
+
+        Args:
+            app_id: The UUID of the app to get logs for (mutually exclusive with app_configuration_id)
+            app_configuration_id: The UUID of the app configuration to get logs for (mutually exclusive with app_id)
+            since: Time filter for logs (e.g., "1h", "24h", "7d")
+            limit: Maximum number of log entries to return
+            order_by: Field to order by ("LOG_ORDER_BY_TIMESTAMP" or "LOG_ORDER_BY_LEVEL")
+            order: Log ordering direction ("LOG_ORDER_ASC" or "LOG_ORDER_DESC")
+
+        Returns:
+            GetAppLogsResponse: The retrieved log entries
+
+        Raises:
+            ValueError: If neither or both app_id and app_configuration_id are provided, or if IDs are invalid
+            httpx.HTTPStatusError: If the API returns an error (e.g., 404, 403)
+            httpx.HTTPError: If the request fails
+        """
+        # Validate inputs
+        if not app_id and not app_configuration_id:
+            raise ValueError("Either app_id or app_configuration_id must be provided")
+        if app_id and app_configuration_id:
+            raise ValueError(
+                "Only one of app_id or app_configuration_id can be provided"
+            )
+
+        if app_id and not is_valid_app_id_format(app_id):
+            raise ValueError(f"Invalid app ID format: {app_id}")
+        if app_configuration_id and not is_valid_app_config_id_format(
+            app_configuration_id
+        ):
+            raise ValueError(
+                f"Invalid app configuration ID format: {app_configuration_id}"
+            )
+
+        # Prepare request payload
+        payload = {}
+        if app_id:
+            payload["app_id"] = app_id
+        if app_configuration_id:
+            payload["app_configuration_id"] = app_configuration_id
+        if since:
+            payload["since"] = since
+        if limit:
+            payload["limit"] = limit
+        if order_by:
+            payload["order_by"] = order_by
+        if order:
+            payload["order"] = order
+
+        response = await self.post("/mcp_app/get_app_logs", payload)
+
+        # Parse the response
+        data = response.json()
+        return GetAppLogsResponse(**data)

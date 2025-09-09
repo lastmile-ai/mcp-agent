@@ -6,10 +6,11 @@ for the application configuration.
 import sys
 from io import StringIO
 from pathlib import Path
-from typing import Dict, List, Literal, Optional
+from typing import Dict, List, Literal, Optional, Set
 import threading
 import warnings
 
+from httpx import URL
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -105,6 +106,10 @@ class MCPServerSettings(BaseModel):
     env: Dict[str, str] | None = None
     """Environment variables to pass to the server process."""
 
+    allowed_tools: Set[str] | None = None
+    """Set of tool names to allow from this server. If specified, only these tools will be exposed to agents. 
+    Tool names should match exactly. [WARNING] Empty list will result LLM have no access to tools."""
+
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 
@@ -113,6 +118,10 @@ class MCPSettings(BaseModel):
 
     servers: Dict[str, MCPServerSettings] = Field(default_factory=dict)
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
+    @field_validator("servers", mode="before")
+    def none_to_dict(cls, v):
+        return {} if v is None else v
 
 
 class VertexAIMixin(BaseModel):
@@ -201,6 +210,7 @@ class AnthropicSettings(BaseSettings, VertexAIMixin, BedrockMixin):
             "provider", "ANTHROPIC_PROVIDER", "anthropic__provider"
         ),
     )
+    base_url: str | URL | None = Field(default=None)
 
     model_config = SettingsConfigDict(
         env_prefix="ANTHROPIC_",
@@ -583,7 +593,7 @@ class Settings(BaseSettings):
         nested_model_default_partial_update=True,
     )  # Customize the behavior of settings here
 
-    mcp: MCPSettings | None = MCPSettings()
+    mcp: MCPSettings | None = Field(default_factory=MCPSettings)
     """MCP config, such as MCP servers"""
 
     execution_engine: Literal["asyncio", "temporal"] = "asyncio"

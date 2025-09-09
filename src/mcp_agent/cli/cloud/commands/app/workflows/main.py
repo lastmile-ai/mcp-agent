@@ -30,6 +30,7 @@ from mcp_agent.cli.mcp_app.mcp_client import (
 )
 from mcp_agent.cli.utils.ux import (
     console,
+    print_error,
 )
 
 
@@ -212,13 +213,7 @@ async def print_workflows_list(session: MCPClientSession) -> None:
         console.print(Panel(Group(*panels), title="Workflows", border_style="blue"))
 
     except Exception as e:
-        console.print(
-            Panel(
-                f"[red]Error fetching workflows: {str(e)}[/red]",
-                title="Workflows",
-                border_style="red",
-            )
-        )
+        print_error(f"Error fetching workflows: {str(e)}")
 
 
 async def print_runs_list(session: MCPClientSession) -> None:
@@ -293,10 +288,4 @@ async def print_runs_list(session: MCPClientSession) -> None:
         console.print(table)
 
     except Exception as e:
-        console.print(
-            Panel(
-                f"[red]Error fetching workflow runs: {str(e)}[/red]",
-                title="Workflow Runs",
-                border_style="red",
-            )
-        )
+        print_error(f"Error fetching workflow runs: {str(e)}")

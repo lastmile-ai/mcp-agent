@@ -1,0 +1,32 @@
+# MCP-Agent Configuration File - Claude Desktop Compatible
+
+# Default model configuration
+default_model: anthropic.claude-3-5-sonnet-20241022
+
+# Logger configuration
+logger:
+  level: info
+  type: console
+
+# MCP Servers - Compatible with Claude Desktop
+mcp:
+  servers:
+    filesystem:
+      transport: stdio
+      command: npx
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "/"]
+    
+    github:
+      transport: stdio
+      command: npx
+      args: ["-y", "@modelcontextprotocol/server-github"]
+      env:
+        GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_PERSONAL_ACCESS_TOKEN}"
+    
+    # Optional: Web search capability
+    # brave-search:
+    #   transport: stdio
+    #   command: npx
+    #   args: ["-y", "@modelcontextprotocol/server-brave-search"]
+    #   env:
+    #     BRAVE_API_KEY: "${BRAVE_API_KEY}"
