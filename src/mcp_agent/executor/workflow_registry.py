@@ -228,6 +228,8 @@ class InMemoryWorkflowRegistry(WorkflowRegistry):
         signal_name: str | None = "resume",
         payload: Any | None = None,
     ) -> bool:
+        if not (run_id or workflow_id):
+            raise ValueError("Either run_id or workflow_id must be provided.")
         workflow = await self.get_workflow(run_id, workflow_id)
         if not workflow:
             logger.error(
@@ -240,6 +242,8 @@ class InMemoryWorkflowRegistry(WorkflowRegistry):
     async def cancel_workflow(
         self, run_id: str | None = None, workflow_id: str | None = None
     ) -> bool:
+        if not (run_id or workflow_id):
+            raise ValueError("Either run_id or workflow_id must be provided.")
         workflow = await self.get_workflow(run_id, workflow_id)
         if not workflow:
             logger.error(
@@ -252,6 +256,8 @@ class InMemoryWorkflowRegistry(WorkflowRegistry):
     async def get_workflow_status(
         self, run_id: str | None = None, workflow_id: str | None = None
     ) -> Optional[Dict[str, Any]]:
+        if not (run_id or workflow_id):
+            raise ValueError("Either run_id or workflow_id must be provided.")
         workflow = await self.get_workflow(run_id, workflow_id)
         if not workflow:
             logger.error(
