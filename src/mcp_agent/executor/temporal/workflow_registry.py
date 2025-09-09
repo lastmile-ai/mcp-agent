@@ -89,7 +89,7 @@ class TemporalWorkflowRegistry(WorkflowRegistry):
         try:
             workflow = await self.get_workflow(run_id, workflow_id)
             if workflow and not workflow_id:
-                workflow_id = workflow.name
+                workflow_id = workflow.id or workflow.name
 
             # For temporal operations, we need to have both workflow_id and run_id
             if not workflow_id:
@@ -137,7 +137,7 @@ class TemporalWorkflowRegistry(WorkflowRegistry):
         try:
             workflow = await self.get_workflow(run_id, workflow_id)
             if workflow and not workflow_id:
-                workflow_id = workflow.name
+                workflow_id = workflow.id or workflow.name
 
             # For temporal operations, we need to have both workflow_id and run_id
             if not workflow_id:
