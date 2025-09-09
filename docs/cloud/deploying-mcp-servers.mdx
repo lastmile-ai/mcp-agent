@@ -28,7 +28,7 @@ If you only need basic MCP server functionality without workflows, you can still
 ### Using FastMCP
 
 ```python
-# server.py
+# main.py
 from fastmcp import FastMCP
 
 mcp = FastMCP("my-server")
@@ -51,7 +51,7 @@ async def current_weather_resource():
 ### Using mcp-agent Without Workflows
 
 ```python
-# simple_server.py
+# main.py
 from mcp_agent.app import MCPApp
 
 app = MCPApp(name="simple_tools")

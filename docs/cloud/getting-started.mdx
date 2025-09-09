@@ -61,10 +61,12 @@ Before you begin, make sure you have:
     openai:
       default_model: gpt-4o
     ```
-    
+
+    > [!IMPORTANT] Swap your api_key with !developer_secret to mark what keys will be saved as secrets within mcp-agent cloud.
+
     ```yaml mcp_agent.secrets.yaml
     openai:
-      api_key: "your-api-key"
+      api_key: !developer_secret
     # Other secrets
     ```
   </Step>
@@ -122,7 +124,7 @@ Let's create and deploy a simple agent that can fetch web content and summarize 
 ### Create the Agent
 
 <CodeGroup>
-```python agent.py
+```python main.py
 import asyncio
 from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
@@ -188,7 +190,7 @@ openai:
 
 ```yaml mcp_agent.secrets.yaml
 openai:
-  api_key: "sk-..."
+  api_key: !developer_secret
 ```
 </CodeGroup>
 
