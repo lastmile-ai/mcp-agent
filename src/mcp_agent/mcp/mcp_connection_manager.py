@@ -260,6 +260,16 @@ class MCPConnectionManager(ContextDependent):
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Ensure clean shutdown of all connections before exiting."""
         await self.close(exc_type, exc_val, exc_tb)
+        # Close the owner TaskGroup in the same task that entered it
+        if self._owner_tg is not None:
+            try:
+                await self._owner_tg.__aexit__(exc_type, exc_val, exc_tb)
+            except Exception as e:
+                logger.warning(
+                    f"MCPConnectionManager: Error during owner TaskGroup cleanup: {e}"
+                )
+            finally:
+                self._owner_tg = None
 
     async def close(self, exc_type=None, exc_val=None, exc_tb=None):
         """Close all connections and tear down the internal TaskGroup safely.
@@ -285,16 +295,7 @@ class MCPConnectionManager(ContextDependent):
                         logger.warning(
                             "MCPConnectionManager: Timeout waiting for TaskGroup owner to close"
                         )
-                # Now close the owner TaskGroup in the same task that created it
-                if self._owner_tg is not None:
-                    try:
-                        await self._owner_tg.__aexit__(exc_type, exc_val, exc_tb)
-                    except Exception as e:
-                        logger.warning(
-                            f"MCPConnectionManager: Error during owner TaskGroup cleanup: {e}"
-                        )
-                    finally:
-                        self._owner_tg = None
+                # Do not attempt to close the owner TaskGroup here; __aexit__ will handle it
             else:
                 # Different thread – run entire shutdown on the original loop to avoid cross-thread Event.set
                 if self._loop is not None:
