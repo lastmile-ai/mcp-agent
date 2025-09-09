@@ -762,16 +762,42 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         Returns:
             A dictionary with comprehensive information about the workflow status.
         """
-        # Ensure upstream session is available for any status-related logs
+        # Ensure upstream session so status-related logs are forwarded
         try:
             _set_upstream_from_request_ctx_if_available(ctx)
         except Exception:
             pass
 
-        if run_id is None and workflow_id is None:
+        if not (run_id or workflow_id):
             raise ToolError("Either run_id or workflow_id must be provided.")
 
-        return await _workflow_status(ctx, run_id=run_id, workflow_id=workflow_id)
+        workflow_registry: WorkflowRegistry | None = _resolve_workflow_registry(ctx)
+
+        if not workflow_registry:
+            raise ToolError("Workflow registry not found for MCPApp Server.")
+
+        if not workflow_id:
+            workflow = await workflow_registry.get_workflow(
+                run_id=run_id, workflow_id=workflow_id
+            )
+            workflow_id = workflow.id if workflow else None
+
+        status = await workflow_registry.get_workflow_status(
+            run_id=run_id, workflow_id=workflow_id
+        )
+
+        # Cleanup run registry on terminal states
+        try:
+            state = str(status.get("status", "")).lower()
+            if state in ("completed", "error", "cancelled"):
+                try:
+                    await _unregister_session(run_id)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        return status
 
     @mcp.tool(name="workflows-resume")
     async def resume_workflow(
@@ -809,13 +835,34 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         if run_id is None and workflow_id is None:
             raise ToolError("Either run_id or workflow_id must be provided.")
 
-        return await _workflow_resume(
-            ctx,
+        server_context: ServerContext = ctx.request_context.lifespan_context
+        workflow_registry = server_context.workflow_registry
+
+        if not workflow_registry:
+            raise ToolError("Workflow registry not found for MCPApp Server.")
+
+        logger.info(
+            f"Resuming workflow ID {workflow_id or 'unknown'}, run ID {run_id or 'unknown'} with signal '{signal_name}' and payload '{payload}'"
+        )
+
+        # Get the workflow instance from the registry
+        result = await workflow_registry.resume_workflow(
             run_id=run_id,
             workflow_id=workflow_id,
             signal_name=signal_name,
             payload=payload,
         )
+
+        if result:
+            logger.debug(
+                f"Signaled workflow ID {workflow_id or 'unknown'}, run ID {run_id or 'unknown'} with signal '{signal_name}' and payload '{payload}'"
+            )
+        else:
+            logger.error(
+                f"Failed to signal workflow ID {workflow_id or 'unknown'}, run ID {run_id or 'unknown'} with signal '{signal_name}' and payload '{payload}'"
+            )
+
+        return result
 
     @mcp.tool(name="workflows-cancel")
     async def cancel_workflow(
@@ -844,7 +891,31 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         if run_id is None and workflow_id is None:
             raise ToolError("Either run_id or workflow_id must be provided.")
 
-        return await _workflow_cancel(ctx, run_id=run_id, workflow_id=workflow_id)
+        server_context: ServerContext = ctx.request_context.lifespan_context
+        workflow_registry = server_context.workflow_registry
+
+        if not workflow_registry:
+            raise ToolError("Workflow registry not found for MCPApp Server.")
+
+        logger.info(
+            f"Cancelling workflow ID {workflow_id or 'unknown'}, run ID {run_id or 'unknown'}"
+        )
+
+        # Get the workflow instance from the registry
+        result = await workflow_registry.cancel_workflow(
+            run_id=run_id, workflow_id=workflow_id
+        )
+
+        if result:
+            logger.debug(
+                f"Cancelled workflow ID {workflow_id or 'unknown'}, run ID {run_id or 'unknown'}"
+            )
+        else:
+            logger.error(
+                f"Failed to cancel workflow {workflow_id or 'unknown'} with ID {run_id or 'unknown'}"
+            )
+
+        return result
 
     # endregion
 
@@ -1233,86 +1304,6 @@ def create_workflow_specific_tools(
         _set_upstream_from_request_ctx_if_available(ctx)
         return await _workflow_run(ctx, workflow_name, run_parameters)
 
-    @mcp.tool(
-        name=f"workflows-{workflow_name}-get_status",
-        description=f"""
-        Get the status of a running {workflow_name} workflow.
-        
-        Args:
-            run_id: The run ID of the running workflow, received from workflows/{workflow_name}/run.
-                If not provided, will use the latest run for the provided workflow_id.
-            workflow_id: The workflow ID of the running workflow, received from workflows/{workflow_name}/run.
-                If not provided, will use the specific run ID requested.
-
-        Returns:
-            A dict with workflow_id and run_id for the started workflow run, can be passed to
-            workflows/get_status, workflows/resume, and workflows/cancel.
-        """,
-    )
-    async def get_status(
-        ctx: MCPContext, run_id: str | None = None, workflow_id: str | None = None
-    ) -> Dict[str, Any]:
-        _set_upstream_from_request_ctx_if_available(ctx)
-        return await _workflow_status(ctx, run_id=run_id, workflow_id=workflow_id)
-
-    @mcp.tool(
-        name=f"workflows-{workflow_name}-resume",
-        description=f"""
-        Resume a paused {workflow_name} workflow.
-    
-        Args:
-            run_id: The run ID of the running workflow, received from workflows/{workflow_name}/run.
-                If not provided, will use the latest run for the provided workflow_id.
-            workflow_id: The workflow ID of the running workflow, received from workflows/{workflow_name}/run.
-                If not provided, will use the specific run ID requested.
-            signal_name: Optional name of the signal to send to resume the workflow.
-                This will default to "resume", but can be a custom signal name
-                if the workflow was paused on a specific signal.
-            payload: Optional payload to provide the workflow upon resumption.
-                For example, if a workflow is waiting for human input,
-                this can be the human input.
-        
-        Returns:
-            True if the workflow was resumed, False otherwise.
-        """,
-    )
-    async def resume(
-        ctx: MCPContext,
-        run_id: str | None = None,
-        workflow_id: str | None = None,
-        signal_name: str | None = "resume",
-        payload: str | None = None,
-    ) -> bool:
-        _set_upstream_from_request_ctx_if_available(ctx)
-        return await _workflow_resume(
-            ctx,
-            run_id=run_id,
-            workflow_id=workflow_id,
-            signal_name=signal_name,
-            payload=payload,
-        )
-
-    @mcp.tool(
-        name=f"workflows-{workflow_name}-cancel",
-        description=f"""
-        Cancel a running {workflow_name} workflow.
-
-        Args:
-            run_id: The run ID of the running workflow, received from workflows/{workflow_name}/run.
-                If not provided, will use the latest run for the provided workflow_id.
-            workflow_id: The workflow ID of the running workflow, received from workflows/{workflow_name}/run.
-                If not provided, will use the specific run ID requested.
-
-        Returns:
-            True if the workflow was cancelled, False otherwise.
-        """,
-    )
-    async def cancel(
-        ctx: MCPContext, run_id: str | None = None, workflow_id: str | None = None
-    ) -> bool:
-        _set_upstream_from_request_ctx_if_available(ctx)
-        return await _workflow_cancel(ctx, run_id=run_id, workflow_id=workflow_id)
-
 
 # endregion
 
@@ -1483,132 +1474,6 @@ async def _workflow_run(
     except Exception as e:
         logger.error(f"Error creating workflow {workflow_name}: {str(e)}")
         raise ToolError(f"Error creating workflow {workflow_name}: {str(e)}") from e
-
-
-async def _workflow_status(
-    ctx: MCPContext, run_id: str | None = None, workflow_id: str | None = None
-) -> Dict[str, Any]:
-    # Ensure upstream session so status-related logs are forwarded
-    try:
-        _set_upstream_from_request_ctx_if_available(ctx)
-    except Exception:
-        pass
-
-    if not (run_id or workflow_id):
-        raise ValueError("Either run_id or workflow_id must be provided.")
-
-    workflow_registry: WorkflowRegistry | None = _resolve_workflow_registry(ctx)
-
-    if not workflow_registry:
-        raise ToolError("Workflow registry not found for MCPApp Server.")
-
-    if not workflow_id:
-        workflow = await workflow_registry.get_workflow(
-            run_id=run_id, workflow_id=workflow_id
-        )
-        workflow_id = workflow.id if workflow else None
-
-    status = await workflow_registry.get_workflow_status(
-        run_id=run_id, workflow_id=workflow_id
-    )
-
-    # Cleanup run registry on terminal states
-    try:
-        state = str(status.get("status", "")).lower()
-        if state in ("completed", "error", "cancelled"):
-            try:
-                await _unregister_session(run_id)
-            except Exception:
-                pass
-    except Exception:
-        pass
-
-    return status
-
-
-async def _workflow_resume(
-    ctx: MCPContext,
-    run_id: str | None = None,
-    workflow_id: str | None = None,
-    signal_name: str | None = "resume",
-    payload: str | None = None,
-) -> bool:
-    # Ensure upstream session is available for any status-related logs
-    try:
-        _set_upstream_from_request_ctx_if_available(ctx)
-    except Exception:
-        pass
-
-    if run_id is None and workflow_id is None:
-        raise ValueError("Either run_id or workflow_id must be provided.")
-
-    server_context: ServerContext = ctx.request_context.lifespan_context
-    workflow_registry = server_context.workflow_registry
-
-    if not workflow_registry:
-        raise ValueError("Workflow registry not found for MCPApp Server.")
-
-    logger.info(
-        f"Resuming workflow ID {workflow_id or 'unknown'}, run ID {run_id or 'unknown'} with signal '{signal_name}' and payload '{payload}'"
-    )
-
-    # Get the workflow instance from the registry
-    result = await workflow_registry.resume_workflow(
-        run_id=run_id,
-        workflow_id=workflow_id,
-        signal_name=signal_name,
-        payload=payload,
-    )
-
-    if result:
-        logger.debug(
-            f"Signaled workflow ID {workflow_id or 'unknown'}, run ID {run_id or 'unknown'} with signal '{signal_name}' and payload '{payload}'"
-        )
-    else:
-        logger.error(
-            f"Failed to signal workflow ID {workflow_id or 'unknown'}, run ID {run_id or 'unknown'} with signal '{signal_name}' and payload '{payload}'"
-        )
-
-    return result
-
-
-async def _workflow_cancel(
-    ctx: MCPContext, run_id: str | None = None, workflow_id: str | None = None
-) -> bool:
-    # Ensure upstream session is available for any status-related logs
-    try:
-        _set_upstream_from_request_ctx_if_available(ctx)
-    except Exception:
-        pass
-
-    if run_id is None and workflow_id is None:
-        raise ValueError("Either run_id or workflow_id must be provided.")
-
-    server_context: ServerContext = ctx.request_context.lifespan_context
-    workflow_registry = server_context.workflow_registry
-
-    if not workflow_registry:
-        raise ValueError("Workflow registry not found for MCPApp Server.")
-
-    logger.info(
-        f"Cancelling workflow ID {workflow_id or 'unknown'}, run ID {run_id or 'unknown'}"
-    )
-
-    # Get the workflow instance from the registry
-    result = await workflow_registry.cancel_workflow(
-        run_id=run_id, workflow_id=workflow_id
-    )
-
-    if result:
-        logger.debug(
-            f"Cancelled workflow ID {workflow_id or 'unknown'}, run ID {run_id or 'unknown'}"
-        )
-    else:
-        logger.error(
-            f"Failed to cancel workflow {workflow_id or 'unknown'} with ID {run_id or 'unknown'}"
-        )
-
-    return result
 
 
 # endregion
