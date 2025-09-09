@@ -834,6 +834,8 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                 f"Failed to signal workflow ID {workflow_id or 'unknown'}, run ID {run_id or 'unknown'} with signal '{signal_name}' and payload '{payload}'"
             )
 
+        return result
+
     @mcp.tool(name="workflows-cancel")
     async def cancel_workflow(
         ctx: MCPContext, run_id: str | None = None, workflow_id: str | None = None
