@@ -2,6 +2,7 @@ import asyncio
 import json
 import uuid
 from typing import Callable, Dict, List, Optional, TypeVar, TYPE_CHECKING, Any
+from contextlib import asynccontextmanager
 
 from opentelemetry import trace
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field, PrivateAttr
@@ -1125,6 +1126,91 @@ class AgentTasks:
         self.server_aggregators_for_agent: Dict[str, MCPAggregator] = {}
         self.server_aggregators_for_agent_lock: asyncio.Lock = asyncio.Lock()
         self.agent_refcounts: dict[str, int] = {}
+        # Track in-flight tasks per agent to avoid shutting down while calls are running
+        self.agent_task_counts: dict[str, int] = {}
+        # Track agents awaiting shutdown once in-flight tasks complete
+        self.agent_shutdown_pending: set[str] = set()
+        # Remember init params to allow lazy re-initialization if aggregator missing
+        self._agent_init_params: dict[str, tuple[List[str], bool]] = {}
+
+    @asynccontextmanager
+    async def _with_aggregator(self, agent_name: str):
+        """
+        Acquire an agent's aggregator for the duration of an operation, tracking in-flight usage
+        and performing lazy reinitialization if necessary.
+        """
+        aggregator: MCPAggregator | None = None
+        aggregator_to_close: MCPAggregator | None = None
+
+        # Acquire lock to read/create and increment in-flight count atomically
+        async with self.server_aggregators_for_agent_lock:
+            aggregator = self.server_aggregators_for_agent.get(agent_name)
+
+            # If aggregator missing, try lazy re-init from stored params
+            if aggregator is None:
+                params = self._agent_init_params.get(agent_name)
+                if params is not None:
+                    server_names, connection_persistence = params
+                    logger.debug(
+                        f"Reinitializing aggregator for agent '{agent_name}'",
+                        data={
+                            "server_names": server_names,
+                            "connection_persistence": connection_persistence,
+                        },
+                    )
+                    aggregator = MCPAggregator(
+                        server_names=server_names,
+                        connection_persistence=connection_persistence,
+                        context=self.context,
+                        name=agent_name,
+                    )
+                    self.server_aggregators_for_agent[agent_name] = aggregator
+                else:
+                    # No way to reconstruct aggregator, fail clearly
+                    raise ValueError(
+                        f"Server aggregrator for agent '{agent_name}' not found"
+                    )
+
+            # Increment in-flight usage
+            self.agent_task_counts[agent_name] = (
+                self.agent_task_counts.get(agent_name, 0) + 1
+            )
+            logger.debug(
+                f"Agent '{agent_name}' in-flight +1",
+                data={"inflight": self.agent_task_counts[agent_name]},
+            )
+
+        try:
+            if not aggregator.initialized:
+                await aggregator.initialize()
+            yield aggregator
+        finally:
+            # Decrement and check for pending shutdown
+            async with self.server_aggregators_for_agent_lock:
+                remaining = self.agent_task_counts.get(agent_name, 0) - 1
+                if remaining > 0:
+                    self.agent_task_counts[agent_name] = remaining
+                else:
+                    self.agent_task_counts.pop(agent_name, None)
+                    if agent_name in self.agent_shutdown_pending:
+                        aggregator_to_close = self.server_aggregators_for_agent.pop(
+                            agent_name, None
+                        )
+                        self.agent_shutdown_pending.discard(agent_name)
+                logger.debug(
+                    f"Agent '{agent_name}' in-flight -1",
+                    data={
+                        "remaining": self.agent_task_counts.get(agent_name, 0),
+                        "pending_shutdown": agent_name in self.agent_shutdown_pending,
+                        "will_close": aggregator_to_close is not None,
+                    },
+                )
+
+            if aggregator_to_close is not None:
+                try:
+                    await aggregator_to_close.close()
+                except Exception:
+                    pass
 
     async def initialize_aggregator_task(
         self, request: InitAggregatorRequest
@@ -1151,6 +1237,19 @@ class AgentTasks:
 
             # Bump the reference counter
             self.agent_refcounts[agent_name] = refcount + 1
+            # Record init params for potential lazy re-initialization
+            self._agent_init_params[agent_name] = (
+                list(server_names) if isinstance(server_names, list) else [],
+                bool(connection_persistence),
+            )
+            logger.debug(
+                f"Initialized aggregator for agent '{agent_name}'",
+                data={
+                    "refcount": self.agent_refcounts[agent_name],
+                    "server_names": server_names,
+                    "connection_persistence": connection_persistence,
+                },
+            )
 
         # Initialize the servers
         aggregator = self.server_aggregators_for_agent[agent_name]
@@ -1180,9 +1279,24 @@ class AgentTasks:
             if refcount > 1:
                 # Still outstanding agent refs – just decrement and exit
                 self.agent_refcounts[agent_name] = refcount - 1
+                logger.debug(
+                    f"Shutdown aggregator for agent '{agent_name}' deferred (refcount)",
+                    data={"new_refcount": self.agent_refcounts[agent_name]},
+                )
                 return True
 
             # refcount is 1 – this is the last shutdown
+            inflight = self.agent_task_counts.get(agent_name, 0)
+            if inflight > 0:
+                # Defer shutdown until in-flight tasks complete
+                self.agent_refcounts.pop(agent_name, None)
+                self.agent_shutdown_pending.add(agent_name)
+                logger.debug(
+                    f"Shutdown aggregator for agent '{agent_name}' deferred (in-flight)",
+                    data={"inflight": inflight},
+                )
+                return True
+
             server_aggregator = self.server_aggregators_for_agent.pop(agent_name, None)
             self.agent_refcounts.pop(agent_name, None)
 
@@ -1199,12 +1313,8 @@ class AgentTasks:
         agent_name = request.agent_name
         server_name = request.server_name
 
-        # Get the MCPAggregator for the agent
-        aggregator = self.server_aggregators_for_agent.get(agent_name)
-        if not aggregator:
-            raise ValueError(f"Server aggregrator for agent '{agent_name}' not found")
-
-        return await aggregator.list_tools(server_name=server_name)
+        async with self._with_aggregator(agent_name) as aggregator:
+            return await aggregator.list_tools(server_name=server_name)
 
     async def call_tool_task(self, request: CallToolRequest) -> CallToolResult:
         """
@@ -1214,14 +1324,10 @@ class AgentTasks:
         agent_name = request.agent_name
         server_name = request.server_name
 
-        # Get the MCPAggregator for the agent
-        aggregator = self.server_aggregators_for_agent.get(agent_name)
-        if not aggregator:
-            raise ValueError(f"Server aggregrator for agent '{agent_name}' not found")
-
-        return await aggregator.call_tool(
-            name=request.name, arguments=request.arguments, server_name=server_name
-        )
+        async with self._with_aggregator(agent_name) as aggregator:
+            return await aggregator.call_tool(
+                name=request.name, arguments=request.arguments, server_name=server_name
+            )
 
     async def list_prompts_task(self, request: ListPromptsRequest) -> ListPromptsResult:
         """
@@ -1231,12 +1337,8 @@ class AgentTasks:
         agent_name = request.agent_name
         server_name = request.server_name
 
-        # Get the MCPAggregator for the agent
-        aggregator = self.server_aggregators_for_agent.get(agent_name)
-        if not aggregator:
-            raise ValueError(f"Server aggregrator for agent '{agent_name}' not found")
-
-        return await aggregator.list_prompts(server_name=server_name)
+        async with self._with_aggregator(agent_name) as aggregator:
+            return await aggregator.list_prompts(server_name=server_name)
 
     async def get_prompt_task(self, request: GetPromptRequest) -> GetPromptResult:
         """
@@ -1246,14 +1348,10 @@ class AgentTasks:
         agent_name = request.agent_name
         server_name = request.server_name
 
-        # Get the MCPAggregator for the agent
-        aggregator = self.server_aggregators_for_agent.get(agent_name)
-        if not aggregator:
-            raise ValueError(f"Server aggregrator for agent '{agent_name}' not found")
-
-        return await aggregator.get_prompt(
-            name=request.name, arguments=request.arguments, server_name=server_name
-        )
+        async with self._with_aggregator(agent_name) as aggregator:
+            return await aggregator.get_prompt(
+                name=request.name, arguments=request.arguments, server_name=server_name
+            )
 
     async def get_capabilities_task(
         self, request: GetCapabilitiesRequest
@@ -1265,30 +1363,24 @@ class AgentTasks:
         agent_name = request.agent_name
         server_name = request.server_name
 
-        # Get the MCPAggregator for the agent
-        aggregator = self.server_aggregators_for_agent.get(agent_name)
-        if not aggregator:
-            raise ValueError(f"Server aggregrator for agent '{agent_name}' not found")
+        async with self._with_aggregator(agent_name) as aggregator:
+            server_capabilities: Dict[str, ServerCapabilities] = {}
 
-        server_capabilities: Dict[str, ServerCapabilities] = {}
+            if not server_name:
+                # If no server name is provided, get capabilities for all servers
+                server_names: List[str] = aggregator.server_names
+                capabilities: List[ServerCapabilities] = await asyncio.gather(
+                    *[aggregator.get_capabilities(server_name=n) for n in server_names],
+                    return_exceptions=True,
+                )
+                server_capabilities = dict(zip(server_names, capabilities))
+            else:
+                # If a server name is provided, get capabilities for that server
+                server_capabilities[server_name] = await aggregator.get_capabilities(
+                    server_name=server_name
+                )
 
-        if not server_name:
-            # If no server name is provided, get capabilities for all servers
-            server_names: List[str] = aggregator.server_names
-            capabilities: List[ServerCapabilities] = await asyncio.gather(
-                *[aggregator.get_capabilities(server_name=n) for n in server_names],
-                return_exceptions=True,  # propagate exceptions – change if you want to swallow them
-            )
-
-            server_capabilities = dict(zip(server_names, capabilities))
-
-        else:
-            # If a server name is provided, get capabilities for that server
-            server_capabilities[server_name] = await aggregator.get_capabilities(
-                server_name=server_name
-            )
-
-        return server_capabilities
+            return server_capabilities
 
     async def get_server_session(
         self, request: GetServerSessionRequest
@@ -1299,20 +1391,14 @@ class AgentTasks:
         agent_name = request.agent_name
         server_name = request.server_name
 
-        # Get the MCPAggregator for the agent
-        aggregator = self.server_aggregators_for_agent.get(agent_name)
-        if not aggregator:
-            raise ValueError(f"Server aggregrator for agent '{agent_name}' not found")
-
-        server_session: MCPAgentClientSession = await aggregator.get_server(
-            server_name=server_name
-        )
-
-        session_id = server_session.get_session_id()
-
-        return GetServerSessionResponse(
-            session_id=session_id,
-        )
+        async with self._with_aggregator(agent_name) as aggregator:
+            server_session: MCPAgentClientSession = await aggregator.get_server(
+                server_name=server_name
+            )
+            session_id = server_session.get_session_id()
+            return GetServerSessionResponse(
+                session_id=session_id,
+            )
 
     async def list_resources_task(self, request: ListResourcesRequest):
         """
@@ -1321,11 +1407,8 @@ class AgentTasks:
         agent_name = request.agent_name
         server_name = request.server_name
 
-        aggregator = self.server_aggregators_for_agent.get(agent_name)
-        if not aggregator:
-            raise ValueError(f"Server aggregator for agent '{agent_name}' not found")
-
-        return await aggregator.list_resources(server_name=server_name)
+        async with self._with_aggregator(agent_name) as aggregator:
+            return await aggregator.list_resources(server_name=server_name)
 
     async def read_resource_task(self, request: ReadResourceRequest):
         """
@@ -1335,8 +1418,5 @@ class AgentTasks:
         uri = request.uri
         server_name = request.server_name
 
-        aggregator = self.server_aggregators_for_agent.get(agent_name)
-        if not aggregator:
-            raise ValueError(f"Server aggregator for agent '{agent_name}' not found")
-
-        return await aggregator.read_resource(uri=uri, server_name=server_name)
+        async with self._with_aggregator(agent_name) as aggregator:
+            return await aggregator.read_resource(uri=uri, server_name=server_name)
