@@ -107,7 +107,7 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
 
         messages.extend(BedrockConverter.convert_mixed_messages_to_bedrock(message))
 
-        response = await self.agent.list_tools()
+        response = await self.agent.list_tools(tool_filter=params.tool_filter)
 
         tool_config: ToolConfigurationTypeDef = {
             "tools": [

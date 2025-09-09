@@ -6,6 +6,7 @@ from typing import (
     List,
     Optional,
     Protocol,
+    Set,
     Type,
     TypeVar,
     Union,
@@ -171,6 +172,12 @@ class RequestParams(CreateMessageRequestParams):
     strict: bool = False
     """
     Whether models that support strict mode should strictly enforce the response schema.
+    """
+
+    tool_filter: Set[str] | None = None
+    """
+    Set of tool names to allow in this request. If specified, only these tools will be exposed to the LLM.
+    This overrides the server-level allowed_tools configuration. Tool names should match exactly.
     """
 
 
@@ -538,9 +545,9 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
                     ],
                 )
 
-    async def list_tools(self, server_name: str | None = None) -> ListToolsResult:
+    async def list_tools(self, server_name: str | None = None, tool_filter: Set[str] | None = None) -> ListToolsResult:
         """Call the underlying agent's list_tools method for a given server."""
-        return await self.agent.list_tools(server_name=server_name)
+        return await self.agent.list_tools(server_name=server_name, tool_filter=tool_filter)
 
     async def list_resources(
         self, server_name: str | None = None

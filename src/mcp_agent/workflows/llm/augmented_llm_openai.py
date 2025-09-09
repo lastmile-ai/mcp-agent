@@ -189,7 +189,7 @@ class OpenAIAugmentedLLM(
                 )
             messages.extend((OpenAIConverter.convert_mixed_messages_to_openai(message)))
 
-            response: ListToolsResult = await self.agent.list_tools()
+            response: ListToolsResult = await self.agent.list_tools(tool_filter=params.tool_filter)
             available_tools: List[ChatCompletionToolParam] = [
                 ChatCompletionToolParam(
                     type="function",

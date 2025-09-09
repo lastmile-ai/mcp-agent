@@ -1,7 +1,7 @@
 import asyncio
 import json
 import uuid
-from typing import Callable, Dict, List, Optional, TypeVar, TYPE_CHECKING, Any
+from typing import Callable, Dict, List, Optional, Set, TypeVar, TYPE_CHECKING, Any
 
 from opentelemetry import trace
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field, PrivateAttr
@@ -458,7 +458,7 @@ class Agent(BaseModel):
 
             return result
 
-    async def list_tools(self, server_name: str | None = None) -> ListToolsResult:
+    async def list_tools(self, server_name: str | None = None, tool_filter: Set[str] | None = None) -> ListToolsResult:
         if not self.initialized:
             await self.initialize()
 
@@ -529,23 +529,34 @@ class Agent(BaseModel):
                                 )
 
             # Add a human_input_callback as a tool
-            if not self.human_input_callback:
-                logger.debug("Human input callback not set")
-                _annotate_span_for_tools_result(result)
-
-                return result
-
-            # Add a human_input_callback as a tool
-            human_input_tool: FastTool = FastTool.from_function(
-                self.request_human_input
-            )
-            result.tools.append(
-                Tool(
-                    name=HUMAN_INPUT_TOOL_NAME,
-                    description=human_input_tool.description,
-                    inputSchema=human_input_tool.parameters,
+            if self.human_input_callback:
+                human_input_tool: FastTool = FastTool.from_function(
+                    self.request_human_input
                 )
-            )
+                result.tools.append(
+                    Tool(
+                        name=HUMAN_INPUT_TOOL_NAME,
+                        description=human_input_tool.description,
+                        inputSchema=human_input_tool.parameters,
+                    )
+                )
+            else:
+                logger.debug("Human input callback not set")
+
+            # Apply tool filtering if specified
+            if tool_filter is not None:
+                original_count = len(result.tools)
+                result.tools = [tool for tool in result.tools if tool.name in tool_filter]
+                filtered_count = original_count - len(result.tools)
+                
+                if filtered_count > 0:
+                    logger.debug(
+                        f"Tool filter applied: {filtered_count} tools filtered out, {len(result.tools)} tools remaining"
+                    )
+                
+                span.set_attribute("tool_filter_applied", True)
+                span.set_attribute("tools_filtered_count", filtered_count)
+                span.set_attribute("tools_remaining_count", len(result.tools))
 
             _annotate_span_for_tools_result(result)
 
