@@ -9,7 +9,6 @@ progressively.
 
 from __future__ import annotations
 
-
 import typer
 from rich.console import Console
 
@@ -32,12 +31,14 @@ from mcp_agent.cli.commands import (
 )
 
 from mcp_agent.cli.cloud.commands import deploy_config, login, logout, whoami
+from mcp_agent.cli.utils.typer_utils import HelpfulTyperGroup
 
 app = typer.Typer(
     help="mcp-agent CLI",
     add_completion=False,
     no_args_is_help=False,
     context_settings={"help_option_names": ["-h", "--help"]},
+    cls=HelpfulTyperGroup,
 )
 
 
