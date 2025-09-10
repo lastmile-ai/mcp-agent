@@ -125,7 +125,7 @@ uv run client.py
 
 This will:
 
-1. Start the basic_agent_server.py as a subprocess
+1. Start the server, main.py as a subprocess
 2. Connect to the server
 3. Run the BasicAgentWorkflow
 4. Monitor and display the workflow status
@@ -137,10 +137,10 @@ You can also run the server and client separately:
 1. In one terminal, start the server:
 
 ```
-uv run basic_agent_server.py
+uv run main.py
 
 # Optionally, run with the example custom FastMCP settings
-uv run basic_agent_server.py --custom-fastmcp-settings
+uv run main.py --custom-fastmcp-settings
 ```
 
 2. In another terminal, run the client:
@@ -197,7 +197,7 @@ npx @modelcontextprotocol/inspector \
   uv \
   --directory /path/to/mcp-agent/examples/mcp_agent_server/asyncio \
   run \
-  basic_agent_server.py
+  main.py
 ```
 
 This will launch the MCP Inspector UI where you can:
@@ -221,7 +221,7 @@ To use this server with Claude Desktop:
     "--directory",
     "/path/to/mcp-agent/examples/mcp_agent_server/asyncio",
     "run",
-    "basic_agent_server.py"
+    "main.py"
   ]
 }
 ```
@@ -252,7 +252,7 @@ mcp:
 
 ## Code Structure
 
-- `basic_agent_server.py` - Defines the workflows and creates the MCP server
+- `main.py` - Defines the workflows and creates the MCP server
 - `client.py` - Example client that connects to the server and runs workflows
 - `mcp_agent.config.yaml` - Configuration for MCP servers and execution engine
 - `mcp_agent.secrets.yaml` - Contains API keys (not included in repository)
