@@ -335,12 +335,19 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
 
             # Optional shared-secret auth
             gw_token = os.environ.get("MCP_GATEWAY_TOKEN")
-            if gw_token and not secrets.compare_digest(
-                request.headers.get("X-MCP-Gateway-Token", ""), gw_token
-            ):
-                return JSONResponse(
-                    {"ok": False, "error": "unauthorized"}, status_code=401
+            if gw_token:
+                bearer = request.headers.get("Authorization", "")
+                bearer_token = (
+                    bearer.split(" ", 1)[1] if bearer.lower().startswith("bearer ") else ""
                 )
+                header_tok = request.headers.get("X-MCP-Gateway-Token", "")
+                if not (
+                    secrets.compare_digest(header_tok, gw_token)
+                    or secrets.compare_digest(bearer_token, gw_token)
+                ):
+                    return JSONResponse(
+                        {"ok": False, "error": "unauthorized"}, status_code=401
+                    )
 
             # Optional idempotency handling
             idempotency_key = params.get("idempotency_key")
@@ -395,6 +402,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
 
                 return JSONResponse({"ok": True})
             except Exception as e:
+                # After workflow cleanup, upstream sessions may be closed. Treat notify as best-effort.
+                if isinstance(method, str) and method.startswith("notifications/"):
+                    return JSONResponse({"ok": True, "dropped": True})
                 return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
         @mcp_server.custom_route(
@@ -499,12 +509,19 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
 
             # Optional shared-secret auth
             gw_token = os.environ.get("MCP_GATEWAY_TOKEN")
-            if gw_token and not secrets.compare_digest(
-                request.headers.get("X-MCP-Gateway-Token", ""), gw_token
-            ):
-                return JSONResponse(
-                    {"ok": False, "error": "unauthorized"}, status_code=401
+            if gw_token:
+                bearer = request.headers.get("Authorization", "")
+                bearer_token = (
+                    bearer.split(" ", 1)[1] if bearer.lower().startswith("bearer ") else ""
                 )
+                header_tok = request.headers.get("X-MCP-Gateway-Token", "")
+                if not (
+                    secrets.compare_digest(header_tok, gw_token)
+                    or secrets.compare_digest(bearer_token, gw_token)
+                ):
+                    return JSONResponse(
+                        {"ok": False, "error": "unauthorized"}, status_code=401
+                    )
 
             session = await _get_session(execution_id)
             if not session:
@@ -538,10 +555,17 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
 
             # Optional shared-secret auth
             gw_token = os.environ.get("MCP_GATEWAY_TOKEN")
-            if gw_token and not secrets.compare_digest(
-                request.headers.get("X-MCP-Gateway-Token", ""), gw_token
-            ):
-                return JSONResponse({"error": "unauthorized"}, status_code=401)
+            if gw_token:
+                bearer = request.headers.get("Authorization", "")
+                bearer_token = (
+                    bearer.split(" ", 1)[1] if bearer.lower().startswith("bearer ") else ""
+                )
+                header_tok = request.headers.get("X-MCP-Gateway-Token", "")
+                if not (
+                    secrets.compare_digest(header_tok, gw_token)
+                    or secrets.compare_digest(bearer_token, gw_token)
+                ):
+                    return JSONResponse({"error": "unauthorized"}, status_code=401)
 
             session = await _get_session(execution_id)
             if not session:
@@ -1382,6 +1406,11 @@ async def _workflow_run(
                 # Token may be provided by the gateway/proxy
                 if gateway_token is None:
                     gateway_token = h.get("X-MCP-Gateway-Token")
+                if gateway_token is None:
+                    # Support Authorization: Bearer <token>
+                    auth = h.get("Authorization")
+                    if auth and auth.lower().startswith("bearer "):
+                        gateway_token = auth.split(" ", 1)[1]
 
                 # Prefer explicit reconstruction from X-Forwarded-* if present
                 if gateway_url is None and (h.get("X-Forwarded-Host") or h.get("Host")):

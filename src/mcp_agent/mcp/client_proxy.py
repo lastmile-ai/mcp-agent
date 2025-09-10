@@ -36,25 +36,23 @@ def _resolve_gateway_url(
     return "http://127.0.0.1:8000"
 
 
-async def log_via_proxy(*args, **kwargs) -> bool:
-    """Backward-compatible wrapper.
-
-    Accepts either:
-      - legacy: (server_registry, execution_id, level, namespace, message, data=None, *, gateway_url=None, gateway_token=None)
-      - new: (execution_id, level, namespace, message, data=None, *, gateway_url=None, gateway_token=None)
-    """
-    if args and (args[0] is None or not isinstance(args[0], str)):
-        args = args[1:]
-    execution_id, level, namespace, message, *rest = args
-    data = rest[0] if rest else None
-    gateway_url = kwargs.get("gateway_url")
-    gateway_token = kwargs.get("gateway_token")
+async def log_via_proxy(
+    execution_id: str,
+    level: str,
+    namespace: str,
+    message: str,
+    data: Dict[str, Any] | None = None,
+    *,
+    gateway_url: Optional[str] = None,
+    gateway_token: Optional[str] = None,
+) -> bool:
     base = _resolve_gateway_url(gateway_url=gateway_url, context_gateway_url=None)
     url = f"{base}/internal/workflows/log"
     headers: Dict[str, str] = {}
     tok = gateway_token or os.environ.get("MCP_GATEWAY_TOKEN")
     if tok:
         headers["X-MCP-Gateway-Token"] = tok
+        headers["Authorization"] = f"Bearer {tok}"
     timeout = float(os.environ.get("MCP_GATEWAY_TIMEOUT", "10"))
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
@@ -80,20 +78,21 @@ async def log_via_proxy(*args, **kwargs) -> bool:
     return bool(resp.get("ok", True))
 
 
-async def ask_via_proxy(*args, **kwargs) -> Dict[str, Any]:
-    # legacy: (server_registry, execution_id, prompt, metadata=None, ...)
-    if args and (args[0] is None or not isinstance(args[0], str)):
-        args = args[1:]
-    execution_id, prompt, *rest = args
-    metadata = rest[0] if rest else None
-    gateway_url = kwargs.get("gateway_url")
-    gateway_token = kwargs.get("gateway_token")
+async def ask_via_proxy(
+    execution_id: str,
+    prompt: str,
+    metadata: Dict[str, Any] | None = None,
+    *,
+    gateway_url: Optional[str] = None,
+    gateway_token: Optional[str] = None,
+) -> Dict[str, Any]:
     base = _resolve_gateway_url(gateway_url=gateway_url, context_gateway_url=None)
     url = f"{base}/internal/human/prompts"
     headers: Dict[str, str] = {}
     tok = gateway_token or os.environ.get("MCP_GATEWAY_TOKEN")
     if tok:
         headers["X-MCP-Gateway-Token"] = tok
+        headers["Authorization"] = f"Bearer {tok}"
     timeout = float(os.environ.get("MCP_GATEWAY_TIMEOUT", "10"))
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
@@ -116,20 +115,21 @@ async def ask_via_proxy(*args, **kwargs) -> Dict[str, Any]:
         return {"error": "invalid_response"}
 
 
-async def notify_via_proxy(*args, **kwargs) -> bool:
-    # legacy: (server_registry, execution_id, method, params=None, ...)
-    if args and (args[0] is None or not isinstance(args[0], str)):
-        args = args[1:]
-    execution_id, method, *rest = args
-    params = rest[0] if rest else None
-    gateway_url = kwargs.get("gateway_url")
-    gateway_token = kwargs.get("gateway_token")
+async def notify_via_proxy(
+    execution_id: str,
+    method: str,
+    params: Dict[str, Any] | None = None,
+    *,
+    gateway_url: Optional[str] = None,
+    gateway_token: Optional[str] = None,
+) -> bool:
     base = _resolve_gateway_url(gateway_url=gateway_url, context_gateway_url=None)
     url = f"{base}/internal/session/by-run/{quote(execution_id, safe='')}/notify"
     headers: Dict[str, str] = {}
     tok = gateway_token or os.environ.get("MCP_GATEWAY_TOKEN")
     if tok:
         headers["X-MCP-Gateway-Token"] = tok
+        headers["Authorization"] = f"Bearer {tok}"
     timeout = float(os.environ.get("MCP_GATEWAY_TIMEOUT", "10"))
 
     try:
@@ -148,20 +148,21 @@ async def notify_via_proxy(*args, **kwargs) -> bool:
     return bool(resp.get("ok", True))
 
 
-async def request_via_proxy(*args, **kwargs) -> Dict[str, Any]:
-    # legacy: (server_registry, execution_id, method, params=None, ...)
-    if args and (args[0] is None or not isinstance(args[0], str)):
-        args = args[1:]
-    execution_id, method, *rest = args
-    params = rest[0] if rest else None
-    gateway_url = kwargs.get("gateway_url")
-    gateway_token = kwargs.get("gateway_token")
+async def request_via_proxy(
+    execution_id: str,
+    method: str,
+    params: Dict[str, Any] | None = None,
+    *,
+    gateway_url: Optional[str] = None,
+    gateway_token: Optional[str] = None,
+) -> Dict[str, Any]:
     base = _resolve_gateway_url(gateway_url=gateway_url, context_gateway_url=None)
     url = f"{base}/internal/session/by-run/{quote(execution_id, safe='')}/request"
     headers: Dict[str, str] = {}
     tok = gateway_token or os.environ.get("MCP_GATEWAY_TOKEN")
     if tok:
         headers["X-MCP-Gateway-Token"] = tok
+        headers["Authorization"] = f"Bearer {tok}"
     timeout = float(os.environ.get("MCP_GATEWAY_TIMEOUT", "20"))
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
