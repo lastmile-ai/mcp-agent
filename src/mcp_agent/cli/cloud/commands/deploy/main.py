@@ -271,7 +271,11 @@ def deploy_config(
                 print_info(f"App ID: {app_id}")
 
                 if app.appServerInfo:
-                    status = "ONLINE" if app.appServerInfo.status == 1 else "OFFLINE"
+                    status = (
+                        "ONLINE"
+                        if app.appServerInfo.status == "APP_SERVER_STATUS_ONLINE"
+                        else "OFFLINE"
+                    )
                     print_info(f"App URL: {app.appServerInfo.serverUrl}")
                     print_info(f"App Status: {status}")
                 return app_id
