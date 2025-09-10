@@ -870,10 +870,14 @@ def test_wrangler_deploy_requirements_txt_backup_and_restore(
     original_content = requirements_path.read_text()
 
     def check_requirements_during_subprocess(*args, **kwargs):
-        # During subprocess execution, requirements.txt should be modified
-        current_content = requirements_path.read_text()
+        deployed_path = requirements_path.with_suffix(".txt.mcpac.py")
+        current_content = deployed_path.read_text()
         assert "mcp-agent @ file://" not in current_content
         assert "mcp-agent\n" in current_content
+
+        assert not requirements_path.exists(), (
+            "Original requirements.txt should be hidden"
+        )
 
         return MagicMock(returncode=0)
 

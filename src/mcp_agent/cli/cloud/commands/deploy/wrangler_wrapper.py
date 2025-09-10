@@ -180,7 +180,7 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
         # Backup and modify requirements.txt if needed
         if requirements_needs_modification:
             # Create .bak file same as other files for consistent cleanup
-            requirements_backup = requirements_path.with_suffix(".txt.bak")
+            requirements_backup = Path(str(requirements_path) + ".bak")
             shutil.copy(requirements_path, requirements_backup)
             copied_py_files.append(requirements_backup)  # Track for cleanup
 
@@ -225,14 +225,14 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
                 temp_original = Path(str(file_path) + ".bak")
 
                 # Hide the original file by renaming it temporarily
-                # Skip renaming requirements.txt if already backed up but still track
-                # it for cleanup
-                if not (
-                    filename == "requirements.txt" and requirements_needs_modification
-                ):
+                # Skip requirements.txt if already backed up (and tracked)
+                if filename == "requirements.txt" and requirements_needs_modification:
+                    # Original .bak and updated .mcpac.py already tracked
+                    # Just remove raw requirements.txt to exclude it from the bundle
+                    file_path.unlink()
+                else:
                     file_path.rename(temp_original)
-
-                copied_py_files.append(temp_original)  # Track for cleanup
+                    copied_py_files.append(temp_original)  # Track for cleanup
 
         wrangler_toml_path.write_text(wrangler_toml_content)
 
