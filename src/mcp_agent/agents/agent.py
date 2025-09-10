@@ -363,6 +363,11 @@ class Agent(BaseModel):
                     f"Check the server names and connection persistence settings."
                 )
 
+            # Cleanup token counter background tasks
+            if self.context and hasattr(self.context, "token_counter") and self.context.token_counter:
+                if hasattr(self.context.token_counter, "cleanup"):
+                    await self.context.token_counter.cleanup()
+
             self.initialized = False
             span.add_event("agent_shutdown_complete")
             logger.debug(f"Agent {self.name} shutdown.")
