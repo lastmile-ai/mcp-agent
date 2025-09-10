@@ -16,7 +16,7 @@ from mcp_agent.workflows.factory import create_llm
 
 
 app = typer.Typer(help="Invoke an agent or workflow programmatically")
-console = Console()
+console = Console(color_system=None)
 
 
 @app.callback(invoke_without_command=True)
@@ -64,7 +64,7 @@ def invoke(
                 )
                 if message:
                     res = await llm.generate_str(message)
-                    console.print(res)
+                    console.print(res, end="\n\n\n")
                     return
                 if payload:
                     # If structured vars contain messages, prefer that key; else stringify
@@ -74,7 +74,7 @@ def invoke(
                         or json.dumps(payload)
                     )
                     res = await llm.generate_str(msg)
-                    console.print(res)
+                    console.print(res, end="\n\n\n")
                     return
                 typer.secho("No input provided", err=True, fg=typer.colors.YELLOW)
                 return
@@ -103,7 +103,7 @@ def invoke(
                 val = getattr(result, "value", result)
             except Exception:
                 val = result
-            console.print(val)
+            console.print(val, end="\n\n\n")
 
     from pathlib import Path
 
