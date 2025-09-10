@@ -9,9 +9,12 @@ progressively.
 
 from __future__ import annotations
 
+import logging
 
 import typer
 from rich.console import Console
+
+from mcp_agent.cli.utils.ux import print_error
 
 # Mount existing cloud CLI
 try:
@@ -21,23 +24,36 @@ except Exception:  # pragma: no cover - cloud is optional for non-cloud developm
 
 
 # Local command groups (scaffolded)
+from mcp_agent.cli.cloud.commands import deploy_config, login, logout, whoami
 from mcp_agent.cli.commands import (
-    init as init_cmd,
-    quickstart as quickstart_cmd,
-    config as config_cmd,
-    keys as keys_cmd,
-    models as models_cmd,
-    go as go_cmd,
     check as check_cmd,
 )
-
-from mcp_agent.cli.cloud.commands import deploy_config, login, logout, whoami
+from mcp_agent.cli.commands import (
+    config as config_cmd,
+)
+from mcp_agent.cli.commands import (
+    go as go_cmd,
+)
+from mcp_agent.cli.commands import (
+    init as init_cmd,
+)
+from mcp_agent.cli.commands import (
+    keys as keys_cmd,
+)
+from mcp_agent.cli.commands import (
+    models as models_cmd,
+)
+from mcp_agent.cli.commands import (
+    quickstart as quickstart_cmd,
+)
+from mcp_agent.cli.utils.typer_utils import HelpfulTyperGroup
 
 app = typer.Typer(
     help="mcp-agent CLI",
     add_completion=False,
     no_args_is_help=False,
     context_settings={"help_option_names": ["-h", "--help"]},
+    cls=HelpfulTyperGroup,
 )
 
 
@@ -139,8 +155,14 @@ app.command("logout", help="Clear credentials (alias for 'cloud logout')")(logou
 
 
 def run() -> None:
-    """Entry for __main__."""
-    app()
+    """Run the CLI application."""
+    try:
+        app()
+    except Exception as e:
+        # Unexpected errors - log full exception and show clean error to user
+        logging.exception("Unhandled exception in CLI")
+        print_error(f"An unexpected error occurred: {str(e)}")
+        raise typer.Exit(1) from e
 
 
 if __name__ == "__main__":

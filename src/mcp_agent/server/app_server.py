@@ -338,7 +338,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             if gw_token:
                 bearer = request.headers.get("Authorization", "")
                 bearer_token = (
-                    bearer.split(" ", 1)[1] if bearer.lower().startswith("bearer ") else ""
+                    bearer.split(" ", 1)[1]
+                    if bearer.lower().startswith("bearer ")
+                    else ""
                 )
                 header_tok = request.headers.get("X-MCP-Gateway-Token", "")
                 if not (
@@ -512,7 +514,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             if gw_token:
                 bearer = request.headers.get("Authorization", "")
                 bearer_token = (
-                    bearer.split(" ", 1)[1] if bearer.lower().startswith("bearer ") else ""
+                    bearer.split(" ", 1)[1]
+                    if bearer.lower().startswith("bearer ")
+                    else ""
                 )
                 header_tok = request.headers.get("X-MCP-Gateway-Token", "")
                 if not (
@@ -558,7 +562,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             if gw_token:
                 bearer = request.headers.get("Authorization", "")
                 bearer_token = (
-                    bearer.split(" ", 1)[1] if bearer.lower().startswith("bearer ") else ""
+                    bearer.split(" ", 1)[1]
+                    if bearer.lower().startswith("bearer ")
+                    else ""
                 )
                 header_tok = request.headers.get("X-MCP-Gateway-Token", "")
                 if not (
