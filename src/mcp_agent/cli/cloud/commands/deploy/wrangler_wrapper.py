@@ -19,6 +19,27 @@ from .constants import (
 from .settings import deployment_settings
 from .validation import validate_project
 
+# Pattern to match relative mcp-agent imports like "mcp-agent @ file://../../"
+RELATIVE_MCP_AGENT_PATTERN = re.compile(
+    r"^mcp-agent\s*@\s*file://[^\n]*$", re.MULTILINE
+)
+
+
+def _needs_requirements_modification(requirements_path: Path) -> bool:
+    """Check if requirements.txt contains relative mcp-agent imports that need modification."""
+    if not requirements_path.exists():
+        return False
+
+    content = requirements_path.read_text()
+    return bool(RELATIVE_MCP_AGENT_PATTERN.search(content))
+
+
+def _modify_requirements_txt(requirements_path: Path) -> None:
+    """Modify requirements.txt in place to replace relative mcp-agent imports with absolute ones."""
+    content = requirements_path.read_text()
+    modified_content = RELATIVE_MCP_AGENT_PATTERN.sub("mcp-agent", content)
+    requirements_path.write_text(modified_content)
+
 
 def _handle_wrangler_error(e: subprocess.CalledProcessError) -> None:
     """Parse and present Wrangler errors in a clean format."""
@@ -131,6 +152,12 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
     original_venv = project_dir / ".venv"
     temp_venv = None
 
+    # Handle requirements.txt modification if needed
+    requirements_path = project_dir / "requirements.txt"
+    requirements_needs_modification = _needs_requirements_modification(
+        requirements_path
+    )
+
     # Create temporary wrangler.toml
     wrangler_toml_content = textwrap.dedent(
         f"""
@@ -149,6 +176,16 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
             temp_venv_path = Path(temp_dir.name) / ".venv"
             original_venv.rename(temp_venv_path)
             temp_venv = temp_dir  # keep ref to cleanup later
+
+        # Backup and modify requirements.txt if needed
+        if requirements_needs_modification:
+            # Create .bak file same as other files for consistent cleanup
+            requirements_backup = requirements_path.with_suffix(".txt.bak")
+            shutil.copy(requirements_path, requirements_backup)
+            copied_py_files.append(requirements_backup)  # Track for cleanup
+
+            # Modify requirements.txt in place
+            _modify_requirements_txt(requirements_path)
 
         # Copy all files from project_dir and subdirs with a .mcpac.py extension for non-Python files
         for root, dirs, files in os.walk(project_dir):
@@ -185,9 +222,16 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
                 shutil.copy(file_path, py_path)
                 copied_py_files.append(py_path)
 
-                # Hide the original file by renaming it temporarily
                 temp_original = Path(str(file_path) + ".bak")
-                file_path.rename(temp_original)
+
+                # Hide the original file by renaming it temporarily
+                # Skip renaming requirements.txt if already backed up but still track
+                # it for cleanup
+                if not (
+                    filename == "requirements.txt" and requirements_needs_modification
+                ):
+                    file_path.rename(temp_original)
+
                 copied_py_files.append(temp_original)  # Track for cleanup
 
         wrangler_toml_path.write_text(wrangler_toml_content)
@@ -230,6 +274,7 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
             temp_venv.cleanup()
 
         # Clean up all copied .py files and restore renamed originals
+        # Note: handles requirements.txt restoration implicitly
         for py_file in copied_py_files:
             if py_file.exists():
                 if py_file.suffix == ".bak":
