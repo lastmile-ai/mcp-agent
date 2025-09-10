@@ -2,10 +2,10 @@
 
 import logging
 import os
+from importlib.metadata import version as metadata_version
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Optional
-from importlib.metadata import version as metadata_version
 
 import typer
 
@@ -16,27 +16,28 @@ from mcp_agent.cli.cloud.commands import (
     logout,
     whoami,
 )
-from mcp_agent.cli.cloud.commands.logger import tail_logs
 from mcp_agent.cli.cloud.commands.app import (
     delete_app,
     get_app_status,
     list_app_workflows,
 )
 from mcp_agent.cli.cloud.commands.apps import list_apps
+from mcp_agent.cli.cloud.commands.logger import tail_logs
+from mcp_agent.cli.cloud.commands.servers import (
+    delete_server,
+    describe_server,
+    list_servers,
+)
 from mcp_agent.cli.cloud.commands.workflows import (
+    cancel_workflow,
     describe_workflow,
+    list_workflow_runs,
+    list_workflows,
     resume_workflow,
     suspend_workflow,
-    cancel_workflow,
-    list_workflows,
-    list_workflow_runs,
-)
-from mcp_agent.cli.cloud.commands.servers import (
-    list_servers,
-    describe_server,
-    delete_server,
 )
 from mcp_agent.cli.utils.typer_utils import HelpfulTyperGroup
+from mcp_agent.cli.utils.ux import print_error
 
 # Setup file logging
 LOG_DIR = Path.home() / ".mcp-agent" / "logs"
@@ -56,8 +57,6 @@ file_handler.setFormatter(
 
 # Configure logging - only sending to file, not to console
 logging.basicConfig(level=logging.INFO, handlers=[file_handler])
-
-
 
 
 # Root typer for `mcp-agent` CLI commands
