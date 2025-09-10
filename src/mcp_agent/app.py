@@ -377,11 +377,21 @@ class MCPApp:
             await self._context.tracing_config.flush()
 
         try:
-            # Gracefully shutdown logging to stop background event bus/listener tasks
-            await cleanup_context(shutdown_logger=True)
+            # Keep original semantics for tracing isolation tests: do not fully shutdown global logging
+            await cleanup_context(shutdown_logger=False)
         except asyncio.CancelledError:
             # Avoid relying on logger during shutdown; use stderr for reliability
             print("[cleanup] Cleanup cancelled during shutdown", file=sys.stderr)
+
+        # Explicitly stop the AsyncEventBus to terminate background listener tasks
+        try:
+            from mcp_agent.logging.transport import AsyncEventBus
+
+            bus = AsyncEventBus.get()
+            await bus.stop()
+        except Exception:
+            # If logging infrastructure is already torn down or unavailable, ignore
+            pass
 
         # Shutdown the tracer provider to stop background threads
         # This prevents dangling span exports after cleanup
@@ -396,21 +406,40 @@ class MCPApp:
         """Forcefully cancel all remaining async tasks - no waiting, no mercy"""
         # Get all running tasks except the current one
         current_task = asyncio.current_task()
-        all_tasks = [task for task in asyncio.all_tasks() if task != current_task and not task.done()]
-        
-        if not all_tasks:
+        all_tasks = [
+            task for task in asyncio.all_tasks() if task != current_task and not task.done()
+        ]
+
+        # Only target tasks that originate from this library (avoid cancelling user/test tasks)
+        def _is_mcp_agent_task(t: asyncio.Task) -> bool:
+            try:
+                c = getattr(t, "_coro", None)
+                frame = None
+                if c is not None:
+                    frame = getattr(c, "gi_frame", None) or getattr(c, "cr_frame", None)
+                if frame and getattr(frame, "f_code", None):
+                    filename = frame.f_code.co_filename or ""
+                    # Consider tasks under our package path only
+                    return "/mcp_agent/" in filename.replace("\\", "/")
+            except Exception:
+                pass
+            return False
+
+        mcp_tasks = [t for t in all_tasks if _is_mcp_agent_task(t)]
+
+        if not mcp_tasks:
             return
 
         # Force cancel any remaining stubborn tasks as final safety net
         print("[cleanup] Performing forceful cleanup of remaining tasks...", file=sys.stderr)
 
         print(
-            f"[cleanup] FORCE KILLING {len(all_tasks)} remaining tasks - no grace period",
+            f"[cleanup] FORCE KILLING {len(mcp_tasks)} remaining tasks - no grace period",
             file=sys.stderr,
         )
         
         # Debug: Log details about each pending task
-        for i, task in enumerate(all_tasks):
+        for i, task in enumerate(mcp_tasks):
             task_name = getattr(task, '_name', 'unnamed')
             task_coro = getattr(task, '_coro', None)
             coro_name = getattr(task_coro, '__name__', 'unknown') if task_coro else 'unknown'
@@ -435,7 +464,7 @@ class MCPApp:
             )
         
         # Hard cancel all tasks without waiting
-        for task in all_tasks:
+        for task in mcp_tasks:
             if not task.done():
                 task.cancel()
         
