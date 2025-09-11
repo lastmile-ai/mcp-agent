@@ -13,8 +13,8 @@ from mcp_agent.config import MCPServerSettings, Settings, LoggerSettings
 from mcp_agent.mcp.gen_client import gen_client
 from ...utils import (
     setup_authenticated_client,
-    resolve_server,
     handle_server_api_errors,
+    resolve_server,
 )
 
 
