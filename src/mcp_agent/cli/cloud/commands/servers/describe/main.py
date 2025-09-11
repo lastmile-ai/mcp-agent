@@ -10,10 +10,10 @@ from mcp_agent.cli.mcp_app.api_client import MCPApp, MCPAppConfiguration
 from ...utils import (
     setup_authenticated_client,
     validate_output_format,
-    resolve_server,
     handle_server_api_errors,
     clean_server_status,
 )
+from mcp_agent.cli.core.utils import run_async
 from mcp_agent.cli.utils.ux import console
 
 
@@ -29,7 +29,7 @@ def describe_server(
     """Describe a specific MCP Server."""
     validate_output_format(format)
     client = setup_authenticated_client()
-    server = resolve_server(client, id_or_url)
+    server = run_async(client.get_app_or_config(id_or_url))
     print_server_description(server, format)
 
 
