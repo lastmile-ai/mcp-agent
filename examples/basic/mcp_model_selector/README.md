@@ -64,7 +64,7 @@ Run your MCP Agent app:
 uv run interactive.py
 ```
 
-## `4` [Beta] Deploy to the cloud
+## `3` [Beta] Deploy to the cloud
 
 ### `a.` Log in to [MCP Agent Cloud](https://docs.mcp-agent.com/cloud/overview)
 
