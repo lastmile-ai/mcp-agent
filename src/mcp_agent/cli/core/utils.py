@@ -1,15 +1,11 @@
 import asyncio
 import importlib.util
-import httpx
 import sys
 
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict
 
 from mcp_agent.app import MCPApp
-from mcp_agent.cli.exceptions import CLIError
-from mcp_agent.cli.auth import UserCredentials
-from mcp_agent.cli.core.constants import DEFAULT_API_BASE_URL
 from mcp_agent.config import MCPServerSettings, MCPSettings
 
 
