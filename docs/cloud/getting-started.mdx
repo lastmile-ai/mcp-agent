@@ -104,13 +104,13 @@ Before you begin, make sure you have:
     
     ```bash
     # Get server details
-    mcp-agent cloud servers describe srv_abc123xyz
+    mcp-agent cloud servers describe app_abc123xyz
     
     # View logs - this is essential for debugging!
-    mcp-agent cloud logger tail srv_abc123xyz --follow
+    mcp-agent cloud logger tail app_abc123xyz --follow
     
     # Filter for errors
-    mcp-agent cloud logger tail srv_abc123xyz --grep "ERROR" --since 5m
+    mcp-agent cloud logger tail app_abc123xyz --grep "ERROR" --since 5m
     ```
     
     <Tip>
@@ -202,7 +202,11 @@ openai:
 # Deploy the agent
 mcp-agent deploy web-summarizer
 
-# Or with description
+# Or deploy from a specific app directory
+mcp-agent deploy web-summarizer -c <path-to-app-directory>
+
+
+# or deploy with a custom app description
 mcp-agent deploy web-summarizer --app-description "Web content summarizer agent"
 ```
 
@@ -387,43 +391,43 @@ MCP Inspector is especially useful for:
 mcp-agent cloud servers list
 
 # Get details
-mcp-agent cloud servers describe srv_abc123xyz
+mcp-agent cloud servers describe app_abc123xyz
 
 # View statistics (if available)
-mcp-agent cloud servers stats srv_abc123xyz
+mcp-agent cloud servers stats app_abc123xyz
 ```
 
 ### Monitor Workflows
 
 ```bash
 # List workflow runs
-mcp-agent cloud servers workflows srv_abc123xyz
+mcp-agent cloud servers workflows app_abc123xyz
 
 # Get workflow status
-mcp-agent cloud workflows describe srv_abc123xyz run_123
+mcp-agent cloud workflows describe app_abc123xyz run_123
 
 # Suspend a workflow
-mcp-agent cloud workflows suspend srv_abc123xyz run_123
+mcp-agent cloud workflows suspend app_abc123xyz run_123
 
 # Resume with data
-mcp-agent cloud workflows resume srv_abc123xyz run_123 \
+mcp-agent cloud workflows resume app_abc123xyz run_123 \
   --payload '{"continue": true}'
 
 # Cancel a workflow
-mcp-agent cloud workflows cancel srv_abc123xyz run_123
+mcp-agent cloud workflows cancel app_abc123xyz run_123
 ```
 
 ### View Logs
 
 ```bash
 # Tail logs
-mcp-agent cloud logger tail srv_abc123xyz
+mcp-agent cloud logger tail app_abc123xyz
 
 # Follow logs
-mcp-agent cloud logger tail srv_abc123xyz --follow
+mcp-agent cloud logger tail app_abc123xyz --follow
 
 # Filter logs
-mcp-agent cloud logger tail srv_abc123xyz \
+mcp-agent cloud logger tail app_abc123xyz \
   --since 1h \
   --grep "ERROR" \
   --limit 100
@@ -442,10 +446,10 @@ mcp-agent deploy my-agent
 
 ```bash
 # Delete a deployment
-mcp-agent cloud servers delete srv_abc123xyz
+mcp-agent cloud servers delete app_abc123xyz
 
 # Force delete (skip confirmation)
-mcp-agent cloud servers delete srv_abc123xyz --force
+mcp-agent cloud servers delete app_abc123xyz --force
 ```
 
 ## Client Integration
@@ -515,7 +519,7 @@ After configuration, users can connect with their MCP client using the server UR
   <Accordion title="Deployment Fails">
     Check build logs:
     ```bash
-    mcp-agent cloud logger tail srv_abc123xyz --since 10m
+    mcp-agent cloud logger tail app_abc123xyz --since 10m
     ```
     
     Common issues:
@@ -527,7 +531,7 @@ After configuration, users can connect with their MCP client using the server UR
   <Accordion title="Workflow Not Starting">
     Verify worker is running:
     ```bash
-    mcp-agent cloud servers describe srv_abc123xyz
+    mcp-agent cloud servers describe app_abc123xyz
     ```
     
     Check for "Workers: Running" in the output.
