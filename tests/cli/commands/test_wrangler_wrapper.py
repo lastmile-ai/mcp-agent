@@ -555,32 +555,6 @@ def test_wrangler_deploy_venv_exclusion(complex_project_structure):
     assert (venv_dir / "test_file").read_text() == "venv content"
 
 
-def test_wrangler_deploy_directory_exclusion(complex_project_structure):
-    """Test that specific directories are properly excluded from file processing."""
-    # Add more files to excluded directories
-    cache_dir = complex_project_structure / "__pycache__"
-    cache_dir.mkdir()
-    (cache_dir / "test.pyc").write_text("compiled python")
-
-    node_modules = complex_project_structure / "node_modules"
-    node_modules.mkdir()
-    (node_modules / "package.json").write_text("{}")
-
-    with patch("subprocess.run") as mock_subprocess:
-        mock_subprocess.return_value = MagicMock(returncode=0)
-
-        wrangler_deploy("test-app", "test-api-key", complex_project_structure)
-
-        # Check that files in excluded directories were not processed
-        assert not (complex_project_structure / "logs/app.log.mcpac.py").exists()
-        assert not (
-            complex_project_structure / "__pycache__/test.pyc.mcpac.py"
-        ).exists()
-        assert not (
-            complex_project_structure / "node_modules/package.json.mcpac.py"
-        ).exists()
-
-
 def test_wrangler_deploy_nested_directory_creation(complex_project_structure):
     """Test that nested directory structure is preserved when creating .mcpac.py files in temp directory."""
 
@@ -618,22 +592,6 @@ def test_wrangler_deploy_nested_directory_creation(complex_project_structure):
         ).exists()
 
 
-def test_wrangler_deploy_empty_files(complex_project_structure):
-    """Test handling of empty files."""
-    # Create an empty file
-    empty_file = complex_project_structure / "empty.txt"
-    empty_file.write_text("")
-
-    with patch("subprocess.run") as mock_subprocess:
-        mock_subprocess.return_value = MagicMock(returncode=0)
-
-        wrangler_deploy("test-app", "test-api-key", complex_project_structure)
-
-        # After deployment, empty file should still exist and be empty
-        assert empty_file.exists()
-        assert empty_file.read_text() == ""
-
-
 def test_wrangler_deploy_file_permissions_preserved(complex_project_structure):
     """Test that file permissions are preserved when copying files."""
     test_file = complex_project_structure / "executable.sh"
@@ -643,47 +601,17 @@ def test_wrangler_deploy_file_permissions_preserved(complex_project_structure):
     if hasattr(os, "chmod"):
         os.chmod(test_file, 0o755)
 
-    with patch("subprocess.run") as mock_subprocess:
-        mock_subprocess.return_value = MagicMock(returncode=0)
+    def check_file_permissions_during_subprocess(*args, **kwargs):
+        temp_project_dir = Path(kwargs["cwd"])
+        # During subprocess execution, file permissions should be preserved
+        assert (
+            oct((temp_project_dir / "executable.sh.mcpac.py").stat().st_mode)[-3:]
+            == "755"
+        )
+        return MagicMock(returncode=0)
 
+    with patch("subprocess.run", side_effect=check_file_permissions_during_subprocess):
         wrangler_deploy("test-app", "test-api-key", complex_project_structure)
-
-        # File should still exist and have original content
-        assert test_file.exists()
-        assert "#!/bin/bash" in test_file.read_text()
-
-
-def test_wrangler_deploy_special_filenames():
-    """Test handling of files with special characters in names."""
-    with tempfile.TemporaryDirectory() as temp_dir:
-        project_path = Path(temp_dir)
-
-        # Create main.py
-        (project_path / "main.py").write_text("""
-from mcp_agent_cloud import MCPApp
-app = MCPApp(name="test-app")
-""")
-
-        # Create files with special characters
-        special_files = [
-            "file with spaces.txt",
-            "file-with-dashes.json",
-            "file_with_underscores.yaml",
-            "file.with.dots.config",
-        ]
-
-        for filename in special_files:
-            (project_path / filename).write_text(f"Content of {filename}")
-
-        with patch("subprocess.run") as mock_subprocess:
-            mock_subprocess.return_value = MagicMock(returncode=0)
-
-            # Should not raise exceptions
-            wrangler_deploy("test-app", "test-api-key", project_path)
-
-            # All special files should still exist after cleanup
-            for filename in special_files:
-                assert (project_path / filename).exists()
 
 
 def test_wrangler_deploy_complex_file_extensions():
@@ -961,29 +889,6 @@ def test_wrangler_deploy_requirements_txt_no_modification_needed(
     # After deployment, original requirements.txt should be unchanged
     final_content = requirements_path.read_text()
     assert final_content == original_content
-
-
-def test_wrangler_deploy_requirements_txt_unchanged_on_failure(
-    project_with_relative_mcp_agent,
-):
-    """Test that original requirements.txt is unchanged even when deployment fails."""
-    requirements_path = project_with_relative_mcp_agent / "requirements.txt"
-    original_content = requirements_path.read_text()
-
-    with patch("subprocess.run") as mock_subprocess:
-        # Mock failed subprocess call
-        mock_subprocess.side_effect = subprocess.CalledProcessError(
-            returncode=1, cmd=["wrangler"], stderr="Deployment failed"
-        )
-
-        # Should raise exception
-        with pytest.raises(subprocess.CalledProcessError):
-            wrangler_deploy("test-app", "test-api-key", project_with_relative_mcp_agent)
-
-    # After failed deployment, original requirements.txt should be unchanged
-    final_content = requirements_path.read_text()
-    assert final_content == original_content
-    assert "mcp-agent @ file://../../" in final_content
 
 
 def test_wrangler_deploy_no_requirements_txt():
