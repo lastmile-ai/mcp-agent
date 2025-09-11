@@ -28,7 +28,7 @@ from mcp_agent.tracing.token_counter import TokenNode
 
 # Note: This is purely optional:
 # if not provided, a default FastMCP server will be created by MCPApp using create_mcp_server_for_app()
-mcp = FastMCP(name="basic_agent_server", description="My basic agent server example.")
+mcp = FastMCP(name="basic_agent_server")
 
 # Define the MCPApp instance. The server created for this app will advertise the
 # MCP logging capability and forward structured logs upstream to connected clients.
@@ -249,25 +249,21 @@ async def grade_story_async(story: str, app_ctx: Optional[AppContext] = None) ->
 
     return result
 
-
 # Add custom tool to get token usage for a workflow
 @mcp.tool(
     name="get_token_usage",
     structured_output=True,
     description="""
 Get detailed token usage information for a specific workflow run.
-
 This provides a comprehensive breakdown of token usage including:
 - Total tokens used across all LLM calls within the workflow
 - Breakdown by model provider and specific models
 - Hierarchical usage tree showing usage at each level (workflow -> agent -> llm)
 - Total cost estimate based on model pricing
-
 Args:
     workflow_id: Optional workflow ID (if multiple workflows have the same name)
     run_id: Optional ID of the workflow run to get token usage for
     workflow_name: Optional name of the workflow (used as fallback)
-
 Returns:
     Detailed token usage information for the specific workflow run
 """,
@@ -365,7 +361,6 @@ async def get_workflow_token_usage(
         }
 
     return result
-
 
 async def main():
     parser = argparse.ArgumentParser()
