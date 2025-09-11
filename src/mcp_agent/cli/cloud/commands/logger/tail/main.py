@@ -17,9 +17,8 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.auth import load_credentials, UserCredentials
-from mcp_agent.cli.cloud.commands.utils import setup_authenticated_client
+from mcp_agent.cli.cloud.commands.utils import setup_authenticated_client, resolve_server
 from mcp_agent.cli.core.api_client import UnauthenticatedError
-from mcp_agent.cli.core.utils import run_async
 from mcp_agent.cli.utils.ux import print_error
 from mcp_agent.cli.mcp_app.api_client import MCPApp, MCPAppConfiguration
 
@@ -135,7 +134,7 @@ def tail_logs(
         raise typer.Exit(6)
 
     client = setup_authenticated_client()
-    server = run_async(client.get_app_or_config(app_identifier))
+    server = resolve_server(client, app_identifier)
     
     try:
         if follow:

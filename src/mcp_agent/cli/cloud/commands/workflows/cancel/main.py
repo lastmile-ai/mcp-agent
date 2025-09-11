@@ -13,6 +13,7 @@ from mcp_agent.mcp.gen_client import gen_client
 from ...utils import (
     setup_authenticated_client,
     handle_server_api_errors,
+    resolve_server,
 )
 
 
@@ -24,7 +25,7 @@ async def _cancel_workflow_async(
         server_url = server_id_or_url
     else:
         client = setup_authenticated_client()
-        server = run_async(client.get_app_or_config(server_id_or_url))
+        server = resolve_server(client, server_id_or_url)
 
         if hasattr(server, "appServerInfo") and server.appServerInfo:
             server_url = server.appServerInfo.serverUrl

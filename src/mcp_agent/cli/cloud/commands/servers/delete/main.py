@@ -6,6 +6,7 @@ from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.mcp_app.api_client import MCPApp
 from ...utils import (
     setup_authenticated_client,
+    resolve_server,
     handle_server_api_errors,
     get_server_name,
     get_server_id,
@@ -24,7 +25,7 @@ def delete_server(
 ) -> None:
     """Delete a specific MCP Server."""
     client = setup_authenticated_client()
-    server = run_async(client.get_app_or_config(id_or_url))
+    server = resolve_server(client, id_or_url)
 
     # Determine server type and delete function
     if isinstance(server, MCPApp):
