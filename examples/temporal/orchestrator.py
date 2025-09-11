@@ -25,13 +25,12 @@ and will have a workflow created behind the scenes.
 
 
 @app.async_tool(name="OrchestratorWorkflow")
-async def run_orchestrator(input: str, app_ctx: Optional[AppContext]) -> str:
+async def run_orchestrator(input: str, app_ctx: Optional[AppContext] = None) -> str:
     """
     Run the workflow, processing the input data.
 
     Args:
         input: Task description or instruction text.
-        app_ctx: Optional application context for the workflow.
 
     Returns:
         A WorkflowResult containing the processed data
