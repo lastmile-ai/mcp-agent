@@ -46,11 +46,12 @@ settings = Settings(
 # or loaded from mcp_agent.config.yaml/mcp_agent.secrets.yaml
 app = MCPApp(name="mcp_basic_agent")  # settings=settings)
 
-
-async def example_usage():
+@app.tool()
+async def example_usage()->str:
     async with app.run() as agent_app:
         logger = agent_app.logger
         context = agent_app.context
+        result = ""
 
         logger.info("Current config:", data=context.config.model_dump())
 
@@ -68,11 +69,11 @@ async def example_usage():
 
         async with finder_agent:
             logger.info("finder: Connected to server, calling list_tools...")
-            result = await finder_agent.list_tools()
-            logger.info("Tools available:", data=result.model_dump())
+            tools_list = await finder_agent.list_tools()
+            logger.info("Tools available:", data=tools_list.model_dump())
 
             llm = await finder_agent.attach_llm(OpenAIAugmentedLLM)
-            result = await llm.generate_str(
+            result += await llm.generate_str(
                 message="Print the contents of mcp_agent.config.yaml verbatim",
             )
             logger.info(f"mcp_agent.config.yaml contents: {result}")
@@ -80,13 +81,14 @@ async def example_usage():
             # Let's switch the same agent to a different LLM
             llm = await finder_agent.attach_llm(AnthropicAugmentedLLM)
 
-            result = await llm.generate_str(
+            result += await llm.generate_str(
                 message="Print the first 2 paragraphs of https://modelcontextprotocol.io/introduction",
             )
             logger.info(f"First 2 paragraphs of Model Context Protocol docs: {result}")
+            result += "\n\n"
 
             # Multi-turn conversations
-            result = await llm.generate_str(
+            result += await llm.generate_str(
                 message="Summarize those paragraphs in a 128 character tweet",
                 # You can configure advanced options by setting the request_params object
                 request_params=RequestParams(
@@ -101,10 +103,12 @@ async def example_usage():
             logger.info(f"Paragraph as a tweet: {result}")
 
         # Display final comprehensive token usage summary (use app convenience)
-        await display_token_summary(agent_app, finder_agent)
+        await display_token_summary(agent_app)
 
+    return result
 
-async def display_token_summary(app_ctx: MCPApp, agent: Agent | None = None):
+@app.tool()
+async def display_token_summary(app_ctx: MCPApp):
     """Display comprehensive token usage summary using app/agent convenience APIs."""
     summary: TokenSummary = await app_ctx.get_token_summary()
 
@@ -129,18 +133,7 @@ async def display_token_summary(app_ctx: MCPApp, agent: Agent | None = None):
             )
             print(f"    Cost: ${data.cost:.4f}")
 
-    # Optional: show a specific agent's aggregated usage
-    if agent is not None:
-        agent_usage = await agent.get_token_usage()
-        if agent_usage:
-            print("\nAgent Usage:")
-            print(f"  Agent: {agent.name}")
-            print(f"  Total tokens: {agent_usage.total_tokens:,}")
-            print(f"  Input tokens: {agent_usage.input_tokens:,}")
-            print(f"  Output tokens: {agent_usage.output_tokens:,}")
-
     print("\n" + "=" * 50)
-
 
 if __name__ == "__main__":
     start = time.time()
