@@ -1399,7 +1399,7 @@ async def _workflow_run(
         try:
             # Prefer explicit kwargs, else infer from request context/headers
             gateway_url = kwargs.get("gateway_url")
-            gateway_token = kwargs.get("gateway_token")
+            gateway_token = kwargs.get("gateway_token") or app.config.temporal.api_key
 
             req = getattr(ctx.request_context, "request", None)
             if req is not None:
