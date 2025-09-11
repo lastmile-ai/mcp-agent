@@ -118,17 +118,20 @@ async def print_mcp_server_workflow_details(server_url: str, api_key: str) -> No
             for key, description in choices.items():
                 console.print(f"[cyan]{key}[/cyan]: {description}")
 
-            choice = Prompt.ask(
-                "\nWhat would you like to display?",
-                choices=list(choices.keys()),
-                default="0",
-                show_choices=False,
-            )
+            try:
+                choice = Prompt.ask(
+                    "\nWhat would you like to display?",
+                    choices=list(choices.keys()),
+                    default="0",
+                    show_choices=False,
+                )
 
-            if choice in ["0", "1"]:
-                await print_workflows_list(mcp_client_session)
-            if choice in ["0", "2"]:
-                await print_runs_list(mcp_client_session)
+                if choice in ["0", "1"]:
+                    await print_workflows_list(mcp_client_session)
+                if choice in ["0", "2"]:
+                    await print_runs_list(mcp_client_session)
+            except (EOFError, KeyboardInterrupt):
+                return
 
     except Exception as e:
         raise CLIError(
