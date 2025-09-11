@@ -5,11 +5,9 @@ from datetime import datetime
 
 import typer
 from rich.console import Group
-from rich.padding import Padding
 from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.syntax import Syntax
-from rich.table import Table
 from rich.text import Text
 
 from mcp_agent.cli.auth import load_api_key_credentials
@@ -245,16 +243,12 @@ async def print_runs_list(session: MCPClientSession) -> None:
             reverse=True,
         )
 
-        table = Table(title="Workflow Runs", show_lines=False, border_style="blue")
-        table.add_column("Name", style="white", overflow="fold")
-        table.add_column("Workflow ID", style="bold cyan", no_wrap=True)
-        table.add_column("Run ID", style="blue", overflow="fold")
-        table.add_column("Status", overflow="fold")
-        table.add_column("Start Time", style="magenta", overflow="fold")
-        table.add_column("End Time", style="yellow", overflow="fold")
+        console.print(f"\n[bold blue] Workflow Runs ({len(sorted_runs)})[/bold blue]")
 
-        for idx, run in enumerate(sorted_runs):
-            is_last_row = idx == len(sorted_runs) - 1
+        for i, run in enumerate(sorted_runs):
+            if i > 0:
+                console.print()
+
             start = getattr(run.temporal, "start_time", None)
             start_str = (
                 datetime.fromtimestamp(start).strftime("%Y-%m-%d %H:%M:%S")
@@ -271,22 +265,31 @@ async def print_runs_list(session: MCPClientSession) -> None:
 
             status = run.status.lower()
             if status == "completed":
-                status_text = f"[green]{status}[/green]"
-            elif status == "error":
-                status_text = f"[red]{status}[/red]"
+                status_text = f"[green]🟢 {status}[/green]"
+            elif status == "error" or status == "failed":
+                status_text = f"[red]🔴 {status}[/red]"
+            elif status == "running":
+                status_text = f"[yellow]🔄 {status}[/yellow]"
             else:
-                status_text = status
+                status_text = f"❓ {status}"
 
-            table.add_row(
-                run.name or "-",
-                run.temporal.workflow_id if run.temporal else "N/A",
-                Padding(run.id, (0, 0, 0 if is_last_row else 1, 0)),
-                status_text,
-                start_str,
-                end_str,
+            console.print(
+                f"[bold cyan]{run.name or 'Unnamed Workflow'}[/bold cyan] {status_text}"
             )
+            console.print(f"  Run ID: {run.id}")
 
-        console.print(table)
+            if run.temporal and run.temporal.workflow_id:
+                console.print(f"  Workflow ID: {run.temporal.workflow_id}")
+
+            console.print(f"  Started: {start_str}")
+            if end_str != "N/A":
+                console.print(f"  Completed: {end_str}")
+
+            # Show execution time if available
+            if hasattr(run.temporal, "execution_time") and run.temporal.execution_time:
+                duration = end - start if (start and end) else None
+                if duration:
+                    console.print(f"  Duration: {duration:.2f}s")
 
     except Exception as e:
         print_error(f"Error fetching workflow runs: {str(e)}")

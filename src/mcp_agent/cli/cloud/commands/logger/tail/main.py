@@ -17,7 +17,10 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.auth import load_credentials, UserCredentials
-from mcp_agent.cli.cloud.commands.utils import setup_authenticated_client, resolve_server
+from mcp_agent.cli.cloud.commands.utils import (
+    setup_authenticated_client,
+    resolve_server,
+)
 from mcp_agent.cli.core.api_client import UnauthenticatedError
 from mcp_agent.cli.utils.ux import print_error
 from mcp_agent.cli.mcp_app.api_client import MCPApp, MCPAppConfiguration
@@ -135,7 +138,7 @@ def tail_logs(
 
     client = setup_authenticated_client()
     server = resolve_server(client, app_identifier)
-    
+
     try:
         if follow:
             asyncio.run(
@@ -183,7 +186,7 @@ async def _fetch_logs(
     """Fetch logs one-time via HTTP API."""
 
     # Extract app_id and config_id from the server object
-    if hasattr(server, 'appId'):  # MCPApp
+    if hasattr(server, "appId"):  # MCPApp
         app_id = server.appId
         config_id = None
     else:  # MCPAppConfiguration
@@ -264,7 +267,7 @@ async def _stream_logs(
     # Get server URL directly from the server object
     if not server.appServerInfo or not server.appServerInfo.serverUrl:
         raise CLIError("Server URL not available - server may not be deployed")
-    
+
     server_url = server.appServerInfo.serverUrl
 
     parsed = urlparse(server_url)
