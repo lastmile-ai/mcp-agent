@@ -2157,7 +2157,7 @@ requires-dist = [
     { name = "rich", specifier = ">=13.9.4" },
     { name = "scikit-learn", specifier = ">=1.6.0" },
     { name = "temporalio", extras = ["opentelemetry"], marker = "extra == 'temporal'", specifier = ">=1.10.0" },
-    { name = "typer", specifier = ">=0.15.1" },
+    { name = "typer", specifier = ">=0.15.3" },
     { name = "typer", extras = ["all"], marker = "extra == 'cli'", specifier = ">=0.15.1" },
     { name = "watchdog", marker = "extra == 'cli'", specifier = ">=6.0.0" },
     { name = "websockets", specifier = ">=12.0" },
