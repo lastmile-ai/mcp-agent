@@ -65,6 +65,7 @@ class SystemActivities(ContextDependent):
     ) -> bool:
         gateway_url = getattr(self.context, "gateway_url", None)
         gateway_token = getattr(self.context, "gateway_token", None)
+
         return await notify_via_proxy(
             execution_id=execution_id,
             method=method,
