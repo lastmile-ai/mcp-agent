@@ -34,8 +34,8 @@ from mcp_agent.cli.commands import (
 
 app = typer.Typer(
     help="mcp-agent CLI",
-    add_completion=False,
-    no_args_is_help=False,
+    add_completion=True,
+    no_args_is_help=True,
     context_settings={"help_option_names": ["-h", "--help"]},
 )
 
