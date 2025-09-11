@@ -140,12 +140,15 @@ async def print_mcp_server_details(server_url: str, api_key: str) -> None:
                 console.print(f"[cyan]{key}[/cyan]: {description}")
 
             if sys.stdout.isatty():
-                choice = Prompt.ask(
-                    "\nWhat would you like to display?",
-                    choices=list(choices.keys()),
-                    default="0",
-                    show_choices=False,
-                )
+                try:
+                    choice = Prompt.ask(
+                        "\nWhat would you like to display?",
+                        choices=list(choices.keys()),
+                        default="0",
+                        show_choices=False,
+                    )
+                except (EOFError, KeyboardInterrupt):
+                    return
             else:
                 console.print("Choosing 0 (Show All)")
                 choice = "0"

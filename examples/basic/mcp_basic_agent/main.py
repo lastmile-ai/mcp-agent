@@ -46,12 +46,13 @@ settings = Settings(
 # or loaded from mcp_agent.config.yaml/mcp_agent.secrets.yaml
 app = MCPApp(name="mcp_basic_agent")  # settings=settings)
 
+
 @app.tool()
-async def example_usage()->str:
+async def example_usage() -> str:
     """
-    An example function/tool that uses an agent with access to the fetch and filesystem 
-    mcp servers. The agent will read the contents of mcp_agent.config.yaml, print the 
-    first 2 paragraphs of the mcp homepage, and summarize the paragraphs into a tweet. 
+    An example function/tool that uses an agent with access to the fetch and filesystem
+    mcp servers. The agent will read the contents of mcp_agent.config.yaml, print the
+    first 2 paragraphs of the mcp homepage, and summarize the paragraphs into a tweet.
     The example uses both OpenAI, Anthropic, and simulates a multi-turn conversation.
     """
     async with app.run() as agent_app:
@@ -112,6 +113,7 @@ async def example_usage()->str:
         await display_token_summary(agent_app)
 
     return result
+
 
 async def display_token_summary(app_ctx: MCPApp, agent: Agent | None = None):
     """Display comprehensive token usage summary using app/agent convenience APIs."""

@@ -10,8 +10,9 @@ from rich import print
 app = MCPApp(name="llm_selector")
 model_selector = ModelSelector()
 
+
 @app.tool
-async def example_usage()->str:
+async def example_usage() -> str:
     """
     An example function/tool that demonstrates MCP's ModelPreferences type
     to select a model based on speed, cost, and intelligence priorities.
@@ -31,7 +32,7 @@ async def example_usage()->str:
         "Smartest OpenAI model:",
         data={"model_preferences": model_preferences, "model": model},
     )
-    result+="Smartest OpenAI model: " + model.name
+    result += "Smartest OpenAI model: " + model.name
 
     model_preferences = ModelPreferences(
         costPriority=0.25, speedPriority=0.25, intelligencePriority=0.5
@@ -44,7 +45,7 @@ async def example_usage()->str:
         "Most balanced OpenAI model:",
         data={"model_preferences": model_preferences, "model": model},
     )
-    result+="\nMost balanced OpenAI model: " + model.name
+    result += "\nMost balanced OpenAI model: " + model.name
 
     model_preferences = ModelPreferences(
         costPriority=0.3, speedPriority=0.6, intelligencePriority=0.1
@@ -57,7 +58,7 @@ async def example_usage()->str:
         "Fastest and cheapest OpenAI model:",
         data={"model_preferences": model_preferences, "model": model},
     )
-    result+="\nFastest and cheapest OpenAI model: " + model.name
+    result += "\nFastest and cheapest OpenAI model: " + model.name
 
     model_preferences = ModelPreferences(
         costPriority=0.1, speedPriority=0.1, intelligencePriority=0.8
@@ -70,7 +71,7 @@ async def example_usage()->str:
         "Smartest Anthropic model:",
         data={"model_preferences": model_preferences, "model": model},
     )
-    result+="\nSmartest Anthropic model: " + model.name
+    result += "\nSmartest Anthropic model: " + model.name
 
     model_preferences = ModelPreferences(
         costPriority=0.8, speedPriority=0.1, intelligencePriority=0.1
@@ -83,7 +84,7 @@ async def example_usage()->str:
         "Cheapest Anthropic model:",
         data={"model_preferences": model_preferences, "model": model},
     )
-    result+="\nCheapest Anthropic model: " + model.name
+    result += "\nCheapest Anthropic model: " + model.name
 
     model_preferences = ModelPreferences(
         costPriority=0.1,
@@ -101,7 +102,7 @@ async def example_usage()->str:
         "Select fastest model between gpt-4o/mini/sonnet/haiku:",
         data={"model_preferences": model_preferences, "model": model},
     )
-    result+="\nSelect fastest model between gpt-4o/mini/sonnet/haiku: " + model.name
+    result += "\nSelect fastest model between gpt-4o/mini/sonnet/haiku: " + model.name
 
     model_preferences = ModelPreferences(
         costPriority=0.15,
@@ -119,7 +120,7 @@ async def example_usage()->str:
         "Most balanced model between gpt-4o/mini/sonnet/haiku:",
         data={"model_preferences": model_preferences, "model": model},
     )
-    result+="\nMost balanced model between gpt-4o/mini/sonnet/haiku: " + model.name
+    result += "\nMost balanced model between gpt-4o/mini/sonnet/haiku: " + model.name
 
     # Examples showcasing new filtering capabilities
     print("\n[bold cyan]Testing new filtering capabilities:[/bold cyan]")
@@ -139,7 +140,7 @@ async def example_usage()->str:
             "context_window": model.context_window,
         },
     )
-    result+="\nBest model with context window >100k tokens: " + model.name
+    result += "\nBest model with context window >100k tokens: " + model.name
 
     # Example 2: Models with tool calling support
     model_preferences = ModelPreferences(
@@ -156,7 +157,7 @@ async def example_usage()->str:
             "tool_calling": model.tool_calling,
         },
     )
-    result+="\nBest model with tool calling support: " + model.name
+    result += "\nBest model with tool calling support: " + model.name
 
     # Example 3: Models with structured outputs (JSON mode)
     model_preferences = ModelPreferences(
@@ -173,7 +174,7 @@ async def example_usage()->str:
             "structured_outputs": model.structured_outputs,
         },
     )
-    result+="\nBest model with structured outputs support: " + model.name
+    result += "\nBest model with structured outputs support: " + model.name
 
     # Example 4: Models with medium context window (50k-150k tokens) and tool calling
     model_preferences = ModelPreferences(
@@ -194,7 +195,9 @@ async def example_usage()->str:
             "tool_calling": model.tool_calling,
         },
     )
-    result+="\nBest model with 50k-150k context window and tool calling: " + model.name    
+    result += (
+        "\nBest model with 50k-150k context window and tool calling: " + model.name
+    )
 
     # Example 5: Fast models with both tool calling and structured outputs
     model_preferences = ModelPreferences(
@@ -213,9 +216,12 @@ async def example_usage()->str:
             "speed": model.metrics.speed.tokens_per_second,
         },
     )
-    result+="\nFastest model with both tool calling and structured outputs: " + model.name
+    result += (
+        "\nFastest model with both tool calling and structured outputs: " + model.name
+    )
 
-    return result  
+    return result
+
 
 if __name__ == "__main__":
     import time
