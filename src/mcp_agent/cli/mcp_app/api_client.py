@@ -106,19 +106,21 @@ def is_valid_server_url_format(server_url: str) -> bool:
 
 class LogEntry(BaseModel):
     """Represents a single log entry."""
+
     timestamp: Optional[str] = None
     level: Optional[str] = None
     message: Optional[str] = None
     # Allow additional fields that might be present
-    
+
     class Config:
         extra = "allow"
 
 
 class GetAppLogsResponse(BaseModel):
     """Response from get_app_logs API endpoint."""
+
     logEntries: Optional[List[LogEntry]] = []
-    
+
     @property
     def log_entries_list(self) -> List[LogEntry]:
         """Get log entries regardless of field name format."""
@@ -641,12 +643,18 @@ class MCPAppClient(APIClient):
         if not app_id and not app_configuration_id:
             raise ValueError("Either app_id or app_configuration_id must be provided")
         if app_id and app_configuration_id:
-            raise ValueError("Only one of app_id or app_configuration_id can be provided")
-        
+            raise ValueError(
+                "Only one of app_id or app_configuration_id can be provided"
+            )
+
         if app_id and not is_valid_app_id_format(app_id):
             raise ValueError(f"Invalid app ID format: {app_id}")
-        if app_configuration_id and not is_valid_app_config_id_format(app_configuration_id):
-            raise ValueError(f"Invalid app configuration ID format: {app_configuration_id}")
+        if app_configuration_id and not is_valid_app_config_id_format(
+            app_configuration_id
+        ):
+            raise ValueError(
+                f"Invalid app configuration ID format: {app_configuration_id}"
+            )
 
         # Prepare request payload
         payload = {}

@@ -351,12 +351,21 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
 
             # Optional shared-secret auth
             gw_token = os.environ.get("MCP_GATEWAY_TOKEN")
-            if gw_token and not secrets.compare_digest(
-                request.headers.get("X-MCP-Gateway-Token", ""), gw_token
-            ):
-                return JSONResponse(
-                    {"ok": False, "error": "unauthorized"}, status_code=401
+            if gw_token:
+                bearer = request.headers.get("Authorization", "")
+                bearer_token = (
+                    bearer.split(" ", 1)[1]
+                    if bearer.lower().startswith("bearer ")
+                    else ""
                 )
+                header_tok = request.headers.get("X-MCP-Gateway-Token", "")
+                if not (
+                    secrets.compare_digest(header_tok, gw_token)
+                    or secrets.compare_digest(bearer_token, gw_token)
+                ):
+                    return JSONResponse(
+                        {"ok": False, "error": "unauthorized"}, status_code=401
+                    )
 
             # Optional idempotency handling
             idempotency_key = params.get("idempotency_key")
@@ -411,6 +420,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
 
                 return JSONResponse({"ok": True})
             except Exception as e:
+                # After workflow cleanup, upstream sessions may be closed. Treat notify as best-effort.
+                if isinstance(method, str) and method.startswith("notifications/"):
+                    return JSONResponse({"ok": True, "dropped": True})
                 return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
         @mcp_server.custom_route(
@@ -518,12 +530,21 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
 
             # Optional shared-secret auth
             gw_token = os.environ.get("MCP_GATEWAY_TOKEN")
-            if gw_token and not secrets.compare_digest(
-                request.headers.get("X-MCP-Gateway-Token", ""), gw_token
-            ):
-                return JSONResponse(
-                    {"ok": False, "error": "unauthorized"}, status_code=401
+            if gw_token:
+                bearer = request.headers.get("Authorization", "")
+                bearer_token = (
+                    bearer.split(" ", 1)[1]
+                    if bearer.lower().startswith("bearer ")
+                    else ""
                 )
+                header_tok = request.headers.get("X-MCP-Gateway-Token", "")
+                if not (
+                    secrets.compare_digest(header_tok, gw_token)
+                    or secrets.compare_digest(bearer_token, gw_token)
+                ):
+                    return JSONResponse(
+                        {"ok": False, "error": "unauthorized"}, status_code=401
+                    )
 
             session = await _get_session(execution_id)
             if not session:
@@ -557,10 +578,19 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
 
             # Optional shared-secret auth
             gw_token = os.environ.get("MCP_GATEWAY_TOKEN")
-            if gw_token and not secrets.compare_digest(
-                request.headers.get("X-MCP-Gateway-Token", ""), gw_token
-            ):
-                return JSONResponse({"error": "unauthorized"}, status_code=401)
+            if gw_token:
+                bearer = request.headers.get("Authorization", "")
+                bearer_token = (
+                    bearer.split(" ", 1)[1]
+                    if bearer.lower().startswith("bearer ")
+                    else ""
+                )
+                header_tok = request.headers.get("X-MCP-Gateway-Token", "")
+                if not (
+                    secrets.compare_digest(header_tok, gw_token)
+                    or secrets.compare_digest(bearer_token, gw_token)
+                ):
+                    return JSONResponse({"error": "unauthorized"}, status_code=401)
 
             session = await _get_session(execution_id)
             if not session:
@@ -753,13 +783,12 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             else:
                 endpoints = [
                     f"workflows-{workflow_name}-run",
-                    f"workflows-{workflow_name}-get_status",
                 ]
 
             result[workflow_name] = {
                 "name": workflow_name,
                 "description": workflow_cls.__doc__ or run_fn_tool.description,
-                "capabilities": ["run", "resume", "cancel", "get_status"],
+                "capabilities": ["run"],
                 "tool_endpoints": endpoints,
                 "run_parameters": run_fn_tool.parameters,
             }
@@ -825,7 +854,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
 
     @mcp.tool(name="workflows-get_status")
     async def get_workflow_status(
-        ctx: MCPContext, run_id: str, workflow_id: str | None = None
+        ctx: MCPContext,
+        run_id: str | None = None,
+        workflow_id: str | None = None,
     ) -> Dict[str, Any]:
         """
         Get the status of a running workflow.
@@ -834,10 +865,12 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         whether it's running or completed, and any results or errors encountered.
 
         Args:
-            run_id: The run ID of the workflow to check.
+            run_id: Optional run ID of the workflow to check.
+                If omitted, the server will use the latest run for the workflow_id provided.
+                Received from workflows/run or workflows/runs/list.
             workflow_id: Optional workflow identifier (usually the tool/workflow name).
                 If omitted, the server will infer it from the run metadata when possible.
-                received from workflows/run or workflows/runs/list.
+                Received from workflows/run or workflows/runs/list.
 
         Returns:
             A dictionary with comprehensive information about the workflow status.
@@ -847,15 +880,15 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             _set_upstream_from_request_ctx_if_available(ctx)
         except Exception:
             pass
-        return await _workflow_status(ctx, run_id=run_id, workflow_name=workflow_id)
+        return await _workflow_status(ctx, run_id=run_id, workflow_id=workflow_id)
 
     @mcp.tool(name="workflows-resume")
     async def resume_workflow(
         ctx: MCPContext,
-        run_id: str,
-        workflow_name: str | None = None,
+        run_id: str | None = None,
+        workflow_id: str | None = None,
         signal_name: str | None = "resume",
-        payload: str | None = None,
+        payload: Dict[str, Any] | None = None,
     ) -> bool:
         """
         Resume a paused workflow.
@@ -863,7 +896,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         Args:
             run_id: The ID of the workflow to resume,
                 received from workflows/run or workflows/runs/list.
-            workflow_name: The name of the workflow to resume.
+                If not specified, the latest run for the workflow_id will be used.
+            workflow_id: The ID of the workflow to resume,
+                received from workflows/run or workflows/runs/list.
             signal_name: Optional name of the signal to send to resume the workflow.
                 This will default to "resume", but can be a custom signal name
                 if the workflow was paused on a specific signal.
@@ -879,36 +914,41 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             _set_upstream_from_request_ctx_if_available(ctx)
         except Exception:
             pass
-        server_context: ServerContext = ctx.request_context.lifespan_context
-        workflow_registry = server_context.workflow_registry
+
+        if run_id is None and workflow_id is None:
+            raise ToolError("Either run_id or workflow_id must be provided.")
+
+        workflow_registry: WorkflowRegistry | None = _resolve_workflow_registry(ctx)
 
         if not workflow_registry:
             raise ToolError("Workflow registry not found for MCPApp Server.")
 
         logger.info(
-            f"Resuming workflow {workflow_name} with ID {run_id} with signal '{signal_name}' and payload '{payload}'"
+            f"Resuming workflow ID {workflow_id or 'unknown'}, run ID {run_id or 'unknown'} with signal '{signal_name}' and payload '{payload}'"
         )
 
         # Get the workflow instance from the registry
         result = await workflow_registry.resume_workflow(
             run_id=run_id,
-            workflow_id=workflow_name,
+            workflow_id=workflow_id,
             signal_name=signal_name,
             payload=payload,
         )
 
         if result:
             logger.debug(
-                f"Signaled workflow {workflow_name} with ID {run_id} with signal '{signal_name}' and payload '{payload}'"
+                f"Signaled workflow ID {workflow_id or 'unknown'}, run ID {run_id or 'unknown'} with signal '{signal_name}' and payload '{payload}'"
             )
         else:
             logger.error(
-                f"Failed to signal workflow {workflow_name} with ID {run_id} with signal '{signal_name}' and payload '{payload}'"
+                f"Failed to signal workflow ID {workflow_id or 'unknown'}, run ID {run_id or 'unknown'} with signal '{signal_name}' and payload '{payload}'"
             )
+
+        return result
 
     @mcp.tool(name="workflows-cancel")
     async def cancel_workflow(
-        ctx: MCPContext, run_id: str, workflow_name: str | None = None
+        ctx: MCPContext, run_id: str | None = None, workflow_id: str | None = None
     ) -> bool:
         """
         Cancel a running workflow.
@@ -916,7 +956,10 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         Args:
             run_id: The ID of the workflow instance to cancel,
                 received from workflows/run or workflows/runs/list.
-            workflow_name: The name of the workflow to cancel.
+                If not provided, will attempt to cancel the latest run for the
+                provided workflow ID.
+            workflow_id: The ID of the workflow to cancel,
+                received from workflows/run or workflows/runs/list.
 
         Returns:
             True if the workflow was cancelled, False otherwise.
@@ -926,20 +969,34 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             _set_upstream_from_request_ctx_if_available(ctx)
         except Exception:
             pass
-        server_context: ServerContext = ctx.request_context.lifespan_context
-        workflow_registry = server_context.workflow_registry
 
-        logger.info(f"Cancelling workflow {workflow_name} with ID {run_id}")
+        if run_id is None and workflow_id is None:
+            raise ToolError("Either run_id or workflow_id must be provided.")
+
+        workflow_registry: WorkflowRegistry | None = _resolve_workflow_registry(ctx)
+
+        if not workflow_registry:
+            raise ToolError("Workflow registry not found for MCPApp Server.")
+
+        logger.info(
+            f"Cancelling workflow ID {workflow_id or 'unknown'}, run ID {run_id or 'unknown'}"
+        )
 
         # Get the workflow instance from the registry
         result = await workflow_registry.cancel_workflow(
-            run_id=run_id, workflow_id=workflow_name
+            run_id=run_id, workflow_id=workflow_id
         )
 
         if result:
-            logger.debug(f"Cancelled workflow {workflow_name} with ID {run_id}")
+            logger.debug(
+                f"Cancelled workflow ID {workflow_id or 'unknown'}, run ID {run_id or 'unknown'}"
+            )
         else:
-            logger.error(f"Failed to cancel workflow {workflow_name} with ID {run_id}")
+            logger.error(
+                f"Failed to cancel workflow {workflow_id or 'unknown'} with ID {run_id or 'unknown'}"
+            )
+
+        return result
 
     # endregion
 
@@ -1016,7 +1073,7 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
         ctx: MCPContext,
         run_id: str,
         *,
-        workflow_name: str | None = None,
+        workflow_id: str | None = None,
         timeout: float | None = None,
         registration_grace: float = 1.0,
         poll_initial: float = 0.05,
@@ -1038,7 +1095,7 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
 
         # Fast path: immediate local task
         try:
-            wf = await registry.get_workflow(run_id)
+            wf = await registry.get_workflow(run_id, workflow_id)
             if wf is not None:
                 task = getattr(wf, "_run_task", None)
                 if isinstance(task, asyncio.Task):
@@ -1067,7 +1124,7 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
             if remaining() <= 0:
                 raise ToolError("Timed out waiting for workflow completion")
 
-            status = await _workflow_status(ctx, run_id, workflow_name)
+            status = await _workflow_status(ctx, run_id, workflow_id)
             s = str(
                 status.get("status") or (status.get("state") or {}).get("status") or ""
             ).lower()
@@ -1104,9 +1161,7 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
                     ctx: MCPContext = kwargs.pop("__context__")
                     result_ids = await _workflow_run(ctx, bound_wname, kwargs)
                     run_id = result_ids["run_id"]
-                    result = await _wait_for_completion(
-                        ctx, run_id, workflow_name=bound_wname
-                    )
+                    result = await _wait_for_completion(ctx, run_id)
                     try:
                         from mcp_agent.executor.workflow import WorkflowResult as _WFRes
                     except Exception:
@@ -1320,6 +1375,10 @@ def create_workflow_specific_tools(
             run_parameters: Dictionary of parameters for the workflow run.
             The schema for these parameters is as follows:
             {run_fn_tool_params}
+
+        Returns:
+            A dict with workflow_id and run_id for the started workflow run, can be passed to
+            workflows/get_status, workflows/resume, and workflows/cancel.
         """,
     )
     async def run(
@@ -1328,19 +1387,6 @@ def create_workflow_specific_tools(
     ) -> Dict[str, str]:
         _set_upstream_from_request_ctx_if_available(ctx)
         return await _workflow_run(ctx, workflow_name, run_parameters)
-
-    @mcp.tool(
-        name=f"workflows-{workflow_name}-get_status",
-        description=f"""
-        Get the status of a running {workflow_name} workflow.
-        
-        Args:
-            run_id: The run ID of the running workflow, received from workflows/{workflow_name}/run.
-        """,
-    )
-    async def get_status(ctx: MCPContext, run_id: str) -> Dict[str, Any]:
-        _set_upstream_from_request_ctx_if_available(ctx)
-        return await _workflow_status(ctx, run_id=run_id, workflow_name=workflow_name)
 
 
 # endregion
@@ -1441,38 +1487,64 @@ async def _workflow_run(
         # Build memo for Temporal runs if gateway info is available
         workflow_memo = None
         try:
-            # Prefer explicit kwargs, else infer from request headers/environment
-            # FastMCP keeps raw request under ctx.request_context.request if available
+            # Prefer explicit kwargs, else infer from request context/headers
             gateway_url = kwargs.get("gateway_url")
             gateway_token = kwargs.get("gateway_token")
-
-            if gateway_url is None:
-                try:
-                    req = getattr(ctx.request_context, "request", None)
-                    if req is not None:
-                        # Custom header if present
-                        h = req.headers
-                        gateway_url = (
-                            h.get("X-MCP-Gateway-URL")
-                            or h.get("X-Forwarded-Url")
-                            or h.get("X-Forwarded-Proto")
-                        )
-                        # Best-effort reconstruction if only proto/host provided
-                        if gateway_url is None:
-                            proto = h.get("X-Forwarded-Proto") or "http"
-                            host = h.get("X-Forwarded-Host") or h.get("Host")
-                            if host:
-                                gateway_url = f"{proto}://{host}"
-                except Exception:
-                    pass
-
             if gateway_token is None:
-                try:
-                    req = getattr(ctx.request_context, "request", None)
-                    if req is not None:
-                        gateway_token = req.headers.get("X-MCP-Gateway-Token")
-                except Exception:
-                    pass
+                if app and app.config and app.config.temporal:
+                    gateway_token = app.config.temporal.api_key
+
+            req = getattr(ctx.request_context, "request", None)
+            if req is not None:
+                h = req.headers
+                # Highest precedence: caller-provided full base URL
+                header_url = h.get("X-MCP-Gateway-URL") or h.get("X-Forwarded-Url")
+                if gateway_url is None and header_url:
+                    gateway_url = header_url
+
+                # Token may be provided by the gateway/proxy
+                if gateway_token is None:
+                    gateway_token = h.get("X-MCP-Gateway-Token")
+                if gateway_token is None:
+                    # Support Authorization: Bearer <token>
+                    auth = h.get("Authorization")
+                    if auth and auth.lower().startswith("bearer "):
+                        gateway_token = auth.split(" ", 1)[1]
+
+                # Prefer explicit reconstruction from X-Forwarded-* if present
+                if gateway_url is None and (h.get("X-Forwarded-Host") or h.get("Host")):
+                    proto = h.get("X-Forwarded-Proto") or "http"
+                    host = h.get("X-Forwarded-Host") or h.get("Host")
+                    prefix = h.get("X-Forwarded-Prefix") or ""
+                    if prefix and not prefix.startswith("/"):
+                        prefix = "/" + prefix
+                    if host:
+                        gateway_url = f"{proto}://{host}{prefix}"
+
+                # Fallback to request's base_url which already includes scheme/host and any mount prefix
+                if gateway_url is None:
+                    try:
+                        if getattr(req, "base_url", None):
+                            base_url = str(req.base_url).rstrip("/")
+                            if base_url and base_url.lower() != "none":
+                                gateway_url = base_url
+                    except Exception:
+                        gateway_url = None
+
+            # Final fallback: environment variables (useful if proxies don't set headers)
+            try:
+                import os as _os
+
+                if gateway_url is None:
+                    env_url = _os.environ.get("MCP_GATEWAY_URL")
+                    if env_url:
+                        gateway_url = env_url
+                if gateway_token is None:
+                    env_tok = _os.environ.get("MCP_GATEWAY_TOKEN")
+                    if env_tok:
+                        gateway_token = env_tok
+            except Exception:
+                pass
 
             if gateway_url or gateway_token:
                 workflow_memo = {
@@ -1516,20 +1588,28 @@ async def _workflow_run(
 
 
 async def _workflow_status(
-    ctx: MCPContext, run_id: str, workflow_name: str | None = None
+    ctx: MCPContext, run_id: str | None = None, workflow_id: str | None = None
 ) -> Dict[str, Any]:
     # Ensure upstream session so status-related logs are forwarded
     try:
         _set_upstream_from_request_ctx_if_available(ctx)
     except Exception:
         pass
+
+    if not (run_id or workflow_id):
+        raise ValueError("Either run_id or workflow_id must be provided.")
+
     workflow_registry: WorkflowRegistry | None = _resolve_workflow_registry(ctx)
 
     if not workflow_registry:
         raise ToolError("Workflow registry not found for MCPApp Server.")
 
-    workflow = await workflow_registry.get_workflow(run_id)
-    workflow_id = workflow.id if workflow and workflow.id else workflow_name
+    if not workflow_id:
+        workflow = await workflow_registry.get_workflow(
+            run_id=run_id, workflow_id=workflow_id
+        )
+        if workflow:
+            workflow_id = workflow.id or workflow.name
 
     status = await workflow_registry.get_workflow_status(
         run_id=run_id, workflow_id=workflow_id
