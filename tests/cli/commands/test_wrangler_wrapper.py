@@ -12,7 +12,11 @@ from mcp_agent.cli.cloud.commands.deploy.validation import (
     validate_entrypoint,
     validate_project,
 )
-from mcp_agent.cli.cloud.commands.deploy.wrangler_wrapper import wrangler_deploy
+from mcp_agent.cli.cloud.commands.deploy.wrangler_wrapper import (
+    _modify_requirements_txt,
+    _needs_requirements_modification,
+    wrangler_deploy,
+)
 
 
 @pytest.fixture
@@ -723,3 +727,241 @@ app = MCPApp(name="test-app")
                 assert not mcpac_file.exists(), (
                     f"{filename}.mcpac.py should be cleaned up"
                 )
+
+
+# Requirements.txt processing tests
+
+
+def test_needs_requirements_modification_no_file():
+    """Test _needs_requirements_modification when requirements.txt doesn't exist."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        requirements_path = Path(temp_dir) / "requirements.txt"
+        assert not _needs_requirements_modification(requirements_path)
+
+
+def test_needs_requirements_modification_no_relative_imports():
+    """Test _needs_requirements_modification with no relative mcp-agent imports."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        requirements_path = Path(temp_dir) / "requirements.txt"
+        requirements_path.write_text("""requests==2.31.0
+numpy==1.24.0
+mcp-agent==1.0.0
+pandas>=1.0.0""")
+
+        assert not _needs_requirements_modification(requirements_path)
+
+
+def test_needs_requirements_modification_with_relative_imports():
+    """Test _needs_requirements_modification with relative mcp-agent imports."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        requirements_path = Path(temp_dir) / "requirements.txt"
+
+        # Test various relative import formats
+        test_cases = [
+            "mcp-agent @ file://../../",
+            "mcp-agent@file://../../",
+            "mcp-agent  @  file://../../some/path",
+            "mcp-agent @ file:///absolute/path",
+        ]
+
+        for relative_import in test_cases:
+            requirements_content = f"""requests==2.31.0
+{relative_import}
+numpy==1.24.0"""
+            requirements_path.write_text(requirements_content)
+            assert _needs_requirements_modification(requirements_path), (
+                f"Should detect relative import: {relative_import}"
+            )
+
+
+def test_needs_requirements_modification_mixed_content():
+    """Test _needs_requirements_modification with mixed content."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        requirements_path = Path(temp_dir) / "requirements.txt"
+        requirements_content = """# This is a requirements file
+requests==2.31.0
+numpy==1.24.0
+mcp-agent @ file://../../
+pandas>=1.0.0
+# Comment line
+fastapi==0.68.0"""
+        requirements_path.write_text(requirements_content)
+
+        assert _needs_requirements_modification(requirements_path)
+
+
+def test_modify_requirements_txt_relative_import():
+    """Test _modify_requirements_txt with relative import."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        requirements_path = Path(temp_dir) / "requirements.txt"
+        original_content = """requests==2.31.0
+mcp-agent @ file://../../
+numpy==1.24.0"""
+        requirements_path.write_text(original_content)
+
+        _modify_requirements_txt(requirements_path)
+
+        modified_content = requirements_path.read_text()
+        expected_content = """requests==2.31.0
+mcp-agent
+numpy==1.24.0"""
+
+        assert modified_content == expected_content
+
+
+def test_modify_requirements_txt_preserves_formatting():
+    """Test _modify_requirements_txt preserves comments and formatting."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        requirements_path = Path(temp_dir) / "requirements.txt"
+        original_content = """# Project dependencies
+requests==2.31.0
+# Development version of mcp-agent
+mcp-agent @ file://../../
+
+# Data processing
+numpy==1.24.0
+pandas>=1.0.0
+"""
+        requirements_path.write_text(original_content)
+
+        _modify_requirements_txt(requirements_path)
+
+        modified_content = requirements_path.read_text()
+        expected_content = """# Project dependencies
+requests==2.31.0
+# Development version of mcp-agent
+mcp-agent
+
+# Data processing
+numpy==1.24.0
+pandas>=1.0.0
+"""
+
+        assert modified_content == expected_content
+
+
+@pytest.fixture
+def project_with_relative_mcp_agent():
+    """Create a project with requirements.txt containing relative mcp-agent import."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        project_path = Path(temp_dir)
+
+        # Create main.py
+        main_py_content = """from mcp_agent_cloud import MCPApp
+
+app = MCPApp(name="test-app")
+"""
+        (project_path / "main.py").write_text(main_py_content)
+
+        # Create requirements.txt with relative mcp-agent import
+        requirements_content = """requests==2.31.0
+mcp-agent @ file://../../
+numpy==1.24.0"""
+        (project_path / "requirements.txt").write_text(requirements_content)
+
+        yield project_path
+
+
+def test_wrangler_deploy_requirements_txt_backup_and_restore(
+    project_with_relative_mcp_agent,
+):
+    """Test that requirements.txt is backed up, modified, and restored during deployment."""
+    requirements_path = project_with_relative_mcp_agent / "requirements.txt"
+    original_content = requirements_path.read_text()
+
+    def check_requirements_during_subprocess(*args, **kwargs):
+        deployed_path = requirements_path.with_suffix(".txt.mcpac.py")
+        current_content = deployed_path.read_text()
+        assert "mcp-agent @ file://" not in current_content
+        assert "mcp-agent\n" in current_content
+
+        assert not requirements_path.exists(), (
+            "Original requirements.txt should be hidden"
+        )
+
+        return MagicMock(returncode=0)
+
+    with patch("subprocess.run", side_effect=check_requirements_during_subprocess):
+        wrangler_deploy("test-app", "test-api-key", project_with_relative_mcp_agent)
+
+    # After deployment, requirements.txt should be restored to original content
+    restored_content = requirements_path.read_text()
+    assert restored_content == original_content
+    assert "mcp-agent @ file://../../" in restored_content
+
+
+def test_wrangler_deploy_requirements_txt_no_modification_needed(
+    project_with_requirements,
+):
+    """Test that requirements.txt without relative imports follows normal file processing."""
+    requirements_path = project_with_requirements / "requirements.txt"
+    original_content = requirements_path.read_text()
+
+    def check_requirements_during_subprocess(*args, **kwargs):
+        # During subprocess, requirements.txt should be hidden (.bak) and .mcpac.py should exist
+        # since it doesn't need special modification
+        bak_path = project_with_requirements / "requirements.txt.bak"
+        mcpac_path = project_with_requirements / "requirements.txt.mcpac.py"
+
+        assert not requirements_path.exists(), (
+            "Original requirements.txt should be hidden"
+        )
+        assert bak_path.exists(), "requirements.txt.bak should exist"
+        assert mcpac_path.exists(), "requirements.txt.mcpac.py should exist"
+
+        # Content should be preserved in both .bak and .mcpac.py
+        assert bak_path.read_text() == original_content
+        assert mcpac_path.read_text() == original_content
+
+        return MagicMock(returncode=0)
+
+    with patch("subprocess.run", side_effect=check_requirements_during_subprocess):
+        wrangler_deploy("test-app", "test-api-key", project_with_requirements)
+
+    # After deployment, requirements.txt should be restored unchanged
+    final_content = requirements_path.read_text()
+    assert final_content == original_content
+
+
+def test_wrangler_deploy_requirements_txt_restore_on_failure(
+    project_with_relative_mcp_agent,
+):
+    """Test that requirements.txt is restored even when deployment fails."""
+    requirements_path = project_with_relative_mcp_agent / "requirements.txt"
+    original_content = requirements_path.read_text()
+
+    with patch("subprocess.run") as mock_subprocess:
+        # Mock failed subprocess call
+        mock_subprocess.side_effect = subprocess.CalledProcessError(
+            returncode=1, cmd=["wrangler"], stderr="Deployment failed"
+        )
+
+        # Should raise exception but still restore requirements.txt
+        with pytest.raises(subprocess.CalledProcessError):
+            wrangler_deploy("test-app", "test-api-key", project_with_relative_mcp_agent)
+
+    # After failed deployment, requirements.txt should be restored
+    restored_content = requirements_path.read_text()
+    assert restored_content == original_content
+    assert "mcp-agent @ file://../../" in restored_content
+
+
+def test_wrangler_deploy_no_requirements_txt():
+    """Test that deployment works normally when no requirements.txt exists."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        project_path = Path(temp_dir)
+
+        # Create main.py only
+        (project_path / "main.py").write_text("""
+from mcp_agent_cloud import MCPApp
+app = MCPApp(name="test-app")
+""")
+
+        with patch("subprocess.run") as mock_subprocess:
+            mock_subprocess.return_value = MagicMock(returncode=0)
+
+            # Should not raise any exceptions
+            wrangler_deploy("test-app", "test-api-key", project_path)
+
+        # No requirements.txt should exist after deployment
+        assert not (project_path / "requirements.txt").exists()
