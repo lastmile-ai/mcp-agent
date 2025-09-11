@@ -1223,28 +1223,6 @@ class MCPAggregator(ContextDependent):
         # No match found
         return None, None
 
-    def _find_server_name_from_uri(self, uri: str) -> str:
-        """
-        Find the server name from a resource URI.
-
-        Args:
-            uri: The URI of the resource.
-
-        Returns:
-            Server name if found, None otherwise
-        """
-        capability_map = self._server_to_resource_map
-
-        def getter(item: NamespacedResource):
-            return str(item.resource.uri)
-
-        for server_name, resources in capability_map.items():
-            for resource in resources:
-                if uri == getter(resource):
-                    return server_name
-
-        # No match found
-        return None
 
     async def _start_server(self, server_name: str):
         if self.connection_persistence:

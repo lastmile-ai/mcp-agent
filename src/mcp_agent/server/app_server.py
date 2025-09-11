@@ -15,7 +15,6 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.fastmcp.tools import Tool as FastTool
-from mcp.server.session import ServerSession
 
 from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
@@ -70,7 +69,6 @@ class ServerContext(ContextDependent):
         super().__init__(context=context, **kwargs)
         self.mcp = mcp
         self.active_agents: Dict[str, Agent] = {}
-        self.upstream_sessions: Dict[str, ServerSession] = {}
 
         # Maintain a list of registered workflow tools to avoid re-registration
         # when server context is recreated for the same FastMCP instance (e.g. during
@@ -123,17 +121,6 @@ class ServerContext(ContextDependent):
     def workflow_registry(self) -> WorkflowRegistry:
         """Get the workflow registry for this server context."""
         return self.context.workflow_registry
-
-    def register_upstream_session(self, run_id: str, session: ServerSession):
-        """Register an upstream session for a given workflow run ID."""
-        logger.info(f"Registering {type(session)} upstream session for run ID {run_id}")
-        self.upstream_sessions[run_id] = session
-
-    def get_upstream_session(self, run_id: str) -> Optional[ServerSession]:
-        """Get the upstream session for a given workflow run ID."""
-        logger.info(f"Retrieving upstream session for run ID {run_id}: {type(self.upstream_sessions.get(run_id))}")
-        return self.upstream_sessions.get(run_id)
-
 
 def _get_attached_app(mcp: FastMCP) -> MCPApp | None:
     """Return the MCPApp instance attached to the FastMCP server, if any."""
@@ -333,7 +320,6 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
 
     # Helper: install internal HTTP routes (not MCP tools)
     def _install_internal_routes(mcp_server: FastMCP) -> None:
-        print("Installing internal routes")
         @mcp_server.custom_route(
             "/internal/session/by-run/{execution_id}/notify",
             methods=["POST"],
@@ -676,8 +662,6 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
     except Exception:
         # If handler registration fails, continue without dynamic level updates
         pass
-
-    logger.info(f"{mcp.settings.host}:{mcp.settings.port}")
 
     # region Workflow Tools
 
@@ -1411,7 +1395,6 @@ async def _workflow_run(
             run_parameters["__mcp_agent_workflow_id"] = workflow_id
         if task_queue:
             run_parameters["__mcp_agent_task_queue"] = task_queue
-        # run_parameters["__mcp_agent_upstream_session"] = ctx.session
 
         # Build memo for Temporal runs if gateway info is available
         workflow_memo = None

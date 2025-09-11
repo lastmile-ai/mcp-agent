@@ -337,17 +337,15 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
     ) -> CreateMessageResult | ErrorData:
         logger.debug(f"Handling sampling request: {params}")
         server_session = self.context.upstream_session
-        if server_session:
-            logger.debug("Passing sampling request to upstream server session")
-        else:
-            logger.debug("No upstream server session, handling sampling locally")
 
         if server_session is None:
             # Enhanced sampling with human approval workflow
+            logger.debug("No upstream server session, handling sampling locally")
             return await self._sampling_handler.handle_sampling(
                 context=self.context,
                 params=params)
         else:
+            logger.debug("Passing sampling request to upstream server session")
             try:
                 # If a server_session is available, we'll pass-through the sampling request to the upstream client
                 result = await server_session.send_request(

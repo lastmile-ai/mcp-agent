@@ -27,7 +27,6 @@ from mcp.client.sse import sse_client
 from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamablehttp_client, MCP_SESSION_ID
 from mcp.client.websocket import websocket_client
-from mcp.server.session import ServerSession
 from mcp.types import JSONRPCMessage, ServerCapabilities
 
 from mcp_agent.config import MCPServerSettings
@@ -66,7 +65,7 @@ class ServerConnection:
             ],
         ],
         client_session_factory: Callable[
-            [MemoryObjectReceiveStream, MemoryObjectSendStream, timedelta, ServerSession],
+            [MemoryObjectReceiveStream, MemoryObjectSendStream, timedelta | None],
             ClientSession,
         ],
         init_hook: Optional["InitHookCallable"] = None,
@@ -412,7 +411,7 @@ class MCPConnectionManager(ContextDependent):
         self,
         server_name: str,
         client_session_factory: Callable[
-            [MemoryObjectReceiveStream, MemoryObjectSendStream, timedelta, ServerSession],
+            [MemoryObjectReceiveStream, MemoryObjectSendStream, timedelta | None],
             ClientSession,
         ],
         init_hook: Optional["InitHookCallable"] = None,
@@ -521,7 +520,7 @@ class MCPConnectionManager(ContextDependent):
         self,
         server_name: str,
         client_session_factory: Callable[
-            [MemoryObjectReceiveStream, MemoryObjectSendStream, timedelta, ServerSession],
+            [MemoryObjectReceiveStream, MemoryObjectSendStream, timedelta | None],
             ClientSession,
         ] = MCPAgentClientSession,
         init_hook: Optional["InitHookCallable"] = None,
@@ -567,7 +566,7 @@ class MCPConnectionManager(ContextDependent):
         self,
         server_name: str,
         client_session_factory: Callable[
-            [MemoryObjectReceiveStream, MemoryObjectSendStream, timedelta, ServerSession],
+            [MemoryObjectReceiveStream, MemoryObjectSendStream, timedelta | None],
             ClientSession,
         ] = MCPAgentClientSession,
     ) -> ServerCapabilities | None:

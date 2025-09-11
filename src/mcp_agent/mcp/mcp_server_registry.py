@@ -33,7 +33,6 @@ from mcp_agent.config import (
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
 from mcp_agent.mcp.mcp_connection_manager import MCPConnectionManager
-from mcp.server.session import ServerSession
 
 if TYPE_CHECKING:
     from mcp_agent.core.context import Context
@@ -158,7 +157,7 @@ class ServerRegistry:
                     read_stream,
                     write_stream,
                     read_timeout_seconds,
-                    context=context # XX WHICH CONTEXT?
+                    context=context
                 )
                 async with session:
                     logger.info(
@@ -296,7 +295,7 @@ class ServerRegistry:
             self,
             server_name: str,
             client_session_factory: Callable[
-                [MemoryObjectReceiveStream, MemoryObjectSendStream, timedelta, ServerSession],
+                [MemoryObjectReceiveStream, MemoryObjectSendStream, timedelta | None],
                 ClientSession,
             ] = ClientSession,
             init_hook: InitHookCallable = None,

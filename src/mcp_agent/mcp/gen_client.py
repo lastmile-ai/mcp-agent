@@ -4,7 +4,6 @@ from typing import AsyncGenerator, Callable
 
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from mcp import ClientSession
-from mcp.server.session import ServerSession
 
 from mcp_agent.core.context import Context
 from mcp_agent.logging.logger import get_logger
@@ -19,7 +18,7 @@ async def gen_client(
     server_name: str,
     server_registry: ServerRegistry,
     client_session_factory: Callable[
-        [MemoryObjectReceiveStream, MemoryObjectSendStream, timedelta, ServerSession],
+        [MemoryObjectReceiveStream, MemoryObjectSendStream, timedelta | None],
         ClientSession,
     ] = MCPAgentClientSession,
     session_id: str | None = None,
@@ -49,7 +48,7 @@ async def connect(
     server_name: str,
     server_registry: ServerRegistry,
     client_session_factory: Callable[
-        [MemoryObjectReceiveStream, MemoryObjectSendStream, timedelta, ServerSession],
+        [MemoryObjectReceiveStream, MemoryObjectSendStream, timedelta | None],
         ClientSession,
     ] = MCPAgentClientSession,
     session_id: str | None = None,

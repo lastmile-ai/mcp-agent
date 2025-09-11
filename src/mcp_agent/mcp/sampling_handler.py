@@ -41,16 +41,15 @@ class SamplingHandler(ContextDependent):
     async def handle_sampling(self,
                               context: "Context",
                               params: CreateMessageRequestParams) -> CreateMessageResult | ErrorData:
-        logger.info(f"Handling sampling request: {params}")
+        logger.debug(f"Handling sampling request: {params}")
         server_session = context.upstream_session
-        logger.info(f"Current upstream server session: {type(server_session)}")
 
         if server_session is None:
             # Enhanced sampling with human approval workflow
-            logger.info("No upstream server session, handling sampling locally")
+            logger.debug("No upstream server session, handling sampling locally")
             return await self._handle_sampling_with_human_approval(params)
         else:
-            logger.info("Passing sampling request to upstream server session")
+            logger.debug("Passing sampling request to upstream server session")
             try:
                 # If a server_session is available, we'll pass-through the sampling request to the upstream client
                 result = await server_session.send_request(
@@ -62,7 +61,7 @@ class SamplingHandler(ContextDependent):
                     result_type=CreateMessageResult,
                 )
 
-                logger.info(f"Received sampling response from upstream server: {result}")
+                logger.debug(f"Received sampling response from upstream server: {result}")
 
                 # Pass the result from the upstream client back to the server. We just act as a pass-through client here
                 return result
@@ -203,7 +202,7 @@ Respond with:
                                  provider=model_info.provider,
                                  model=model_info.name,
                                  request_params=None,
-                                 context=None)
+                                 context=None)  # Do not pass current context. We want a clean LLM
             else:
                 # fall back to default
                 raise ToolError("Model preferences must be provided for sampling requests")
