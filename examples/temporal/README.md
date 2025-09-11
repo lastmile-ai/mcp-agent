@@ -107,6 +107,7 @@ An example showcasing a workflow that iteratively improves content based on eval
 
 A more complex example that demonstrates how to orchestrate multiple agents:
 
+- Uses the @app.async_tool decorator instead of explicit workflow/run definitions
 - Uses a combination of finder, writer, proofreader, fact-checker and style enforcer agents
 - Orchestrates these agents to collaboratively complete a task
 - Dynamically plans each step of the workflow

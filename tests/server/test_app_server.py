@@ -307,12 +307,10 @@ def test_workflow_tools_idempotent_registration():
     # Verify tools were created for both workflows
     expected_tools = [
         "workflows-workflow1-run",
-        "workflows-workflow1-get_status",
         "workflows-workflow2-run",
-        "workflows-workflow2-get_status",
     ]
 
-    assert len(tools_created) == 4
+    assert len(tools_created) == 2
     for expected_tool in expected_tools:
         assert expected_tool in tools_created
 
@@ -340,9 +338,8 @@ def test_workflow_tools_idempotent_registration():
     # Verify the new workflow was added and its tools created
     assert "workflow3" in server_context.workflows
     assert "workflow3" in mock_mcp._registered_workflow_tools
-    assert len(tools_created) == 2  # run and get_status for workflow3
+    assert len(tools_created) == 1  # run
     assert "workflows-workflow3-run" in tools_created
-    assert "workflows-workflow3-get_status" in tools_created
 
     # Test registering the same workflow again (should be idempotent)
     tools_created.clear()
@@ -397,9 +394,8 @@ def test_workflow_tools_persistent_across_sse_requests():
     create_workflow_tools(mock_mcp, server_context1)
 
     # Verify tools were created
-    assert len(tools_created) == 2  # run and get_status
+    assert len(tools_created) == 1  # run
     assert "workflows-workflow1-run" in tools_created
-    assert "workflows-workflow1-get_status" in tools_created
     assert hasattr(mock_mcp, "_registered_workflow_tools")
     assert "workflow1" in mock_mcp._registered_workflow_tools
 

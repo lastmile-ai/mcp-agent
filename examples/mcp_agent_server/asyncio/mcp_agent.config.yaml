@@ -12,11 +12,7 @@ mcp:
       description: "Fetch content at URLs from the world wide web"
     filesystem:
       command: "npx"
-      args: [
-          "-y",
-          "@modelcontextprotocol/server-filesystem",
-          # Current directory will be added by the code
-        ]
+      args: ["-y", "@modelcontextprotocol/server-filesystem"]
       description: "Read and write files on the filesystem"
 
 openai:

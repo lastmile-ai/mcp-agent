@@ -237,28 +237,19 @@ class MCPAggregator(ContextDependent):
                                 and self.context._mcp_connection_manager
                                 == self._persistent_connection_manager
                             ):
-                                # Add timeout protection for the disconnect operation
+                                # Close via manager's thread-aware close()
                                 try:
                                     await asyncio.wait_for(
-                                        self._persistent_connection_manager.disconnect_all(),
+                                        self._persistent_connection_manager.close(),
                                         timeout=5.0,
                                     )
                                 except asyncio.TimeoutError:
                                     logger.warning(
-                                        "Timeout during disconnect_all(), forcing shutdown"
+                                        "Timeout during connection manager close(), forcing shutdown"
                                     )
-
-                                # Avoid calling __aexit__ directly across threads; mark inactive
-                                try:
-                                    if hasattr(
-                                        self._persistent_connection_manager,
-                                        "_tg_active",
-                                    ):
-                                        self._persistent_connection_manager._tg_active = False
-                                        self._persistent_connection_manager._tg = None
                                 except Exception as e:
                                     logger.warning(
-                                        f"Error during connection manager state cleanup: {e}"
+                                        f"Error during connection manager close(): {e}"
                                     )
 
                                 # Clean up the connection manager from the context

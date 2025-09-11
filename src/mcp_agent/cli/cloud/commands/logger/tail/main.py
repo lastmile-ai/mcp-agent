@@ -17,7 +17,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.auth import load_credentials, UserCredentials
-from mcp_agent.cli.cloud.commands.servers.utils import setup_authenticated_client
+from mcp_agent.cli.cloud.commands.utils import setup_authenticated_client
 from mcp_agent.cli.core.api_client import UnauthenticatedError
 from mcp_agent.cli.core.utils import parse_app_identifier, resolve_server_url
 from mcp_agent.cli.utils.ux import print_error

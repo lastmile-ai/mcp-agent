@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.10"
 # dependencies = [
+#     "httpx",
 #     "rich",
 #     "typer",
 #     "pydantic>=2.10.4",

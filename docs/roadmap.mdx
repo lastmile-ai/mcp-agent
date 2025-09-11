@@ -1,0 +1,222 @@
+---
+title: Roadmap
+description: "Development roadmap for mcp-agent framework and MCP Agent Cloud"
+---
+
+# Roadmap
+
+This roadmap outlines planned features and improvements for both the mcp-agent framework and MCP Agent Cloud platform. We aim to build the most comprehensive platform for developing and deploying AI agents using the Model Context Protocol.
+
+## Framework Roadmap
+
+### v1.0.0 Release (September 2025)
+
+The first stable release will establish mcp-agent as the standard framework for building MCP-based agents.
+
+#### Core Features
+- **TypeScript SDK** - Full TypeScript/JavaScript support for agent development
+- **Advanced Tool Selection** - Intelligent filtering for MCP tools with large payloads
+  - Smart tool relevance scoring
+  - Context-aware tool filtering
+  - Middleware for processing tool results before LLM consumption
+- **Full MCP Support** - Complete implementation of MCP specification
+  - OAuth 2.1 authentication support
+  - URL elicitation for dynamic resource discovery
+  - Sampling API for server-side LLM invocation
+- **Multimodality** - Native support for multimodal interactions
+  - Image processing and generation
+  - Audio/speech capabilities
+  - Document understanding
+- **Streaming & Events** - Real-time capabilities
+  - Server-sent events for long-running operations
+  - WebSocket subscriptions for state changes
+  - Event-driven architecture for reactive agents
+
+#### Memory Management
+- **Procedural Memory** - Agents learn and remember problem-solving patterns
+  - Task completion strategies
+  - Error recovery procedures
+  - Performance optimization patterns
+- **Session Memory** - Conversation and context persistence
+  - Cross-session continuity
+  - Context summarization
+  - Relevance-based memory retrieval
+- **User Memory** - Personalized agent experiences
+  - User preference learning
+  - Interaction history
+  - Adaptive behavior based on user patterns
+- **Tree-based Memory Scoping** - Hierarchical memory organization
+  - Memory inheritance between agent scopes
+  - Selective memory sharing
+  - Privacy-preserving memory boundaries
+
+#### Agent Identity Management
+- **IAM-style Scopes** - Hierarchical agent permissions
+  - Role-based access control
+  - Capability inheritance
+  - Fine-grained permission management
+- **Agent Identities** - Distinct agent personas and capabilities
+  - Identity switching for multi-role agents
+  - Capability composition
+  - Trust boundaries between agents
+
+#### Human-in-the-Loop
+- **Cleaner Semantics** - Improved APIs for human interaction
+  - Declarative approval workflows
+  - Structured feedback collection
+  - Progressive disclosure of complexity
+- **Built-in UI Components** - Ready-to-use interaction patterns
+  - Approval dialogs
+  - Feedback forms
+  - Progress indicators
+
+### Beyond v1.0.0
+
+#### Self-Improving Agents
+- **Reinforcement Learning** - Agents that optimize through experience
+- **A/B Testing Framework** - Systematic improvement through experimentation
+- **Performance Analytics** - Detailed metrics for agent optimization
+
+#### Advanced Workflow Patterns
+- **Distributed Workflows** - Multi-region workflow execution
+- **Workflow Composition** - Building complex workflows from simpler ones
+- **Dynamic Workflow Generation** - LLM-generated workflow definitions
+
+## MCP Agent Cloud Roadmap
+
+### Near-term (Q1 2025)
+
+#### OAuth 2.1 Authorization Server
+- **Managed Auth Service** - Turnkey OAuth 2.1 implementation
+  - Support for major identity providers (Google, GitHub, Microsoft)
+  - Custom identity provider integration
+  - Fine-grained access control
+  - Token management and rotation
+- **MCP Auth Specification** - Full compliance with MCP authorization spec
+  - Dynamic client registration
+  - Resource metadata endpoints
+  - Bearer token validation
+
+#### Transport Enhancements
+- **Streamable HTTP Support** - Currently SSE-only
+  - Full HTTP/2 streaming
+  - Chunked transfer encoding
+  - Response streaming for large payloads
+
+#### Agent Registry
+- **Public Agent Marketplace** - Discover and deploy community agents
+  - Verified publisher program
+  - Usage analytics and ratings
+  - One-click deployment
+  - Revenue sharing for premium agents
+- **Private Registries** - Enterprise agent catalogs
+  - Internal agent sharing
+  - Compliance and governance
+  - Version control and rollback
+
+### Mid-term (Q2-Q3 2025)
+
+#### Enterprise Features
+- **Single Sign-On (SSO)** - Enterprise authentication
+  - SAML 2.0 support
+  - OpenID Connect
+  - Active Directory integration
+- **Audit & Compliance** - Enterprise-grade governance
+  - Comprehensive audit logs
+  - Compliance reporting (SOC2, HIPAA)
+  - Data residency controls
+- **Private Cloud Deployment** - On-premises options
+  - Kubernetes operators
+  - Terraform modules
+  - Air-gapped deployments
+
+#### Advanced Orchestration
+- **Workflow Templates** - Reusable workflow patterns
+- **Scheduled Workflows** - Cron-based execution
+- **Event-Driven Triggers** - Webhook and event-based activation
+- **Workflow Versioning** - Blue-green deployments for workflows
+
+#### Observability & Monitoring
+- **Advanced Tracing** - Distributed tracing across agents
+- **Custom Metrics** - Application-specific monitoring
+- **Alerting Rules** - Proactive issue detection
+- **Performance Profiling** - Bottleneck identification
+
+### Long-term (Q4 2025+)
+
+#### Global Infrastructure
+- **Multi-Region Deployment** - Global agent distribution
+  - Automatic failover
+  - Geo-routing
+  - Data sovereignty compliance
+- **Edge Deployment** - Low-latency agent execution
+  - CDN integration
+  - Regional caching
+  - Offline-capable agents
+
+#### Developer Experience
+- **Visual Workflow Designer** - No-code agent creation
+- **Agent Testing Framework** - Comprehensive testing tools
+- **Debugging Tools** - Step-through debugging for workflows
+- **Performance Optimization** - Automatic agent optimization
+
+#### Platform Ecosystem
+- **Plugin System** - Extensible platform capabilities
+- **Partner Integrations** - Deep integration with cloud providers
+- **SDK for Multiple Languages** - Beyond Python and TypeScript
+- **GraphQL API** - Flexible data access
+
+## Community & Ecosystem
+
+### Documentation & Learning
+- **Interactive Tutorials** - Hands-on learning experiences
+- **Video Course Series** - Comprehensive agent development training
+- **Certification Program** - Professional certification for developers
+- **Best Practices Guide** - Production-ready patterns and anti-patterns
+
+### Developer Tools
+- **VS Code Extension** - Enhanced development experience
+- **CLI Enhancements** - More powerful command-line tools
+- **GitHub Actions** - CI/CD integration
+- **Testing Frameworks** - Unit and integration testing tools
+
+### Community Building
+- **Developer Forum** - Community support and discussion
+- **Monthly Webinars** - Feature updates and tutorials
+- **Hackathons** - Community challenges and prizes
+- **Open Source Contributions** - Community-driven development
+
+## Feedback & Contribution
+
+We welcome community feedback and contributions to shape this roadmap:
+
+- **GitHub Issues**: [Report bugs and request features](https://github.com/lastmile-ai/mcp-agent/issues)
+- **Discord Community**: [Join discussions](https://lmai.link/discord/mcp-agent)
+- **Email**: team@lastmileai.dev
+
+## Version History
+
+| Version | Release Date | Highlights |
+|---------|-------------|------------|
+| v0.1.0 | December 2024 | Initial alpha release |
+| v0.2.0 | January 2025 | Temporal integration |
+| v0.3.0 | February 2025 | Cloud deployment beta |
+| v0.4.0 | March 2025 | TypeScript SDK alpha |
+| v0.5.0 | April 2025 | Memory management preview |
+| v1.0.0 | September 2025 | First stable release |
+
+## Commitment to Standards
+
+mcp-agent is committed to maintaining full compatibility with the Model Context Protocol specification. As MCP evolves, we will:
+
+- Track and implement new MCP features promptly
+- Contribute to MCP specification development
+- Maintain backward compatibility
+- Provide migration guides for breaking changes
+
+## See Also
+
+- [MCP Specification Roadmap](https://modelcontextprotocol.io/development/roadmap)
+- [Getting Started](/quickstart)
+- [Cloud Overview](/cloud/overview)
+- [Contributing Guide](https://github.com/lastmile-ai/mcp-agent/blob/main/CONTRIBUTING.md)

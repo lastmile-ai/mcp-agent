@@ -1,6 +1,6 @@
 [project]
 name = "mcp-agent"
-version = "0.1.17"
+version = "0.1.18"
 description = "Build effective agents with Model Context Protocol (MCP) using simple, composable patterns."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -100,9 +100,9 @@ dev = [
 ]
 
 [project.scripts]
-mcp-agent = "mcp_agent.cli.cloud.main:run"
-mcp_agent = "mcp_agent.cli.cloud.main:run"
-mcpagent = "mcp_agent.cli.cloud.main:run"
+mcp-agent = "mcp_agent.cli.main:run"
+mcp_agent = "mcp_agent.cli.main:run"
+mcpagent = "mcp_agent.cli.main:run"
 silsila = "mcp_agent.cli.cloud.main:run"
 prompt-server = "mcp_agent.mcp.prompts.__main__:main"
 

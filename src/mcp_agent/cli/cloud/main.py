@@ -2,16 +2,12 @@
 
 import logging
 import os
+from importlib.metadata import version as metadata_version
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Optional
-from importlib.metadata import version as metadata_version
 
-import click
 import typer
-from rich.console import Console
-from rich.panel import Panel
-from typer.core import TyperGroup
 
 from mcp_agent.cli.cloud.commands import (
     configure_app,
@@ -20,20 +16,27 @@ from mcp_agent.cli.cloud.commands import (
     logout,
     whoami,
 )
-from mcp_agent.cli.cloud.commands.logger import tail_logs
 from mcp_agent.cli.cloud.commands.app import (
     delete_app,
     get_app_status,
     list_app_workflows,
 )
 from mcp_agent.cli.cloud.commands.apps import list_apps
-from mcp_agent.cli.cloud.commands.workflow import get_workflow_status
+from mcp_agent.cli.cloud.commands.logger import tail_logs
 from mcp_agent.cli.cloud.commands.servers import (
-    list_servers,
-    describe_server,
     delete_server,
+    describe_server,
+    list_servers,
 )
-from mcp_agent.cli.exceptions import CLIError
+from mcp_agent.cli.cloud.commands.workflows import (
+    cancel_workflow,
+    describe_workflow,
+    list_workflow_runs,
+    list_workflows,
+    resume_workflow,
+    suspend_workflow,
+)
+from mcp_agent.cli.utils.typer_utils import HelpfulTyperGroup
 from mcp_agent.cli.utils.ux import print_error
 
 # Setup file logging
@@ -56,36 +59,6 @@ file_handler.setFormatter(
 logging.basicConfig(level=logging.INFO, handlers=[file_handler])
 
 
-class HelpfulTyperGroup(TyperGroup):
-    """Typer group that shows help before usage errors for better UX."""
-
-    def resolve_command(self, ctx, args):
-        try:
-            return super().resolve_command(ctx, args)
-        except click.UsageError as e:
-            click.echo(ctx.get_help())
-
-            console = Console(stderr=True)
-            error_panel = Panel(
-                str(e),
-                title="Error",
-                title_align="left",
-                border_style="red",
-                expand=True,
-            )
-            console.print(error_panel)
-            ctx.exit(2)
-
-    def invoke(self, ctx):
-        try:
-            return super().invoke(ctx)
-        except CLIError as e:
-            # Handle CLIError cleanly - show error message and exit
-            logging.error(f"CLI error: {str(e)}")
-            print_error(str(e))
-            ctx.exit(e.exit_code)
-
-
 # Root typer for `mcp-agent` CLI commands
 app = typer.Typer(
     help="MCP Agent Cloud CLI for deployment and management",
@@ -101,20 +74,9 @@ app.command(
 
 
 # Deployment command
-app.command(
-    name="deploy",
-    help="""
-Deploy an MCP agent using the specified configuration.
-
-An MCP App is deployed from bundling the code at the specified config directory.\n\n
-
-This directory must contain an 'mcp_agent.config.yaml' at its root.\n\n
-
-If secrets are required (i.e. `no_secrets` is not set), a secrets file named 'mcp_agent.secrets.yaml' must also be present.\n
-The secrets file is processed to replace secret tags with secret handles before deployment and that transformed 
-file is included in the deployment bundle in place of the original secrets file.
-""".strip(),
-)(deploy_config)
+app.command(name="deploy", help="Deploy an MCP agent (alias for 'cloud deploy')")(
+    deploy_config
+)
 
 
 # Sub-typer for `mcp-agent apps` commands
@@ -132,19 +94,27 @@ app_cmd_app = typer.Typer(
     no_args_is_help=True,
     cls=HelpfulTyperGroup,
 )
+app_cmd_app.command(name="list")(list_servers)
 app_cmd_app.command(name="delete")(delete_app)
 app_cmd_app.command(name="status")(get_app_status)
 app_cmd_app.command(name="workflows")(list_app_workflows)
 app.add_typer(app_cmd_app, name="app", help="Manage an MCP App")
 
-# Sub-typer for `mcp-agent workflow` commands
-app_cmd_workflow = typer.Typer(
+# Sub-typer for `mcp-agent workflows` commands
+app_cmd_workflows = typer.Typer(
     help="Management commands for MCP Workflows",
     no_args_is_help=True,
     cls=HelpfulTyperGroup,
 )
-app_cmd_workflow.command(name="status")(get_workflow_status)
-app.add_typer(app_cmd_workflow, name="workflow", help="Manage MCP Workflows")
+app_cmd_workflows.command(name="describe")(describe_workflow)
+app_cmd_workflows.command(
+    name="status", help="Describe a workflow execution (alias for 'describe')"
+)(describe_workflow)
+app_cmd_workflows.command(name="resume")(resume_workflow)
+app_cmd_workflows.command(name="suspend")(suspend_workflow)
+app_cmd_workflows.command(name="cancel")(cancel_workflow)
+app_cmd_workflows.command(name="list")(list_workflows)
+app_cmd_workflows.command(name="runs")(list_workflow_runs)
 
 # Sub-typer for `mcp-agent servers` commands
 app_cmd_servers = typer.Typer(
@@ -155,17 +125,12 @@ app_cmd_servers = typer.Typer(
 app_cmd_servers.command(name="list")(list_servers)
 app_cmd_servers.command(name="describe")(describe_server)
 app_cmd_servers.command(name="delete")(delete_server)
+app_cmd_servers.command(
+    name="workflows",
+    help="List available workflows for a server (alias for 'workflows list')",
+)(list_workflows)
 app.add_typer(app_cmd_servers, name="servers", help="Manage MCP Servers")
 
-# Alias for servers - apps should behave identically
-app.add_typer(app_cmd_servers, name="apps", help="Manage MCP Apps (alias for servers)")
-
-# Sub-typer for `mcp-agent cloud` commands
-app_cmd_cloud = typer.Typer(
-    help="Cloud operations and management",
-    no_args_is_help=True,
-    cls=HelpfulTyperGroup,
-)
 # Sub-typer for `mcp-agent cloud auth` commands
 app_cmd_cloud_auth = typer.Typer(
     help="Cloud authentication commands",
@@ -196,19 +161,10 @@ app_cmd_cloud_logger.command(
     help="Retrieve and stream logs from deployed MCP apps",
 )(tail_logs)
 
-# Add sub-typers to cloud
-app_cmd_cloud.add_typer(app_cmd_cloud_auth, name="auth", help="Authentication commands")
-app_cmd_cloud.add_typer(
-    app_cmd_cloud_logger, name="logger", help="Logging and observability"
-)
-app_cmd_cloud.add_typer(
-    app_cmd_servers, name="servers", help="Server management commands"
-)
-app_cmd_cloud.add_typer(
-    app_cmd_servers, name="apps", help="App management commands (alias for servers)"
-)
-# Register cloud commands
-app.add_typer(app_cmd_cloud, name="cloud", help="Cloud operations and management")
+# Add sub-typers directly to app (which is the cloud namespace when mounted)
+app.add_typer(app_cmd_cloud_auth, name="auth", help="Authentication commands")
+app.add_typer(app_cmd_cloud_logger, name="logger", help="Logging and observability")
+app.add_typer(app_cmd_workflows, name="workflows", help="Workflow management commands")
 # Top-level auth commands that map to cloud auth commands
 app.command(
     name="login",

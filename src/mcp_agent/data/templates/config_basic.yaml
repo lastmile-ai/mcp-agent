@@ -1,0 +1,19 @@
+$schema: https://raw.githubusercontent.com/lastmile-ai/mcp-agent/refs/heads/main/schema/mcp-agent.config.schema.json
+
+execution_engine: asyncio
+
+logger:
+  level: info
+  type: console
+
+otel:
+  enabled: false
+
+mcp:
+  servers: {}
+# Uncomment to set provider defaults
+# openai:
+#   default_model: gpt-4o-mini
+# anthropic:
+#   default_model: haiku
+

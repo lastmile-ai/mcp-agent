@@ -1,0 +1,37 @@
+# MCP-Agent Configuration File - Server Template
+
+# Default model configuration
+default_model: anthropic.haiku
+
+# Logger configuration
+logger:
+  level: info
+  type: file
+  path: logs/mcp-agent.log
+  path_settings:
+    rotation: size  # size, time, or none
+    max_size_mb: 10
+    retention_days: 7
+
+# MCP Servers configuration
+mcp:
+  servers:
+    filesystem:
+      transport: stdio
+      command: npx
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+    
+    fetch:
+      transport: stdio
+      command: uvx
+      args: ["mcp-server-fetch"]
+
+# OpenTelemetry configuration (optional)
+# otel:
+#   enabled: true
+#   exporters:
+#     - type: console
+#     - type: otlp
+#       endpoint: http://localhost:4317
+#       headers:
+#         api-key: ${OTEL_API_KEY}

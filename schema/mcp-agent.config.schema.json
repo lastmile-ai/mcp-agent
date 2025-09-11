@@ -160,6 +160,18 @@
           ],
           "title": "Provider",
           "type": "string"
+        },
+        "base_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Base Url"
         }
       },
       "title": "AnthropicSettings",
@@ -741,8 +753,7 @@
             }
           ],
           "default": null,
-          "title": "Allowed Tools",
-          "description": "Allow list for tools of given server"
+          "title": "Allowed Tools"
         }
       },
       "title": "MCPServerSettings",
@@ -761,6 +772,95 @@
         }
       },
       "title": "MCPSettings",
+      "type": "object"
+    },
+    "OTelConsoleExporterSettings": {
+      "additionalProperties": true,
+      "properties": {
+        "type": {
+          "const": "console",
+          "default": "console",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "title": "OTelConsoleExporterSettings",
+      "type": "object"
+    },
+    "OTelFileExporterSettings": {
+      "additionalProperties": true,
+      "properties": {
+        "type": {
+          "const": "file",
+          "default": "file",
+          "title": "Type",
+          "type": "string"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Path"
+        },
+        "path_settings": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TracePathSettings"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "OTelFileExporterSettings",
+      "type": "object"
+    },
+    "OTelOTLPExporterSettings": {
+      "additionalProperties": true,
+      "properties": {
+        "type": {
+          "const": "otlp",
+          "default": "otlp",
+          "title": "Type",
+          "type": "string"
+        },
+        "endpoint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Endpoint"
+        },
+        "headers": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Headers"
+        }
+      },
+      "title": "OTelOTLPExporterSettings",
       "type": "object"
     },
     "OpenAISettings": {
@@ -856,16 +956,28 @@
         "exporters": {
           "default": [],
           "items": {
-            "enum": [
-              "console",
-              "file",
-              "otlp"
-            ],
-            "type": "string"
+            "discriminator": {
+              "mapping": {
+                "console": "#/$defs/OTelConsoleExporterSettings",
+                "file": "#/$defs/OTelFileExporterSettings",
+                "otlp": "#/$defs/OTelOTLPExporterSettings"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/OTelConsoleExporterSettings"
+              },
+              {
+                "$ref": "#/$defs/OTelFileExporterSettings"
+              },
+              {
+                "$ref": "#/$defs/OTelOTLPExporterSettings"
+              }
+            ]
           },
           "title": "Exporters",
-          "type": "array",
-          "description": "List of exporters to use (can enable multiple simultaneously)"
+          "type": "array"
         },
         "service_name": {
           "default": "mcp-agent",
@@ -912,7 +1024,7 @@
             }
           ],
           "default": null,
-          "description": "OTLP settings for OpenTelemetry tracing. Required if using otlp exporter."
+          "description": "Deprecated single OTLP settings. Prefer exporters list with type \"otlp\"."
         },
         "path": {
           "anyOf": [
@@ -1165,9 +1277,6 @@
           "type": "null"
         }
       ],
-      "default": {
-        "servers": {}
-      },
       "description": "MCP config, such as MCP servers"
     },
     "execution_engine": {

@@ -486,8 +486,16 @@ class OpenAIAugmentedLLM(
                 "model": model,
                 "messages": messages,
                 "response_format": response_format,
-                "max_tokens": params.maxTokens,
             }
+
+            # Use max_completion_tokens for reasoning models, max_tokens for others
+            if self._reasoning(model):
+                # DEPRECATED: https://platform.openai.com/docs/api-reference/chat/create#chat-create-max_tokens
+                # "max_tokens": params.maxTokens,
+                payload["max_completion_tokens"] = params.maxTokens
+                payload["reasoning_effort"] = self._reasoning_effort
+            else:
+                payload["max_tokens"] = params.maxTokens
             user = params.user or getattr(self.context.config.openai, "user", None)
             if user:
                 payload["user"] = user

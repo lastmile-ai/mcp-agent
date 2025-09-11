@@ -3,6 +3,7 @@ Manages the lifecycle of multiple MCP server connections.
 """
 
 from datetime import timedelta
+import asyncio
 import threading
 from typing import (
     AsyncGenerator,
@@ -237,49 +238,174 @@ class MCPConnectionManager(ContextDependent):
         self._tg_active = False
         # Track the thread this manager was created in to ensure TaskGroup cleanup
         self._thread_id = threading.get_ident()
+        # Event loop where the TaskGroup lives
+        self._loop: asyncio.AbstractEventLoop | None = None
+        # Owner task + coordination events for safe TaskGroup lifecycle
+        self._tg_owner_task: asyncio.Task | None = None
+        self._owner_tg: TaskGroup | None = None
+        self._tg_ready_event: Event = Event()
+        self._tg_close_event: Event = Event()
+        self._tg_closed_event: Event = Event()
+        # Ensure a single close sequence at a time on the origin loop
+        self._close_lock = Lock()
+        # Serialize owner startup to avoid races across tasks
+        self._owner_start_lock = Lock()
 
     async def __aenter__(self):
-        # We create a task group to manage all server lifecycle tasks
-        tg = create_task_group()
-        # Enter the task group context
-        await tg.__aenter__()
-        self._tg_active = True
-        self._tg = tg
+        # Start the TaskGroup owner task and wait until ready
+        await self._start_owner()
+        # Record the loop and thread where the TaskGroup is running
+        try:
+            self._loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self._loop = None
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Ensure clean shutdown of all connections before exiting."""
+        await self.close(exc_type, exc_val, exc_tb)
+        # Close the owner TaskGroup in the same task that entered it
+        if self._owner_tg is not None:
+            try:
+                await self._owner_tg.__aexit__(exc_type, exc_val, exc_tb)
+            except Exception as e:
+                logger.warning(
+                    f"MCPConnectionManager: Error during owner TaskGroup cleanup: {e}"
+                )
+            finally:
+                self._owner_tg = None
+
+    async def close(self, exc_type=None, exc_val=None, exc_tb=None):
+        """Close all connections and tear down the internal TaskGroup safely.
+
+        This is thread-aware: if called from a different thread than the one where the
+        TaskGroup was created, it will signal the owner task on the original loop to
+        perform cleanup and await completion without violating task affinity.
+        """
         try:
-            # First request all servers to shutdown
-            logger.debug("MCPConnectionManager: shutting down all server tasks...")
-            await self.disconnect_all()
+            current_thread = threading.get_ident()
+            if current_thread == self._thread_id:
+                # Same thread: perform shutdown inline with exclusive access
+                async with self._close_lock:
+                    logger.debug(
+                        "MCPConnectionManager: shutting down all server tasks..."
+                    )
+                    await self.disconnect_all()
+                    await anyio.sleep(0.5)
+                    if self._tg_active:
+                        self._tg_close_event.set()
+                        # Wait for owner to report TaskGroup closed with an anyio timeout
+                        try:
+                            with anyio.fail_after(5.0):
+                                await self._tg_closed_event.wait()
+                        except TimeoutError:
+                            logger.warning(
+                                "MCPConnectionManager: Timeout waiting for TaskGroup owner to close"
+                            )
+                # Do not attempt to close the owner TaskGroup here; __aexit__ will handle it
+            else:
+                # Different thread – run entire shutdown on the original loop to avoid cross-thread Event.set
+                if self._loop is not None:
 
-            # Add a small delay to allow for clean shutdown of subprocess transports, etc.
-            await anyio.sleep(0.5)
+                    async def _shutdown_and_close():
+                        logger.debug(
+                            "MCPConnectionManager: shutting down all server tasks (origin loop)..."
+                        )
+                        async with self._close_lock:
+                            await self.disconnect_all()
+                            await anyio.sleep(0.5)
+                            if self._tg_active:
+                                self._tg_close_event.set()
+                                await self._tg_closed_event.wait()
 
-            # Then close the task group if it's active and we're in the same thread
-            if self._tg_active and self._tg:
-                current_thread = threading.get_ident()
-                if current_thread == self._thread_id:
                     try:
-                        await self._tg.__aexit__(exc_type, exc_val, exc_tb)
+                        cfut = asyncio.run_coroutine_threadsafe(
+                            _shutdown_and_close(), self._loop
+                        )
+                        # Wait in a worker thread to avoid blocking non-asyncio contexts
+                        try:
+                            with anyio.fail_after(5.0):
+                                await anyio.to_thread.run_sync(cfut.result)
+                        except TimeoutError:
+                            logger.warning(
+                                "MCPConnectionManager: Timeout during cross-thread shutdown/close"
+                            )
+                            try:
+                                cfut.cancel()
+                            except Exception:
+                                pass
                     except Exception as e:
                         logger.warning(
-                            f"MCPConnectionManager: Error during task group cleanup: {e}"
+                            f"MCPConnectionManager: Error scheduling cross-thread shutdown: {e}"
                         )
                 else:
-                    # Different thread – cannot safely cleanup anyio TaskGroup
                     logger.warning(
-                        f"MCPConnectionManager: Task group cleanup called from different thread "
-                        f"(created in {self._thread_id}, called from {current_thread}). Skipping cleanup."
+                        "MCPConnectionManager: No event loop recorded for cleanup; skipping TaskGroup close"
                     )
-                # Always mark as inactive and drop reference
-                self._tg_active = False
-                self._tg = None
         except AttributeError:  # Handle missing `_exceptions`
             pass
         except Exception as e:
             logger.warning(f"MCPConnectionManager: Error during shutdown: {e}")
+
+    async def _start_owner(self):
+        """Start the TaskGroup owner task if not already running (task-safe)."""
+        async with self._owner_start_lock:
+            # If an owner is active or TaskGroup is already active, nothing to do
+            if (self._tg_owner_task and not self._tg_owner_task.done()) or (
+                self._tg_active and self._tg is not None
+            ):
+                return
+            # If previous owner exists but is done (possibly with error), log and restart
+            if self._tg_owner_task and self._tg_owner_task.done():
+                try:
+                    exc = self._tg_owner_task.exception()
+                    if exc:
+                        logger.warning(
+                            f"MCPConnectionManager: restarting owner after error: {exc}"
+                        )
+                except Exception:
+                    logger.warning(
+                        "MCPConnectionManager: restarting owner after unknown state"
+                    )
+            # Reset coordination events (safe here since no active owner/TG)
+            self._tg_ready_event = Event()
+            self._tg_close_event = Event()
+            self._tg_closed_event = Event()
+            # Record loop and thread
+            try:
+                self._loop = asyncio.get_running_loop()
+            except RuntimeError:
+                self._loop = None
+            self._thread_id = threading.get_ident()
+            # Create an owner TaskGroup and start the owner task within it
+            owner_tg = create_task_group()
+            await owner_tg.__aenter__()
+            self._owner_tg = owner_tg
+            owner_tg.start_soon(self._tg_owner)
+            # Wait until the TaskGroup is ready
+            await self._tg_ready_event.wait()
+
+    async def _tg_owner(self):
+        """Own the TaskGroup lifecycle so __aexit__ runs in the same task it was entered."""
+        try:
+            async with create_task_group() as tg:
+                self._tg = tg
+                self._tg_active = True
+                # Signal that TaskGroup is ready
+                self._tg_ready_event.set()
+                # Wait for close request
+                await self._tg_close_event.wait()
+        except Exception as e:
+            logger.warning(f"MCPConnectionManager: Error in TaskGroup owner: {e}")
+        finally:
+            # Mark closed and clear references
+            self._tg_active = False
+            self._tg = None
+            # Signal that TaskGroup has been closed
+            try:
+                self._tg_closed_event.set()
+            except Exception as e:
+                logger.warning(f"Failed to set _tg_closed_event: {e}")
 
     async def launch_server(
         self,
@@ -295,12 +421,9 @@ class MCPConnectionManager(ContextDependent):
         Connect to a server and return a RunningServer instance that will persist
         until explicitly disconnected.
         """
-        # Create task group if it doesn't exist yet - make this method more resilient
+        # Ensure the TaskGroup owner is running - make this method more resilient
         if not self._tg_active:
-            tg = create_task_group()
-            await tg.__aenter__()
-            self._tg_active = True
-            self._tg = tg
+            await self._start_owner()
             logger.info(
                 f"MCPConnectionManager: Auto-created task group for server: {server_name}"
             )
