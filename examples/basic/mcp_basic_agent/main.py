@@ -48,6 +48,12 @@ app = MCPApp(name="mcp_basic_agent")  # settings=settings)
 
 @app.tool()
 async def example_usage()->str:
+    """
+    An example function/tool that uses an agent with access to the fetch and filesystem 
+    mcp servers. The agent will read the contents of mcp_agent.config.yaml, print the 
+    first 2 paragraphs of the mcp homepage, and summarize the paragraphs into a tweet. 
+    The example uses both OpenAI, Anthropic, and simulates a multi-turn conversation.
+    """
     async with app.run() as agent_app:
         logger = agent_app.logger
         context = agent_app.context
@@ -107,8 +113,7 @@ async def example_usage()->str:
 
     return result
 
-@app.tool()
-async def display_token_summary(app_ctx: MCPApp):
+async def display_token_summary(app_ctx: MCPApp, agent: Agent | None = None):
     """Display comprehensive token usage summary using app/agent convenience APIs."""
     summary: TokenSummary = await app_ctx.get_token_summary()
 
@@ -134,6 +139,19 @@ async def display_token_summary(app_ctx: MCPApp):
             print(f"    Cost: ${data.cost:.4f}")
 
     print("\n" + "=" * 50)
+
+    # Optional: show a specific agent's aggregated usage
+    if agent is not None:
+        agent_usage = await agent.get_token_usage()
+        if agent_usage:
+            print("\nAgent Usage:")
+            print(f"  Agent: {agent.name}")
+            print(f"  Total tokens: {agent_usage.total_tokens:,}")
+            print(f"  Input tokens: {agent_usage.input_tokens:,}")
+            print(f"  Output tokens: {agent_usage.output_tokens:,}")
+
+    print("\n" + "=" * 50)
+
 
 if __name__ == "__main__":
     start = time.time()
