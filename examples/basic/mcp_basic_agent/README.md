@@ -96,7 +96,7 @@ uv run main.py
 uv run mcp-agent login
 ```
 
-### `b.` Update your `mcp_agent.secrets.yaml` to mark your developer secrets (keys).
+### `b.` Update your `mcp_agent.secrets.yaml` to mark your developer secrets (keys)
 
 ```yaml
 openai:
@@ -106,7 +106,7 @@ anthropic:
 # Other secrets as needed
 ```
 
-### `c.` Deploy your agent with a single command:
+### `c.` Deploy your agent with a single command
 ```bash
 uv run mcp-agent deploy my-first-agent
 ```
@@ -141,6 +141,7 @@ npx @modelcontextprotocol/inspector
 ```
 
 Make sure to fill out the following settings:
+
 | Setting | Value | 
 |---|---|
 | *Transport Type* | *SSE* |
