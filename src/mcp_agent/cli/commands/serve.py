@@ -191,6 +191,8 @@ def serve(
             info_table.add_row("Address", f"http://{address}")
             if transport == "sse":
                 info_table.add_row("SSE Endpoint", f"http://{address}/sse")
+            elif transport == "http":
+                info_table.add_row("HTTP Endpoint", f"http://{address}/mcp")
 
         # Show registered components
         if hasattr(app_obj, "workflows") and app_obj.workflows:
@@ -251,6 +253,7 @@ def serve(
         def signal_handler(sig, frame):
             console.print("\n[yellow]Shutting down server...[/yellow]")
             shutdown_event.set()
+            os._exit(0)
 
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
@@ -284,7 +287,7 @@ def serve(
 
                 # Configure uvicorn
                 uvicorn_config = uvicorn.Config(
-                    mcp.app,
+                    mcp.streamable_http_app if transport == "http" else mcp.sse_app,
                     host=host,
                     port=port or 8000,
                     log_level="debug" if debug else "info",
@@ -307,6 +310,10 @@ def serve(
 
                 if transport == "sse":
                     console.print(f"[bold]SSE:[/bold] http://{host}:{port or 8000}/sse")
+                elif transport == "http":
+                    console.print(
+                        f"[bold]HTTP:[/bold] http://{host}:{port or 8000}/mcp"
+                    )
 
                 console.print("\n[dim]Press Ctrl+C to stop the server[/dim]\n")
 
