@@ -50,8 +50,8 @@ from mcp_agent.cli.utils.typer_utils import HelpfulTyperGroup
 
 app = typer.Typer(
     help="mcp-agent CLI",
-    add_completion=False,
-    no_args_is_help=False,
+    add_completion=True,
+    no_args_is_help=True,
     context_settings={"help_option_names": ["-h", "--help"]},
     cls=HelpfulTyperGroup,
 )
