@@ -14,7 +14,6 @@ from mcp_agent.mcp.gen_client import gen_client
 from ...utils import (
     setup_authenticated_client,
     validate_output_format,
-    resolve_server,
 )
 from mcp_agent.cli.utils.ux import console, print_info
 
@@ -27,7 +26,7 @@ async def _list_workflow_runs_async(
         server_url = server_id_or_url
     else:
         client = setup_authenticated_client()
-        server = resolve_server(client, server_id_or_url)
+        server = run_async(client.get_app_or_config(server_id_or_url))
 
         if hasattr(server, "appServerInfo") and server.appServerInfo:
             server_url = server.appServerInfo.serverUrl

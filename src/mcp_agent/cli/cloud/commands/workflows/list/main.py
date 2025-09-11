@@ -15,7 +15,6 @@ from mcp_agent.config import MCPServerSettings, Settings, LoggerSettings
 from mcp_agent.mcp.gen_client import gen_client
 from ...utils import (
     setup_authenticated_client,
-    resolve_server,
     handle_server_api_errors,
     validate_output_format,
 )
@@ -27,7 +26,7 @@ async def _list_workflows_async(server_id_or_url: str, format: str = "text") -> 
         server_url = server_id_or_url
     else:
         client = setup_authenticated_client()
-        server = resolve_server(client, server_id_or_url)
+        server = run_async(client.get_app_or_config(server_id_or_url))
 
         if hasattr(server, "appServerInfo") and server.appServerInfo:
             server_url = server.appServerInfo.serverUrl

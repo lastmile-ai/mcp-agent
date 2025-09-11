@@ -6,7 +6,6 @@ from typing import Union
 from mcp_agent.cli.auth import load_api_key_credentials
 from mcp_agent.cli.core.api_client import UnauthenticatedError
 from mcp_agent.cli.core.constants import DEFAULT_API_BASE_URL
-from mcp_agent.cli.core.utils import parse_app_identifier, run_async
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.mcp_app.api_client import (
     MCPApp,
@@ -46,35 +45,6 @@ def validate_output_format(format: str) -> None:
         raise CLIError(
             f"Invalid format '{format}'. Valid options are: {', '.join(valid_formats)}"
         )
-
-
-def resolve_server(
-    client: MCPAppClient, id_or_url: str
-) -> Union[MCPApp, MCPAppConfiguration]:
-    """Resolve server from ID.
-
-    Args:
-        client: Authenticated MCP App client
-        id_or_url: Server identifier (app ID or app config ID)
-
-    Returns:
-        Server object (MCPApp or MCPAppConfiguration)
-
-    Raises:
-        CLIError: If server resolution fails
-    """
-    try:
-        app_id, config_id = parse_app_identifier(id_or_url)
-
-        if config_id:
-            return run_async(client.get_app_configuration(app_config_id=config_id))
-        else:
-            return run_async(client.get_app(app_id=app_id))
-
-    except ValueError as e:
-        raise CLIError(str(e)) from e
-    except Exception as e:
-        raise CLIError(f"Failed to resolve server '{id_or_url}': {str(e)}") from e
 
 
 def handle_server_api_errors(func):
