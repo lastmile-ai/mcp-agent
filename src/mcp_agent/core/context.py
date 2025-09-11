@@ -6,7 +6,6 @@ import asyncio
 import concurrent.futures
 from typing import Any, List, Optional, TYPE_CHECKING
 import warnings
-from contextvars import ContextVar
 
 from pydantic import BaseModel, ConfigDict
 

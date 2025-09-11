@@ -87,9 +87,3 @@ class SystemActivities(ContextDependent):
             gateway_url=gateway_url,
             gateway_token=gateway_token,
         )
-
-    @activity.defn(name="mcp_sample")
-    async def sample(
-        self, execution_id: str, params: Any
-    ) -> Any:
-        pass

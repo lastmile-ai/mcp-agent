@@ -11,7 +11,6 @@ from opentelemetry.propagate import inject
 
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from mcp import ClientNotification, ClientRequest, ClientSession
-from mcp.server.session import ServerSession
 from mcp.shared.session import (
     ReceiveResultT,
     ReceiveNotificationT,
@@ -336,25 +335,18 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
         context: RequestContext["ClientSession", Any],
         params: CreateMessageRequestParams,
     ) -> CreateMessageResult | ErrorData:
-        logger.info(f"Handling sampling request: {params}")
+        logger.debug(f"Handling sampling request: {params}")
         server_session = self.context.upstream_session
         if server_session:
-            logger.info("Passing sampling request to upstream server session")
-            print("XX Passing sampling request to upstream server session")
+            logger.debug("Passing sampling request to upstream server session")
         else:
-            logger.info("No upstream server session, handling sampling locally")
+            logger.debug("No upstream server session, handling sampling locally")
 
         if server_session is None:
             # Enhanced sampling with human approval workflow
-            print("XX No upstream server session, handling sampling locally")
-            try:
-                # handle_sampling() missing 2 required positional arguments: 'request_context' and 'params'
-                return await self._sampling_handler.handle_sampling(
-                    context=self.context,
-                    params=params)
-            except:
-                import traceback
-                print(f"XX Error in local sampling handler: {traceback.format_exc()}")
+            return await self._sampling_handler.handle_sampling(
+                context=self.context,
+                params=params)
         else:
             try:
                 # If a server_session is available, we'll pass-through the sampling request to the upstream client

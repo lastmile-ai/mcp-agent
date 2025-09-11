@@ -5,7 +5,7 @@ Handles sampling requests from MCP servers with human-in-the-loop approval workf
 and direct LLM provider integration.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from mcp.types import (
@@ -17,7 +17,6 @@ from mcp.types import (
     SamplingMessage, CreateMessageRequest, ServerRequest,
 )
 from mcp.server.fastmcp.exceptions import ToolError
-from mcp.shared.context import RequestContext
 
 from mcp_agent.core.context_dependent import ContextDependent
 from mcp_agent.logging.logger import get_logger
@@ -43,14 +42,8 @@ class SamplingHandler(ContextDependent):
                               context: "Context",
                               params: CreateMessageRequestParams) -> CreateMessageResult | ErrorData:
         logger.info(f"Handling sampling request: {params}")
-        try:
-            server_session = context.upstream_session
-            logger.info(f"Current upstream server session: {type(server_session)}")
-            print(f"XX Current upstream server session: {type(server_session)}")
-        except:
-            import traceback
-            logger.error(f"Error getting upstream server session: {traceback.format_exc()}")
-            print(f"XX Error getting upstream server session: {traceback.format_exc()}")
+        server_session = context.upstream_session
+        logger.info(f"Current upstream server session: {type(server_session)}")
 
         if server_session is None:
             # Enhanced sampling with human approval workflow
@@ -74,8 +67,6 @@ class SamplingHandler(ContextDependent):
                 # Pass the result from the upstream client back to the server. We just act as a pass-through client here
                 return result
             except Exception as e:
-                import traceback
-                logger.error(f"XX Error passing sampling request to upstream server session: {traceback.format_exc()}")
                 return ErrorData(code=-32603, message=str(e))
 
     async def _handle_sampling_with_human_approval(

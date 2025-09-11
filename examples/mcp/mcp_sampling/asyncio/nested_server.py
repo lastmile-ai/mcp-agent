@@ -1,7 +1,5 @@
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ModelPreferences, ModelHint, SamplingMessage, TextContent
-from mcp_agent.app import MCPApp
-from mcp_agent.config import Settings, LoggerSettings, LogPathSettings
 
 mcp = FastMCP("Haiku demo server")
 
