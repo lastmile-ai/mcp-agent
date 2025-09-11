@@ -632,7 +632,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             # TODO: saqadri (MAC) - create a much more detailed description
             # based on all the available agents and workflows,
             # or use the MCPApp's description if available.
-            instructions=f"MCP server exposing {app.name} workflows and agents. Description: {app.description}",
+            instructions=f"MCP server exposing {app.name} workflows and agents as tools. Description: {app.description}",
             lifespan=app_specific_lifespan,
             **kwargs,
         )

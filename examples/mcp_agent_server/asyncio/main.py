@@ -28,7 +28,7 @@ from mcp_agent.tracing.token_counter import TokenNode
 
 # Note: This is purely optional:
 # if not provided, a default FastMCP server will be created by MCPApp using create_mcp_server_for_app()
-mcp = FastMCP(name="basic_agent_server")
+mcp = FastMCP(name="basic_agent_server", instructions="My basic agent server example.")
 
 # Define the MCPApp instance. The server created for this app will advertise the
 # MCP logging capability and forward structured logs upstream to connected clients.
@@ -249,6 +249,7 @@ async def grade_story_async(story: str, app_ctx: Optional[AppContext] = None) ->
 
     return result
 
+
 # Add custom tool to get token usage for a workflow
 @mcp.tool(
     name="get_token_usage",
@@ -361,6 +362,7 @@ async def get_workflow_token_usage(
         }
 
     return result
+
 
 async def main():
     parser = argparse.ArgumentParser()

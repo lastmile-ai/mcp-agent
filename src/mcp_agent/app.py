@@ -88,9 +88,11 @@ class MCPApp:
             upstream_session: Upstream session if the MCPApp is running as a server to an MCP client.
             initialize_model_selector: Initializes the built-in ModelSelector to help with model selection. Defaults to False.
         """
-        self.name = name
-        self.description = description or "MCP Agent Application"
         self.mcp = mcp
+        self.name = name or (mcp.name if mcp else None)
+        self.description = description or (
+            mcp.instructions if mcp else "MCP Agent Application"
+        )
 
         # We use these to initialize the context in initialize()
         if settings is None:
