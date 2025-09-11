@@ -30,7 +30,7 @@ dependencies = [
     "pyyaml>=6.0.2",
     "rich>=13.9.4",
     "scikit-learn>=1.6.0",
-    "typer>=0.15.1",
+    "typer>=0.15.3",
     "websockets>=12.0",
 ]
 
