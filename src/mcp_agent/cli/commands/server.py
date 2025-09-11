@@ -12,8 +12,9 @@ from rich.console import Console
 from rich.table import Table
 from rich.prompt import Confirm
 
-from mcp_agent.config import Settings, MCPServerSettings, MCPSettings
+from mcp_agent.config import Settings, MCPServerSettings, MCPSettings, get_settings
 from mcp_agent.cli.utils.importers import import_servers_from_mcp_json
+from mcp_agent.core.context import cleanup_context
 
 
 app = typer.Typer(help="Local server helpers")
@@ -338,7 +339,7 @@ def list_servers(
     ),
 ) -> None:
     """List configured servers."""
-    settings = Settings()
+    settings = get_settings()
     servers = (settings.mcp.servers if settings.mcp else {}) or {}
 
     if not servers:
@@ -443,7 +444,7 @@ def add(
     ),
 ) -> None:
     """Add a server to configuration."""
-    settings = Settings()
+    settings = get_settings()
     if settings.mcp is None:
         settings.mcp = MCPSettings()
     servers = settings.mcp.servers or {}
@@ -759,7 +760,8 @@ def test(
                             pass  # Resources might not be supported
 
                         console.print(
-                            f"\n[green bold]✅ Server '{name}' is working correctly![/green bold]"
+                            f"\n[green bold]✅ Server '{name}' is working correctly![/green bold]",
+                            end="\n\n",
                         )
 
             except asyncio.TimeoutError:
@@ -772,6 +774,9 @@ def test(
 
                     console.print(f"[dim]{traceback.format_exc()}[/dim]")
                 raise typer.Exit(1)
+
+        # Force complete shutdown of logging infrastructure for CLI commands
+        await cleanup_context(shutdown_logger=True)
 
     try:
         asyncio.run(asyncio.wait_for(_probe(), timeout=timeout))
