@@ -237,22 +237,11 @@ def deploy_config(
             )
         )
 
-        temp_secrets_path = None
-        try:
-            # When bundling, we temporarily move the raw secrets file so it is not bundled, then add it back after bundling
-            if secrets_file:
-                temp_secrets_path = config_dir / f".{secrets_file.name}.bak"
-                secrets_file.rename(temp_secrets_path)
-
-            wrangler_deploy(
-                app_id=app_id,
-                api_key=effective_api_key,
-                project_dir=config_dir,
-            )
-        finally:
-            # Bring back the secrets file
-            if secrets_file and temp_secrets_path:
-                temp_secrets_path.rename(secrets_file)
+        wrangler_deploy(
+            app_id=app_id,
+            api_key=effective_api_key,
+            project_dir=config_dir,
+        )
 
         with Progress(
             SpinnerColumn(spinner_name="arrow3"),

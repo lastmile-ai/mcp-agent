@@ -9,6 +9,7 @@ from pathlib import Path
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from mcp_agent.cli.config import settings
+from mcp_agent.cli.core.constants import MCP_SECRETS_FILENAME
 from mcp_agent.cli.utils.ux import console, print_error, print_warning
 
 from .constants import (
@@ -108,6 +109,7 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
 
     Some key details here:
     - We copy the user's project to a temporary directory and perform all operations there
+    - Secrets file must be excluded from the bundle
     - We must add a temporary `wrangler.toml` to the project directory to set python_workers
       compatibility flag (CLI arg is not sufficient).
     - Python workers with a `requirements.txt` file cannot be published by Wrangler, so we must
@@ -148,7 +150,7 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
     with tempfile.TemporaryDirectory(prefix="mcp-deploy-") as temp_dir_str:
         temp_project_dir = Path(temp_dir_str) / "project"
 
-        # Copy the entire project to temp directory, excluding unwanted directories
+        # Copy the entire project to temp directory, excluding unwanted directories and secrets file
         def ignore_patterns(_path, names):
             ignored = set()
             for name in names:
@@ -157,6 +159,7 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
                     "__pycache__",
                     "node_modules",
                     "venv",
+                    MCP_SECRETS_FILENAME,
                 }:
                     ignored.add(name)
             return ignored

@@ -17,6 +17,7 @@ from mcp_agent.cli.cloud.commands.deploy.wrangler_wrapper import (
     _needs_requirements_modification,
     wrangler_deploy,
 )
+from mcp_agent.cli.core.constants import MCP_SECRETS_FILENAME
 
 
 @pytest.fixture
@@ -133,6 +134,10 @@ app = MCPApp(name="complex-test-app")
         (project_path / "config.json").write_text('{"test": true}')
         (project_path / "data.txt").write_text("test data")
         (project_path / "requirements.txt").write_text("requests==2.31.0")
+        (project_path / "mcp_agent.deployed.secrets.yaml").write_text(
+            "secret: mcpac_sc_tst"
+        )
+        (project_path / "mcp_agent.config.yaml").write_text("config: value")
 
         # Create nested directory structure
         nested_dir = project_path / "nested"
@@ -910,3 +915,88 @@ app = MCPApp(name="test-app")
 
         # No requirements.txt should exist after deployment
         assert not (project_path / "requirements.txt").exists()
+
+
+def test_wrangler_deploy_secrets_file_exclusion():
+    """Test that mcp_agent.secrets.yaml is excluded from the bundle and not processed as mcpac.py."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        project_path = Path(temp_dir)
+
+        # Create main.py
+        (project_path / "main.py").write_text("""
+from mcp_agent_cloud import MCPApp
+app = MCPApp(name="test-app")
+""")
+
+        # Create secrets file
+        secrets_content = """
+api_key: !developer_secret
+db_password: !developer_secret
+"""
+        secrets_file = project_path / MCP_SECRETS_FILENAME
+        secrets_file.write_text(secrets_content)
+
+        # Create other YAML files that should be processed
+        config_file = project_path / "config.yaml"
+        config_file.write_text("app_name: test-app")
+
+        mcp_config_file = project_path / "mcp_agent.config.yaml"
+        mcp_config_file.write_text("config: value")
+
+        mcp_deployed_secrets_file = project_path / "mcp_agent.deployed.secrets.yaml"
+        mcp_deployed_secrets_file.write_text("secret: mcpac_sc_tst")
+
+        def check_secrets_exclusion_during_subprocess(*args, **kwargs):
+            temp_project_dir = Path(kwargs["cwd"])
+
+            # Secrets file should NOT exist in temp directory at all
+            assert not (temp_project_dir / MCP_SECRETS_FILENAME).exists(), (
+                "Secrets file should be excluded from temp directory"
+            )
+            assert not (
+                temp_project_dir / f"{MCP_SECRETS_FILENAME}.mcpac.py"
+            ).exists(), "Secrets file should not be processed as .mcpac.py"
+
+            # Other YAML files should be processed normally
+            assert (temp_project_dir / "config.yaml.mcpac.py").exists(), (
+                "Other YAML files should be processed as .mcpac.py"
+            )
+            assert (temp_project_dir / "mcp_agent.config.yaml.mcpac.py").exists(), (
+                "mcp_agent.config.yaml should be processed as .mcpac.py"
+            )
+            assert (
+                temp_project_dir / "mcp_agent.deployed.secrets.yaml.mcpac.py"
+            ).exists(), (
+                "mcp_agent.deployed.secrets.yaml should be processed as .mcpac.py"
+            )
+            assert not (temp_project_dir / "config.yaml").exists(), (
+                "Other YAML files should be renamed in temp directory"
+            )
+
+            # Original files should remain untouched
+            assert secrets_file.exists(), (
+                "Original secrets file should remain untouched"
+            )
+            assert config_file.exists(), "Original config file should remain untouched"
+            assert secrets_file.read_text() == secrets_content, (
+                "Secrets file content should be unchanged"
+            )
+
+            return MagicMock(returncode=0)
+
+        with patch(
+            "subprocess.run", side_effect=check_secrets_exclusion_during_subprocess
+        ):
+            wrangler_deploy("test-app", "test-api-key", project_path)
+
+        # After deployment, original files should be unchanged
+        assert secrets_file.exists(), "Secrets file should still exist"
+        assert secrets_file.read_text() == secrets_content, (
+            "Secrets file content should be preserved"
+        )
+        assert config_file.exists(), "Config file should still exist"
+
+        # No secrets-related mcpac.py files should exist in original directory
+        assert not (project_path / f"{MCP_SECRETS_FILENAME}.mcpac.py").exists(), (
+            "No secrets .mcpac.py file should exist in original directory"
+        )
