@@ -215,14 +215,14 @@ def print_secrets_summary(
 def print_deployment_header(
     config_file: Path,
     secrets_file: Optional[Path] = None,
-    dry_run: bool = False,
+    deployed_secrets_file: Optional[Path] = None,
 ) -> None:
     """Print a styled header for the deployment process."""
     console.print(
         Panel(
             f"Configuration: [cyan]{config_file}[/cyan]\n"
             f"Secrets file: [cyan]{secrets_file or 'N/A'}[/cyan]\n"
-            f"Mode: [{'yellow' if dry_run else 'green'}]{'DRY RUN' if dry_run else 'DEPLOY'}[/{'yellow' if dry_run else 'green'}]",
+            f"Deployed secrets file: [cyan]{deployed_secrets_file or 'Pending creation'}[/cyan]\n",
             title="MCP Agent Deployment",
             subtitle="LastMile AI",
             border_style="blue",
@@ -230,8 +230,9 @@ def print_deployment_header(
         )
     )
     logger.info(f"Starting deployment with configuration: {config_file}")
-    logger.info(f"Using secrets file: {secrets_file or 'N/A'}")
-    logger.info(f"Dry Run: {dry_run}")
+    logger.info(
+        f"Using secrets file: {secrets_file or 'N/A'}, deployed secrets file: {deployed_secrets_file or 'Pending creation'}"
+    )
 
 
 def print_configuration_header(
