@@ -306,6 +306,11 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if self.agent:
             await self.agent.__aexit__(exc_type, exc_val, exc_tb)
+        
+        # Cleanup token counter background tasks
+        if self.context and hasattr(self.context, "token_counter") and self.context.token_counter:
+            if hasattr(self.context.token_counter, "cleanup"):
+                await self.context.token_counter.cleanup()
 
     @abstractmethod
     async def generate(

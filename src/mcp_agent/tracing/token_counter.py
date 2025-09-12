@@ -467,6 +467,8 @@ class TokenCounter:
         self._lock = asyncio.Lock()
         # Engine hint for fast-path behavior (avoid imports when not Temporal)
         self._engine: Optional[str] = execution_engine
+        # Track background tasks for proper cleanup
+        self._background_tasks: set = set()
         self._is_temporal_engine: bool = (
             execution_engine == "temporal" if execution_engine is not None else False
         )
@@ -1875,8 +1877,11 @@ class TokenCounter:
                             config.callback, node, usage
                         )
                     )
-                    # Add error handling to the task
+                    # Track the task for cleanup
+                    self._background_tasks.add(task)
+                    # Add error handling to the task and cleanup when done
                     task.add_done_callback(self._handle_task_exception)
+                    task.add_done_callback(lambda t: self._background_tasks.discard(t))
                 else:
                     # Run sync callback in executor to avoid blocking
                     loop.run_in_executor(
@@ -1956,3 +1961,31 @@ class TokenCounter:
 
         # If no specific criteria, it matches all nodes
         return True
+
+    async def cleanup(self, timeout: float = 1.0) -> None:
+        """Cancel all background tasks with timeout and fallback to force kill"""
+        if not self._background_tasks:
+            return
+            
+        logger.debug(f"Cancelling {len(self._background_tasks)} background token counter tasks")
+        
+        # Cancel all tasks
+        for task in list(self._background_tasks):
+            if not task.done():
+                task.cancel()
+        
+        # Try graceful shutdown with timeout
+        if self._background_tasks:
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*self._background_tasks, return_exceptions=True),
+                    timeout=timeout
+                )
+                logger.debug("Token counter tasks cancelled gracefully")
+            except asyncio.TimeoutError:
+                logger.warning(f"Token counter tasks didn't respond to cancellation within {timeout}s, force killing")
+                # Fallback: force kill by clearing the set without waiting
+                self._background_tasks.clear()
+            except Exception as e:
+                logger.debug(f"Token counter task cleanup completed with: {e}")
+                self._background_tasks.clear()
