@@ -28,6 +28,7 @@ from mcp_agent.cli.utils.ux import print_error
 from mcp_agent.cli.mcp_app.api_client import MCPApp, MCPAppConfiguration
 
 console = Console()
+highlighter = ReprHighlighter()
 
 DEFAULT_LOG_LIMIT = 100
 
@@ -401,7 +402,6 @@ def _display_text_log_entry(entry: Dict[str, Any]) -> None:
 
     level_style = _get_level_style(level)
     message_text = Text.from_ansi(message)
-    highlighter = ReprHighlighter()
     highlighter.highlight(message_text)
 
     console.print(
