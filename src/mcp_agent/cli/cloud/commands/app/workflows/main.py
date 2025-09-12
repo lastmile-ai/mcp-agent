@@ -236,7 +236,11 @@ async def print_runs_list(session: MCPClientSession) -> None:
 
         def get_start_time(run: WorkflowRun):
             try:
-                return run.temporal.start_time if run.temporal else 0
+                return (
+                    run.temporal.start_time
+                    if run.temporal and run.temporal.start_time is not None
+                    else 0
+                )
             except AttributeError:
                 return 0
 
@@ -256,14 +260,14 @@ async def print_runs_list(session: MCPClientSession) -> None:
             start_str = (
                 datetime.fromtimestamp(start).strftime("%Y-%m-%d %H:%M:%S")
                 if start
-                else "N/A"
+                else "Unknown"
             )
 
             end = getattr(run.temporal, "close_time", None)
             end_str = (
                 datetime.fromtimestamp(end).strftime("%Y-%m-%d %H:%M:%S")
                 if end
-                else "N/A"
+                else "Unknown"
             )
 
             status = run.status.lower()
@@ -285,7 +289,7 @@ async def print_runs_list(session: MCPClientSession) -> None:
                 console.print(f"  Workflow ID: {run.temporal.workflow_id}")
 
             console.print(f"  Started: {start_str}")
-            if end_str != "N/A":
+            if end_str != "Unknown":
                 console.print(f"  Completed: {end_str}")
 
             # Show execution time if available

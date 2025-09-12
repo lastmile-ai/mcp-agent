@@ -3,7 +3,7 @@ import asyncio
 import json
 from contextlib import asynccontextmanager
 from enum import Enum
-from typing import Any, AsyncGenerator, Optional
+from typing import Any, AsyncGenerator, Optional, Union
 
 import mcp.types as types
 from mcp import ClientSession
@@ -26,7 +26,7 @@ class Workflow(BaseModel):
     name: str
     """A human-readable name for this resource."""
 
-    description: Optional[str | None] = None
+    description: Optional[str] = None
     """A description of what this resource represents."""
 
     capabilities: Optional[list[str]] = []
@@ -56,7 +56,7 @@ class WorkflowRunState(BaseModel):
     updated_at: float
     """The time when the workflow run state was last updated."""
 
-    error: Optional[str] = None
+    error: Optional[Union[str, dict]] = None
     """An error message if the workflow run failed, otherwise None."""
 
 
