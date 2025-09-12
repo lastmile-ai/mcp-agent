@@ -1,7 +1,15 @@
 from datetime import datetime
 from typing import Optional
-from mcp_agent.cli.mcp_app.mcp_client import WorkflowRun
+from mcp_agent.cli.mcp_app.mcp_client import Workflow, WorkflowRun
 from mcp_agent.cli.utils.ux import console, print_info
+
+import json
+import textwrap
+
+from rich.console import Group
+from rich.panel import Panel
+from rich.syntax import Syntax
+from rich.text import Text
 
 
 def format_workflow_status(status: Optional[str] = None) -> str:
@@ -27,6 +35,81 @@ def format_workflow_status(status: Optional[str] = None) -> str:
         return "[blue]🔁 Continued as New[/blue]"
     else:
         return f"❓ {status}"
+
+
+# FastTool includes 'self' in the run parameters schema, so remove it for clarity
+def clean_run_parameters(schema: dict) -> dict:
+    """Clean the run parameters schema by removing 'self' references."""
+    schema = schema.copy()
+
+    if "properties" in schema and "self" in schema["properties"]:
+        schema["properties"].pop("self")
+
+    if "required" in schema and "self" in schema["required"]:
+        schema["required"] = [r for r in schema["required"] if r != "self"]
+
+    return schema
+
+
+def print_workflows(workflows: list[Workflow]) -> None:
+    """Print workflows in text format."""
+    if not workflows:
+        console.print(
+            Panel(
+                "[yellow]No workflows found[/yellow]",
+                title="Workflows",
+                border_style="blue",
+            )
+        )
+        return
+
+    panels = []
+
+    for workflow in workflows:
+        header = Text(workflow.name, style="bold cyan")
+        desc = textwrap.dedent(
+            workflow.description or "No description available"
+        ).strip()
+        body_parts: list = [Text(desc, style="white")]
+
+        # Capabilities
+        capabilities = getattr(workflow, "capabilities", [])
+        cap_text = Text("\nCapabilities:\n", style="bold green")
+        cap_text.append_text(Text(", ".join(capabilities) or "None", style="white"))
+        body_parts.append(cap_text)
+
+        # Tool Endpoints
+        tool_endpoints = getattr(workflow, "tool_endpoints", [])
+        endpoints_text = Text("\nTool Endpoints:\n", style="bold green")
+        endpoints_text.append_text(
+            Text("\n".join(tool_endpoints) or "None", style="white")
+        )
+        body_parts.append(endpoints_text)
+
+        # Run Parameters
+        if workflow.run_parameters:
+            run_params = clean_run_parameters(workflow.run_parameters)
+            properties = run_params.get("properties", {})
+            if len(properties) > 0:
+                schema_str = json.dumps(run_params, indent=2)
+                schema_syntax = Syntax(
+                    schema_str, "json", theme="monokai", word_wrap=True
+                )
+                body_parts.append(Text("\nRun Parameters:", style="bold magenta"))
+                body_parts.append(schema_syntax)
+
+        body = Group(*body_parts)
+
+        panels.append(
+            Panel(
+                body,
+                title=header,
+                border_style="green",
+                expand=False,
+            )
+        )
+
+    console.print(Panel(Group(*panels), title="Workflows", border_style="blue"))
 
 
 def print_workflow_runs(

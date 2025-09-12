@@ -1,16 +1,12 @@
-import json
-import textwrap
 from typing import Optional
 
 import typer
-from rich.console import Group
 from rich.panel import Panel
 from rich.prompt import Prompt
-from rich.syntax import Syntax
-from rich.text import Text
 
 from mcp_agent.cli.auth import load_api_key_credentials
 from mcp_agent.cli.cloud.commands.workflows.utils import (
+    print_workflows,
     print_workflow_runs,
 )
 from mcp_agent.cli.config import settings
@@ -139,82 +135,13 @@ async def print_mcp_server_workflow_details(server_url: str, api_key: str) -> No
         ) from e
 
 
-# FastTool includes 'self' in the run parameters schema, so remove it for clarity
-def clean_run_parameters(schema: dict) -> dict:
-    schema = schema.copy()
-
-    if "properties" in schema and "self" in schema["properties"]:
-        schema["properties"].pop("self")
-
-    if "required" in schema and "self" in schema["required"]:
-        schema["required"] = [r for r in schema["required"] if r != "self"]
-
-    return schema
-
-
 async def print_workflows_list(session: MCPClientSession) -> None:
     """Prints the available workflow types for the server."""
     try:
         with console.status("[bold green]Fetching server workflows...", spinner="dots"):
             res = await session.list_workflows()
 
-        if not res.workflows:
-            console.print(
-                Panel(
-                    "[yellow]No workflows found[/yellow]",
-                    title="Workflows",
-                    border_style="blue",
-                )
-            )
-            return
-
-        panels = []
-
-        for workflow in res.workflows:
-            header = Text(workflow.name, style="bold cyan")
-            desc = textwrap.dedent(
-                workflow.description or "No description available"
-            ).strip()
-            body_parts: list = [Text(desc, style="white")]
-
-            # Capabilities
-            capabilities = getattr(workflow, "capabilities", [])
-            cap_text = Text("\nCapabilities:\n", style="bold green")
-            cap_text.append_text(Text(", ".join(capabilities) or "None", style="white"))
-            body_parts.append(cap_text)
-
-            # Tool Endpoints
-            tool_endpoints = getattr(workflow, "tool_endpoints", [])
-            endpoints_text = Text("\nTool Endpoints:\n", style="bold green")
-            endpoints_text.append_text(
-                Text("\n".join(tool_endpoints) or "None", style="white")
-            )
-            body_parts.append(endpoints_text)
-
-            # Run Parameters
-            if workflow.run_parameters:
-                run_params = clean_run_parameters(workflow.run_parameters)
-                properties = run_params.get("properties", {})
-                if len(properties) > 0:
-                    schema_str = json.dumps(run_params, indent=2)
-                    schema_syntax = Syntax(
-                        schema_str, "json", theme="monokai", word_wrap=True
-                    )
-                    body_parts.append(Text("\nRun Parameters:", style="bold magenta"))
-                    body_parts.append(schema_syntax)
-
-            body = Group(*body_parts)
-
-            panels.append(
-                Panel(
-                    body,
-                    title=header,
-                    border_style="green",
-                    expand=False,
-                )
-            )
-
-        console.print(Panel(Group(*panels), title="Workflows", border_style="blue"))
+        print_workflows(res.workflows if res and res.workflows else [])
 
     except Exception as e:
         print_error(f"Error fetching workflows: {str(e)}")

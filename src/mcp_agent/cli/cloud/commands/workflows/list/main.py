@@ -5,13 +5,13 @@ from typing import Optional
 
 import typer
 import yaml
-from rich.table import Table
 
 from mcp_agent.cli.auth.main import load_api_key_credentials
+from mcp_agent.cli.cloud.commands.workflows.utils import print_workflows
 from mcp_agent.cli.core.utils import run_async
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.mcp_app.mcp_client import mcp_connection_session
-from mcp_agent.cli.utils.ux import console, print_info, print_error
+from mcp_agent.cli.utils.ux import console, print_error
 from ...utils import (
     setup_authenticated_client,
     resolve_server,
@@ -68,7 +68,7 @@ async def _list_workflows_async(server_id_or_url: str, format: str = "text") -> 
                         )
                     )
                 else:  # text format
-                    print_workflows_text(workflows, server_id_or_url)
+                    print_workflows(workflows)
             except Exception as e:
                 print_error(
                     f"Error listing workflows for server {server_id_or_url}: {str(e)}"
@@ -102,53 +102,3 @@ def list_workflows(
     """
     validate_output_format(format)
     run_async(_list_workflows_async(server_id_or_url, format))
-
-
-def print_workflows_text(workflows, server_id_or_url: str) -> None:
-    """Print workflows information in text format."""
-    server_name = server_id_or_url
-
-    console.print(
-        f"\n[bold blue]📋 Available Workflows for Server: {server_name}[/bold blue]"
-    )
-
-    if not workflows:
-        print_info("No workflows found for this server.")
-        return
-
-    console.print(f"\nFound {len(workflows)} workflow definition(s):")
-
-    table = Table(show_header=True, header_style="bold blue")
-    table.add_column("Name", style="cyan", width=25)
-    table.add_column("Description", style="green", width=40)
-    table.add_column("Capabilities", style="yellow", width=25)
-    table.add_column("Tool Endpoints", style="dim", width=20)
-
-    for workflow in workflows:
-        name = getattr(workflow, "name", "Unknown")
-        description = getattr(workflow, "description", None) or "Unknown"
-        capabilities = getattr(workflow, "capabilities", [])
-        tool_endpoints = getattr(workflow, "tool_endpoints", [])
-
-        capabilities_str = ", ".join(capabilities) if capabilities else "Unknown"
-        tool_endpoints_str = (
-            ", ".join([ep.split("-")[-1] for ep in tool_endpoints])
-            if tool_endpoints
-            else "Unknown"
-        )
-
-        table.add_row(
-            _truncate_string(name, 25),
-            _truncate_string(description, 40),
-            _truncate_string(capabilities_str, 25),
-            _truncate_string(tool_endpoints_str, 20),
-        )
-
-    console.print(table)
-
-
-def _truncate_string(text: str, max_length: int) -> str:
-    """Truncate string to max_length, adding ellipsis if truncated."""
-    if len(text) <= max_length:
-        return text
-    return text[: max_length - 3] + "..."

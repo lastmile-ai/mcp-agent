@@ -12,15 +12,16 @@ from mcp_agent.workflows.intent_classifier.intent_classifier_embedding_openai im
 
 app = MCPApp(name="intent_classifier")
 
+
 @app.tool
-async def example_usage()->str:
-    '''
+async def example_usage() -> str:
+    """
     this is an example function/tool call that uses the intent classification workflow.
     It uses both the OpenAI embedding intent classifier and the OpenAI LLM intent classifier
-    '''
-    
-    results=""
-    
+    """
+
+    results = ""
+
     async with app.run() as intent_app:
         logger = intent_app.logger
         context = intent_app.context
@@ -48,7 +49,9 @@ async def example_usage()->str:
         )
 
         logger.info("Embedding-based Intent classification results:", data=output)
-        results="Embedding-based Intent classification results: " + ", ".join(r.intent for r in output)
+        results = "Embedding-based Intent classification results: " + ", ".join(
+            r.intent for r in output
+        )
 
         llm_intent_classifier = OpenAILLMIntentClassifier(
             intents=[
@@ -72,9 +75,12 @@ async def example_usage()->str:
         )
 
         logger.info("LLM-based Intent classification results:", data=output)
-        results+="LLM-based Intent classification results: " + ", ".join(r.intent for r in output)
+        results += "LLM-based Intent classification results: " + ", ".join(
+            r.intent for r in output
+        )
 
     return results
+
 
 if __name__ == "__main__":
     import time
