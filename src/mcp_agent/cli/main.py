@@ -132,7 +132,6 @@ app.add_typer(config_cmd.app, name="config", help="Manage and inspect configurat
 app.add_typer(keys_cmd.app, name="keys", help="Manage provider API keys")
 app.add_typer(models_cmd.app, name="models", help="List and manage models")
 
-# TODO: Uncomment after testing - Local Development and beyond
 app.add_typer(chat_cmd.app, name="chat", help="Ephemeral REPL for quick iteration")
 app.add_typer(dev_cmd.app, name="dev", help="Run app locally with live reload")
 app.add_typer(
