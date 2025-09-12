@@ -472,6 +472,39 @@ class OpenAIAugmentedLLM(
 
             # Build response_format
             schema = response_model.model_json_schema()
+
+            # Helpers for OpenAI strict JSON schema handling
+            # Strict requires `additionalProperties: false` and `required` include all keys
+            def _ensure_no_additional_props_and_require_all(node: dict):
+                if not isinstance(node, dict):
+                    return
+                node_type = node.get("type")
+                if node_type == "object":
+                    # Enforce no additional properties
+                    if "additionalProperties" not in node:
+                        node["additionalProperties"] = False
+                    # OpenAI strict mode expects 'required' to include every key in 'properties'
+                    props = node.get("properties")
+                    if isinstance(props, dict):
+                        node["required"] = list(props.keys())
+
+                # Recurse into common JSON Schema composition/containers
+                for key in ("properties", "$defs", "definitions"):
+                    sub = node.get(key)
+                    if isinstance(sub, dict):
+                        for v in sub.values():
+                            _ensure_no_additional_props_and_require_all(v)
+                if "items" in node:
+                    _ensure_no_additional_props_and_require_all(node["items"])
+                for key in ("oneOf", "anyOf", "allOf"):
+                    subs = node.get(key)
+                    if isinstance(subs, list):
+                        for v in subs:
+                            _ensure_no_additional_props_and_require_all(v)
+
+            if params.strict:
+                _ensure_no_additional_props_and_require_all(schema)
+
             response_format = {
                 "type": "json_schema",
                 "json_schema": {
@@ -510,6 +543,10 @@ class OpenAIAugmentedLLM(
                     config=self.context.config.openai, payload=payload
                 ),
             )
+
+            # If the workflow task surfaced an exception, surface it here
+            if isinstance(completion, BaseException):
+                raise completion
 
             if not completion.choices or completion.choices[0].message.content is None:
                 raise ValueError("No structured content returned by model")

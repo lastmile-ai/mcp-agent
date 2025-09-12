@@ -1,9 +1,9 @@
 from typing import List, Literal, Optional, TYPE_CHECKING
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from mcp_agent.tracing.semconv import GEN_AI_REQUEST_TOP_K
 from mcp_agent.tracing.telemetry import get_tracer, record_attributes
-from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
+from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM, RequestParams
 from mcp_agent.workflows.intent_classifier.intent_classifier_base import (
     Intent,
     IntentClassifier,
@@ -31,16 +31,25 @@ Respond in JSON format:
     "classifications": [
         {{
             "intent": <intent name>,
-            "confidence": <float between 0 and 1>,
-            "extracted_entities": {{
-                "entity_name": "entity_value"
-            }},
+            "confidence": <"low" | "medium" | "high">,
+            "p_score": <float between 0 and 1>,
+            "extracted_entities": [
+                {{
+                    "name": <entity name>,
+                    "value": <entity value as string>
+                }}
+            ],
             "reasoning": <brief explanation>
         }}
     ]
 }}
 
-Return up to {top_k} most likely intents. Only include intents with reasonable confidence (>0.5).
+Confidence guidance:
+- Use "high" for strong matches (e.g., p_score >= 0.8)
+- Use "medium" for moderate matches (e.g., 0.5 <= p_score < 0.8)
+- Use "low" for weak matches (e.g., p_score < 0.5)
+
+Return up to {top_k} most likely intents. Only include intents with reasonable confidence (p_score >= 0.5). If no entities are extracted, set "extracted_entities" to an empty array.
 If no intents match well, return an empty list.
 """
 
@@ -53,6 +62,38 @@ class LLMIntentClassificationResult(IntentClassificationResult):
 
     reasoning: str | None = None
     """Optional explanation of why this intent was chosen"""
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def _coerce_confidence(cls, v):
+        """
+        Accept numeric confidences by converting them into discrete levels.
+        Maps: [0.0, 0.5) -> "low"; [0.5, 0.8) -> "medium"; [0.8, 1.0] -> "high".
+        Also normalizes string case to lower-case.
+        """
+        try:
+            # Handle numeric types (int/float as strings or numbers)
+            if isinstance(v, (int, float)):
+                score = float(v)
+            elif isinstance(v, str):
+                # Try to parse as float; if fails, normalize case for string literals
+                try:
+                    score = float(v)
+                except ValueError:
+                    return v.strip().lower()
+            else:
+                return v
+
+            # Quantize numeric score to discrete confidence
+            if score >= 0.8:
+                return "high"
+            elif score >= 0.5:
+                return "medium"
+            else:
+                return "low"
+        except Exception:
+            # On any unexpected error, return the value as-is and let validation handle it
+            return v
 
 
 class StructuredIntentResponse(BaseModel):
@@ -144,8 +185,11 @@ class LLMIntentClassifier(IntentClassifier):
             span.set_attribute("prompt", prompt)
 
             # Get classification from LLM
+            # Enforce strict schema adherence for structured outputs to reduce type drift
             response = await self.llm.generate_structured(
-                message=prompt, response_model=StructuredIntentResponse
+                message=prompt,
+                response_model=StructuredIntentResponse,
+                request_params=RequestParams(strict=True),
             )
 
             if self.context.tracing_enabled:
@@ -210,13 +254,9 @@ class LLMIntentClassifier(IntentClassifier):
             attributes[f"{attr_prefix}p_score"] = classification.p_score
 
         if classification.extracted_entities:
-            for (
-                entity_name,
-                entity_value,
-            ) in classification.extracted_entities.items():
-                attributes[f"{attr_prefix}extracted_entities.{entity_name}"] = (
-                    entity_value
-                )
+            for i, entity in enumerate(classification.extracted_entities):
+                attributes[f"{attr_prefix}extracted_entities.{i}.name"] = entity.name
+                attributes[f"{attr_prefix}extracted_entities.{i}.value"] = entity.value
 
         return attributes
 

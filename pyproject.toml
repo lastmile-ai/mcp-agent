@@ -30,7 +30,7 @@ dependencies = [
     "pyyaml>=6.0.2",
     "rich>=13.9.4",
     "scikit-learn>=1.6.0",
-    "typer>=0.15.1",
+    "typer>=0.15.3",
     "websockets>=12.0",
 ]
 
@@ -77,7 +77,8 @@ cli = [
     "hvac>=1.1.1",
     "httpx>=0.28.1",
     "pyjwt>=2.10.1",
-    "typer[all]>=0.15.1",
+    "typer[all]>=0.15.3",
+    "watchdog>=6.0.0"
 ]
 
 [build-system]
