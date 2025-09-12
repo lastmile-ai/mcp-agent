@@ -89,8 +89,14 @@ from rich import print
 
 app = MCPApp(name="assignment_grader_orchestrator")
 
-
-async def example_usage():
+@app.tool
+async def example_usage()->str:
+    '''
+    this example function/tool call will use an orchestrator workflow
+    to dynamically plan and execute across a number of agents to grade
+    a short story.
+    '''
+    result=""
     async with app.run() as orchestrator_app:
         logger = orchestrator_app.logger
 
@@ -177,6 +183,7 @@ async def example_usage():
         summary = await orchestrator_app.get_token_summary()
         print(f"\nTotal Cost: ${summary.cost:.4f}")
         print("=" * 60)
+    return result
 
 
 def display_node_tree(
