@@ -13,9 +13,9 @@ import httpx
 import typer
 import yaml
 from rich.console import Console
+from rich.highlighter import ReprHighlighter
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.text import Text
-from rich.highlighter import ReprHighlighter
 
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.auth import load_credentials, UserCredentials
@@ -407,8 +407,7 @@ def _display_text_log_entry(entry: Dict[str, Any]) -> None:
     console.print(
         f"[bright_black not bold]{timestamp}[/bright_black not bold] "
         f"[{level_style}]{level:7}[/{level_style}] ",
-        message_text,
-        sep=""
+        message_text
     )
 
 
