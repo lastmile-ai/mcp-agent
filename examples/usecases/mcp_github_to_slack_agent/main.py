@@ -9,7 +9,11 @@ from rich import print
 
 app = MCPApp(name="github_to_slack")
 
-@app.async_tool(name="github_to_slack", description="Tool to list GitHub pull requests and provides summaries to Slack")
+
+@app.async_tool(
+    name="github_to_slack",
+    description="Tool to list GitHub pull requests and provides summaries to Slack",
+)
 async def github_to_slack(github_owner: str, github_repo: str, slack_channel: str):
     async with app.run() as agent_app:
         context = agent_app.context
