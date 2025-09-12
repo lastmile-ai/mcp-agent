@@ -1,7 +1,6 @@
 import json
 import textwrap
 from typing import Optional
-from datetime import datetime
 
 import typer
 from rich.console import Group
@@ -11,7 +10,9 @@ from rich.syntax import Syntax
 from rich.text import Text
 
 from mcp_agent.cli.auth import load_api_key_credentials
-from mcp_agent.cli.cloud.commands.workflows.utils import format_workflow_status
+from mcp_agent.cli.cloud.commands.workflows.utils import (
+    print_workflow_runs,
+)
 from mcp_agent.cli.config import settings
 from mcp_agent.cli.core.api_client import UnauthenticatedError
 from mcp_agent.cli.core.constants import (
@@ -251,46 +252,7 @@ async def print_runs_list(session: MCPClientSession) -> None:
             reverse=True,
         )
 
-        console.print(f"\n[bold blue] Workflow Runs ({len(sorted_runs)})[/bold blue]")
-
-        for i, run in enumerate(sorted_runs):
-            if i > 0:
-                console.print()
-
-            start = getattr(run.temporal, "start_time", None)
-            start_str = (
-                datetime.fromtimestamp(start).strftime("%Y-%m-%d %H:%M:%S")
-                if start
-                else "Unknown"
-            )
-
-            end = getattr(run.temporal, "close_time", None)
-            end_str = (
-                datetime.fromtimestamp(end).strftime("%Y-%m-%d %H:%M:%S")
-                if end
-                else "Unknown"
-            )
-
-            status = run.status.lower()
-            status_text = format_workflow_status(status)
-
-            console.print(
-                f"[bold cyan]{run.name or 'Unnamed Workflow'}[/bold cyan] {status_text}"
-            )
-            console.print(f"  Run ID: {run.id}")
-
-            if run.temporal and run.temporal.workflow_id:
-                console.print(f"  Workflow ID: {run.temporal.workflow_id}")
-
-            console.print(f"  Started: {start_str}")
-            if end_str != "Unknown":
-                console.print(f"  Completed: {end_str}")
-
-            # Show execution time if available
-            if hasattr(run.temporal, "execution_time") and run.temporal.execution_time:
-                duration = end - start if (start and end) else None
-                if duration:
-                    console.print(f"  Duration: {duration:.2f}s")
+        print_workflow_runs(sorted_runs)
 
     except Exception as e:
         print_error(f"Error fetching workflow runs: {str(e)}")

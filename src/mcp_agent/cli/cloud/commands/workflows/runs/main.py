@@ -6,18 +6,20 @@ from typing import Optional
 import typer
 import yaml
 
-from mcp_agent.app import MCPApp
-from mcp_agent.cli.cloud.commands.workflows.utils import format_workflow_status
+from mcp_agent.cli.auth.main import load_api_key_credentials
+from mcp_agent.cli.cloud.commands.workflows.utils import (
+    print_workflow_runs,
+)
 from mcp_agent.cli.core.utils import run_async
 from mcp_agent.cli.exceptions import CLIError
-from mcp_agent.config import MCPServerSettings, Settings, LoggerSettings
-from mcp_agent.mcp.gen_client import gen_client
+from mcp_agent.cli.mcp_app.mcp_client import WorkflowRun, mcp_connection_session
+from mcp_agent.cli.utils.ux import console, print_error
+
 from ...utils import (
+    resolve_server,
     setup_authenticated_client,
     validate_output_format,
-    resolve_server,
 )
-from mcp_agent.cli.utils.ux import console, print_info
 
 
 async def _list_workflow_runs_async(
@@ -40,36 +42,26 @@ async def _list_workflow_runs_async(
         if not server_url:
             raise CLIError(f"No server URL found for server '{server_id_or_url}'")
 
-    quiet_settings = Settings(logger=LoggerSettings(level="error"))
-    app = MCPApp(name="workflows_cli", settings=quiet_settings)
+    effective_api_key = load_api_key_credentials()
+
+    if not effective_api_key:
+        raise CLIError("Must be logged in to access server. Run 'mcp-agent login'.")
 
     try:
-        async with app.run() as workflow_app:
-            context = workflow_app.context
+        async with mcp_connection_session(
+            server_url, effective_api_key
+        ) as mcp_client_session:
+            try:
+                with console.status(
+                    "[bold green]Fetching workflow runs...", spinner="dots"
+                ):
+                    result = await mcp_client_session.list_workflow_runs()
 
-            sse_url = (
-                f"{server_url}/sse" if not server_url.endswith("/sse") else server_url
-            )
-            context.server_registry.registry["workflow_server"] = MCPServerSettings(
-                name="workflow_server",
-                description=f"Deployed MCP server {server_url}",
-                url=sse_url,
-                transport="sse",
-            )
+                workflows = (
+                    result.workflow_runs if result and result.workflow_runs else []
+                )
 
-            async with gen_client(
-                "workflow_server", server_registry=context.server_registry
-            ) as client:
-                result = await client.call_tool("workflows-runs-list", {})
-
-                workflows_data = result.content[0].text if result.content else []
-                if isinstance(workflows_data, str):
-                    workflows_data = json.loads(workflows_data)
-
-                if not workflows_data:
-                    workflows_data = []
-
-                workflows = workflows_data
+                status_filter = None
                 if status:
                     status_filter = _get_status_filter(status)
                     workflows = [
@@ -84,7 +76,12 @@ async def _list_workflow_runs_async(
                 elif format == "yaml":
                     _print_workflows_yaml(workflows)
                 else:
-                    _print_workflows_text(workflows, status, server_id_or_url)
+                    print_workflow_runs(workflows, status_filter)
+            except Exception as e:
+                # Don't raise or it will be a generic unhandled error in TaskGroup
+                print_error(
+                    f"Error listing workflow runs for server {server_id_or_url}: {str(e)}"
+                )
 
     except Exception as e:
         raise CLIError(
@@ -145,7 +142,7 @@ def _get_status_filter(status: str) -> str:
     return normalized_status
 
 
-def _matches_status(workflow: dict, status_filter: str) -> bool:
+def _matches_status(workflow, status_filter: str) -> bool:
     """Check if workflow matches the status filter.
 
     Note: We use string-based matching instead of protobuf enum values because
@@ -153,92 +150,23 @@ def _matches_status(workflow: dict, status_filter: str) -> bool:
     This approach is more flexible and doesn't require maintaining sync with
     the protobuf definitions.
     """
-    workflow_status = workflow.get("execution_status", "")
+    if isinstance(workflow, dict):
+        workflow_status = workflow.get("status", "")
+    else:
+        workflow_status = getattr(workflow, "status", "")
+
     if isinstance(workflow_status, str):
         return status_filter.lower() in workflow_status.lower()
     return False
 
 
-def _print_workflows_text(workflows, status_filter, server_id_or_url):
-    """Print workflows in text format."""
-    console.print(f"\n[bold blue]📊 Workflow Runs ({len(workflows)})[/bold blue]")
-
-    if not workflows:
-        print_info("No workflow runs found for this server.")
-        return
-
-    for i, workflow in enumerate(workflows):
-        if i > 0:
-            console.print()
-
-        if isinstance(workflow, dict):
-            workflow_id = workflow.get("workflow_id", "N/A")
-            name = workflow.get("name", "N/A")
-            execution_status = workflow.get("execution_status", "N/A")
-            run_id = workflow.get("run_id", "N/A")
-            created_at = workflow.get("created_at", "N/A")
-            principal_id = workflow.get("principal_id", "N/A")
-        else:
-            workflow_id = getattr(workflow, "workflow_id", "N/A")
-            name = getattr(workflow, "name", "N/A")
-            execution_status = getattr(workflow, "execution_status", "N/A")
-            run_id = getattr(workflow, "run_id", "N/A")
-            created_at = getattr(workflow, "created_at", "N/A")
-            principal_id = getattr(workflow, "principal_id", "N/A")
-
-        status_display = format_workflow_status(execution_status)
-
-        if created_at and created_at != "N/A":
-            if hasattr(created_at, "strftime"):
-                created_display = created_at.strftime("%Y-%m-%d %H:%M:%S")
-            else:
-                try:
-                    from datetime import datetime
-
-                    dt = datetime.fromisoformat(str(created_at).replace("Z", "+00:00"))
-                    created_display = dt.strftime("%Y-%m-%d %H:%M:%S")
-                except (ValueError, TypeError):
-                    created_display = str(created_at)
-        else:
-            created_display = "N/A"
-
-        console.print(f"[bold cyan]{name or 'Unnamed'}[/bold cyan] {status_display}")
-        console.print(f"  Workflow ID: {workflow_id}")
-        console.print(f"  Run ID: {run_id}")
-        console.print(f"  Created: {created_display}")
-
-        if principal_id and principal_id != "N/A":
-            console.print(f"  Principal: {principal_id}")
-
-    if status_filter:
-        console.print(f"\n[dim]Filtered by status: {status_filter}[/dim]")
-
-
-def _print_workflows_json(workflows):
+def _print_workflows_json(workflows: list[WorkflowRun]):
     """Print workflows in JSON format."""
-    workflows_data = [_workflow_to_dict(workflow) for workflow in workflows]
+    workflows_data = [workflow.model_dump() for workflow in workflows]
     print(json.dumps({"workflow_runs": workflows_data}, indent=2, default=str))
 
 
-def _print_workflows_yaml(workflows):
+def _print_workflows_yaml(workflows: list[WorkflowRun]):
     """Print workflows in YAML format."""
-    workflows_data = [_workflow_to_dict(workflow) for workflow in workflows]
+    workflows_data = [workflow.model_dump() for workflow in workflows]
     print(yaml.dump({"workflow_runs": workflows_data}, default_flow_style=False))
-
-
-def _workflow_to_dict(workflow):
-    """Convert workflow dict to standardized dictionary format."""
-    if isinstance(workflow, dict):
-        return workflow
-
-    return {
-        "workflow_id": getattr(workflow, "workflow_id", None),
-        "run_id": getattr(workflow, "run_id", None),
-        "name": getattr(workflow, "name", None),
-        "created_at": getattr(workflow, "created_at", None).isoformat()
-        if getattr(workflow, "created_at", None)
-        else None,
-        "execution_status": getattr(workflow, "execution_status", None).value
-        if getattr(workflow, "execution_status", None)
-        else None,
-    }

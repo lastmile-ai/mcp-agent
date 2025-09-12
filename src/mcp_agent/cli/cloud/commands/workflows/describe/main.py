@@ -103,16 +103,24 @@ def print_workflow_status(workflow_status: WorkflowRun, format: str = "text") ->
         print(yaml.dump(workflow_status.model_dump(), default_flow_style=False))
     else:  # text format
         name = getattr(workflow_status, "name", "Unknown")
-        workflow_id = getattr(workflow_status.temporal, "workflow_id", "Unknown") if workflow_status.temporal else "Unknown"
+        workflow_id = (
+            getattr(workflow_status.temporal, "workflow_id", "Unknown")
+            if workflow_status.temporal
+            else "Unknown"
+        )
         run_id = getattr(workflow_status, "id", "Unknown")
         status = getattr(workflow_status, "status", "Unknown")
 
         # Try to get creation time from temporal metadata
-        created_at = getattr(workflow_status.temporal, "start_time", None) if workflow_status.temporal else None
+        created_at = (
+            getattr(workflow_status.temporal, "start_time", None)
+            if workflow_status.temporal
+            else None
+        )
         if created_at is not None:
             try:
                 from datetime import datetime
-                
+
                 created_dt = datetime.fromtimestamp(created_at)
                 created_at = created_dt.strftime("%Y-%m-%d %H:%M:%S")
             except (ValueError, TypeError):
@@ -126,13 +134,15 @@ def print_workflow_status(workflow_status: WorkflowRun, format: str = "text") ->
         console.print(f"  Workflow ID: {workflow_id}")
         console.print(f"  Run ID: {run_id}")
         console.print(f"  Created: {created_at}")
-        
+
         # Print result information if available
         if workflow_status.result:
-            console.print(f"\n[bold green]📄 Result[/bold green]")
-            console.print(f"  Kind: {getattr(workflow_status.result, 'kind', 'Unknown')}")
-            
-            result_value = getattr(workflow_status.result, 'value', None)
+            console.print("\n[bold green]📄 Result[/bold green]")
+            console.print(
+                f"  Kind: {getattr(workflow_status.result, 'kind', 'Unknown')}"
+            )
+
+            result_value = getattr(workflow_status.result, "value", None)
             if result_value:
                 # Truncate very long results
                 if len(str(result_value)) > 500:
@@ -140,28 +150,36 @@ def print_workflow_status(workflow_status: WorkflowRun, format: str = "text") ->
                     console.print(f"  Value: {truncated_value}")
                 else:
                     console.print(f"  Value: {result_value}")
-            
+
             # Print timing if available
-            start_time = getattr(workflow_status.result, 'start_time', None)
-            end_time = getattr(workflow_status.result, 'end_time', None)
+            start_time = getattr(workflow_status.result, "start_time", None)
+            end_time = getattr(workflow_status.result, "end_time", None)
             if start_time:
-                start_dt = datetime.fromtimestamp(start_time).strftime("%Y-%m-%d %H:%M:%S")
+                start_dt = datetime.fromtimestamp(start_time).strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
                 console.print(f"  Started: {start_dt}")
             if end_time:
                 end_dt = datetime.fromtimestamp(end_time).strftime("%Y-%m-%d %H:%M:%S")
                 console.print(f"  Ended: {end_dt}")
-        
+
         # Print error information if available
         if workflow_status.error:
-            console.print(f"\n[bold red]❌ Error[/bold red]")
+            console.print("\n[bold red]❌ Error[/bold red]")
             console.print(f"  {workflow_status.error}")
-        
+
         # Print state error if different from main error
-        if workflow_status.state and workflow_status.state.error and workflow_status.state.error != workflow_status.error:
-            console.print(f"\n[bold red]⚠️  State Error[/bold red]")
+        if (
+            workflow_status.state
+            and workflow_status.state.error
+            and workflow_status.state.error != workflow_status.error
+        ):
+            console.print("\n[bold red]⚠️  State Error[/bold red]")
             if isinstance(workflow_status.state.error, dict):
-                error_type = workflow_status.state.error.get('type', 'Unknown')
-                error_message = workflow_status.state.error.get('message', 'Unknown error')
+                error_type = workflow_status.state.error.get("type", "Unknown")
+                error_message = workflow_status.state.error.get(
+                    "message", "Unknown error"
+                )
                 console.print(f"  Type: {error_type}")
                 console.print(f"  Message: {error_message}")
             else:

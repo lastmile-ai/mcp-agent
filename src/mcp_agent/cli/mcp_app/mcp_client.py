@@ -14,7 +14,6 @@ from pydantic import AnyUrl, BaseModel
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.utils.ux import (
     console,
-    print_error,
     print_success,
 )
 
