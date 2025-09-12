@@ -14,6 +14,7 @@ import typer
 import yaml
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.text import Text
 
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.auth import load_credentials, UserCredentials
@@ -25,7 +26,7 @@ from mcp_agent.cli.core.api_client import UnauthenticatedError
 from mcp_agent.cli.utils.ux import print_error
 from mcp_agent.cli.mcp_app.api_client import MCPApp, MCPAppConfiguration
 
-console = Console()
+console = Console(force_terminal=True)
 
 DEFAULT_LOG_LIMIT = 100
 
@@ -390,6 +391,45 @@ def _clean_log_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
     return cleaned_entry
 
 
+def _merge_ansi_and_highlighting(message: str) -> Text:
+    """Merge ANSI colors with Rich syntax highlighting."""
+    from rich.highlighter import ReprHighlighter
+    
+    # First, convert ANSI to Rich Text
+    ansi_text = Text.from_ansi(message)
+    
+    # Get plain text for highlighting
+    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+    plain_text = ansi_escape.sub('', message)
+    
+    # Apply Rich highlighting to plain text
+    highlighter = ReprHighlighter()
+    highlighted_text = highlighter(plain_text)
+    
+    # If no highlighting was applied, just return ANSI text
+    if len(highlighted_text._spans) == 0:
+        return ansi_text
+    
+    # Merge highlighting spans with ANSI text
+    # This is a simplified merge - in complex cases, colors might conflict
+    result = Text(ansi_text.plain)
+    
+    # Apply ANSI styles first
+    for span in ansi_text._spans:
+        result.stylize(span.style, span.start, span.end)
+    
+    # Then apply highlighting styles where there's no existing color
+    for span in highlighted_text._spans:
+        # Only apply if there's no existing foreground color in that range
+        existing_spans = [s for s in result._spans if s.start <= span.start < s.end]
+        has_fg_color = any(s.style and hasattr(s.style, 'color') and s.style.color for s in existing_spans)
+        
+        if not has_fg_color:
+            result.stylize(span.style, span.start, span.end)
+    
+    return result
+
+
 def _display_text_log_entry(entry: Dict[str, Any]) -> None:
     """Display a single log entry in text format."""
     timestamp = _format_timestamp(entry.get("timestamp", ""))
@@ -399,10 +439,14 @@ def _display_text_log_entry(entry: Dict[str, Any]) -> None:
 
     level_style = _get_level_style(level)
 
+    # Merge ANSI colors with Rich highlighting
+    final_message = _merge_ansi_and_highlighting(message)
+
     console.print(
         f"[bright_black not bold]{timestamp}[/bright_black not bold] "
-        f"[{level_style}]{level:7}[/{level_style}] "
-        f"{message}"
+        f"[{level_style}]{level:7}[/{level_style}] ",
+        final_message,
+        sep=""
     )
 
 
@@ -471,6 +515,8 @@ def _parse_log_level(level: str) -> str:
 
 def _clean_message(message: str) -> str:
     """Remove redundant log level prefix from message if present."""
+    # Don't strip ANSI codes here - we'll handle them in display
+    
     prefixes = [
         "ERROR:",
         "WARNING:",
