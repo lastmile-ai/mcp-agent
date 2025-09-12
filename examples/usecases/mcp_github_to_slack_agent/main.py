@@ -9,7 +9,7 @@ from rich import print
 
 app = MCPApp(name="github_to_slack")
 
-
+@app.async_tool(name="github_to_slack", description="Tool to list GitHub pull requests and provides summaries to Slack")
 async def github_to_slack(github_owner: str, github_repo: str, slack_channel: str):
     async with app.run() as agent_app:
         context = agent_app.context
@@ -19,7 +19,7 @@ async def github_to_slack(github_owner: str, github_repo: str, slack_channel: st
                 name="github_to_slack_agent",
                 instruction=f"""You are an agent that monitors GitHub pull requests and provides summaries to Slack.
                 Your tasks are:
-                1. Use the GitHub server to retrieve information about the latest pull requests for the repository {github_owner}/{github_repo}
+                1. Use the GitHub server to retrieve information about the last 10 pull requests for the repository {github_owner}/{github_repo}
                 2. Analyze and prioritize the pull requests based on their importance, urgency, and impact
                 3. Format a concise summary of high-priority items
                 4. Submit this summary to the Slack server in the channel {slack_channel}
@@ -40,7 +40,7 @@ async def github_to_slack(github_owner: str, github_repo: str, slack_channel: st
 
                 prompt = f"""Complete the following workflow:
 
-                1. Retrieve the latest pull requests from the GitHub repository {github_owner}/{github_repo}.
+                1. Retrieve the last 10 pull requests from the GitHub repository {github_owner}/{github_repo}.
                    Use the GitHub server to get this information.
                    Gather details such as PR title, author, creation date, status, and description.
 
@@ -60,14 +60,18 @@ async def github_to_slack(github_owner: str, github_repo: str, slack_channel: st
                    - Include links to the PRs
                    - End with any relevant action items or recommendations
                 
-                4. Use the Slack server to post this summary to the channel {slack_channel}.
+                4. Use the Slack server to post this summary to the channel {slack_channel}. If you do not have Slack 
+                   tool access, just return the final summary. 
                 """
 
                 # Execute the workflow
                 print("Executing GitHub to Slack workflow...")
-                await llm.generate_str(prompt)
+                result = await llm.generate_str(prompt)
 
                 print("Workflow completed successfully!")
+                print(result)
+
+                return result
 
             finally:
                 # Clean up the agent
