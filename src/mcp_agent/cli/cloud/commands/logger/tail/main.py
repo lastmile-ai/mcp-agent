@@ -13,7 +13,9 @@ import httpx
 import typer
 import yaml
 from rich.console import Console
+from rich.highlighter import ReprHighlighter
 from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.text import Text
 
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.auth import load_credentials, UserCredentials
@@ -26,6 +28,7 @@ from mcp_agent.cli.utils.ux import print_error
 from mcp_agent.cli.mcp_app.api_client import MCPApp, MCPAppConfiguration
 
 console = Console()
+highlighter = ReprHighlighter()
 
 DEFAULT_LOG_LIMIT = 100
 
@@ -398,11 +401,13 @@ def _display_text_log_entry(entry: Dict[str, Any]) -> None:
     message = _clean_message(entry.get("message", ""))
 
     level_style = _get_level_style(level)
+    message_text = Text.from_ansi(message)
+    highlighter.highlight(message_text)
 
     console.print(
         f"[bright_black not bold]{timestamp}[/bright_black not bold] "
-        f"[{level_style}]{level:7}[/{level_style}] "
-        f"{message}"
+        f"[{level_style}]{level:7}[/{level_style}] ",
+        message_text
     )
 
 
