@@ -77,7 +77,7 @@ cli = [
     "hvac>=1.1.1",
     "httpx>=0.28.1",
     "pyjwt>=2.10.1",
-    "typer[all]>=0.15.1",
+    "typer[all]>=0.15.3",
     "watchdog>=6.0.0"
 ]
 
