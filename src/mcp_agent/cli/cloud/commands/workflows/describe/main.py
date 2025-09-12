@@ -55,7 +55,6 @@ async def _describe_workflow_async(
                 )
                 print_workflow_status(workflow_status, format)
             except Exception as e:
-                # Don't raise or it will be a generic unhandled error in TaskGroup
                 print_error(
                     f"Error getting workflow status from MCP server at {server_url}: {str(e)}"
                 )

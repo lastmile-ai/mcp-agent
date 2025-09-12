@@ -61,12 +61,8 @@ async def _list_workflow_runs_async(
                     result.workflow_runs if result and result.workflow_runs else []
                 )
 
-                status_filter = None
                 if status:
-                    status_filter = _get_status_filter(status)
-                    workflows = [
-                        w for w in workflows if _matches_status(w, status_filter)
-                    ]
+                    workflows = [w for w in workflows if _matches_status(w, status)]
 
                 if limit:
                     workflows = workflows[:limit]
@@ -76,9 +72,8 @@ async def _list_workflow_runs_async(
                 elif format == "yaml":
                     _print_workflows_yaml(workflows)
                 else:
-                    print_workflow_runs(workflows, status_filter)
+                    print_workflow_runs(workflows, status)
             except Exception as e:
-                # Don't raise or it will be a generic unhandled error in TaskGroup
                 print_error(
                     f"Error listing workflow runs for server {server_id_or_url}: {str(e)}"
                 )
@@ -99,7 +94,8 @@ def list_workflow_runs(
     status: Optional[str] = typer.Option(
         None,
         "--status",
-        help="Filter by status: running|failed|timed_out|canceled|terminated|completed|continued",
+        help="Filter by status: running|failed|timed_out|timeout|canceled|terminated|completed|continued",
+        callback=lambda value: _get_status_filter(value) if value else None,
     ),
     format: Optional[str] = typer.Option(
         "text", "--format", help="Output format (text|json|yaml)"
@@ -123,7 +119,8 @@ def _get_status_filter(status: str) -> str:
     """Convert status string to normalized status."""
     status_map = {
         "running": "running",
-        "failed": "failed",
+        "failed": "error",
+        "error": "error",
         "timed_out": "timed_out",
         "timeout": "timed_out",  # alias
         "canceled": "canceled",
@@ -135,7 +132,9 @@ def _get_status_filter(status: str) -> str:
     }
     normalized_status = status_map.get(status.lower())
     if not normalized_status:
-        valid_statuses = "running|failed|timed_out|timeout|canceled|cancelled|terminated|completed|continued|continued_as_new"
+        valid_statuses = (
+            "running|failed|timed_out|timeout|canceled|terminated|completed|continued"
+        )
         raise typer.BadParameter(
             f"Invalid status '{status}'. Valid options: {valid_statuses}"
         )

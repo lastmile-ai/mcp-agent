@@ -7,12 +7,11 @@ import typer
 import yaml
 from rich.table import Table
 
-from mcp_agent.app import MCPApp
+from mcp_agent.cli.auth.main import load_api_key_credentials
 from mcp_agent.cli.core.utils import run_async
 from mcp_agent.cli.exceptions import CLIError
-from mcp_agent.cli.utils.ux import console, print_info
-from mcp_agent.config import MCPServerSettings, Settings, LoggerSettings
-from mcp_agent.mcp.gen_client import gen_client
+from mcp_agent.cli.mcp_app.mcp_client import mcp_connection_session
+from mcp_agent.cli.utils.ux import console, print_info, print_error
 from ...utils import (
     setup_authenticated_client,
     resolve_server,
@@ -39,41 +38,41 @@ async def _list_workflows_async(server_id_or_url: str, format: str = "text") -> 
         if not server_url:
             raise CLIError(f"No server URL found for server '{server_id_or_url}'")
 
-    quiet_settings = Settings(logger=LoggerSettings(level="error"))
-    app = MCPApp(name="workflows_cli", settings=quiet_settings)
+    effective_api_key = load_api_key_credentials()
+
+    if not effective_api_key:
+        raise CLIError("Must be logged in to access server. Run 'mcp-agent login'.")
 
     try:
-        async with app.run() as workflow_app:
-            context = workflow_app.context
+        async with mcp_connection_session(
+            server_url, effective_api_key
+        ) as mcp_client_session:
+            try:
+                with console.status(
+                    "[bold green]Fetching workflows...", spinner="dots"
+                ):
+                    result = await mcp_client_session.list_workflows()
 
-            sse_url = (
-                f"{server_url}/sse" if not server_url.endswith("/sse") else server_url
-            )
-            context.server_registry.registry["workflow_server"] = MCPServerSettings(
-                name="workflow_server",
-                description=f"Deployed MCP server {server_url}",
-                url=sse_url,
-                transport="sse",
-            )
-
-            async with gen_client(
-                "workflow_server", server_registry=context.server_registry
-            ) as client:
-                result = await client.call_tool("workflows-list", {})
-
-                workflows_data = result.content[0].text if result.content else "{}"
-                if isinstance(workflows_data, str):
-                    workflows_data = json.loads(workflows_data)
-
-                if not workflows_data:
-                    workflows_data = {}
+                workflows = result.workflows if result and result.workflows else []
 
                 if format == "json":
-                    print(json.dumps(workflows_data, indent=2))
+                    workflows_data = [workflow.model_dump() for workflow in workflows]
+                    print(
+                        json.dumps({"workflows": workflows_data}, indent=2, default=str)
+                    )
                 elif format == "yaml":
-                    print(yaml.dump(workflows_data, default_flow_style=False))
+                    workflows_data = [workflow.model_dump() for workflow in workflows]
+                    print(
+                        yaml.dump(
+                            {"workflows": workflows_data}, default_flow_style=False
+                        )
+                    )
                 else:  # text format
-                    print_workflows_text(workflows_data, server_id_or_url)
+                    print_workflows_text(workflows, server_id_or_url)
+            except Exception as e:
+                print_error(
+                    f"Error listing workflows for server {server_id_or_url}: {str(e)}"
+                )
 
     except Exception as e:
         raise CLIError(
@@ -105,7 +104,7 @@ def list_workflows(
     run_async(_list_workflows_async(server_id_or_url, format))
 
 
-def print_workflows_text(workflows_data: dict, server_id_or_url: str) -> None:
+def print_workflows_text(workflows, server_id_or_url: str) -> None:
     """Print workflows information in text format."""
     server_name = server_id_or_url
 
@@ -113,15 +112,11 @@ def print_workflows_text(workflows_data: dict, server_id_or_url: str) -> None:
         f"\n[bold blue]📋 Available Workflows for Server: {server_name}[/bold blue]"
     )
 
-    if not workflows_data or not any(workflows_data.values()):
+    if not workflows:
         print_info("No workflows found for this server.")
         return
 
-    total_workflows = sum(
-        len(workflow_list) if isinstance(workflow_list, list) else 1
-        for workflow_list in workflows_data.values()
-    )
-    console.print(f"\nFound {total_workflows} workflow definition(s):")
+    console.print(f"\nFound {len(workflows)} workflow definition(s):")
 
     table = Table(show_header=True, header_style="bold blue")
     table.add_column("Name", style="cyan", width=25)
@@ -129,21 +124,25 @@ def print_workflows_text(workflows_data: dict, server_id_or_url: str) -> None:
     table.add_column("Capabilities", style="yellow", width=25)
     table.add_column("Tool Endpoints", style="dim", width=20)
 
-    for workflow_name, workflow_info in workflows_data.items():
-        if isinstance(workflow_info, dict):
-            name = workflow_info.get("name", workflow_name)
-            description = workflow_info.get("description", "N/A")
-            capabilities = ", ".join(workflow_info.get("capabilities", []))
-            tool_endpoints = ", ".join(
-                [ep.split("-")[-1] for ep in workflow_info.get("tool_endpoints", [])]
-            )
+    for workflow in workflows:
+        name = getattr(workflow, "name", "Unknown")
+        description = getattr(workflow, "description", None) or "Unknown"
+        capabilities = getattr(workflow, "capabilities", [])
+        tool_endpoints = getattr(workflow, "tool_endpoints", [])
 
-            table.add_row(
-                _truncate_string(name, 25),
-                _truncate_string(description, 40),
-                _truncate_string(capabilities if capabilities else "N/A", 25),
-                _truncate_string(tool_endpoints if tool_endpoints else "N/A", 20),
-            )
+        capabilities_str = ", ".join(capabilities) if capabilities else "Unknown"
+        tool_endpoints_str = (
+            ", ".join([ep.split("-")[-1] for ep in tool_endpoints])
+            if tool_endpoints
+            else "Unknown"
+        )
+
+        table.add_row(
+            _truncate_string(name, 25),
+            _truncate_string(description, 40),
+            _truncate_string(capabilities_str, 25),
+            _truncate_string(tool_endpoints_str, 20),
+        )
 
     console.print(table)
 
