@@ -11,6 +11,7 @@ from mcp.client.sse import sse_client
 from mcp.client.streamable_http import streamablehttp_client
 from pydantic import AnyUrl, BaseModel
 
+from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.utils.ux import (
     console,
     print_error,
@@ -193,23 +194,67 @@ class MCPClientSession(ClientSession):
             if isinstance(item, types.TextContent):
                 # Assuming the content is a JSON string representing a WorkflowRun item dict
                 try:
-                    run_data = json.loads(item.text)
-                    if "result" in run_data and isinstance(run_data["result"], str):
-                        try:
-                            # Could be stringified python dict instead of valid JSON
-                            run_data["result"] = ast.literal_eval(run_data["result"])
-                        except (ValueError, SyntaxError) as e:
-                            try:
-                                run_data["result"] = json.loads(run_data["result"])
-                            except json.JSONDecodeError:
-                                raise ValueError(
-                                    f"Invalid workflow run result data: {e}"
-                                ) from e
-                    runs.append(WorkflowRun(**run_data))
+                    workflow_run = MCPClientSession.deserialize_workflow_run(item.text)
+                    runs.append(workflow_run)
                 except json.JSONDecodeError as e:
                     raise ValueError(f"Invalid workflow run data: {e}") from e
 
         return ListWorkflowRunsResult(workflow_runs=runs)
+
+    @staticmethod
+    def deserialize_workflow_run(text: str) -> WorkflowRun:
+        """Deserialize a JSON string into a WorkflowRun object."""
+        try:
+            run_data = json.loads(text)
+            if "result" in run_data and isinstance(run_data["result"], str):
+                try:
+                    # Could be stringified python dict instead of valid JSON
+                    run_data["result"] = ast.literal_eval(run_data["result"])
+                except (ValueError, SyntaxError) as e:
+                    try:
+                        run_data["result"] = json.loads(run_data["result"])
+                    except json.JSONDecodeError:
+                        raise ValueError(
+                            f"Invalid workflow run result data: {e}"
+                        ) from e
+            return WorkflowRun(**run_data)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid workflow run data: {e}") from e
+
+    async def get_workflow_status(
+        self, run_id: Optional[str] = None, workflow_id: Optional[str] = None
+    ) -> WorkflowRun:
+        """Send a workflows-get_status request."""
+        if not run_id and not workflow_id:
+            raise ValueError("Either run_id or workflow_id must be provided")
+
+        params = {}
+        if run_id:
+            params["run_id"] = run_id
+        if workflow_id:
+            params["workflow_id"] = workflow_id
+
+        status_response = await self.call_tool("workflows-get_status", params)
+        if status_response.isError:
+            error_message = (
+                status_response.content[0].text
+                if len(status_response.content) > 0
+                and status_response.content[0].type == "text"
+                else "Error getting workflow status"
+            )
+            raise RuntimeError(error_message)
+
+        if not status_response.content or not isinstance(
+            status_response.content[0], types.TextContent
+        ):
+            raise ValueError("Invalid response content for workflow status")
+
+        try:
+            return MCPClientSession.deserialize_workflow_run(
+                status_response.content[0].text
+            )
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid workflow status data: {e}") from e
 
 
 class TransportType(Enum):
@@ -295,13 +340,10 @@ async def mcp_connection_session(server_url: str, api_key: str):
     except Exception as e:
         status.stop()
         if isinstance(e, asyncio.TimeoutError):
-            print_error(
+            raise CLIError(
                 f"Connection to MCP server at {server_url} timed out using SSE. Please check the server URL and your network connection.",
-                e,
-            )
+            ) from e
         else:
-            print_error(
+            raise CLIError(
                 f"Error connecting to MCP server using SSE at {server_url}: {str(e)}",
-            )
-
-        raise e
+            ) from e

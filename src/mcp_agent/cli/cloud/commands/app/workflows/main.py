@@ -11,6 +11,7 @@ from rich.syntax import Syntax
 from rich.text import Text
 
 from mcp_agent.cli.auth import load_api_key_credentials
+from mcp_agent.cli.cloud.commands.workflows.utils import format_workflow_status
 from mcp_agent.cli.config import settings
 from mcp_agent.cli.core.api_client import UnauthenticatedError
 from mcp_agent.cli.core.constants import (
@@ -133,7 +134,7 @@ async def print_mcp_server_workflow_details(server_url: str, api_key: str) -> No
 
     except Exception as e:
         raise CLIError(
-            f"Error connecting to MCP server at {server_url}: {str(e)}"
+            f"Error getting workflow details from MCP server at {server_url}: {str(e)}"
         ) from e
 
 
@@ -271,14 +272,7 @@ async def print_runs_list(session: MCPClientSession) -> None:
             )
 
             status = run.status.lower()
-            if status == "completed":
-                status_text = f"[green]🟢 {status}[/green]"
-            elif status == "error" or status == "failed":
-                status_text = f"[red]🔴 {status}[/red]"
-            elif status == "running":
-                status_text = f"[yellow]🔄 {status}[/yellow]"
-            else:
-                status_text = f"❓ {status}"
+            status_text = format_workflow_status(status)
 
             console.print(
                 f"[bold cyan]{run.name or 'Unnamed Workflow'}[/bold cyan] {status_text}"

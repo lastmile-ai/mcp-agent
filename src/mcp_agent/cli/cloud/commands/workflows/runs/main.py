@@ -7,6 +7,7 @@ import typer
 import yaml
 
 from mcp_agent.app import MCPApp
+from mcp_agent.cli.cloud.commands.workflows.utils import format_workflow_status
 from mcp_agent.cli.core.utils import run_async
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.config import MCPServerSettings, Settings, LoggerSettings
@@ -185,7 +186,7 @@ def _print_workflows_text(workflows, status_filter, server_id_or_url):
             created_at = getattr(workflow, "created_at", "N/A")
             principal_id = getattr(workflow, "principal_id", "N/A")
 
-        status_display = _get_status_display(execution_status)
+        status_display = format_workflow_status(execution_status)
 
         if created_at and created_at != "N/A":
             if hasattr(created_at, "strftime"):
@@ -241,28 +242,3 @@ def _workflow_to_dict(workflow):
         if getattr(workflow, "execution_status", None)
         else None,
     }
-
-
-def _get_status_display(status):
-    """Convert status to display string with emoji."""
-    if not status:
-        return "❓ Unknown"
-
-    status_str = str(status).lower()
-
-    if "running" in status_str:
-        return "[green]🟢 Running[/green]"
-    elif "completed" in status_str:
-        return "[blue]✅ Completed[/blue]"
-    elif "failed" in status_str or "error" in status_str:
-        return "[red]❌ Failed[/red]"
-    elif "cancel" in status_str:
-        return "[yellow]🟡 Canceled[/yellow]"
-    elif "terminat" in status_str:
-        return "[red]🔴 Terminated[/red]"
-    elif "timeout" in status_str or "timed_out" in status_str:
-        return "[orange]⏰ Timed Out[/orange]"
-    elif "continued" in status_str:
-        return "[purple]🔄 Continued[/purple]"
-    else:
-        return f"❓ {status}"
