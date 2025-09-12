@@ -27,7 +27,7 @@ from mcp_agent.cli.core.api_client import UnauthenticatedError
 from mcp_agent.cli.utils.ux import print_error
 from mcp_agent.cli.mcp_app.api_client import MCPApp, MCPAppConfiguration
 
-console = Console(force_terminal=True)
+console = Console()
 
 DEFAULT_LOG_LIMIT = 100
 
@@ -400,12 +400,10 @@ def _display_text_log_entry(entry: Dict[str, Any]) -> None:
     message = _clean_message(entry.get("message", ""))
 
     level_style = _get_level_style(level)
-
     message_text = Text.from_ansi(message)
-    
     highlighter = ReprHighlighter()
     highlighter.highlight(message_text)
-    
+
     console.print(
         f"[bright_black not bold]{timestamp}[/bright_black not bold] "
         f"[{level_style}]{level:7}[/{level_style}] ",
@@ -479,8 +477,6 @@ def _parse_log_level(level: str) -> str:
 
 def _clean_message(message: str) -> str:
     """Remove redundant log level prefix from message if present."""
-    # Don't strip ANSI codes here - we'll handle them in display
-    
     prefixes = [
         "ERROR:",
         "WARNING:",
