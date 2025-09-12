@@ -1,3 +1,4 @@
+import ast
 import asyncio
 import json
 from contextlib import asynccontextmanager
@@ -62,10 +63,13 @@ class WorkflowRunState(BaseModel):
 class WorkflowRunResult(BaseModel):
     """The result of a workflow run."""
 
+    kind: str
+    """The kind/type of result returned by the workflow run."""
+
     value: str
     """The value returned by the workflow run, if any."""
 
-    metadata: dict
+    metadata: Optional[dict[str, Any]] = None
     """Metadata associated with the workflow run result."""
 
     start_time: Optional[float] = None
@@ -98,6 +102,9 @@ class WorkflowRunTemporal(BaseModel):
 
     close_time: Optional[float] = None
     """The time when the workflow run completed."""
+
+    execution_time: Optional[float] = None
+    """The total time taken for the workflow run."""
 
 
 class WorkflowRun(BaseModel):
@@ -187,9 +194,20 @@ class MCPClientSession(ClientSession):
                 # Assuming the content is a JSON string representing a WorkflowRun item dict
                 try:
                     run_data = json.loads(item.text)
+                    if "result" in run_data and isinstance(run_data["result"], str):
+                        try:
+                            # Could be stringified python dict instead of valid JSON
+                            run_data["result"] = ast.literal_eval(run_data["result"])
+                        except (ValueError, SyntaxError) as e:
+                            try:
+                                run_data["result"] = json.loads(run_data["result"])
+                            except json.JSONDecodeError:
+                                raise ValueError(
+                                    f"Invalid workflow run result data: {e}"
+                                ) from e
                     runs.append(WorkflowRun(**run_data))
                 except json.JSONDecodeError as e:
-                    raise ValueError(f"Invalid workflow run data: {e}")
+                    raise ValueError(f"Invalid workflow run data: {e}") from e
 
         return ListWorkflowRunsResult(workflow_runs=runs)
 
