@@ -1,7 +1,7 @@
 """Workflow resume command implementation."""
 
 import json
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import typer
 
@@ -21,7 +21,7 @@ async def _signal_workflow_async(
     server_id_or_url: str,
     run_id: str,
     signal_name: str = "resume",
-    payload: Optional[str] = None,
+    payload: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Send a signal to a workflow using MCP tool calls to a deployed server."""
     if server_id_or_url.startswith(("http://", "https://")):
@@ -116,13 +116,15 @@ def resume_workflow(
     run_id: str = typer.Argument(..., help="Run ID of the workflow to resume"),
     signal_name: Optional[str] = "resume",
     payload: Optional[str] = typer.Option(
-        None, "--payload", help="JSON or text payload to pass to resumed workflow"
+        None,
+        "--payload",
+        help="JSON payload to pass to resumed workflow",
     ),
 ) -> None:
     """Resume a suspended workflow execution.
 
     Resumes execution of a previously suspended workflow. Optionally accepts a signal
-    name and a payload (JSON or text) to pass data to the resumed workflow.
+    name and a payload (JSON) to pass data to the resumed workflow.
 
     Examples:
 
@@ -130,16 +132,13 @@ def resume_workflow(
 
         mcp-agent cloud workflows resume app_abc123 run_xyz789 --payload '{"data": "value"}'
 
-        mcp-agent cloud workflows resume app_abc123 run_xyz789 --payload "simple text"
-
         mcp-agent cloud workflows resume app_abc123 run_xyz789 --signal-name provide_human_input --payload '{"response": "Your input here"}'
     """
     if payload:
         try:
-            json.loads(payload)
-            console.print("[dim]Resuming with JSON payload...[/dim]")
-        except json.JSONDecodeError:
-            console.print("[dim]Resuming with text payload...[/dim]")
+            payload = json.loads(payload)
+        except json.JSONDecodeError as e:
+            raise typer.BadParameter(f"Invalid JSON payload: {str(e)}") from e
 
     run_async(
         _signal_workflow_async(
@@ -155,24 +154,22 @@ def suspend_workflow(
     ),
     run_id: str = typer.Argument(..., help="Run ID of the workflow to suspend"),
     payload: Optional[str] = typer.Option(
-        None, "--payload", help="JSON or text payload to pass to suspended workflow"
+        None, "--payload", help="JSON payload to pass to suspended workflow"
     ),
 ) -> None:
     """Suspend a workflow execution.
 
     Temporarily pauses a workflow execution, which can later be resumed.
-    Optionally accepts a payload (JSON or text) to pass data to the suspended workflow.
+    Optionally accepts a payload (JSON) to pass data to the suspended workflow.
 
     Examples:
         mcp-agent cloud workflows suspend app_abc123 run_xyz789
         mcp-agent cloud workflows suspend https://server.example.com run_xyz789 --payload '{"reason": "maintenance"}'
-        mcp-agent cloud workflows suspend app_abc123 run_xyz789 --payload "paused for review"
     """
     if payload:
         try:
-            json.loads(payload)
-            console.print("[dim]Suspending with JSON payload...[/dim]")
-        except json.JSONDecodeError:
-            console.print("[dim]Suspending with text payload...[/dim]")
+            payload = json.loads(payload)
+        except json.JSONDecodeError as e:
+            raise typer.BadParameter(f"Invalid JSON payload: {str(e)}") from e
 
     run_async(_signal_workflow_async(server_id_or_url, run_id, "suspend", payload))

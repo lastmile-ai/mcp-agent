@@ -195,7 +195,7 @@ class MCPClientSession(ClientSession):
                 try:
                     workflow_run = MCPClientSession.deserialize_workflow_run(item.text)
                     runs.append(workflow_run)
-                except json.JSONDecodeError as e:
+                except (json.JSONDecodeError, ValueError) as e:
                     raise ValueError(f"Invalid workflow run data: {e}") from e
 
         return ListWorkflowRunsResult(workflow_runs=runs)

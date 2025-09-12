@@ -1,11 +1,11 @@
 """Workflow describe command implementation."""
 
 import json
+from datetime import datetime
 from typing import Optional
 
 import typer
 import yaml
-
 
 from mcp_agent.cli.auth.main import load_api_key_credentials
 from mcp_agent.cli.cloud.commands.workflows.utils import format_workflow_status
@@ -13,10 +13,11 @@ from mcp_agent.cli.core.utils import run_async
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.mcp_app.mcp_client import WorkflowRun, mcp_connection_session
 from mcp_agent.cli.utils.ux import console, print_error
+
 from ...utils import (
-    setup_authenticated_client,
     handle_server_api_errors,
     resolve_server,
+    setup_authenticated_client,
 )
 
 
@@ -118,8 +119,6 @@ def print_workflow_status(workflow_status: WorkflowRun, format: str = "text") ->
         )
         if created_at is not None:
             try:
-                from datetime import datetime
-
                 created_dt = datetime.fromtimestamp(created_at)
                 created_at = created_dt.strftime("%Y-%m-%d %H:%M:%S")
             except (ValueError, TypeError):
