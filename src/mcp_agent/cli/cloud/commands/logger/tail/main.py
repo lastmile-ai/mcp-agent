@@ -313,6 +313,7 @@ async def _stream_logs(
                 async for chunk in response.aiter_text():
                     buffer += chunk
                     lines = buffer.split("\n")
+                    buffer = lines[-1]
 
                     for line in lines[:-1]:
                         if line.startswith("data:"):
