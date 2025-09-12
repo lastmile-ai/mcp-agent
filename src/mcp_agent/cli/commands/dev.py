@@ -6,15 +6,14 @@ then starts the app. If watchdog is available, watches files and restarts on cha
 
 from __future__ import annotations
 
-import asyncio
+import subprocess
+import sys
 from pathlib import Path
 import shutil
-import time
 
 import typer
 from rich.console import Console
 
-from mcp_agent.cli.core.utils import load_user_app
 from mcp_agent.config import get_settings
 
 
@@ -39,16 +38,16 @@ def dev(script: Path = typer.Option(Path("agent.py"), "--script")) -> None:
                 ok = False
         return ok
 
-    async def _run_once():
-        app_obj = load_user_app(script)
-        async with app_obj.run():
-            console.print(f"Running {script}")
-            # Sleep until cancelled
-            try:
-                while True:
-                    await asyncio.sleep(1)
-            except asyncio.CancelledError:
-                pass
+    def _run_script() -> subprocess.Popen:
+        """Run the script as a subprocess."""
+        console.print(f"Running {script}")
+        # Run the script with the same Python interpreter
+        return subprocess.Popen(
+            [sys.executable, str(script)],
+            stdout=None,  # Inherit stdout
+            stderr=None,  # Inherit stderr
+            stdin=None,  # Inherit stdin
+        )
 
     # Simple preflight
     _ = _preflight_ok()
@@ -57,50 +56,77 @@ def dev(script: Path = typer.Option(Path("agent.py"), "--script")) -> None:
     try:
         from watchdog.observers import Observer  # type: ignore
         from watchdog.events import FileSystemEventHandler  # type: ignore
+        import time
 
         class _Handler(FileSystemEventHandler):
             def __init__(self):
                 self.touched = False
 
             def on_modified(self, event):  # type: ignore
-                self.touched = True
+                if not event.is_directory:
+                    self.touched = True
 
             def on_created(self, event):  # type: ignore
-                self.touched = True
-
-        loop = asyncio.get_event_loop()
-        task = loop.create_task(_run_once())
+                if not event.is_directory:
+                    self.touched = True
 
         handler = _Handler()
         observer = Observer()
         observer.schedule(handler, path=str(script.parent), recursive=True)
         observer.start()
         console.print("Live reload enabled (watchdog)")
+
+        # Start the script
+        process = _run_script()
+
         try:
             while True:
                 time.sleep(0.5)
+
+                # Check if process died
+                if process.poll() is not None:
+                    console.print(
+                        f"[red]Process exited with code {process.returncode}[/red]"
+                    )
+                    break
+
+                # Check for file changes
                 if handler.touched:
                     handler.touched = False
                     console.print("Change detected. Restarting...")
-                    task.cancel()
+                    process.terminate()
                     try:
-                        loop.run_until_complete(task)
-                    except Exception:
-                        pass
-                    task = loop.create_task(_run_once())
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
+                    process = _run_script()
+
         except KeyboardInterrupt:
-            pass
+            console.print("\n[yellow]Stopping...[/yellow]")
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
         finally:
             observer.stop()
             observer.join()
-            task.cancel()
-            try:
-                loop.run_until_complete(task)
-            except Exception:
-                pass
-    except Exception:
-        # Fallback: run once
+
+    except ImportError:
+        # Fallback: run once without watchdog
+        console.print(
+            "[yellow]Watchdog not installed. Running without live reload.[/yellow]"
+        )
+        process = _run_script()
         try:
-            asyncio.run(_run_once())
+            process.wait()
         except KeyboardInterrupt:
-            pass
+            console.print("\n[yellow]Stopping...[/yellow]")
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
