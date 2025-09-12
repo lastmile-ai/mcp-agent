@@ -255,6 +255,33 @@ class MCPClientSession(ClientSession):
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid workflow status data: {e}") from e
 
+    async def cancel_workflow(self, run_id: str) -> bool:
+        """Send a workflows-cancel request."""
+        if not run_id:
+            raise ValueError("run_id must be provided to cancel a workflow")
+
+        params = {"run_id": run_id}
+
+        cancel_response = await self.call_tool("workflows-cancel", params)
+        if cancel_response.isError:
+            error_message = (
+                cancel_response.content[0].text
+                if len(cancel_response.content) > 0
+                and cancel_response.content[0].type == "text"
+                else "Error cancelling workflow"
+            )
+            raise RuntimeError(error_message)
+
+        if not cancel_response.content or not isinstance(
+            cancel_response.content[0], types.TextContent
+        ):
+            raise ValueError("Invalid response content for workflow cancellation")
+
+        success = cancel_response.content[0].text if cancel_response.content else False
+        if isinstance(success, str):
+            success = success.lower() == "true"
+        return success
+
 
 class TransportType(Enum):
     """Transport types for MCP client-server communication."""
