@@ -282,6 +282,40 @@ class MCPClientSession(ClientSession):
             success = success.lower() == "true"
         return success
 
+    async def resume_workflow(
+        self,
+        run_id: str,
+        signal_name: Optional[str] = "resume",
+        payload: Optional[dict[str, Any]] = None,
+    ) -> bool:
+        """Send a workflows-resume request."""
+        if not run_id:
+            raise ValueError("run_id must be provided to resume a workflow")
+
+        params = {"run_id": run_id, "signal_name": signal_name or "resume"}
+        if payload:
+            params["payload"] = payload
+
+        resume_response = await self.call_tool("workflows-resume", params)
+        if resume_response.isError:
+            error_message = (
+                resume_response.content[0].text
+                if len(resume_response.content) > 0
+                and resume_response.content[0].type == "text"
+                else "Error resuming workflow"
+            )
+            raise RuntimeError(error_message)
+
+        if not resume_response.content or not isinstance(
+            resume_response.content[0], types.TextContent
+        ):
+            raise ValueError("Invalid response content for workflow resumption")
+
+        success = resume_response.content[0].text if resume_response.content else False
+        if isinstance(success, str):
+            success = success.lower() == "true"
+        return success
+
 
 class TransportType(Enum):
     """Transport types for MCP client-server communication."""
