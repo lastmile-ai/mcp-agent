@@ -1,16 +1,15 @@
 """Workflow resume command implementation."""
 
 import json
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import typer
 
-from mcp_agent.app import MCPApp
+from mcp_agent.cli.auth.main import load_api_key_credentials
 from mcp_agent.cli.core.utils import run_async
 from mcp_agent.cli.exceptions import CLIError
-from mcp_agent.cli.utils.ux import console
-from mcp_agent.config import MCPServerSettings, Settings, LoggerSettings
-from mcp_agent.mcp.gen_client import gen_client
+from mcp_agent.cli.mcp_app.mcp_client import mcp_connection_session
+from mcp_agent.cli.utils.ux import console, print_error
 from ...utils import (
     setup_authenticated_client,
     handle_server_api_errors,
@@ -22,7 +21,7 @@ async def _signal_workflow_async(
     server_id_or_url: str,
     run_id: str,
     signal_name: str = "resume",
-    payload: Optional[str] = None,
+    payload: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Send a signal to a workflow using MCP tool calls to a deployed server."""
     if server_id_or_url.startswith(("http://", "https://")):
@@ -41,37 +40,30 @@ async def _signal_workflow_async(
         if not server_url:
             raise CLIError(f"No server URL found for server '{server_id_or_url}'")
 
-    quiet_settings = Settings(logger=LoggerSettings(level="error"))
-    app = MCPApp(name="workflows_cli", settings=quiet_settings)
+    effective_api_key = load_api_key_credentials()
+
+    if not effective_api_key:
+        raise CLIError("Must be logged in to access server. Run 'mcp-agent login'.")
 
     try:
-        async with app.run() as workflow_app:
-            context = workflow_app.context
+        async with mcp_connection_session(
+            server_url, effective_api_key
+        ) as mcp_client_session:
+            try:
+                action_present = (
+                    "Resuming"
+                    if signal_name == "resume"
+                    else "Suspending"
+                    if signal_name == "suspend"
+                    else f"Signaling ({signal_name})"
+                )
 
-            sse_url = (
-                f"{server_url.rstrip('/')}/sse"
-                if not server_url.endswith("/sse")
-                else server_url
-            )
-            context.server_registry.registry["workflow_server"] = MCPServerSettings(
-                name="workflow_server",
-                description=f"Deployed MCP server {server_url}",
-                url=sse_url,
-                transport="sse",
-            )
-
-            async with gen_client(
-                "workflow_server", server_registry=context.server_registry
-            ) as client:
-                tool_params = {"run_id": run_id, "signal_name": signal_name}
-                if payload:
-                    tool_params["payload"] = payload
-
-                result = await client.call_tool("workflows-resume", tool_params)
-
-                success = result.content[0].text if result.content else False
-                if isinstance(success, str):
-                    success = success.lower() == "true"
+                with console.status(
+                    f"[bold blue]{action_present} workflow...", spinner="dots"
+                ):
+                    success = await mcp_client_session.resume_workflow(
+                        run_id, signal_name, payload
+                    )
 
                 if success:
                     action_past = (
@@ -95,14 +87,20 @@ async def _signal_workflow_async(
                         if signal_name == "suspend"
                         else "📡"
                     )
+                    console.print()
                     console.print(
                         f"[{action_color}]{action_icon} Successfully {action_past} workflow[/{action_color}]"
                     )
                     console.print(f"  Run ID: [cyan]{run_id}[/cyan]")
                 else:
-                    raise CLIError(
+                    print_error(
                         f"Failed to {signal_name} workflow with run ID {run_id}"
                     )
+            except Exception as e:
+                # Don't raise or it will be a generic unhandled error in TaskGroup
+                print_error(
+                    f"Error {signal_name}ing workflow with run ID {run_id}: {str(e)}"
+                )
 
     except Exception as e:
         raise CLIError(
@@ -116,14 +114,17 @@ def resume_workflow(
         ..., help="Server ID or URL hosting the workflow"
     ),
     run_id: str = typer.Argument(..., help="Run ID of the workflow to resume"),
+    signal_name: Optional[str] = "resume",
     payload: Optional[str] = typer.Option(
-        None, "--payload", help="JSON or text payload to pass to resumed workflow"
+        None,
+        "--payload",
+        help="JSON payload to pass to resumed workflow",
     ),
 ) -> None:
     """Resume a suspended workflow execution.
 
-    Resumes execution of a previously suspended workflow. Optionally accepts
-    a payload (JSON or text) to pass data to the resumed workflow.
+    Resumes execution of a previously suspended workflow. Optionally accepts a signal
+    name and a payload (JSON) to pass data to the resumed workflow.
 
     Examples:
 
@@ -131,16 +132,19 @@ def resume_workflow(
 
         mcp-agent cloud workflows resume app_abc123 run_xyz789 --payload '{"data": "value"}'
 
-        mcp-agent cloud workflows resume app_abc123 run_xyz789 --payload "simple text"
+        mcp-agent cloud workflows resume app_abc123 run_xyz789 --signal-name provide_human_input --payload '{"response": "Your input here"}'
     """
     if payload:
         try:
-            json.loads(payload)
-            console.print("[dim]Resuming with JSON payload...[/dim]")
-        except json.JSONDecodeError:
-            console.print("[dim]Resuming with text payload...[/dim]")
+            payload = json.loads(payload)
+        except json.JSONDecodeError as e:
+            raise typer.BadParameter(f"Invalid JSON payload: {str(e)}") from e
 
-    run_async(_signal_workflow_async(server_id_or_url, run_id, "resume", payload))
+    run_async(
+        _signal_workflow_async(
+            server_id_or_url, run_id, signal_name or "resume", payload
+        )
+    )
 
 
 @handle_server_api_errors
@@ -150,24 +154,22 @@ def suspend_workflow(
     ),
     run_id: str = typer.Argument(..., help="Run ID of the workflow to suspend"),
     payload: Optional[str] = typer.Option(
-        None, "--payload", help="JSON or text payload to pass to suspended workflow"
+        None, "--payload", help="JSON payload to pass to suspended workflow"
     ),
 ) -> None:
     """Suspend a workflow execution.
 
     Temporarily pauses a workflow execution, which can later be resumed.
-    Optionally accepts a payload (JSON or text) to pass data to the suspended workflow.
+    Optionally accepts a payload (JSON) to pass data to the suspended workflow.
 
     Examples:
         mcp-agent cloud workflows suspend app_abc123 run_xyz789
         mcp-agent cloud workflows suspend https://server.example.com run_xyz789 --payload '{"reason": "maintenance"}'
-        mcp-agent cloud workflows suspend app_abc123 run_xyz789 --payload "paused for review"
     """
     if payload:
         try:
-            json.loads(payload)
-            console.print("[dim]Suspending with JSON payload...[/dim]")
-        except json.JSONDecodeError:
-            console.print("[dim]Suspending with text payload...[/dim]")
+            payload = json.loads(payload)
+        except json.JSONDecodeError as e:
+            raise typer.BadParameter(f"Invalid JSON payload: {str(e)}") from e
 
     run_async(_signal_workflow_async(server_id_or_url, run_id, "suspend", payload))

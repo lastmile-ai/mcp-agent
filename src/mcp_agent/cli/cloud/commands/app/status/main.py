@@ -164,7 +164,7 @@ async def print_mcp_server_details(server_url: str, api_key: str) -> None:
 
     except Exception as e:
         raise CLIError(
-            f"Error connecting to MCP server at {server_url}: {str(e)}"
+            f"Error obtaining details from MCP server at {server_url}: {str(e)}"
         ) from e
 
 

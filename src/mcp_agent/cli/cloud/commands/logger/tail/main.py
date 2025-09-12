@@ -407,7 +407,7 @@ def _display_text_log_entry(entry: Dict[str, Any]) -> None:
     console.print(
         f"[bright_black not bold]{timestamp}[/bright_black not bold] "
         f"[{level_style}]{level:7}[/{level_style}] ",
-        message_text
+        message_text,
     )
 
 

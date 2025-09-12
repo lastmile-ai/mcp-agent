@@ -1,21 +1,23 @@
 """Workflow describe command implementation."""
 
 import json
+from datetime import datetime
 from typing import Optional
 
 import typer
 import yaml
 
-from mcp_agent.app import MCPApp
+from mcp_agent.cli.auth.main import load_api_key_credentials
+from mcp_agent.cli.cloud.commands.workflows.utils import format_workflow_status
 from mcp_agent.cli.core.utils import run_async
 from mcp_agent.cli.exceptions import CLIError
-from mcp_agent.cli.utils.ux import console
-from mcp_agent.config import MCPServerSettings, Settings, LoggerSettings
-from mcp_agent.mcp.gen_client import gen_client
+from mcp_agent.cli.mcp_app.mcp_client import WorkflowRun, mcp_connection_session
+from mcp_agent.cli.utils.ux import console, print_error
+
 from ...utils import (
-    setup_authenticated_client,
     handle_server_api_errors,
     resolve_server,
+    setup_authenticated_client,
 )
 
 
@@ -39,43 +41,24 @@ async def _describe_workflow_async(
         if not server_url:
             raise CLIError(f"No server URL found for server '{server_id_or_url}'")
 
-    quiet_settings = Settings(logger=LoggerSettings(level="error"))
-    app = MCPApp(name="workflows_cli", settings=quiet_settings)
+    effective_api_key = load_api_key_credentials()
+
+    if not effective_api_key:
+        raise CLIError("Must be logged in to access server. Run 'mcp-agent login'.")
 
     try:
-        async with app.run() as workflow_app:
-            context = workflow_app.context
-
-            sse_url = (
-                f"{server_url}/sse" if not server_url.endswith("/sse") else server_url
-            )
-            context.server_registry.registry["workflow_server"] = MCPServerSettings(
-                name="workflow_server",
-                description=f"Deployed MCP server {server_url}",
-                url=sse_url,
-                transport="sse",
-            )
-
-            async with gen_client(
-                "workflow_server", server_registry=context.server_registry
-            ) as client:
-                result = await client.call_tool(
-                    "workflows-get_status", {"run_id": run_id}
+        async with mcp_connection_session(
+            server_url, effective_api_key
+        ) as mcp_client_session:
+            try:
+                workflow_status = await mcp_client_session.get_workflow_status(
+                    run_id=run_id
                 )
-
-                workflow_status = result.content[0].text if result.content else {}
-                if isinstance(workflow_status, str):
-                    workflow_status = json.loads(workflow_status)
-
-                if not workflow_status:
-                    raise CLIError(f"Workflow with run ID '{run_id}' not found.")
-
-                if format == "json":
-                    print(json.dumps(workflow_status, indent=2))
-                elif format == "yaml":
-                    print(yaml.dump(workflow_status, default_flow_style=False))
-                else:  # text format
-                    print_workflow_status(workflow_status)
+                print_workflow_status(workflow_status, format)
+            except Exception as e:
+                print_error(
+                    f"Error getting workflow status from MCP server at {server_url}: {str(e)}"
+                )
 
     except Exception as e:
         raise CLIError(
@@ -111,52 +94,91 @@ def describe_workflow(
     run_async(_describe_workflow_async(server_id_or_url, run_id, format))
 
 
-def print_workflow_status(workflow_status: dict) -> None:
-    """Print workflow status information in text format."""
-    name = workflow_status.get("name", "N/A")
-    workflow_id = workflow_status.get(
-        "workflow_id", workflow_status.get("workflowId", "N/A")
-    )
-    run_id = workflow_status.get("run_id", workflow_status.get("runId", "N/A"))
-    status = workflow_status.get("status", "N/A")
+def print_workflow_status(workflow_status: WorkflowRun, format: str = "text") -> None:
+    """Print workflow status information in requested format"""
 
-    created_at = workflow_status.get(
-        "created_at", workflow_status.get("createdAt", "N/A")
-    )
-    if created_at != "N/A" and isinstance(created_at, str):
-        try:
-            from datetime import datetime
+    if format == "json":
+        print(json.dumps(workflow_status.model_dump(), indent=2))
+    elif format == "yaml":
+        print(yaml.dump(workflow_status.model_dump(), default_flow_style=False))
+    else:  # text format
+        name = getattr(workflow_status, "name", "Unknown")
+        workflow_id = (
+            getattr(workflow_status.temporal, "workflow_id", "Unknown")
+            if workflow_status.temporal
+            else "Unknown"
+        )
+        run_id = getattr(workflow_status, "id", "Unknown")
+        status = getattr(workflow_status, "status", "Unknown")
 
-            created_dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-            created_at = created_dt.strftime("%Y-%m-%d %H:%M:%S")
-        except (ValueError, TypeError):
-            pass  # Keep original format if parsing fails
+        # Try to get creation time from temporal metadata
+        created_at = (
+            getattr(workflow_status.temporal, "start_time", None)
+            if workflow_status.temporal
+            else None
+        )
+        if created_at is not None:
+            try:
+                created_dt = datetime.fromtimestamp(created_at)
+                created_at = created_dt.strftime("%Y-%m-%d %H:%M:%S")
+            except (ValueError, TypeError):
+                created_at = str(created_at)
+        else:
+            created_at = "Unknown"
 
-    console.print("\n[bold blue]🔍 Workflow Details[/bold blue]")
-    console.print()
-    console.print(f"[bold cyan]{name}[/bold cyan] {_format_status(status)}")
-    console.print(f"  Workflow ID: {workflow_id}")
-    console.print(f"  Run ID: {run_id}")
-    console.print(f"  Created: {created_at}")
+        console.print("\n[bold blue]🔍 Workflow Details[/bold blue]")
+        console.print()
+        console.print(f"[bold cyan]{name}[/bold cyan] {format_workflow_status(status)}")
+        console.print(f"  Workflow ID: {workflow_id}")
+        console.print(f"  Run ID: {run_id}")
+        console.print(f"  Created: {created_at}")
 
+        # Print result information if available
+        if workflow_status.result:
+            console.print("\n[bold green]📄 Result[/bold green]")
+            console.print(
+                f"  Kind: {getattr(workflow_status.result, 'kind', 'Unknown')}"
+            )
 
-def _format_status(status: str) -> str:
-    """Format the execution status text."""
-    status_lower = str(status).lower()
+            result_value = getattr(workflow_status.result, "value", None)
+            if result_value:
+                # Truncate very long results
+                if len(str(result_value)) > 10000:
+                    truncated_value = str(result_value)[:10000] + "..."
+                    console.print(f"  Value: {truncated_value}")
+                else:
+                    console.print(f"  Value: {result_value}")
 
-    if "running" in status_lower:
-        return "[green]🔄 Running[/green]"
-    elif "failed" in status_lower or "error" in status_lower:
-        return "[red]❌ Failed[/red]"
-    elif "timeout" in status_lower or "timed_out" in status_lower:
-        return "[red]⌛ Timed Out[/red]"
-    elif "cancel" in status_lower:
-        return "[yellow]🚫 Cancelled[/yellow]"
-    elif "terminat" in status_lower:
-        return "[red]🛑 Terminated[/red]"
-    elif "complet" in status_lower:
-        return "[green]✅ Completed[/green]"
-    elif "continued" in status_lower:
-        return "[blue]🔁 Continued as New[/blue]"
-    else:
-        return f"❓ {status}"
+            # Print timing if available
+            start_time = getattr(workflow_status.result, "start_time", None)
+            end_time = getattr(workflow_status.result, "end_time", None)
+            if start_time:
+                start_dt = datetime.fromtimestamp(start_time).strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+                console.print(f"  Started: {start_dt}")
+            if end_time:
+                end_dt = datetime.fromtimestamp(end_time).strftime("%Y-%m-%d %H:%M:%S")
+                console.print(f"  Ended: {end_dt}")
+
+        # Print error information if available
+        if workflow_status.error:
+            console.print("\n[bold red]❌ Error[/bold red]")
+            console.print(f"  {workflow_status.error}")
+
+        # Print state error if different from main error
+        if (
+            workflow_status.state
+            and workflow_status.state.error
+            and workflow_status.state.error != workflow_status.error
+        ):
+            console.print("\n[bold red]⚠️  State Error[/bold red]")
+            if isinstance(workflow_status.state.error, dict):
+                error_type = workflow_status.state.error.get("type", "Unknown")
+                error_message = workflow_status.state.error.get(
+                    "message", "Unknown error"
+                )
+                console.print(f"  Type: {error_type}")
+                console.print(f"  Message: {error_message}")
+            else:
+                console.print(f"  {workflow_status.state.error}")

@@ -89,14 +89,15 @@ from rich import print
 
 app = MCPApp(name="assignment_grader_orchestrator")
 
+
 @app.tool
-async def example_usage()->str:
-    '''
+async def example_usage() -> str:
+    """
     this example function/tool call will use an orchestrator workflow
     to dynamically plan and execute across a number of agents to grade
     a short story.
-    '''
-    result=""
+    """
+    result = ""
     async with app.run() as orchestrator_app:
         logger = orchestrator_app.logger
 

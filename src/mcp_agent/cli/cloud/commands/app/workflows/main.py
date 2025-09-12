@@ -1,16 +1,14 @@
-import json
-import textwrap
 from typing import Optional
-from datetime import datetime
 
 import typer
-from rich.console import Group
 from rich.panel import Panel
 from rich.prompt import Prompt
-from rich.syntax import Syntax
-from rich.text import Text
 
 from mcp_agent.cli.auth import load_api_key_credentials
+from mcp_agent.cli.cloud.commands.workflows.utils import (
+    print_workflows,
+    print_workflow_runs,
+)
 from mcp_agent.cli.config import settings
 from mcp_agent.cli.core.api_client import UnauthenticatedError
 from mcp_agent.cli.core.constants import (
@@ -133,21 +131,8 @@ async def print_mcp_server_workflow_details(server_url: str, api_key: str) -> No
 
     except Exception as e:
         raise CLIError(
-            f"Error connecting to MCP server at {server_url}: {str(e)}"
+            f"Error getting workflow details from MCP server at {server_url}: {str(e)}"
         ) from e
-
-
-# FastTool includes 'self' in the run parameters schema, so remove it for clarity
-def clean_run_parameters(schema: dict) -> dict:
-    schema = schema.copy()
-
-    if "properties" in schema and "self" in schema["properties"]:
-        schema["properties"].pop("self")
-
-    if "required" in schema and "self" in schema["required"]:
-        schema["required"] = [r for r in schema["required"] if r != "self"]
-
-    return schema
 
 
 async def print_workflows_list(session: MCPClientSession) -> None:
@@ -156,63 +141,7 @@ async def print_workflows_list(session: MCPClientSession) -> None:
         with console.status("[bold green]Fetching server workflows...", spinner="dots"):
             res = await session.list_workflows()
 
-        if not res.workflows:
-            console.print(
-                Panel(
-                    "[yellow]No workflows found[/yellow]",
-                    title="Workflows",
-                    border_style="blue",
-                )
-            )
-            return
-
-        panels = []
-
-        for workflow in res.workflows:
-            header = Text(workflow.name, style="bold cyan")
-            desc = textwrap.dedent(
-                workflow.description or "No description available"
-            ).strip()
-            body_parts: list = [Text(desc, style="white")]
-
-            # Capabilities
-            capabilities = getattr(workflow, "capabilities", [])
-            cap_text = Text("\nCapabilities:\n", style="bold green")
-            cap_text.append_text(Text(", ".join(capabilities) or "None", style="white"))
-            body_parts.append(cap_text)
-
-            # Tool Endpoints
-            tool_endpoints = getattr(workflow, "tool_endpoints", [])
-            endpoints_text = Text("\nTool Endpoints:\n", style="bold green")
-            endpoints_text.append_text(
-                Text("\n".join(tool_endpoints) or "None", style="white")
-            )
-            body_parts.append(endpoints_text)
-
-            # Run Parameters
-            if workflow.run_parameters:
-                run_params = clean_run_parameters(workflow.run_parameters)
-                properties = run_params.get("properties", {})
-                if len(properties) > 0:
-                    schema_str = json.dumps(run_params, indent=2)
-                    schema_syntax = Syntax(
-                        schema_str, "json", theme="monokai", word_wrap=True
-                    )
-                    body_parts.append(Text("\nRun Parameters:", style="bold magenta"))
-                    body_parts.append(schema_syntax)
-
-            body = Group(*body_parts)
-
-            panels.append(
-                Panel(
-                    body,
-                    title=header,
-                    border_style="green",
-                    expand=False,
-                )
-            )
-
-        console.print(Panel(Group(*panels), title="Workflows", border_style="blue"))
+        print_workflows(res.workflows if res and res.workflows else [])
 
     except Exception as e:
         print_error(f"Error fetching workflows: {str(e)}")
@@ -236,7 +165,11 @@ async def print_runs_list(session: MCPClientSession) -> None:
 
         def get_start_time(run: WorkflowRun):
             try:
-                return run.temporal.start_time if run.temporal else 0
+                return (
+                    run.temporal.start_time
+                    if run.temporal and run.temporal.start_time is not None
+                    else 0
+                )
             except AttributeError:
                 return 0
 
@@ -246,53 +179,7 @@ async def print_runs_list(session: MCPClientSession) -> None:
             reverse=True,
         )
 
-        console.print(f"\n[bold blue] Workflow Runs ({len(sorted_runs)})[/bold blue]")
-
-        for i, run in enumerate(sorted_runs):
-            if i > 0:
-                console.print()
-
-            start = getattr(run.temporal, "start_time", None)
-            start_str = (
-                datetime.fromtimestamp(start).strftime("%Y-%m-%d %H:%M:%S")
-                if start
-                else "N/A"
-            )
-
-            end = getattr(run.temporal, "close_time", None)
-            end_str = (
-                datetime.fromtimestamp(end).strftime("%Y-%m-%d %H:%M:%S")
-                if end
-                else "N/A"
-            )
-
-            status = run.status.lower()
-            if status == "completed":
-                status_text = f"[green]🟢 {status}[/green]"
-            elif status == "error" or status == "failed":
-                status_text = f"[red]🔴 {status}[/red]"
-            elif status == "running":
-                status_text = f"[yellow]🔄 {status}[/yellow]"
-            else:
-                status_text = f"❓ {status}"
-
-            console.print(
-                f"[bold cyan]{run.name or 'Unnamed Workflow'}[/bold cyan] {status_text}"
-            )
-            console.print(f"  Run ID: {run.id}")
-
-            if run.temporal and run.temporal.workflow_id:
-                console.print(f"  Workflow ID: {run.temporal.workflow_id}")
-
-            console.print(f"  Started: {start_str}")
-            if end_str != "N/A":
-                console.print(f"  Completed: {end_str}")
-
-            # Show execution time if available
-            if hasattr(run.temporal, "execution_time") and run.temporal.execution_time:
-                duration = end - start if (start and end) else None
-                if duration:
-                    console.print(f"  Duration: {duration:.2f}s")
+        print_workflow_runs(sorted_runs)
 
     except Exception as e:
         print_error(f"Error fetching workflow runs: {str(e)}")
