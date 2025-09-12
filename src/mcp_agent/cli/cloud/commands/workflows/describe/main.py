@@ -144,8 +144,8 @@ def print_workflow_status(workflow_status: WorkflowRun, format: str = "text") ->
             result_value = getattr(workflow_status.result, "value", None)
             if result_value:
                 # Truncate very long results
-                if len(str(result_value)) > 500:
-                    truncated_value = str(result_value)[:500] + "..."
+                if len(str(result_value)) > 10000:
+                    truncated_value = str(result_value)[:10000] + "..."
                     console.print(f"  Value: {truncated_value}")
                 else:
                     console.print(f"  Value: {result_value}")
