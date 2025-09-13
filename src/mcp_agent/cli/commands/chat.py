@@ -588,7 +588,7 @@ def chat(
                                 prompt_msgs = await ag.create_prompt(
                                     prompt_name=prompt_name,
                                     arguments=arguments,
-                                    server_names=server_list or [],
+                                    server_names=resolved_server_list or [],
                                 )
                                 # Generate with prompt messages
                                 out = await llm.generate_str(prompt_msgs)
