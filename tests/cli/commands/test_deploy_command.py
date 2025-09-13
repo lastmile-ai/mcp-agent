@@ -95,7 +95,7 @@ def test_deploy_command_basic(runner, temp_config_dir):
                 kwargs.get("output_path", output_path), "w", encoding="utf-8"
             ) as f:
                 f.write("# Transformed file\ntest: value\n")
-            return {"developer_secrets": [], "user_secrets": []}
+            return {"deployment_secrets": [], "user_secrets": []}
 
         with patch(
             "mcp_agent.cli.secrets.processor.process_config_secrets",

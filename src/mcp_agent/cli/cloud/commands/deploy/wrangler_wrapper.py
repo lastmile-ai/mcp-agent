@@ -10,7 +10,6 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from mcp_agent.cli.config import settings
 from mcp_agent.cli.core.constants import (
-    MCP_DEPLOYED_SECRETS_FILENAME,
     MCP_SECRETS_FILENAME,
 )
 from mcp_agent.cli.utils.ux import console, print_error, print_warning

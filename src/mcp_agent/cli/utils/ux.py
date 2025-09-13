@@ -91,41 +91,22 @@ def print_error(
         logger.error(message, exc_info=True)
 
 
-def print_secret_prompt(env_var: str, path: str) -> None:
-    """Print a styled prompt for a secret value."""
-    console.print(
-        Panel(
-            f"Environment variable [env_var]{env_var}[/env_var] not found.\n"
-            f"This is needed for the secret at [secret]{path}[/secret]",
-            title="Secret Required",
-            border_style="yellow",
-            expand=False,
-        )
-    )
-
-
 def print_secret_summary(secrets_context: Dict[str, Any]) -> None:
     """Print a summary of processed secrets from context.
 
     Args:
         secrets_context: Dictionary containing info about processed secrets
     """
-    dev_secrets = secrets_context.get("developer_secrets", [])
+    deployment_secrets = secrets_context.get("deployment_secrets", [])
     user_secrets = secrets_context.get("user_secrets", [])
-    env_loaded = secrets_context.get("env_loaded", [])
-    prompted = secrets_context.get("prompted", [])
     reused_secrets = secrets_context.get("reused_secrets", [])
 
-    return print_secrets_summary(
-        dev_secrets, user_secrets, env_loaded, prompted, reused_secrets
-    )
+    return print_secrets_summary(deployment_secrets, user_secrets, reused_secrets)
 
 
 def print_secrets_summary(
-    dev_secrets: List[Dict[str, str]],
+    deployment_secrets: List[Dict[str, str]],
     user_secrets: List[str],
-    env_loaded: List[str],
-    prompted: List[str],
     reused_secrets: Optional[List[Dict[str, str]]] = None,
 ) -> None:
     """Print a summary table of processed secrets."""
@@ -149,8 +130,8 @@ def print_secrets_summary(
     # Create a set of reused secret paths for fast lookup
     reused_paths = {secret["path"] for secret in reused_secrets}
 
-    # Add developer secrets
-    for secret in dev_secrets:
+    # Add deployment secrets
+    for secret in deployment_secrets:
         path = secret["path"]
         handle = secret["handle"]
 
@@ -158,19 +139,12 @@ def print_secrets_summary(
         if path in reused_paths:
             continue
 
-        if path in env_loaded:
-            source = "✓ Environment"
-        elif path in prompted:
-            source = "✏️  User Input"
-        else:
-            source = "User Input"
-
         # Shorten the handle for display
         short_handle = handle
         if len(handle) > 20:
             short_handle = handle[:8] + "..." + handle[-8:]
 
-        table.add_row("Developer", path, short_handle, source)
+        table.add_row("Deployment", path, short_handle)
 
     # Add reused secrets
     for secret in reused_secrets:
@@ -182,7 +156,7 @@ def print_secrets_summary(
         if len(handle) > 20:
             short_handle = handle[:8] + "..." + handle[-8:]
 
-        table.add_row("Developer", path, short_handle, "♻️ Reused")
+        table.add_row("Deployment", path, short_handle, "♻️ Reused")
 
     # Add user secrets
     for path in user_secrets:
@@ -195,21 +169,16 @@ def print_secrets_summary(
 
     # Log the summary (without sensitive details)
     reused_count = len(reused_secrets)
-    new_dev_count = len(dev_secrets)
+    new_deployment_count = len(deployment_secrets)
 
     logger.info(
-        f"Processed {new_dev_count} new developer secrets, reused {reused_count} existing secrets, "
+        f"Processed {new_deployment_count} new deployment secrets, reused {reused_count} existing secrets, "
         f"and identified {len(user_secrets)} user secrets"
     )
 
     console.print(
-        f"[info]Summary:[/info] {new_dev_count} new secrets created, {reused_count} existing secrets reused"
+        f"[info]Summary:[/info] {new_deployment_count} new secrets created, {reused_count} existing secrets reused"
     )
-
-    if prompted:
-        logger.info(
-            f"User was prompted for {len(prompted)} secrets: {', '.join(prompted)}"
-        )
 
 
 def print_deployment_header(

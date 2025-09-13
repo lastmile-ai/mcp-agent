@@ -185,12 +185,12 @@ def deploy_config(
                         "--non-interactive specified, using existing deployed secrets file without changes."
                     )
                 else:
-                    overwrite = typer.confirm(
-                        f"Do you want to overwrite the existing '{MCP_DEPLOYED_SECRETS_FILENAME}' by re-processing '{MCP_SECRETS_FILENAME}'?"
+                    update = typer.confirm(
+                        f"Do you want to update the existing '{MCP_DEPLOYED_SECRETS_FILENAME}' by re-processing '{MCP_SECRETS_FILENAME}'?"
                     )
-                    if overwrite:
+                    if update:
                         print_info(
-                            f"Will overwrite existing '{MCP_DEPLOYED_SECRETS_FILENAME}' by re-processing '{MCP_SECRETS_FILENAME}'."
+                            f"Will update existing '{MCP_DEPLOYED_SECRETS_FILENAME}' by re-processing '{MCP_SECRETS_FILENAME}'."
                         )
                         deployed_secrets_file = None  # Will trigger re-processing
                     else:
