@@ -44,7 +44,7 @@ PROVIDERS = {
             "claude-3-opus-20240229",
             "claude-3-haiku-20240307",
         ],
-        "test_endpoint": "https://api.anthropic.com/v1/messages",
+        "test_endpoint": "https://api.anthropic.com/v1/models",
         "docs": "https://console.anthropic.com/settings/keys",
     },
     "google": {
