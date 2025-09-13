@@ -21,9 +21,7 @@ This example demonstrates **both resources and prompts**.
 
   - **Resources:**
     - `demo://docs/readme`: A sample README file (Markdown)
-    - `demo://config/settings`: Example configuration settings (JSON)
-    - `demo://data/users`: Example user data (JSON)
-    - `demo://status/health`: Dynamic server health/status info (JSON)
+    - `demo://data/friends`: Example user data (JSON)
   - **Prompt:**
     - `echo`: A simple prompt that echoes back the provided message
 

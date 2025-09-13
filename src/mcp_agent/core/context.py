@@ -9,8 +9,8 @@ import warnings
 
 from pydantic import BaseModel, ConfigDict
 
-from mcp import ServerSession
 from mcp.server.fastmcp import FastMCP
+from mcp.server.session import ServerSession
 
 from opentelemetry import trace
 
