@@ -41,7 +41,7 @@ async def main():
         logger.info("Connecting to workflow server...")
 
         # Override the server configuration to point to our local script
-        run_server_args = ["run", "basic_agent_server.py"]
+        run_server_args = ["run", "main.py"]
         if use_custom_fastmcp_settings:
             logger.info("Using custom FastMCP settings for the server.")
             run_server_args += ["--custom-fastmcp-settings"]
