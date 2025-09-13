@@ -22,6 +22,7 @@ from mcp_agent.cli.core.utils import (
 from mcp_agent.cli.utils.url_parser import generate_server_configs, parse_server_urls
 from mcp_agent.workflows.factory import create_llm
 from mcp_agent.agents.agent import Agent
+from mcp_agent.config import get_settings
 
 
 app = typer.Typer(help="Ephemeral REPL for quick iteration")
@@ -155,7 +156,11 @@ def chat(
         try:
 
             async def _list():
-                app_obj = load_user_app(script)
+                # Disable progress display for cleaner listing output
+                settings = get_settings()
+                if settings.logger:
+                    settings.logger.progress_display = False
+                app_obj = load_user_app(script, settings_override=settings)
                 await app_obj.initialize()
                 attach_url_servers(app_obj, url_servers)
                 attach_stdio_servers(app_obj, stdio_servers)
@@ -213,7 +218,11 @@ def chat(
         ):
 
             async def _parallel_repl():
-                app_obj = load_user_app(script)
+                # Disable progress display for cleaner multi-model REPL
+                settings = get_settings()
+                if settings.logger:
+                    settings.logger.progress_display = False
+                app_obj = load_user_app(script, settings_override=settings)
                 await app_obj.initialize()
                 attach_url_servers(app_obj, url_servers)
                 attach_stdio_servers(app_obj, stdio_servers)
@@ -406,9 +415,12 @@ def chat(
             and not models
             and not (list_servers or list_tools or list_resources)
         ):
-            # Interactive loop
+            # Interactive loop - disable progress display for cleaner REPL experience
             async def _repl():
-                app_obj = load_user_app(script)
+                settings = get_settings()
+                if settings.logger:
+                    settings.logger.progress_display = False
+                app_obj = load_user_app(script, settings_override=settings)
                 await app_obj.initialize()
                 attach_url_servers(app_obj, url_servers)
                 attach_stdio_servers(app_obj, stdio_servers)

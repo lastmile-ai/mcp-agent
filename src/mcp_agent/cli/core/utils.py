@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from mcp_agent.app import MCPApp
-from mcp_agent.config import MCPServerSettings, MCPSettings, get_settings
+from mcp_agent.config import MCPServerSettings, MCPSettings, Settings, get_settings
 
 
 def run_async(coro):
@@ -27,13 +27,17 @@ def run_async(coro):
         raise
 
 
-def load_user_app(script_path: Path | None) -> MCPApp:
+def load_user_app(script_path: Path | None, settings_override: Optional[Settings] = None) -> MCPApp:
     """Import a user script and return an MCPApp instance.
 
     Resolution order within module globals:
       1) variable named 'app' that is MCPApp
       2) callable 'create_app' or 'get_app' that returns MCPApp
       3) first MCPApp instance found in globals
+    
+    Args:
+        script_path: Path to the Python script containing the MCPApp
+        settings_override: Optional settings to override the app's configuration
     """
     if script_path is None:
         raise FileNotFoundError("No script specified")
@@ -52,6 +56,8 @@ def load_user_app(script_path: Path | None) -> MCPApp:
     # 1) app variable
     app_obj = getattr(module, "app", None)
     if isinstance(app_obj, MCPApp):
+        if settings_override:
+            app_obj._config = settings_override
         return app_obj
 
     # 2) factory
@@ -60,11 +66,15 @@ def load_user_app(script_path: Path | None) -> MCPApp:
         if callable(fn):
             res = fn()
             if isinstance(res, MCPApp):
+                if settings_override:
+                    res._config = settings_override
                 return res
 
     # 3) scan globals
     for val in module.__dict__.values():
         if isinstance(val, MCPApp):
+            if settings_override:
+                val._config = settings_override
             return val
 
     raise RuntimeError(
