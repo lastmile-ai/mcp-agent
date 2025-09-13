@@ -221,7 +221,7 @@ def init(
         elif template == "server":
             console.print("3. Run the server: [cyan]uv run server.py[/cyan]")
             console.print(
-                "   Or serve: [cyan]mcp-agent serve --script server.py[/cyan]"
+                "   Or serve: [cyan]mcp-agent dev serve --script server.py[/cyan]"
             )
         elif template == "token":
             console.print("3. Run the example: [cyan]uv run token_example.py[/cyan]")
