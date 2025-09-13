@@ -3,10 +3,10 @@ import importlib.util
 import sys
 
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 from mcp_agent.app import MCPApp
-from mcp_agent.config import MCPServerSettings, MCPSettings
+from mcp_agent.config import MCPServerSettings, MCPSettings, get_settings
 
 
 def run_async(coro):
@@ -79,6 +79,57 @@ def ensure_mcp_servers(app: MCPApp) -> None:
         cfg.mcp = MCPSettings()
     if cfg.mcp.servers is None:
         cfg.mcp.servers = {}
+
+
+def detect_default_script(explicit: Optional[Path]) -> Path:
+    """Choose a default script path.
+
+    Preference order:
+      1) explicit value if provided
+      2) ./main.py
+      3) ./agent.py
+    Returns the first existing file; if none exist, returns the first preference path (main.py).
+    """
+    if explicit:
+        return explicit
+    cwd = Path.cwd()
+    main_candidate = cwd / "main.py"
+    agent_candidate = cwd / "agent.py"
+    if main_candidate.exists():
+        return main_candidate
+    if agent_candidate.exists():
+        return agent_candidate
+    # Fall back to main.py (even if missing) so callers can show a helpful message
+    return main_candidate
+
+
+def select_servers_from_config(
+    explicit_servers_csv: Optional[str],
+    url_servers: Optional[Dict[str, Dict[str, Any]]],
+    stdio_servers: Optional[Dict[str, Dict[str, Any]]],
+) -> List[str]:
+    """Resolve which servers should be active based on inputs and config.
+
+    - If explicit --servers provided, use those
+    - Else, if dynamic URL/stdio servers provided, use their names
+    - Else, use all servers from mcp_agent.config.yaml (if present)
+    """
+    if explicit_servers_csv:
+        items = [s.strip() for s in explicit_servers_csv.split(",") if s.strip()]
+        return items
+
+    names: List[str] = []
+    if url_servers:
+        names.extend(list(url_servers.keys()))
+    if stdio_servers:
+        names.extend(list(stdio_servers.keys()))
+    if names:
+        return names
+
+    settings = get_settings()
+    if settings.mcp and settings.mcp.servers:
+        return list(settings.mcp.servers.keys())
+    return []
 
 
 def attach_url_servers(app: MCPApp, servers: Dict[str, Dict[str, Any]] | None) -> None:

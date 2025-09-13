@@ -19,7 +19,7 @@ from rich.live import Live
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from mcp_agent.server.app_server import create_mcp_server_for_app
-from mcp_agent.cli.core.utils import load_user_app
+from mcp_agent.cli.core.utils import load_user_app, detect_default_script
 from mcp_agent.config import get_settings
 
 
@@ -138,12 +138,14 @@ def serve(
     # Load configuration path is handled after loading app by overriding app settings
 
     async def _run():
-        # Load the app
-        script_path = Path(script) if script else Path("agent.py")
+        # Load the app (auto-detect main.py preferred)
+        script_path = detect_default_script(Path(script) if script else None)
 
         if not script_path.exists():
             console.print(f"[red]Script not found: {script_path}[/red]")
-            console.print("\n[dim]Create an agent.py file or specify --script[/dim]")
+            console.print(
+                "\n[dim]Create a main.py (preferred) or agent.py file, or specify --script[/dim]"
+            )
             raise typer.Exit(1)
 
         console.print("\n[bold cyan]🚀 MCP-Agent Server[/bold cyan]")
@@ -379,10 +381,13 @@ def test(
     timeout: float = typer.Option(5.0, "--timeout", "-t", help="Test timeout"),
 ) -> None:
     """Test if the server can be loaded and initialized."""
-    script_path = Path(script) if script else Path("agent.py")
+    script_path = detect_default_script(Path(script) if script else None)
 
     if not script_path.exists():
         console.print(f"[red]Script not found: {script_path}[/red]")
+        console.print(
+            "\n[dim]Create a main.py (preferred) or agent.py file, or specify --script[/dim]"
+        )
         raise typer.Exit(1)
 
     console.print(f"\n[bold]Testing server: {script_path}[/bold]\n")

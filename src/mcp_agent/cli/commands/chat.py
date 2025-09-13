@@ -16,6 +16,8 @@ from mcp_agent.cli.core.utils import (
     attach_stdio_servers,
     attach_url_servers,
     load_user_app,
+    detect_default_script,
+    select_servers_from_config,
 )
 from mcp_agent.cli.utils.url_parser import generate_server_configs, parse_server_urls
 from mcp_agent.workflows.factory import create_llm
@@ -99,7 +101,7 @@ def chat(
     npx: Optional[str] = typer.Option(None, "--npx"),
     uvx: Optional[str] = typer.Option(None, "--uvx"),
     stdio: Optional[str] = typer.Option(None, "--stdio"),
-    script: Optional[Path] = typer.Option(Path("agent.py"), "--script"),
+    script: Optional[Path] = typer.Option(None, "--script"),
     list_servers: bool = typer.Option(False, "--list-servers"),
     list_tools: bool = typer.Option(False, "--list-tools"),
     list_resources: bool = typer.Option(False, "--list-resources"),
@@ -107,6 +109,9 @@ def chat(
         None, "--server", help="Filter to a single server"
     ),
 ) -> None:
+    # Resolve script with auto-detection
+    script = detect_default_script(script)
+
     server_list = servers_csv.split(",") if servers_csv else None
 
     url_servers = None
@@ -140,12 +145,17 @@ def chat(
             else:
                 server_list.extend(list(stdio_servers.keys()))
 
+    # Smart defaults for servers
+    resolved_server_list = select_servers_from_config(
+        servers_csv, url_servers, stdio_servers
+    )
+
     # Listing mode (no generation)
     if list_servers or list_tools or list_resources:
         try:
 
             async def _list():
-                app_obj = load_user_app(script or Path("agent.py"))
+                app_obj = load_user_app(script)
                 await app_obj.initialize()
                 attach_url_servers(app_obj, url_servers)
                 attach_stdio_servers(app_obj, stdio_servers)
@@ -163,7 +173,7 @@ def chat(
                     agent = Agent(
                         name="chat-lister",
                         instruction="You list tools and resources",
-                        server_names=target_servers,
+                        server_names=resolved_server_list or target_servers,
                         context=app_obj.context,
                     )
                     async with agent:
@@ -203,7 +213,7 @@ def chat(
         ):
 
             async def _parallel_repl():
-                app_obj = load_user_app(script or Path("agent.py"))
+                app_obj = load_user_app(script)
                 await app_obj.initialize()
                 attach_url_servers(app_obj, url_servers)
                 attach_stdio_servers(app_obj, stdio_servers)
@@ -227,7 +237,7 @@ def chat(
                                 provider = prov_guess
                         llm = create_llm(
                             agent_name=m,
-                            server_names=server_list or [],
+                            server_names=resolved_server_list or [],
                             provider=(provider or "openai"),
                             model=m,
                             context=app_obj.context,
@@ -276,7 +286,9 @@ def chat(
                             ag = _Agent(
                                 name="chat-lister",
                                 instruction="list tools",
-                                server_names=[srv] if srv else (server_list or []),
+                                server_names=[srv]
+                                if srv
+                                else (resolved_server_list or []),
                                 context=app_obj.context,
                             )
                             async with ag:
@@ -294,7 +306,9 @@ def chat(
                             ag = _Agent(
                                 name="chat-lister",
                                 instruction="list resources",
-                                server_names=[srv] if srv else (server_list or []),
+                                server_names=[srv]
+                                if srv
+                                else (resolved_server_list or []),
                                 context=app_obj.context,
                             )
                             async with ag:
@@ -367,8 +381,8 @@ def chat(
             try:
                 out = asyncio.run(
                     _run_single_model(
-                        script=script or Path("agent.py"),
-                        servers=server_list,
+                        script=script,
+                        servers=resolved_server_list,
                         url_servers=url_servers,
                         stdio_servers=stdio_servers,
                         model=m,
@@ -394,7 +408,7 @@ def chat(
         ):
             # Interactive loop
             async def _repl():
-                app_obj = load_user_app(script or Path("agent.py"))
+                app_obj = load_user_app(script)
                 await app_obj.initialize()
                 attach_url_servers(app_obj, url_servers)
                 attach_stdio_servers(app_obj, stdio_servers)
@@ -416,7 +430,7 @@ def chat(
                         provider = model_id.split(":", 1)[0]
                     llm = create_llm(
                         agent_name=(name or "chat"),
-                        server_names=server_list or [],
+                        server_names=resolved_server_list or [],
                         provider=(provider or "openai"),
                         model=model_id,
                         context=app_obj.context,
@@ -476,7 +490,7 @@ def chat(
                                 # Recreate LLM with new model
                                 llm_local = create_llm(
                                     agent_name=(name or "chat"),
-                                    server_names=server_list or [],
+                                    server_names=resolved_server_list or [],
                                     provider=(prov or "openai"),
                                     model=model_id,
                                     context=app_obj.context,
@@ -502,7 +516,9 @@ def chat(
                             ag = Agent(
                                 name="chat-lister",
                                 instruction="list tools",
-                                server_names=[srv] if srv else (server_list or []),
+                                server_names=[srv]
+                                if srv
+                                else (resolved_server_list or []),
                                 context=app_obj.context,
                             )
                             async with ag:
@@ -521,7 +537,9 @@ def chat(
                             ag = Agent(
                                 name="chat-lister",
                                 instruction="list resources",
-                                server_names=[srv] if srv else (server_list or []),
+                                server_names=[srv]
+                                if srv
+                                else (resolved_server_list or []),
                                 context=app_obj.context,
                             )
                             async with ag:
@@ -698,8 +716,8 @@ def chat(
         else:
             out = asyncio.run(
                 _run_single_model(
-                    script=script or Path("agent.py"),
-                    servers=server_list,
+                    script=script,
+                    servers=resolved_server_list,
                     url_servers=url_servers,
                     stdio_servers=stdio_servers,
                     model=model,
