@@ -69,7 +69,7 @@ app = typer.Typer(
 # Local development umbrella group
 dev_group = typer.Typer(
     help="Local development: start app, chat, invoke, serve, servers, build, logs",
-    no_args_is_help=True,
+    no_args_is_help=False,
     cls=HelpfulTyperGroup,
 )
 
