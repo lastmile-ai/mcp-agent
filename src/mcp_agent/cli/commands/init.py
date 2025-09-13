@@ -100,6 +100,7 @@ def init(
     console.print(f"Template: [cyan]{template}[/cyan] - {templates[template]}\n")
 
     files_created = []
+    entry_script_name: str | None = None
 
     # Always create config files
     config_path = dir / "mcp_agent.config.yaml"
@@ -122,15 +123,35 @@ def init(
 
     # Create template-specific files
     if template == "basic":
-        agent_path = dir / "agent.py"
+        # Determine entry script name and handle existing files
+        script_name = "main.py"
+        script_path = dir / script_name
         agent_content = _load_template("basic_agent.py")
-        if agent_content and _write(agent_path, agent_content, force):
-            files_created.append("agent.py")
-            # Make executable
-            try:
-                agent_path.chmod(agent_path.stat().st_mode | 0o111)
-            except Exception:
-                pass
+
+        if agent_content:
+            write_force_flag = force
+            if script_path.exists() and not force:
+                if Confirm.ask(f"{script_path} exists. Overwrite?", default=False):
+                    write_force_flag = True
+                else:
+                    # Ask for an alternate filename and ensure it ends with .py
+                    alt_name = Prompt.ask(
+                        "Enter a filename to save the agent", default="agent.py"
+                    )
+                    if not alt_name.endswith(".py"):
+                        alt_name += ".py"
+                    script_name = alt_name
+                    script_path = dir / script_name
+                    # keep write_force_flag as-is to allow overwrite prompt if needed
+
+            if _write(script_path, agent_content, write_force_flag):
+                files_created.append(script_name)
+                entry_script_name = script_name
+                # Make executable
+                try:
+                    script_path.chmod(script_path.stat().st_mode | 0o111)
+                except Exception:
+                    pass
 
     elif template == "server":
         server_path = dir / "server.py"
@@ -185,20 +206,29 @@ def init(
         console.print("2. Review and customize [cyan]mcp_agent.config.yaml[/cyan]")
 
         if template == "basic":
-            console.print("3. Run your agent: [cyan]python agent.py[/cyan]")
-            console.print("   Or use: [cyan]mcp-agent dev --script agent.py[/cyan]")
-            console.print("   Or chat: [cyan]mcp-agent chat[/cyan]")
-        elif template == "server":
-            console.print("3. Run the server: [cyan]python server.py[/cyan]")
+            run_file = entry_script_name or "main.py"
+            console.print(f"3. Run your agent: [cyan]uv run {run_file}[/cyan]")
             console.print(
-                "   Or serve: [cyan]mcp-agent serve --script server.py[/cyan]"
+                f"   Or use: [cyan]mcp-agent dev start --script {run_file}[/cyan]"
+            )
+            console.print(
+                f"   Or serve: [cyan]mcp-agent dev serve --script {run_file}[/cyan]"
+            )
+            console.print("   Or chat: [cyan]mcp-agent dev chat[/cyan]")
+            console.print(
+                "4. Edit config: [cyan]mcp-agent config edit[/cyan] (then rerun)"
+            )
+        elif template == "server":
+            console.print("3. Run the server: [cyan]uv run server.py[/cyan]")
+            console.print(
+                "   Or serve: [cyan]mcp-agent dev serve --script server.py[/cyan]"
             )
         elif template == "token":
-            console.print("3. Run the example: [cyan]python token_example.py[/cyan]")
+            console.print("3. Run the example: [cyan]uv run token_example.py[/cyan]")
             console.print("   Watch token usage in real-time!")
         elif template == "factory":
             console.print("3. Customize agents in [cyan]agents.yaml[/cyan]")
-            console.print("4. Run the factory: [cyan]python factory.py[/cyan]")
+            console.print("4. Run the factory: [cyan]uv run factory.py[/cyan]")
         elif template == "minimal":
             console.print("3. Create your agent script")
             console.print("   See examples: [cyan]mcp-agent quickstart[/cyan]")

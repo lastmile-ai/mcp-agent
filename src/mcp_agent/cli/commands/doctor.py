@@ -412,7 +412,7 @@ def doctor() -> None:
             "• Add API key: [cyan]mcp-agent keys set <provider> <key>[/cyan]\n"
             "• Add server: [cyan]mcp-agent server add recipe filesystem[/cyan]\n"
             "• Start chat: [cyan]mcp-agent chat --model anthropic.haiku[/cyan]\n"
-            "• Run agent: [cyan]mcp-agent dev --script agent.py[/cyan]",
+            "• Run agent: [cyan]mcp-agent dev start --script main.py[/cyan]",
             title="Getting Started",
             border_style="dim",
         )

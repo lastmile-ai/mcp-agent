@@ -7,11 +7,16 @@ from __future__ import annotations
 import asyncio
 import json
 from typing import Optional
+from pathlib import Path
 
 import typer
 from rich.console import Console
 
-from mcp_agent.cli.core.utils import load_user_app
+from mcp_agent.cli.core.utils import (
+    load_user_app,
+    detect_default_script,
+    select_servers_from_config,
+)
 from mcp_agent.workflows.factory import create_llm
 
 
@@ -48,13 +53,13 @@ def invoke(
         raise typer.Exit(6)
 
     async def _run():
-        app_obj = load_user_app(Path(script) if script else Path("agent.py"))
+        script_path = detect_default_script(Path(script) if script else None)
+        app_obj = load_user_app(script_path)
         await app_obj.initialize()
         async with app_obj.run():
             if agent:
                 # Run via LLM
-                server_list = servers.split(",") if servers else []
-                server_list = [s.strip() for s in server_list if s.strip()]
+                server_list = select_servers_from_config(servers, None, None)
                 llm = create_llm(
                     agent_name=agent,
                     server_names=server_list,
@@ -104,8 +109,6 @@ def invoke(
             except Exception:
                 val = result
             console.print(val, end="\n\n\n")
-
-    from pathlib import Path
 
     try:
         asyncio.run(_run())
