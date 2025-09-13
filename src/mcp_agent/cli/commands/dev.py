@@ -15,6 +15,7 @@ import typer
 from rich.console import Console
 
 from mcp_agent.config import get_settings
+from mcp_agent.cli.core.utils import detect_default_script
 
 
 app = typer.Typer(help="Run app locally with diagnostics")
@@ -22,7 +23,7 @@ console = Console()
 
 
 @app.callback(invoke_without_command=True)
-def dev(script: Path = typer.Option(Path("agent.py"), "--script")) -> None:
+def dev(script: Path = typer.Option(None, "--script")) -> None:
     """Run the user's app script with optional live reload and preflight checks."""
 
     def _preflight_ok() -> bool:
@@ -48,6 +49,9 @@ def dev(script: Path = typer.Option(Path("agent.py"), "--script")) -> None:
             stderr=None,  # Inherit stderr
             stdin=None,  # Inherit stdin
         )
+
+    # Resolve script path with auto-detection (main.py preferred)
+    script = detect_default_script(script)
 
     # Simple preflight
     _ = _preflight_ok()
