@@ -104,9 +104,7 @@ def _handle_wrangler_error(e: subprocess.CalledProcessError) -> None:
         print_error(clean_output)
 
 
-def wrangler_deploy(
-    app_id: str, api_key: str, project_dir: Path, exclude_deployed_secrets: bool
-) -> None:
+def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
     """Bundle the MCP Agent using Wrangler.
 
     A thin wrapper around the Wrangler CLI to bundle the MCP Agent application code
@@ -127,7 +125,6 @@ def wrangler_deploy(
         app_id (str): The application ID.
         api_key (str): User MCP Agent Cloud API key.
         project_dir (Path): The directory of the project to deploy.
-        exclude_deployed_secrets (bool): Whether to exclude the deployed secrets file from the bundle.
     """
 
     # Copy existing env to avoid overwriting
@@ -156,7 +153,7 @@ def wrangler_deploy(
     with tempfile.TemporaryDirectory(prefix="mcp-deploy-") as temp_dir_str:
         temp_project_dir = Path(temp_dir_str) / "project"
 
-        # Copy the entire project to temp directory, excluding unwanted directories and secrets file(s)
+        # Copy the entire project to temp directory, excluding unwanted directories and secrets file
         def ignore_patterns(_path, names):
             ignored = set()
             for name in names:
@@ -166,7 +163,6 @@ def wrangler_deploy(
                     "node_modules",
                     "venv",
                     MCP_SECRETS_FILENAME,
-                    exclude_deployed_secrets and MCP_DEPLOYED_SECRETS_FILENAME or "",
                 }:
                     ignored.add(name)
             return ignored

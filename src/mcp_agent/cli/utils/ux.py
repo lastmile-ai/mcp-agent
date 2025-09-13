@@ -213,6 +213,8 @@ def print_secrets_summary(
 
 
 def print_deployment_header(
+    app_name: str,
+    app_id: str,
     config_file: Path,
     secrets_file: Optional[Path] = None,
     deployed_secrets_file: Optional[Path] = None,
@@ -220,6 +222,7 @@ def print_deployment_header(
     """Print a styled header for the deployment process."""
     console.print(
         Panel(
+            f"App: [cyan]{app_name}[/cyan] (ID: [cyan]{app_id}[/cyan])\n"
             f"Configuration: [cyan]{config_file}[/cyan]\n"
             f"Secrets file: [cyan]{secrets_file or 'N/A'}[/cyan]\n"
             f"Deployed secrets file: [cyan]{deployed_secrets_file or 'Pending creation'}[/cyan]\n",

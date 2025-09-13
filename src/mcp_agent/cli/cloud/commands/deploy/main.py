@@ -24,13 +24,13 @@ from mcp_agent.cli.core.constants import (
 from mcp_agent.cli.core.utils import run_async
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.mcp_app.api_client import MCPAppClient
-from mcp_agent.cli.secrets.mock_client import MockSecretsClient
 from mcp_agent.cli.secrets.processor import (
     process_config_secrets,
 )
 from mcp_agent.cli.utils.ux import (
     console,
     print_deployment_header,
+    print_error,
     print_info,
     print_success,
 )
@@ -64,7 +64,7 @@ def deploy_config(
     non_interactive: bool = typer.Option(
         False,
         "--non-interactive",
-        help="Fail if secrets require prompting, do not prompt.",
+        help="Use existing secrets and update existing app where applicable, without prompting.",
     ),
     # TODO(@rholinshead): Re-add dry-run and perform pre-validation of the app
     # dry_run: bool = typer.Option(
@@ -98,7 +98,7 @@ def deploy_config(
         app_name: Name of the MCP App to deploy
         app_description: Description of the MCP App being deployed
         config_dir: Path to the directory containing the app configuration files
-        non_interactive: Never prompt for missing deployed secrets values (fail instead)
+        non_interactive: Never prompt for reusing or updating secrets or existing apps; reuse existing where possible
         api_url: API base URL
         api_key: API key for authentication
 
@@ -109,49 +109,6 @@ def deploy_config(
     if app_name is None:
         typer.echo(ctx.get_help())
         raise typer.Exit()
-
-    # Validate config directory and required files
-    config_file, secrets_file, deployed_secrets_file = get_config_files(config_dir)
-
-    # If a deployed secrets file already exists, determine if it should be used or overwritten
-    if deployed_secrets_file:
-        if secrets_file:
-            print_info(
-                f"Both '{MCP_SECRETS_FILENAME}' and '{MCP_DEPLOYED_SECRETS_FILENAME}' found in {config_dir}."
-            )
-            if non_interactive:
-                print_info(
-                    "--non-interactive specified, using existing deployed secrets file without changes."
-                )
-            else:
-                overwrite = typer.confirm(
-                    f"Do you want to overwrite the existing '{MCP_DEPLOYED_SECRETS_FILENAME}' by re-processing '{MCP_SECRETS_FILENAME}'?"
-                )
-                if overwrite:
-                    print_info(
-                        f"Will overwrite existing '{MCP_DEPLOYED_SECRETS_FILENAME}' by re-processing '{MCP_SECRETS_FILENAME}'."
-                    )
-                    deployed_secrets_file = None  # Will trigger re-processing
-                else:
-                    print_info(
-                        f"Using existing '{MCP_DEPLOYED_SECRETS_FILENAME}' without changes."
-                    )
-        else:
-            print_info(
-                f"Found '{MCP_DEPLOYED_SECRETS_FILENAME}' in {config_dir}, but no '{MCP_SECRETS_FILENAME}' to re-process."
-            )
-            use_existing = typer.confirm(
-                f"Do you want to use the existing '{MCP_DEPLOYED_SECRETS_FILENAME}'?"
-            )
-            if use_existing:
-                print_info(
-                    f"Using existing '{MCP_DEPLOYED_SECRETS_FILENAME}' without changes."
-                )
-            else:
-                print_info("Deployment will proceed without any secrets files.")
-                deployed_secrets_file = None  # Will skip secrets processing
-
-    print_deployment_header(config_file, secrets_file, deployed_secrets_file)
 
     try:
         provided_key = api_key
@@ -192,21 +149,68 @@ def deploy_config(
                 print_success(
                     f"Found existing app with ID: {app_id} for name '{app_name}'"
                 )
+                if not non_interactive:
+                    use_existing = typer.confirm(
+                        f"Do you want deploy an update to the existing app ID: {app_id}?"
+                    )
+                    if use_existing:
+                        print_info(f"Will deploy an update to app ID: {app_id}")
+                    else:
+                        print_error(
+                            "Cancelling deployment. Please choose a different app name."
+                        )
+                        return app_id
+                else:
+                    print_info(
+                        "--non-interactive specified, will deploy an update to the existing app."
+                    )
         except UnauthenticatedError as e:
             raise CLIError(
                 "Invalid API key for deployment. Run 'mcp-agent login' or set MCP_API_KEY environment variable with new API key."
             ) from e
         except Exception as e:
-            raise CLIError(f"Error checking or creating app: {str(e)}")
+            raise CLIError(f"Error checking or creating app: {str(e)}") from e
+
+        # Validate config directory and required files
+        config_file, secrets_file, deployed_secrets_file = get_config_files(config_dir)
+
+        # If a deployed secrets file already exists, determine if it should be used or overwritten
+        if deployed_secrets_file:
+            if secrets_file:
+                print_info(
+                    f"Both '{MCP_SECRETS_FILENAME}' and '{MCP_DEPLOYED_SECRETS_FILENAME}' found in {config_dir}."
+                )
+                if non_interactive:
+                    print_info(
+                        "--non-interactive specified, using existing deployed secrets file without changes."
+                    )
+                else:
+                    overwrite = typer.confirm(
+                        f"Do you want to overwrite the existing '{MCP_DEPLOYED_SECRETS_FILENAME}' by re-processing '{MCP_SECRETS_FILENAME}'?"
+                    )
+                    if overwrite:
+                        print_info(
+                            f"Will overwrite existing '{MCP_DEPLOYED_SECRETS_FILENAME}' by re-processing '{MCP_SECRETS_FILENAME}'."
+                        )
+                        deployed_secrets_file = None  # Will trigger re-processing
+                    else:
+                        print_info(f"Using existing '{MCP_DEPLOYED_SECRETS_FILENAME}'.")
+            else:
+                print_info(
+                    f"Found '{MCP_DEPLOYED_SECRETS_FILENAME}' in {config_dir}, but no '{MCP_SECRETS_FILENAME}' to re-process. Using existing deployed secrets file."
+                )
+
+        print_deployment_header(
+            app_name, app_id, config_file, secrets_file, deployed_secrets_file
+        )
 
         secrets_transformed_path = None
-        if secrets_file:
+        if secrets_file and not deployed_secrets_file:
             print_info("Processing secrets file...")
             secrets_transformed_path = Path(
                 f"{config_dir}/{MCP_DEPLOYED_SECRETS_FILENAME}"
             )
 
-            # Use the real secrets API client
             run_async(
                 process_config_secrets(
                     input_path=secrets_file,
@@ -237,7 +241,6 @@ def deploy_config(
             app_id=app_id,
             api_key=effective_api_key,
             project_dir=config_dir,
-            exclude_deployed_secrets=secrets_transformed_path is None,
         )
 
         with Progress(
