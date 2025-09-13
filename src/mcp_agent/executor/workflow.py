@@ -204,6 +204,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
                 Special kwargs that are extracted and not passed to run():
                 - __mcp_agent_workflow_id: Optional workflow ID to use (instead of auto-generating)
                 - __mcp_agent_task_queue: Optional task queue to use (instead of default from config)
+                - __mcp_agent_workflow_memo: the memo passed to the temporal workflow
 
         Returns:
             WorkflowExecution: The execution details including run ID and workflow ID

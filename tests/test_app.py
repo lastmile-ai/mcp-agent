@@ -105,7 +105,6 @@ class TestMCPApp:
         assert app.name == "test_app"
         assert app._human_input_callback is None
         assert app._signal_notification is None
-        assert app._upstream_session is None
         assert app._model_selector is None
         assert app._workflows == {}
         assert app._logger is None
@@ -129,7 +128,7 @@ class TestMCPApp:
 
     @pytest.mark.asyncio
     async def test_initialization_with_callbacks(
-        self, human_input_callback, signal_notification
+            self, human_input_callback, signal_notification
     ):
         """Test initialization with callbacks."""
         app = MCPApp(
@@ -140,14 +139,6 @@ class TestMCPApp:
 
         assert app._human_input_callback is human_input_callback
         assert app._signal_notification is signal_notification
-
-    @pytest.mark.asyncio
-    async def test_initialization_with_upstream_session(self):
-        """Test initialization with upstream session."""
-        mock_session = MagicMock()
-        app = MCPApp(name="test_app", upstream_session=mock_session)
-
-        assert app._upstream_session is mock_session
 
     @pytest.mark.asyncio
     async def test_initialization_with_model_selector(self):
@@ -202,7 +193,7 @@ class TestMCPApp:
     async def test_initialize_method(self, basic_app, mock_context):
         """Test initialize method."""
         with patch(
-            "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
+                "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
         ) as mock_init_context:
             await basic_app.initialize()
 
@@ -214,7 +205,7 @@ class TestMCPApp:
     async def test_initialize_already_initialized(self, basic_app, mock_context):
         """Test initialize method when already initialized."""
         with patch(
-            "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
+                "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
         ) as mock_init_context:
             # First initialization
             await basic_app.initialize()
@@ -230,7 +221,7 @@ class TestMCPApp:
     async def test_cleanup_method(self, basic_app, mock_context):
         """Test cleanup method."""
         with patch(
-            "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
+                "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
         ):
             with patch("mcp_agent.app.cleanup_context", AsyncMock()) as mock_cleanup:
                 await basic_app.initialize()
@@ -312,7 +303,7 @@ class TestMCPApp:
     async def test_context_property_initialized(self, basic_app, mock_context):
         """Test context property when initialized."""
         with patch(
-            "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
+                "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
         ):
             await basic_app.initialize()
 
@@ -328,7 +319,7 @@ class TestMCPApp:
     async def test_config_property(self, basic_app, mock_context):
         """Test config property."""
         with patch(
-            "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
+                "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
         ):
             await basic_app.initialize()
 
@@ -338,7 +329,7 @@ class TestMCPApp:
     async def test_server_registry_property(self, basic_app, mock_context):
         """Test server_registry property."""
         with patch(
-            "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
+                "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
         ):
             await basic_app.initialize()
 
@@ -348,7 +339,7 @@ class TestMCPApp:
     async def test_executor_property(self, basic_app, mock_context):
         """Test executor property."""
         with patch(
-            "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
+                "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
         ):
             await basic_app.initialize()
 
@@ -358,34 +349,11 @@ class TestMCPApp:
     async def test_engine_property(self, basic_app, mock_context):
         """Test engine property."""
         with patch(
-            "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
+                "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
         ):
             await basic_app.initialize()
 
             assert basic_app.engine is mock_context.executor.execution_engine
-
-    @pytest.mark.asyncio
-    async def test_upstream_session_getter(self, basic_app, mock_context):
-        """Test upstream_session getter."""
-        with patch(
-            "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
-        ):
-            await basic_app.initialize()
-
-            assert basic_app.upstream_session is mock_context.upstream_session
-
-    @pytest.mark.asyncio
-    async def test_upstream_session_setter(self, basic_app, mock_context):
-        """Test upstream_session setter."""
-        with patch(
-            "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
-        ):
-            await basic_app.initialize()
-
-            new_session = MagicMock()
-            basic_app.upstream_session = new_session
-
-            assert mock_context.upstream_session is new_session
 
     @pytest.mark.asyncio
     async def test_workflows_property(self, basic_app):
@@ -396,7 +364,7 @@ class TestMCPApp:
     async def test_tasks_property(self, basic_app, mock_context):
         """Test tasks property."""
         with patch(
-            "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
+                "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
         ):
             mock_context.task_registry.list_activities.return_value = ["task1", "task2"]
             await basic_app.initialize()
@@ -435,7 +403,7 @@ class TestMCPApp:
 
             # Now initialize the context
             with patch(
-                "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
+                    "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
             ):
                 await basic_app.initialize()
 
@@ -459,7 +427,7 @@ class TestMCPApp:
 
     @pytest.mark.asyncio
     async def test_workflow_decorator_default(
-        self, basic_app, test_workflow, mock_context
+            self, basic_app, test_workflow, mock_context
     ):
         """Test workflow decorator default behavior."""
         # Set the context directly instead of patching the property
@@ -487,7 +455,7 @@ class TestMCPApp:
 
     @pytest.mark.asyncio
     async def test_workflow_decorator_with_id(
-        self, basic_app, test_workflow, mock_context
+            self, basic_app, test_workflow, mock_context
     ):
         """Test workflow decorator with custom ID."""
         # Set the context directly instead of patching the property
@@ -516,11 +484,11 @@ class TestMCPApp:
 
     @pytest.mark.asyncio
     async def test_workflow_decorator_with_engine(
-        self, basic_app, test_workflow, mock_context
+            self, basic_app, test_workflow, mock_context
     ):
         """Test workflow decorator with execution engine."""
         with patch(
-            "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
+                "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
         ):
             await basic_app.initialize()
 
@@ -569,7 +537,7 @@ class TestMCPApp:
             # Calling decorated() returns a coroutine object that we need to await
             result = await decorated()
             assert (
-                result == "test"
+                    result == "test"
             )  # Should still return the original function's return value
         finally:
             # Reset the app state after the test
@@ -580,7 +548,7 @@ class TestMCPApp:
     async def test_workflow_run_decorator_with_engine(self, basic_app, mock_context):
         """Test workflow_run decorator with execution engine."""
         with patch(
-            "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
+                "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
         ):
             await basic_app.initialize()
 
@@ -609,7 +577,7 @@ class TestMCPApp:
     async def test_workflow_task_decorator(self, basic_app, test_task, mock_context):
         """Test workflow_task decorator."""
         with patch(
-            "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
+                "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
         ):
             await basic_app.initialize()
 
@@ -622,8 +590,8 @@ class TestMCPApp:
             assert decorated.is_workflow_task is True
             assert hasattr(decorated, "execution_metadata")
             assert (
-                decorated.execution_metadata["activity_name"]
-                == f"{test_task.__module__}.{test_task.__qualname__}"
+                    decorated.execution_metadata["activity_name"]
+                    == f"{test_task.__module__}.{test_task.__qualname__}"
             )
 
             # Verify task registration in the app's _task_registry
@@ -635,11 +603,11 @@ class TestMCPApp:
 
     @pytest.mark.asyncio
     async def test_workflow_task_decorator_with_name(
-        self, basic_app, test_task, mock_context
+            self, basic_app, test_task, mock_context
     ):
         """Test workflow_task decorator with custom name."""
         with patch(
-            "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
+                "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
         ):
             await basic_app.initialize()
 
@@ -658,11 +626,11 @@ class TestMCPApp:
 
     @pytest.mark.asyncio
     async def test_workflow_task_decorator_with_timeout(
-        self, basic_app, test_task, mock_context
+            self, basic_app, test_task, mock_context
     ):
         """Test workflow_task decorator with custom timeout."""
         with patch(
-            "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
+                "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
         ):
             await basic_app.initialize()
 
@@ -674,8 +642,8 @@ class TestMCPApp:
 
             # Verification
             assert (
-                decorated.execution_metadata["schedule_to_close_timeout"]
-                == custom_timeout
+                    decorated.execution_metadata["schedule_to_close_timeout"]
+                    == custom_timeout
             )
 
             # Verify task registration in the app's _task_registry
@@ -685,17 +653,17 @@ class TestMCPApp:
             registered_task = basic_app._task_registry.get_activity(activity_name)
             assert registered_task is decorated
             assert (
-                registered_task.execution_metadata["schedule_to_close_timeout"]
-                == custom_timeout
+                    registered_task.execution_metadata["schedule_to_close_timeout"]
+                    == custom_timeout
             )
 
     @pytest.mark.asyncio
     async def test_workflow_task_decorator_with_retry_policy(
-        self, basic_app, test_task, mock_context
+            self, basic_app, test_task, mock_context
     ):
         """Test workflow_task decorator with custom retry policy."""
         with patch(
-            "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
+                "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
         ):
             await basic_app.initialize()
 
@@ -730,7 +698,7 @@ class TestMCPApp:
     async def test_is_workflow_task_method(self, basic_app, test_task, mock_context):
         """Test is_workflow_task method."""
         with patch(
-            "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
+                "mcp_agent.app.initialize_context", AsyncMock(return_value=mock_context)
         ):
             await basic_app.initialize()
 

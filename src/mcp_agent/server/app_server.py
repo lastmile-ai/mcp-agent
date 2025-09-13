@@ -2,14 +2,13 @@
 MCPAgentServer - Exposes MCPApp as MCP server, and
 mcp-agent workflows and agents as MCP tools.
 """
-
+import asyncio
 import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional, Set, Tuple, Type, TYPE_CHECKING
 import os
 import secrets
-import asyncio
 
 from mcp.server.fastmcp import Context as MCPContext, FastMCP
 from starlette.requests import Request
@@ -144,7 +143,6 @@ class ServerContext(ContextDependent):
     def workflow_registry(self) -> WorkflowRegistry:
         """Get the workflow registry for this server context."""
         return self.context.workflow_registry
-
 
 def _get_attached_app(mcp: FastMCP) -> MCPApp | None:
     """Return the MCPApp instance attached to the FastMCP server, if any."""
@@ -548,7 +546,6 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                 EmptyResult,
                 ServerRequest,
             )
-
             body = await request.json()
             execution_id = request.path_params.get("execution_id")
             method = body.get("method")
@@ -936,6 +933,8 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             except Exception as e:
                 return JSONResponse({"error": str(e)}, status_code=500)
 
+
+
     # Create or attach FastMCP server
     if app.mcp:
         # Using an externally provided FastMCP instance: attach app and context
@@ -1278,6 +1277,8 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
     # endregion
 
     return mcp
+
+
 
 
 # region per-Workflow Tools
@@ -1635,6 +1636,7 @@ def create_workflow_specific_tools(
         run_fn_tool = FastTool.from_function(_schema_fn_proxy)
     else:
         run_fn_tool = FastTool.from_function(param_source)
+
     run_fn_tool_params = json.dumps(run_fn_tool.parameters, indent=2)
 
     @mcp.tool(
