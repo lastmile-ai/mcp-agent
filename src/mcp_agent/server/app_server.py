@@ -401,122 +401,133 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         return JSONResponse({"ok": True, "idempotent": True})
                     seen.add(idempotency_key)
 
-            session = await _get_session(execution_id)
-            if not session:
-                # Try a fallback upstream session from the app context (best-effort)
-                fallback = _get_fallback_upstream_session()
-                if fallback is not None:
+            # Prefer latest upstream session first
+            latest_session = _get_fallback_upstream_session()
+            tried_latest = False
+            if latest_session is not None:
+                tried_latest = True
+                try:
+                    if method == "notifications/message":
+                        level = str(params.get("level", "info"))
+                        data = params.get("data")
+                        logger_name = params.get("logger")
+                        related_request_id = params.get("related_request_id")
+                        await latest_session.send_log_message(  # type: ignore[attr-defined]
+                            level=level,  # type: ignore[arg-type]
+                            data=data,
+                            logger=logger_name,
+                            related_request_id=related_request_id,
+                        )
+                        logger.debug(
+                            f"[notify] delivered via latest session_id={id(latest_session)} (message)"
+                        )
+                    elif method == "notifications/progress":
+                        progress_token = params.get("progressToken")
+                        progress = params.get("progress")
+                        total = params.get("total")
+                        message = params.get("message")
+                        await latest_session.send_progress_notification(  # type: ignore[attr-defined]
+                            progress_token=progress_token,
+                            progress=progress,
+                            total=total,
+                            message=message,
+                        )
+                        logger.debug(
+                            f"[notify] delivered via latest session_id={id(latest_session)} (progress)"
+                        )
+                    else:
+                        rpc = getattr(latest_session, "rpc", None)
+                        if rpc and hasattr(rpc, "notify"):
+                            await rpc.notify(method, params)
+                            logger.debug(
+                                f"[notify] delivered via latest session_id={id(latest_session)} (generic '{method}')"
+                            )
+                        else:
+                            return JSONResponse(
+                                {"ok": False, "error": f"unsupported method: {method}"},
+                                status_code=400,
+                            )
+                    # Successful with latest → bind mapping for consistency
                     try:
                         await _register_session(
                             run_id=execution_id,
                             execution_id=execution_id,
-                            session=fallback,
+                            session=latest_session,
                         )
-                        session = fallback
-                        logger.warning(
-                            f"[notify] No mapped session for execution_id={execution_id}; used fallback upstream_session session_id={id(session)}"
+                        logger.info(
+                            f"[notify] rebound mapping to latest session_id={id(latest_session)} for execution_id={execution_id}"
                         )
                     except Exception:
-                        session = None
-                if not session:
+                        pass
+                    return JSONResponse({"ok": True})
+                except Exception as e_latest:
                     logger.warning(
-                        f"[notify] session_not_available for execution_id={execution_id}"
-                    )
-                    return JSONResponse(
-                        {"ok": False, "error": "session_not_available"}, status_code=503
+                        f"[notify] latest session delivery failed for execution_id={execution_id}: {e_latest}"
                     )
 
+            # Fallback to mapped session
+            mapped_session = await _get_session(execution_id)
+            if not mapped_session:
+                logger.warning(
+                    f"[notify] session_not_available for execution_id={execution_id} (tried_latest={tried_latest})"
+                )
+                return JSONResponse(
+                    {"ok": False, "error": "session_not_available"}, status_code=503
+                )
+
             try:
-                # Special-case the common logging notification helper
                 if method == "notifications/message":
                     level = str(params.get("level", "info"))
                     data = params.get("data")
                     logger_name = params.get("logger")
                     related_request_id = params.get("related_request_id")
-                    await session.send_log_message(  # type: ignore[attr-defined]
+                    await mapped_session.send_log_message(  # type: ignore[attr-defined]
                         level=level,  # type: ignore[arg-type]
                         data=data,
                         logger=logger_name,
                         related_request_id=related_request_id,
                     )
-                    try:
-                        logger.debug(
-                            f"[notify] forwarded notifications/message to session_id={id(session)}"
-                        )
-                    except Exception:
-                        pass
+                    logger.debug(
+                        f"[notify] delivered via mapped session_id={id(mapped_session)} (message)"
+                    )
                 elif method == "notifications/progress":
-                    # Minimal support for progress relay
                     progress_token = params.get("progressToken")
                     progress = params.get("progress")
                     total = params.get("total")
                     message = params.get("message")
-                    await session.send_progress_notification(  # type: ignore[attr-defined]
+                    await mapped_session.send_progress_notification(  # type: ignore[attr-defined]
                         progress_token=progress_token,
                         progress=progress,
                         total=total,
                         message=message,
                     )
-                    try:
-                        logger.debug(
-                            f"[notify] forwarded notifications/progress to session_id={id(session)}"
-                        )
-                    except Exception:
-                        pass
+                    logger.debug(
+                        f"[notify] delivered via mapped session_id={id(mapped_session)} (progress)"
+                    )
                 else:
-                    # Generic passthrough using low-level RPC if available
-                    rpc = getattr(session, "rpc", None)
+                    rpc = getattr(mapped_session, "rpc", None)
                     if rpc and hasattr(rpc, "notify"):
                         await rpc.notify(method, params)
-                        try:
-                            logger.debug(
-                                f"[notify] forwarded generic notify '{method}' to session_id={id(session)}"
-                            )
-                        except Exception:
-                            pass
+                        logger.debug(
+                            f"[notify] delivered via mapped session_id={id(mapped_session)} (generic '{method}')"
+                        )
                     else:
                         return JSONResponse(
                             {"ok": False, "error": f"unsupported method: {method}"},
                             status_code=400,
                         )
-
                 return JSONResponse({"ok": True})
-            except Exception as e:
-                # One more best-effort: if we failed once and haven't used fallback yet, try fallback
-                try:
-                    fallback = _get_fallback_upstream_session()
-                    if fallback is not None and fallback is not session:
-                        try:
-                            await fallback.send_log_message(  # type: ignore[attr-defined]
-                                level=str(params.get("level", "info")),
-                                data=params.get("data") or {},
-                                logger=params.get("logger"),
-                                related_request_id=params.get("related_request_id"),
-                            )
-                            logger.warning(
-                                f"[notify] primary session send failed; used fallback upstream_session session_id={id(fallback)}"
-                            )
-                            return JSONResponse({"ok": True, "fallback": True})
-                        except Exception:
-                            pass
-                except Exception:
-                    pass
-                # After workflow cleanup, upstream sessions may be closed. Treat notify as best-effort.
+            except Exception as e_mapped:
+                # Best-effort for notifications
                 if isinstance(method, str) and method.startswith("notifications/"):
-                    try:
-                        logger.warning(
-                            f"[notify] dropped notification for execution_id={execution_id}: {e}"
-                        )
-                    except Exception:
-                        pass
-                    return JSONResponse({"ok": True, "dropped": True})
-                try:
-                    logger.error(
-                        f"[notify] error forwarding for execution_id={execution_id}: {e}"
+                    logger.warning(
+                        f"[notify] dropped notification for execution_id={execution_id}: {e_mapped}"
                     )
-                except Exception:
-                    pass
-                return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+                    return JSONResponse({"ok": True, "dropped": True})
+                logger.error(
+                    f"[notify] error forwarding for execution_id={execution_id}: {e_mapped}"
+                )
+                return JSONResponse({"ok": False, "error": str(e_mapped)}, status_code=500)
 
         @mcp_server.custom_route(
             "/internal/session/by-run/{execution_id}/request",
@@ -542,30 +553,128 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             execution_id = request.path_params.get("execution_id")
             method = body.get("method")
             params = body.get("params") or {}
+            try:
+                logger.info(
+                    f"[request] incoming execution_id={execution_id} method={method}"
+                )
+            except Exception:
+                pass
 
+            # Prefer latest upstream session first
+            latest_session = _get_fallback_upstream_session()
+            if latest_session is not None:
+                try:
+                    rpc = getattr(latest_session, "rpc", None)
+                    if rpc and hasattr(rpc, "request"):
+                        result = await rpc.request(method, params)
+                        logger.debug(
+                            f"[request] delivered via latest session_id={id(latest_session)} (generic '{method}')"
+                        )
+                        try:
+                            await _register_session(
+                                run_id=execution_id,
+                                execution_id=execution_id,
+                                session=latest_session,
+                            )
+                            logger.info(
+                                f"[request] rebound mapping to latest session_id={id(latest_session)} for execution_id={execution_id}"
+                            )
+                        except Exception:
+                            pass
+                        return JSONResponse(result)
+                    # If latest_session lacks rpc.request, try a limited mapping path
+                    if method == "sampling/createMessage":
+                        req = ServerRequest(
+                            CreateMessageRequest(
+                                method="sampling/createMessage",
+                                params=CreateMessageRequestParams(**params),
+                            )
+                        )
+                        result = await latest_session.send_request(  # type: ignore[attr-defined]
+                            request=req,
+                            result_type=CreateMessageResult,
+                        )
+                        try:
+                            await _register_session(
+                                run_id=execution_id,
+                                execution_id=execution_id,
+                                session=latest_session,
+                            )
+                        except Exception:
+                            pass
+                        return JSONResponse(
+                            result.model_dump(by_alias=True, mode="json", exclude_none=True)
+                        )
+                    elif method == "elicitation/create":
+                        req = ServerRequest(
+                            ElicitRequest(
+                                method="elicitation/create",
+                                params=ElicitRequestParams(**params),
+                            )
+                        )
+                        result = await latest_session.send_request(  # type: ignore[attr-defined]
+                            request=req,
+                            result_type=ElicitResult,
+                        )
+                        try:
+                            await _register_session(
+                                run_id=execution_id,
+                                execution_id=execution_id,
+                                session=latest_session,
+                            )
+                        except Exception:
+                            pass
+                        return JSONResponse(
+                            result.model_dump(by_alias=True, mode="json", exclude_none=True)
+                        )
+                    elif method == "roots/list":
+                        req = ServerRequest(ListRootsRequest(method="roots/list"))
+                        result = await latest_session.send_request(  # type: ignore[attr-defined]
+                            request=req,
+                            result_type=ListRootsResult,
+                        )
+                        try:
+                            await _register_session(
+                                run_id=execution_id,
+                                execution_id=execution_id,
+                                session=latest_session,
+                            )
+                        except Exception:
+                            pass
+                        return JSONResponse(
+                            result.model_dump(by_alias=True, mode="json", exclude_none=True)
+                        )
+                    elif method == "ping":
+                        req = ServerRequest(PingRequest(method="ping"))
+                        result = await latest_session.send_request(  # type: ignore[attr-defined]
+                            request=req,
+                            result_type=EmptyResult,
+                        )
+                        try:
+                            await _register_session(
+                                run_id=execution_id,
+                                execution_id=execution_id,
+                                session=latest_session,
+                            )
+                        except Exception:
+                            pass
+                        return JSONResponse(
+                            result.model_dump(by_alias=True, mode="json", exclude_none=True)
+                        )
+                except Exception as e_latest:
+                    logger.warning(
+                        f"[request] latest session delivery failed for execution_id={execution_id} method={method}: {e_latest}"
+                    )
+
+            # Fallback to mapped session
             session = await _get_session(execution_id)
             if not session:
-                fallback = _get_fallback_upstream_session()
-                if fallback is not None:
-                    try:
-                        await _register_session(
-                            run_id=execution_id,
-                            execution_id=execution_id,
-                            session=fallback,
-                        )
-                        session = fallback
-                        logger.warning(
-                            f"[request] No mapped session for execution_id={execution_id}; used fallback upstream_session session_id={id(session)}"
-                        )
-                    except Exception:
-                        session = None
-                if not session:
-                    logger.warning(
-                        f"[request] session_not_available for execution_id={execution_id}"
-                    )
-                    return JSONResponse(
-                        {"error": "session_not_available"}, status_code=503
-                    )
+                logger.warning(
+                    f"[request] session_not_available for execution_id={execution_id}"
+                )
+                return JSONResponse(
+                    {"error": "session_not_available"}, status_code=503
+                )
 
             try:
                 # Prefer generic request passthrough if available
@@ -649,6 +758,12 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             namespace = body.get("namespace") or "mcp_agent"
             message = body.get("message") or ""
             data = body.get("data") or {}
+            try:
+                logger.info(
+                    f"[log] incoming execution_id={execution_id} level={level} ns={namespace}"
+                )
+            except Exception:
+                pass
 
             # Optional shared-secret auth
             gw_token = os.environ.get("MCP_GATEWAY_TOKEN")
@@ -668,29 +783,48 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         {"ok": False, "error": "unauthorized"}, status_code=401
                     )
 
-            session = await _get_session(execution_id)
-            if not session:
-                fallback = _get_fallback_upstream_session()
-                if fallback is not None:
+            # Prefer latest upstream session first
+            latest_session = _get_fallback_upstream_session()
+            if latest_session is not None:
+                try:
+                    await latest_session.send_log_message(  # type: ignore[attr-defined]
+                        level=level,  # type: ignore[arg-type]
+                        data={
+                            "message": message,
+                            "namespace": namespace,
+                            "data": data,
+                        },
+                        logger=namespace,
+                    )
+                    logger.debug(
+                        f"[log] delivered via latest session_id={id(latest_session)} level={level} ns={namespace}"
+                    )
                     try:
                         await _register_session(
                             run_id=execution_id,
                             execution_id=execution_id,
-                            session=fallback,
+                            session=latest_session,
                         )
-                        session = fallback
-                        logger.warning(
-                            f"[log] No mapped session for execution_id={execution_id}; used fallback upstream_session session_id={id(session)}"
+                        logger.info(
+                            f"[log] rebound mapping to latest session_id={id(latest_session)} for execution_id={execution_id}"
                         )
                     except Exception:
-                        session = None
-                if not session:
+                        pass
+                    return JSONResponse({"ok": True})
+                except Exception as e_latest:
                     logger.warning(
-                        f"[log] session_not_available for execution_id={execution_id}"
+                        f"[log] latest session delivery failed for execution_id={execution_id}: {e_latest}"
                     )
-                    return JSONResponse(
-                        {"ok": False, "error": "session_not_available"}, status_code=503
-                    )
+
+            # Fallback to mapped session
+            session = await _get_session(execution_id)
+            if not session:
+                logger.warning(
+                    f"[log] session_not_available for execution_id={execution_id}"
+                )
+                return JSONResponse(
+                    {"ok": False, "error": "session_not_available"}, status_code=503
+                )
             if level not in ("debug", "info", "warning", "error"):
                 level = "info"
             try:
@@ -721,6 +855,12 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             execution_id = body.get("execution_id")
             prompt = body.get("prompt") or {}
             metadata = body.get("metadata") or {}
+            try:
+                logger.info(
+                    f"[human] incoming execution_id={execution_id} signal_name={metadata.get('signal_name','human_input')}"
+                )
+            except Exception:
+                pass
 
             # Optional shared-secret auth
             gw_token = os.environ.get("MCP_GATEWAY_TOKEN")
@@ -738,9 +878,8 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                 ):
                     return JSONResponse({"error": "unauthorized"}, status_code=401)
 
-            session = await _get_session(execution_id)
-            if not session:
-                return JSONResponse({"error": "session_not_available"}, status_code=503)
+            # Prefer latest upstream session first
+            latest_session = _get_fallback_upstream_session()
             import uuid
 
             request_id = str(uuid.uuid4())
@@ -759,6 +898,35 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         "signal_name": metadata.get("signal_name", "human_input"),
                         "session_id": metadata.get("session_id"),
                     }
+                # Try latest first
+                if latest_session is not None:
+                    try:
+                        await latest_session.send_log_message(  # type: ignore[attr-defined]
+                            level="info",  # type: ignore[arg-type]
+                            data=payload,
+                            logger="mcp_agent.human",
+                        )
+                        try:
+                            await _register_session(
+                                run_id=execution_id,
+                                execution_id=execution_id,
+                                session=latest_session,
+                            )
+                            logger.info(
+                                f"[human] rebound mapping to latest session_id={id(latest_session)} for execution_id={execution_id}"
+                            )
+                        except Exception:
+                            pass
+                        return JSONResponse({"request_id": request_id})
+                    except Exception as e_latest:
+                        logger.warning(
+                            f"[human] latest session delivery failed for execution_id={execution_id}: {e_latest}"
+                        )
+
+                # Fallback to mapped session
+                session = await _get_session(execution_id)
+                if not session:
+                    return JSONResponse({"error": "session_not_available"}, status_code=503)
                 await session.send_log_message(
                     level="info",  # type: ignore[arg-type]
                     data=payload,
