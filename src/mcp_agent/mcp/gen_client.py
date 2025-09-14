@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 from datetime import timedelta
-from typing import AsyncGenerator, Callable
+from typing import AsyncGenerator, Callable, Optional
 
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from mcp import ClientSession
@@ -8,6 +8,7 @@ from mcp import ClientSession
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.mcp.mcp_server_registry import ServerRegistry
 from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
+from mcp_agent.core.context import Context
 
 logger = get_logger(__name__)
 
@@ -21,6 +22,7 @@ async def gen_client(
         ClientSession,
     ] = MCPAgentClientSession,
     session_id: str | None = None,
+    context: Optional[Context] = None,
 ) -> AsyncGenerator[ClientSession, None]:
     """
     Create a client session to the specified server.
@@ -37,6 +39,7 @@ async def gen_client(
         server_name=server_name,
         client_session_factory=client_session_factory,
         session_id=session_id,
+        context=context,
     ) as session:
         yield session
 
@@ -49,6 +52,7 @@ async def connect(
         ClientSession,
     ] = MCPAgentClientSession,
     session_id: str | None = None,
+    context: Optional[Context] = None,
 ) -> ClientSession:
     """
     Create a persistent client session to the specified server.

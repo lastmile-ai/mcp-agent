@@ -9,7 +9,7 @@ server initialization.
 
 from contextlib import asynccontextmanager
 from datetime import timedelta
-from typing import Callable, Dict, AsyncGenerator
+from typing import Callable, Dict, AsyncGenerator, Optional, TYPE_CHECKING
 
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from mcp import ClientSession
@@ -32,6 +32,9 @@ from mcp_agent.config import (
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
 from mcp_agent.mcp.mcp_connection_manager import MCPConnectionManager
+
+if TYPE_CHECKING:
+    from mcp_agent.core.context import Context
 
 logger = get_logger(__name__)
 
@@ -110,6 +113,7 @@ class ServerRegistry:
             ClientSession,
         ] = ClientSession,
         session_id: str | None = None,
+        context: Optional["Context"] = None,
     ) -> AsyncGenerator[ClientSession, None]:
         """
         Starts the server process based on its configuration. To initialize, call initialize_server
@@ -151,6 +155,7 @@ class ServerRegistry:
                     read_stream,
                     write_stream,
                     read_timeout_seconds,
+                    context=context,
                 )
                 async with session:
                     logger.info(
@@ -204,6 +209,7 @@ class ServerRegistry:
                     read_stream,
                     write_stream,
                     read_timeout_seconds,
+                    context=context,
                 )
 
                 if session_id_callback and isinstance(session, MCPAgentClientSession):
@@ -243,6 +249,7 @@ class ServerRegistry:
                     read_stream,
                     write_stream,
                     read_timeout_seconds,
+                    context=context,
                 )
                 async with session:
                     logger.info(
@@ -267,6 +274,7 @@ class ServerRegistry:
                     read_stream,
                     write_stream,
                     read_timeout_seconds,
+                    context=context,
                 )
                 async with session:
                     logger.info(
@@ -290,6 +298,7 @@ class ServerRegistry:
         ] = ClientSession,
         init_hook: InitHookCallable = None,
         session_id: str | None = None,
+        context: Optional["Context"] = None,
     ) -> AsyncGenerator[ClientSession, None]:
         """
         Initialize a server based on its configuration.
@@ -315,6 +324,7 @@ class ServerRegistry:
             server_name,
             client_session_factory=client_session_factory,
             session_id=session_id,
+            context=context,
         ) as session:
             try:
                 logger.info(f"{server_name}: Initializing server...")

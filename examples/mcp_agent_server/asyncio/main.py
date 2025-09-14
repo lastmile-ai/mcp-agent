@@ -25,6 +25,10 @@ from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 from mcp_agent.workflows.parallel.parallel_llm import ParallelLLM
 from mcp_agent.executor.workflow import Workflow, WorkflowResult
 from mcp_agent.tracing.token_counter import TokenNode
+from mcp_agent.human_input.handler import console_input_callback
+from mcp_agent.elicitation.handler import console_elicitation_callback
+from mcp_agent.mcp.gen_client import gen_client
+from mcp_agent.config import MCPServerSettings
 
 # Note: This is purely optional:
 # if not provided, a default FastMCP server will be created by MCPApp using create_mcp_server_for_app()
@@ -36,6 +40,8 @@ app = MCPApp(
     name="basic_agent_server",
     description="Basic agent server example",
     mcp=mcp,
+    human_input_callback=console_input_callback,  # enable approval prompts for local sampling
+    elicitation_callback=console_elicitation_callback,  # enable console-driven elicitation
 )
 
 
@@ -107,6 +113,84 @@ class BasicAgentWorkflow(Workflow[str]):
             )
             logger.info(f"Paragraph as a tweet: {result}")
             return WorkflowResult(value=result)
+
+
+@app.tool(name="sampling_demo")
+async def sampling_demo(topic: str, app_ctx: Optional[AppContext] = None) -> str:
+    """
+    Demonstrate MCP sampling via a nested MCP server tool.
+
+    - In asyncio (no upstream client), this triggers local sampling with a human approval prompt.
+    - When an MCP client is connected, the sampling request is proxied upstream.
+    """
+    _app = app_ctx.app if app_ctx else app
+
+    # Register a simple nested server that uses sampling in its get_haiku tool
+    nested_name = "nested_sampling"
+    nested_path = os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__), "..", "shared", "nested_sampling_server.py"
+        )
+    )
+    _app.context.config.mcp.servers[nested_name] = MCPServerSettings(
+        name=nested_name,
+        command="uv",
+        args=["run", nested_path],
+        description="Nested server providing a haiku generator using sampling",
+    )
+
+    # Connect as an MCP client to the nested server and call its sampling tool
+    async with gen_client(
+        nested_name, _app.context.server_registry, context=_app.context
+    ) as client:
+        result = await client.call_tool("get_haiku", {"topic": topic})
+
+    # Extract text content from CallToolResult
+    try:
+        if result.content and len(result.content) > 0:
+            return result.content[0].text or ""
+    except Exception:
+        pass
+    return ""
+
+
+@app.tool(name="elicitation_demo")
+async def elicitation_demo(
+    action: str = "proceed", app_ctx: Optional[AppContext] = None
+) -> str:
+    """
+    Demonstrate MCP elicitation via a nested MCP server tool.
+
+    - In asyncio (no upstream client), this triggers local elicitation handled by console.
+    - When an MCP client is connected, the elicitation request is proxied upstream.
+    """
+    _app = app_ctx.app if app_ctx else app
+
+    nested_name = "nested_elicitation"
+    nested_path = os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__), "..", "shared", "nested_elicitation_server.py"
+        )
+    )
+    _app.context.config.mcp.servers[nested_name] = MCPServerSettings(
+        name=nested_name,
+        command="uv",
+        args=["run", nested_path],
+        description="Nested server demonstrating elicitation",
+    )
+
+    async with gen_client(
+        nested_name, _app.context.server_registry, context=_app.context
+    ) as client:
+        # The nested server will call context.session.elicit() internally
+        result = await client.call_tool("confirm_action", {"action": action})
+
+    try:
+        if result.content and len(result.content) > 0:
+            return result.content[0].text or ""
+    except Exception:
+        pass
+    return ""
 
 
 @app.tool
