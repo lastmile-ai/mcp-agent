@@ -5,6 +5,7 @@ with secret tags and transforms them into deployment-ready configurations with s
 """
 
 from pathlib import Path
+from datetime import datetime, timezone
 from typing import Optional, Union
 
 import typer
@@ -36,6 +37,7 @@ from mcp_agent.cli.utils.ux import (
     print_info,
     print_success,
 )
+from mcp_agent.cli.utils.git_utils import get_git_metadata, create_git_tag
 
 from .wrangler_wrapper import wrangler_deploy
 
@@ -89,6 +91,18 @@ def deploy_config(
         "--api-key",
         help="API key for authentication. Defaults to MCP_API_KEY environment variable.",
         envvar=ENV_API_KEY,
+    ),
+    git_tag: bool = typer.Option(
+        False,
+        "--git-tag/--no-git-tag",
+        help="Create a local git tag for this deploy (if in a git repo)",
+        envvar="MCP_DEPLOY_GIT_TAG",
+    ),
+    send_metadata: bool = typer.Option(
+        False,
+        "--send-metadata/--no-send-metadata",
+        help="Send deployment metadata (e.g., commit info) to the API if supported",
+        envvar="MCP_DEPLOY_SEND_METADATA",
     ),
 ) -> str:
     """Deploy an MCP agent using the specified configuration.
@@ -237,6 +251,29 @@ def deploy_config(
             )
         )
 
+        # Optionally create a local git tag as a breadcrumb of this deployment
+        if git_tag:
+            git_meta = get_git_metadata(config_dir)
+            if git_meta:
+                # Sanitize app name for tag safety
+                safe_name = "".join(
+                    c if c.isalnum() or c in "-_" else "-" for c in app_name
+                )
+                ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+                tag_name = f"mcp-deploy/{safe_name}/{ts}-{git_meta.short_sha}"
+                msg = (
+                    f"MCP Agent deploy for app '{app_name}' (id {app_id})\n"
+                    f"Commit: {git_meta.commit_sha}\n"
+                    f"Branch: {git_meta.branch or ''}\n"
+                    f"Dirty: {git_meta.dirty}"
+                )
+                if create_git_tag(config_dir, tag_name, msg):
+                    print_success(f"Created local git tag: {tag_name}")
+                else:
+                    print_info("Skipping git tag (not a repo or tag failed)")
+            else:
+                print_info("Skipping git tag (not a git repository)")
+
         wrangler_deploy(
             app_id=app_id,
             api_key=effective_api_key,
@@ -251,9 +288,23 @@ def deploy_config(
 
             try:
                 assert isinstance(mcp_app_client, MCPAppClient)
+                # Optionally include minimal metadata (git only to avoid heavy scans)
+                metadata = None
+                if send_metadata:
+                    gm = get_git_metadata(config_dir)
+                    if gm:
+                        metadata = {
+                            "source": "git",
+                            "commit": gm.commit_sha,
+                            "short": gm.short_sha,
+                            "branch": gm.branch,
+                            "dirty": gm.dirty,
+                            "tag": gm.tag,
+                            "message": gm.commit_message,
+                        }
                 app = run_async(
                     mcp_app_client.deploy_app(
-                        app_id=app_id,
+                        app_id=app_id, deployment_metadata=metadata
                     )
                 )
                 progress.update(task, description="✅ MCP App deployed successfully!")
