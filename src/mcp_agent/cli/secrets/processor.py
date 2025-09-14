@@ -364,7 +364,7 @@ async def transform_config_recursive(
         for key, value in config_value.items():
             new_path = f"{path}.{key}" if path else key
             try:
-                result[key] = await transform_config_recursive(
+                transformed_value = await transform_config_recursive(
                     value,
                     client,
                     new_path,
@@ -372,6 +372,8 @@ async def transform_config_recursive(
                     secrets_context,
                     existing_config,
                 )
+                if transformed_value:
+                    result[key] = transformed_value
             except Exception as e:
                 print_error(
                     f"\nError processing secret at '{new_path}': {str(e)}\n Skipping this secret."
