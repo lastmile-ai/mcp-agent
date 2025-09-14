@@ -100,14 +100,18 @@ def print_secret_summary(secrets_context: Dict[str, Any]) -> None:
     deployment_secrets = secrets_context.get("deployment_secrets", [])
     user_secrets = secrets_context.get("user_secrets", [])
     reused_secrets = secrets_context.get("reused_secrets", [])
+    skipped_secrets = secrets_context.get("skipped_secrets", [])
 
-    return print_secrets_summary(deployment_secrets, user_secrets, reused_secrets)
+    return print_secrets_summary(
+        deployment_secrets, user_secrets, reused_secrets, skipped_secrets
+    )
 
 
 def print_secrets_summary(
     deployment_secrets: List[Dict[str, str]],
     user_secrets: List[str],
-    reused_secrets: Optional[List[Dict[str, str]]] = None,
+    reused_secrets: Optional[List[Dict[str, str]]] = [],
+    skipped_secrets: Optional[List[str]] = [],
 ) -> None:
     """Print a summary table of processed secrets."""
     # Create the table
@@ -123,20 +127,17 @@ def print_secrets_summary(
     table.add_column("Handle/Status", style="green", no_wrap=True)
     table.add_column("Source", style="yellow", justify="center")
 
-    # Initialize reused_secrets if not provided
-    if reused_secrets is None:
-        reused_secrets = []
+    # Create a set of reused/skipped secret paths for fast lookup
+    reused_paths = (
+        {secret["path"] for secret in reused_secrets} if reused_secrets else set()
+    )
+    skipped_paths = set(skipped_secrets) if skipped_secrets else set()
 
-    # Create a set of reused secret paths for fast lookup
-    reused_paths = {secret["path"] for secret in reused_secrets}
-
-    # Add deployment secrets
     for secret in deployment_secrets:
         path = secret["path"]
         handle = secret["handle"]
 
-        # Skip if already handled as a reused secret
-        if path in reused_paths:
+        if path in reused_paths or path in skipped_paths:
             continue
 
         # Shorten the handle for display
@@ -146,17 +147,17 @@ def print_secrets_summary(
 
         table.add_row("Deployment", path, short_handle)
 
-    # Add reused secrets
     for secret in reused_secrets:
         path = secret["path"]
         handle = secret["handle"]
-
-        # Shorten the handle for display
         short_handle = handle
         if len(handle) > 20:
             short_handle = handle[:8] + "..." + handle[-8:]
 
         table.add_row("Deployment", path, short_handle, "♻️ Reused")
+
+    for path in skipped_secrets:
+        table.add_row("Deployment", path, "⚠️ Skipped", "Error during processing")
 
     # Add user secrets
     for path in user_secrets:
@@ -173,11 +174,11 @@ def print_secrets_summary(
 
     logger.info(
         f"Processed {new_deployment_count} new deployment secrets, reused {reused_count} existing secrets, "
-        f"and identified {len(user_secrets)} user secrets"
+        f"and identified {len(user_secrets)} user secrets. Skipped {len(skipped_secrets)} secrets due to errors."
     )
 
     console.print(
-        f"[info]Summary:[/info] {new_deployment_count} new secrets created, {reused_count} existing secrets reused"
+        f"[info]Summary:[/info] {new_deployment_count} new secrets created, {reused_count} existing secrets reused, {len(user_secrets)} user secrets identified, {len(skipped_secrets)} secrets skipped due to errors."
     )
 
 

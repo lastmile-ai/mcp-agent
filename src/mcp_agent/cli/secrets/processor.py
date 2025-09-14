@@ -143,6 +143,7 @@ async def process_config_secrets(
             "deployment_secrets": [],
             "user_secrets": [],
             "reused_secrets": [],
+            "skipped_secrets": [],
         }
 
     # Show a summary of the processed secrets
@@ -180,6 +181,7 @@ async def process_secrets_in_config_str(
         "deployment_secrets": [],
         "user_secrets": [],
         "reused_secrets": [],
+        "skipped_secrets": [],
     }
 
     # Make the context available to the client for later retrieval
@@ -345,6 +347,7 @@ async def transform_config_recursive(
             "deployment_secrets": [],
             "user_secrets": [],
             "reused_secrets": [],
+            "skipped_secrets": [],
         }
 
     if isinstance(config_value, (DeveloperSecret, UserSecret)):
@@ -370,6 +373,9 @@ async def transform_config_recursive(
                 print_error(
                     f"Error processing secret at '{new_path}': {str(e)}\n Skipping this secret."
                 )
+                if "skipped_secrets" not in secrets_context:
+                    secrets_context["skipped_secrets"] = []
+                secrets_context["skipped_secrets"].append(new_path)
                 # Just skip this key since raising would abort all valid processing
                 continue
         return result
@@ -478,6 +484,9 @@ async def transform_config_recursive(
 
             if choice == "2":
                 print_info(f"Tagging '{path}' as a user secret (!user_secret)")
+                if "user_secrets" not in secrets_context:
+                    secrets_context["user_secrets"] = []
+                secrets_context["user_secrets"].append(path)
                 return UserSecret()
 
         # Create a transformed deployment secret
