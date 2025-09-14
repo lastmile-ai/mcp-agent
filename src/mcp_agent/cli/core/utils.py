@@ -27,14 +27,16 @@ def run_async(coro):
         raise
 
 
-def load_user_app(script_path: Path | None, settings_override: Optional[Settings] = None) -> MCPApp:
+def load_user_app(
+    script_path: Path | None, settings_override: Optional[Settings] = None
+) -> MCPApp:
     """Import a user script and return an MCPApp instance.
 
     Resolution order within module globals:
       1) variable named 'app' that is MCPApp
       2) callable 'create_app' or 'get_app' that returns MCPApp
       3) first MCPApp instance found in globals
-    
+
     Args:
         script_path: Path to the Python script containing the MCPApp
         settings_override: Optional settings to override the app's configuration

@@ -91,42 +91,27 @@ def print_error(
         logger.error(message, exc_info=True)
 
 
-def print_secret_prompt(env_var: str, path: str) -> None:
-    """Print a styled prompt for a secret value."""
-    console.print(
-        Panel(
-            f"Environment variable [env_var]{env_var}[/env_var] not found.\n"
-            f"This is needed for the secret at [secret]{path}[/secret]",
-            title="Secret Required",
-            border_style="yellow",
-            expand=False,
-        )
-    )
-
-
 def print_secret_summary(secrets_context: Dict[str, Any]) -> None:
     """Print a summary of processed secrets from context.
 
     Args:
         secrets_context: Dictionary containing info about processed secrets
     """
-    dev_secrets = secrets_context.get("developer_secrets", [])
+    deployment_secrets = secrets_context.get("deployment_secrets", [])
     user_secrets = secrets_context.get("user_secrets", [])
-    env_loaded = secrets_context.get("env_loaded", [])
-    prompted = secrets_context.get("prompted", [])
     reused_secrets = secrets_context.get("reused_secrets", [])
+    skipped_secrets = secrets_context.get("skipped_secrets", [])
 
     return print_secrets_summary(
-        dev_secrets, user_secrets, env_loaded, prompted, reused_secrets
+        deployment_secrets, user_secrets, reused_secrets, skipped_secrets
     )
 
 
 def print_secrets_summary(
-    dev_secrets: List[Dict[str, str]],
+    deployment_secrets: List[Dict[str, str]],
     user_secrets: List[str],
-    env_loaded: List[str],
-    prompted: List[str],
-    reused_secrets: Optional[List[Dict[str, str]]] = None,
+    reused_secrets: Optional[List[Dict[str, str]]] = [],
+    skipped_secrets: Optional[List[str]] = [],
 ) -> None:
     """Print a summary table of processed secrets."""
     # Create the table
@@ -142,51 +127,41 @@ def print_secrets_summary(
     table.add_column("Handle/Status", style="green", no_wrap=True)
     table.add_column("Source", style="yellow", justify="center")
 
-    # Initialize reused_secrets if not provided
-    if reused_secrets is None:
-        reused_secrets = []
+    # Create a set of reused/skipped secret paths for fast lookup
+    reused_paths = (
+        {secret["path"] for secret in reused_secrets} if reused_secrets else set()
+    )
+    skipped_paths = set(skipped_secrets) if skipped_secrets else set()
 
-    # Create a set of reused secret paths for fast lookup
-    reused_paths = {secret["path"] for secret in reused_secrets}
-
-    # Add developer secrets
-    for secret in dev_secrets:
+    for secret in deployment_secrets:
         path = secret["path"]
         handle = secret["handle"]
 
-        # Skip if already handled as a reused secret
-        if path in reused_paths:
+        if path in reused_paths or path in skipped_paths:
             continue
-
-        if path in env_loaded:
-            source = "✓ Environment"
-        elif path in prompted:
-            source = "✏️  User Input"
-        else:
-            source = "User Input"
 
         # Shorten the handle for display
         short_handle = handle
         if len(handle) > 20:
             short_handle = handle[:8] + "..." + handle[-8:]
 
-        table.add_row("Developer", path, short_handle, source)
+        table.add_row("Deployment", path, short_handle, "Created")
 
-    # Add reused secrets
     for secret in reused_secrets:
         path = secret["path"]
         handle = secret["handle"]
-
-        # Shorten the handle for display
         short_handle = handle
         if len(handle) > 20:
             short_handle = handle[:8] + "..." + handle[-8:]
 
-        table.add_row("Developer", path, short_handle, "♻️ Reused")
+        table.add_row("Deployment", path, short_handle, "♻️  Reused")
+
+    for path in skipped_secrets:
+        table.add_row("Deployment", path, "⚠️  Skipped", "Error during processing")
 
     # Add user secrets
     for path in user_secrets:
-        table.add_row("User", path, "▶️ Runtime Collection", "End User")
+        table.add_row("User", path, "▶️  Runtime Collection", "End User")
 
     # Print the table
     console.print()
@@ -195,34 +170,32 @@ def print_secrets_summary(
 
     # Log the summary (without sensitive details)
     reused_count = len(reused_secrets)
-    new_dev_count = len(dev_secrets)
+    new_deployment_count = len(deployment_secrets)
 
     logger.info(
-        f"Processed {new_dev_count} new developer secrets, reused {reused_count} existing secrets, "
-        f"and identified {len(user_secrets)} user secrets"
+        f"Processed {new_deployment_count} new deployment secrets, reused {reused_count} existing secrets, "
+        f"and identified {len(user_secrets)} user secrets. Skipped {len(skipped_secrets)} secrets due to errors."
     )
 
     console.print(
-        f"[info]Summary:[/info] {new_dev_count} new secrets created, {reused_count} existing secrets reused"
+        f"[info]Summary:[/info] {new_deployment_count} new secrets created, {reused_count} existing secrets reused, {len(user_secrets)} user secrets identified, {len(skipped_secrets)} secrets skipped due to errors."
     )
-
-    if prompted:
-        logger.info(
-            f"User was prompted for {len(prompted)} secrets: {', '.join(prompted)}"
-        )
 
 
 def print_deployment_header(
+    app_name: str,
+    app_id: str,
     config_file: Path,
     secrets_file: Optional[Path] = None,
-    dry_run: bool = False,
+    deployed_secrets_file: Optional[Path] = None,
 ) -> None:
     """Print a styled header for the deployment process."""
     console.print(
         Panel(
+            f"App: [cyan]{app_name}[/cyan] (ID: [cyan]{app_id}[/cyan])\n"
             f"Configuration: [cyan]{config_file}[/cyan]\n"
             f"Secrets file: [cyan]{secrets_file or 'N/A'}[/cyan]\n"
-            f"Mode: [{'yellow' if dry_run else 'green'}]{'DRY RUN' if dry_run else 'DEPLOY'}[/{'yellow' if dry_run else 'green'}]",
+            f"Deployed secrets file: [cyan]{deployed_secrets_file or 'Pending creation'}[/cyan]\n",
             title="MCP Agent Deployment",
             subtitle="LastMile AI",
             border_style="blue",
@@ -230,8 +203,9 @@ def print_deployment_header(
         )
     )
     logger.info(f"Starting deployment with configuration: {config_file}")
-    logger.info(f"Using secrets file: {secrets_file or 'N/A'}")
-    logger.info(f"Dry Run: {dry_run}")
+    logger.info(
+        f"Using secrets file: {secrets_file or 'N/A'}, deployed secrets file: {deployed_secrets_file or 'Pending creation'}"
+    )
 
 
 def print_configuration_header(
