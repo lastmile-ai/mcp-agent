@@ -1,5 +1,5 @@
 import asyncio
-
+import base64
 from typing import (
     Any,
     Dict,
@@ -9,7 +9,7 @@ from typing import (
 )
 
 from mcp_agent.logging.logger import get_logger
-from mcp_agent.executor.workflow_registry import WorkflowRegistry
+from mcp_agent.executor.workflow_registry import WorkflowRegistry, WorkflowRunsPage
 
 if TYPE_CHECKING:
     from mcp_agent.executor.temporal import TemporalExecutor
@@ -216,23 +216,140 @@ class TemporalWorkflowRegistry(WorkflowRegistry):
 
         return status_dict
 
-    async def list_workflow_statuses(self) -> List[Dict[str, Any]]:
-        result = []
-        for run_id, workflow in self._local_workflows.items():
-            # Get the workflow status directly to have consistent behavior
-            status = await workflow.get_status()
-            workflow_id = workflow.id or workflow.name
+    async def list_workflow_statuses(
+        self,
+        *,
+        query: str | None = None,
+        limit: int | None = None,
+        page_size: int | None = None,
+        next_page_token: bytes | None = None,
+        rpc_metadata: Dict[str, str] | None = None,
+        rpc_timeout: Any | None = None,
+    ) -> List[Dict[str, Any]] | WorkflowRunsPage:
+        """
+        List workflow runs by querying Temporal visibility (preferred).
 
-            # Query Temporal for the status
-            temporal_status = await self._get_temporal_workflow_status(
-                workflow_id=workflow_id, run_id=run_id
+        - When Temporal listing succeeds, only runs returned by Temporal are included; local
+          cache is used to enrich entries where possible.
+        - On failure or when listing is unsupported, fall back to locally tracked runs.
+
+        Args:
+            query: Optional Temporal visibility list filter; defaults to newest first when unset.
+            limit: Maximum number of runs to return; enforced locally if backend doesn't apply it.
+            page_size: Page size to request from Temporal, if supported by SDK version.
+            next_page_token: Opaque pagination token from prior call, if supported by SDK version.
+            rpc_metadata: Optional per-RPC headers for Temporal (not exposed via server tool).
+            rpc_timeout: Optional per-RPC timeout (not exposed via server tool).
+
+        Returns:
+            A list of dictionaries with workflow information, or a WorkflowRunsPage object.
+        """
+        results: List[Dict[str, Any]] = []
+
+        # Collect all executions for this task queue (best effort)
+        try:
+            await self._executor.ensure_client()
+            client = self._executor.client
+
+            # Use caller query if provided; else default to newest first
+            query_local = query or "order by StartTime desc"
+
+            iterator = client.list_workflows(
+                query=query_local,
+                limit=limit,
+                page_size=page_size,
+                next_page_token=next_page_token,
+                rpc_metadata=rpc_metadata,
+                rpc_timeout=rpc_timeout,
             )
 
-            status["temporal"] = temporal_status
+            # Build quick lookup from local cache by (workflow_id, run_id)
+            in_memory_workflows: Dict[tuple[str, str], "Workflow"] = {}
+            for run_id, wf in self._local_workflows.items():
+                workflow_id = wf.id or wf.name
+                if workflow_id and run_id:
+                    in_memory_workflows[(workflow_id, run_id)] = wf
 
-            result.append(status)
+            count = 0
+            max_count = limit if isinstance(limit, int) and limit > 0 else None
 
-        return result
+            async for workflow_info in iterator:
+                # Extract workflow_id and run_id robustly from various shapes
+                workflow_id = workflow_info.id
+                run_id = workflow_info.run_id
+
+                if not workflow_id or not run_id:
+                    # Can't build a handle without both IDs
+                    continue
+
+                # If we have a local workflow, start with its detailed status
+                wf = in_memory_workflows.get((workflow_id, run_id))
+                if wf is not None:
+                    status_dict = await wf.get_status()
+                else:
+                    # Create a minimal status when not tracked locally
+                    status_dict = {
+                        "id": run_id,
+                        "workflow_id": workflow_id,
+                        "run_id": run_id,
+                        "name": workflow_info.workflow_type or workflow_id,
+                        "status": "unknown",
+                        "running": False,
+                        "state": {"status": "unknown", "metadata": {}, "error": None},
+                    }
+
+                # Merge Temporal visibility/describe details
+                temporal_status = await self._get_temporal_workflow_status(
+                    workflow_id=workflow_id, run_id=run_id
+                )
+
+                status_dict["temporal"] = temporal_status
+
+                # Try to reflect Temporal status into top-level summary
+                try:
+                    ts = (
+                        temporal_status.get("status")
+                        if isinstance(temporal_status, dict)
+                        else None
+                    )
+                    if isinstance(ts, str):
+                        status_dict["status"] = ts.lower()
+                        status_dict["running"] = ts.upper() in {"RUNNING", "OPEN"}
+                except Exception:
+                    pass
+
+                results.append(status_dict)
+                count += 1
+                if max_count is not None and count >= max_count:
+                    break
+
+            if iterator.next_page_token:
+                return WorkflowRunsPage(
+                    runs=results,
+                    next_page_token=base64.b64encode(iterator.next_page_token).decode(
+                        "ascii"
+                    ),
+                )
+            else:
+                return results
+        except Exception as e:
+            logger.warning(
+                f"Error listing workflows from Temporal; falling back to local cache: {e}"
+            )
+            # Fallback – return local cache augmented with Temporal describe where possible
+            for run_id, wf in self._local_workflows.items():
+                status = await wf.get_status()
+                workflow_id = wf.id or wf.name
+                try:
+                    status["temporal"] = await self._get_temporal_workflow_status(
+                        workflow_id=workflow_id, run_id=run_id
+                    )
+                except Exception:
+                    # This is expected if we couldn't get a hold of the temporal client
+                    pass
+
+                results.append(status)
+            return results
 
     async def list_workflows(self) -> List["Workflow"]:
         """
