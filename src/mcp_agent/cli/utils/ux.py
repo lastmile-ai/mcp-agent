@@ -145,7 +145,7 @@ def print_secrets_summary(
         if len(handle) > 20:
             short_handle = handle[:8] + "..." + handle[-8:]
 
-        table.add_row("Deployment", path, short_handle)
+        table.add_row("Deployment", path, short_handle, "Created")
 
     for secret in reused_secrets:
         path = secret["path"]
@@ -154,14 +154,14 @@ def print_secrets_summary(
         if len(handle) > 20:
             short_handle = handle[:8] + "..." + handle[-8:]
 
-        table.add_row("Deployment", path, short_handle, "♻️ Reused")
+        table.add_row("Deployment", path, short_handle, "♻️  Reused")
 
     for path in skipped_secrets:
-        table.add_row("Deployment", path, "⚠️ Skipped", "Error during processing")
+        table.add_row("Deployment", path, "⚠️  Skipped", "Error during processing")
 
     # Add user secrets
     for path in user_secrets:
-        table.add_row("User", path, "▶️ Runtime Collection", "End User")
+        table.add_row("User", path, "▶️  Runtime Collection", "End User")
 
     # Print the table
     console.print()

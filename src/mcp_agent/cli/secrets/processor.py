@@ -205,7 +205,7 @@ async def process_secrets_in_config_str(
     # Make sure the existing config secrets are actually valid for the user
     if existing_config:
         existing_config = await get_validated_config_secrets(
-            input_config, existing_config, client, non_interactive
+            input_config, existing_config, client, non_interactive, ""
         )
 
     # Transform the config recursively, passing existing config for reuse
@@ -226,6 +226,7 @@ async def get_validated_config_secrets(
     existing_config: Dict[str, Any],
     client: SecretsClient,
     non_interactive: bool,
+    path: str = "",
 ) -> Dict[str, Any]:
     """Validate the secrets in the existing_config against the SecretsClient with current API key
     to ensure they can be resolved. Return a subset of existing_config containing only keys/values
@@ -243,11 +244,13 @@ async def get_validated_config_secrets(
     validated_config = {}
 
     for key, existing_value in existing_config.items():
+        current_path = f"{path}.{key}" if path else key
+
         if isinstance(existing_value, str) and SECRET_ID_PATTERN.match(existing_value):
             if key not in input_config:
                 if not non_interactive:
                     should_exclude = typer.confirm(
-                        f"Secret '{key}' exists in existing transformed secrets file but not in raw secrets file. Exclude it?",
+                        f"Secret at '{current_path}' exists in existing transformed secrets file but not in raw secrets file. Exclude it?",
                         default=True,
                     )
                     if should_exclude:
@@ -259,7 +262,7 @@ async def get_validated_config_secrets(
                 input_value = input_config[key]
                 if isinstance(input_value, (DeveloperSecret, UserSecret)):
                     raise ValueError(
-                        f"Input secrets config at '{key}' contains secret tag. Input should contain raw secrets, not tags."
+                        f"Input secrets config at '{current_path}' contains secret tag. Input should contain raw secrets, not tags."
                     )
 
             # Validate the secret can be resolved and then validate it against existing input value
@@ -267,7 +270,7 @@ async def get_validated_config_secrets(
                 secret_value = await client.get_secret_value(existing_value)
                 if not secret_value:
                     raise ValueError(
-                        f"Transformed secret handle '{existing_value}' could not be resolved."
+                        f"Transformed secret handle '{existing_value}' at '{current_path}' could not be resolved."
                     )
 
                 if key in input_config:
@@ -276,11 +279,11 @@ async def get_validated_config_secrets(
                     else:
                         if non_interactive:
                             print_warning(
-                                f"Secret '{key}' value in transformed secrets file does not match raw secrets file. It will be reprocessed."
+                                f"Secret at '{current_path}' value in transformed secrets file does not match raw secrets file. It will be reprocessed."
                             )
                         else:
                             reprocess = typer.confirm(
-                                f"Secret '{key}' value in transformed secrets file does not match raw secrets file. Do you want to reprocess it?",
+                                f"Secret at '{current_path}' value in transformed secrets file does not match raw secrets file. Do you want to reprocess it?",
                                 default=True,
                             )
                             if reprocess:
@@ -290,12 +293,12 @@ async def get_validated_config_secrets(
 
             except Exception as e:
                 raise CLIError(
-                    f"Failed to validate secret '{key}' in transformed secrets file: {str(e)}"
+                    f"Failed to validate secret at '{current_path}' in transformed secrets file: {str(e)}"
                 ) from e
 
         elif isinstance(existing_value, DeveloperSecret):
             raise ValueError(
-                f"Found unexpected !developer_secret tag in existing transformed config at '{key}'. Existing config should only contain secret handles or !user_secret tags."
+                f"Found unexpected !developer_secret tag in existing transformed config at '{current_path}'. Existing config should only contain secret handles or !user_secret tags."
             )
 
         elif isinstance(existing_value, dict):
@@ -306,7 +309,7 @@ async def get_validated_config_secrets(
                 else {}
             )
             nested_validated = await get_validated_config_secrets(
-                input_dict, existing_value, client, non_interactive
+                input_dict, existing_value, client, non_interactive, current_path
             )
 
             if nested_validated:
@@ -352,7 +355,7 @@ async def transform_config_recursive(
 
     if isinstance(config_value, (DeveloperSecret, UserSecret)):
         raise ValueError(
-            f"Input secrets config at path '{path}' contains secret tag. Input should contain raw secrets, not tags."
+            f"\nInput secrets config at path '{path}' contains secret tag. Input should contain raw secrets, not tags."
         )
 
     elif isinstance(config_value, dict):
@@ -371,7 +374,7 @@ async def transform_config_recursive(
                 )
             except Exception as e:
                 print_error(
-                    f"Error processing secret at '{new_path}': {str(e)}\n Skipping this secret."
+                    f"\nError processing secret at '{new_path}': {str(e)}\n Skipping this secret."
                 )
                 if "skipped_secrets" not in secrets_context:
                     secrets_context["skipped_secrets"] = []
@@ -407,7 +410,7 @@ async def transform_config_recursive(
         ):
             # This indicates a YAML parsing issue - tags should be objects, not strings
             raise ValueError(
-                f"Found raw string with tag prefix at path '{path}' in secrets file"
+                f"\nFound raw string with tag prefix at path '{path}' in secrets file"
             )
 
         # Helper function to get value at a specific path in the existing config
@@ -452,7 +455,7 @@ async def transform_config_recursive(
                 existing_handle
             ):
                 print_info(
-                    f"Reusing existing deployment secret handle at '{path}': {existing_handle}"
+                    f"\nReusing existing deployment secret handle at '{path}': {existing_handle}"
                 )
 
                 # Add to the secrets context
@@ -475,8 +478,13 @@ async def transform_config_recursive(
                 "2": "User Secret: No secret value will be stored. The 'configure' command must be used to create a configured application with this secret.",
             }
 
+            # Print the numbered options
+            console.print(f"\n[bold]Select secret type for '{path}'[/bold]")
+            for key, description in choices.items():
+                console.print(f"[cyan]{key}[/cyan]: {description}")
+
             choice = Prompt.ask(
-                f"\nSelect secret type for '{path}'",
+                "\nSelect secret type:",
                 choices=list(choices.keys()),
                 default="1",
                 show_choices=False,
@@ -492,13 +500,13 @@ async def transform_config_recursive(
         # Create a transformed deployment secret
         try:
             print_info(
-                f"Creating deployment secret at {path}...",
+                f"\nCreating deployment secret at {path}...",
                 log=True,
                 console_output=False,
             )
             if config_value is None or config_value == "":
                 raise ValueError(
-                    f"Secret at {path} has no value. Deployment secrets must have values."
+                    f"\nSecret at {path} has no value. Deployment secrets must have values."
                 )
 
             # Create the secret in the backend, getting a handle in return
@@ -520,7 +528,7 @@ async def transform_config_recursive(
 
         except Exception as e:
             raise CLIError(
-                f"Failed to create deployment secret handle for {path}: {str(e)}"
+                f"\nFailed to create deployment secret handle for {path}: {str(e)}"
             ) from e
 
 
