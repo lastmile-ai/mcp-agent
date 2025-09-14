@@ -250,7 +250,6 @@ def deploy_config(
             task = progress.add_task("Deploying MCP App bundle...", total=None)
 
             try:
-                assert isinstance(mcp_app_client, MCPAppClient)
                 app = run_async(
                     mcp_app_client.deploy_app(
                         app_id=app_id,
