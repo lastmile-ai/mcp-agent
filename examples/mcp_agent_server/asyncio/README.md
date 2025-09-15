@@ -258,6 +258,40 @@ def make_session(read_stream: MemoryObjectReceiveStream,
 
 The example client (`client.py`) demonstrates this end-to-end: it registers a logging callback and calls `set_logging_level("info")` so logs from the server appear in the client's console.
 
+## Testing Specific Features
+
+The client supports feature flags to exercise subsets of functionality. Available flags: `workflows`, `tools`, `sampling`, `elicitation`, `notifications`, or `all`.
+
+Examples:
+
+```
+# Default (all features)
+uv run client.py
+
+# Only workflows
+uv run client.py --features workflows
+
+# Only tools
+uv run client.py --features tools
+
+# Sampling + elicitation demos
+uv run client.py --features sampling elicitation
+
+# Only notifications (server logs + other notifications)
+uv run client.py --features notifications
+
+# Increase server logging verbosity
+uv run client.py --server-log-level debug
+
+# Use custom FastMCP settings when launching the server
+uv run client.py --custom-fastmcp-settings
+```
+
+Console output:
+
+- Server logs appear as lines prefixed with `[SERVER LOG] ...`.
+- Other server-originated notifications (e.g., `notifications/progress`, `notifications/resources/list_changed`) appear as `[SERVER NOTIFY] <method>: ...`.
+
 ## MCP Clients
 
 Since the mcp-agent app is exposed as an MCP server, it can be used in any MCP client just
