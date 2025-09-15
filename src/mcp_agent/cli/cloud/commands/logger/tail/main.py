@@ -6,30 +6,36 @@ import re
 import signal
 import sys
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Union
 from urllib.parse import urlparse
 
 import httpx
 import typer
 import yaml
 from rich.console import Console
+from rich.highlighter import ReprHighlighter
 from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.text import Text
 
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.auth import load_credentials, UserCredentials
-from mcp_agent.cli.cloud.commands.utils import setup_authenticated_client
+from mcp_agent.cli.cloud.commands.utils import (
+    setup_authenticated_client,
+    resolve_server,
+)
 from mcp_agent.cli.core.api_client import UnauthenticatedError
-from mcp_agent.cli.core.utils import parse_app_identifier, resolve_server_url
 from mcp_agent.cli.utils.ux import print_error
+from mcp_agent.cli.mcp_app.api_client import MCPApp, MCPAppConfiguration
 
 console = Console()
+highlighter = ReprHighlighter()
 
 DEFAULT_LOG_LIMIT = 100
 
 
 def tail_logs(
     app_identifier: str = typer.Argument(
-        help="App ID or app configuration ID to retrieve logs for"
+        help="App ID, app configuration ID, or server URL to retrieve logs for"
     ),
     since: Optional[str] = typer.Option(
         None,
@@ -91,6 +97,9 @@ def tail_logs(
 
         # Follow logs and filter for specific patterns
         mcp-agent cloud logger tail app_abc123 --follow --grep "authentication.*failed"
+
+        # Use server URL instead of app ID
+        mcp-agent cloud logger tail https://abc123.mcpcloud.ai --follow
     """
 
     credentials = load_credentials()
@@ -130,14 +139,14 @@ def tail_logs(
         print_error("--format must be 'text', 'json', or 'yaml'")
         raise typer.Exit(6)
 
-    app_id, config_id = parse_app_identifier(app_identifier)
+    client = setup_authenticated_client()
+    server = resolve_server(client, app_identifier)
 
     try:
         if follow:
             asyncio.run(
                 _stream_logs(
-                    app_id=app_id,
-                    config_id=config_id,
+                    server=server,
                     credentials=credentials,
                     grep_pattern=grep,
                     app_identifier=app_identifier,
@@ -147,9 +156,7 @@ def tail_logs(
         else:
             asyncio.run(
                 _fetch_logs(
-                    app_id=app_id,
-                    config_id=config_id,
-                    credentials=credentials,
+                    server=server,
                     since=since,
                     grep_pattern=grep,
                     limit=limit,
@@ -157,6 +164,7 @@ def tail_logs(
                     asc=asc,
                     desc=desc,
                     format=format,
+                    app_identifier=app_identifier,
                 )
             )
 
@@ -168,9 +176,7 @@ def tail_logs(
 
 
 async def _fetch_logs(
-    app_id: Optional[str],
-    config_id: Optional[str],
-    credentials: UserCredentials,
+    server: Union[MCPApp, MCPAppConfiguration],
     since: Optional[str],
     grep_pattern: Optional[str],
     limit: int,
@@ -178,8 +184,17 @@ async def _fetch_logs(
     asc: bool,
     desc: bool,
     format: str,
+    app_identifier: str,
 ) -> None:
     """Fetch logs one-time via HTTP API."""
+
+    # Extract app_id and config_id from the server object
+    if hasattr(server, "appId"):  # MCPApp
+        app_id = server.appId
+        config_id = None
+    else:  # MCPAppConfiguration
+        app_id = None
+        config_id = server.appConfigurationId
 
     client = setup_authenticated_client()
 
@@ -240,12 +255,11 @@ async def _fetch_logs(
         console.print("[yellow]No logs found matching the criteria[/yellow]")
         return
 
-    _display_logs(filtered_logs, title=f"Logs for {app_id or config_id}", format=format)
+    _display_logs(filtered_logs, title=f"Logs for {app_identifier}", format=format)
 
 
 async def _stream_logs(
-    app_id: Optional[str],
-    config_id: Optional[str],
+    server: Union[MCPApp, MCPAppConfiguration],
     credentials: UserCredentials,
     grep_pattern: Optional[str],
     app_identifier: str,
@@ -253,7 +267,11 @@ async def _stream_logs(
 ) -> None:
     """Stream logs continuously via SSE."""
 
-    server_url = await resolve_server_url(app_id, config_id, credentials)
+    # Get server URL directly from the server object
+    if not server.appServerInfo or not server.appServerInfo.serverUrl:
+        raise CLIError("Server URL not available - server may not be deployed")
+
+    server_url = server.appServerInfo.serverUrl
 
     parsed = urlparse(server_url)
     stream_url = f"{parsed.scheme}://{parsed.netloc}/logs"
@@ -300,6 +318,7 @@ async def _stream_logs(
                 async for chunk in response.aiter_text():
                     buffer += chunk
                     lines = buffer.split("\n")
+                    buffer = lines[-1]
 
                     for line in lines[:-1]:
                         if line.startswith("data:"):
@@ -382,11 +401,13 @@ def _display_text_log_entry(entry: Dict[str, Any]) -> None:
     message = _clean_message(entry.get("message", ""))
 
     level_style = _get_level_style(level)
+    message_text = Text.from_ansi(message)
+    highlighter.highlight(message_text)
 
     console.print(
         f"[bright_black not bold]{timestamp}[/bright_black not bold] "
-        f"[{level_style}]{level:7}[/{level_style}] "
-        f"{message}"
+        f"[{level_style}]{level:7}[/{level_style}] ",
+        message_text,
     )
 
 

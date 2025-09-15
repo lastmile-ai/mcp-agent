@@ -13,7 +13,15 @@ from mcp_agent.workflows.intent_classifier.intent_classifier_embedding_openai im
 app = MCPApp(name="intent_classifier")
 
 
-async def example_usage():
+@app.tool
+async def example_usage() -> str:
+    """
+    this is an example function/tool call that uses the intent classification workflow.
+    It uses both the OpenAI embedding intent classifier and the OpenAI LLM intent classifier
+    """
+
+    results = ""
+
     async with app.run() as intent_app:
         logger = intent_app.logger
         context = intent_app.context
@@ -35,12 +43,15 @@ async def example_usage():
             context=context,
         )
 
-        results = await embedding_intent_classifier.classify(
+        output = await embedding_intent_classifier.classify(
             request="Hello, how are you?",
             top_k=1,
         )
 
-        logger.info("Embedding-based Intent classification results:", data=results)
+        logger.info("Embedding-based Intent classification results:", data=output)
+        results = "Embedding-based Intent classification results: " + ", ".join(
+            r.intent for r in output
+        )
 
         llm_intent_classifier = OpenAILLMIntentClassifier(
             intents=[
@@ -58,12 +69,17 @@ async def example_usage():
             context=context,
         )
 
-        results = await llm_intent_classifier.classify(
+        output = await llm_intent_classifier.classify(
             request="Hello, how are you?",
             top_k=1,
         )
 
-        logger.info("LLM-based Intent classification results:", data=results)
+        logger.info("LLM-based Intent classification results:", data=output)
+        results += "LLM-based Intent classification results: " + ", ".join(
+            r.intent for r in output
+        )
+
+    return results
 
 
 if __name__ == "__main__":

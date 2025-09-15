@@ -25,3 +25,4 @@ openai:
   default_model: "gpt-4o-mini"
 anthropic:
   default_model: claude-3-5-sonnet-latest
+

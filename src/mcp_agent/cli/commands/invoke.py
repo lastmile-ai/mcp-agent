@@ -7,16 +7,21 @@ from __future__ import annotations
 import asyncio
 import json
 from typing import Optional
+from pathlib import Path
 
 import typer
 from rich.console import Console
 
-from mcp_agent.cli.core.utils import load_user_app
+from mcp_agent.cli.core.utils import (
+    load_user_app,
+    detect_default_script,
+    select_servers_from_config,
+)
 from mcp_agent.workflows.factory import create_llm
 
 
 app = typer.Typer(help="Invoke an agent or workflow programmatically")
-console = Console()
+console = Console(color_system=None)
 
 
 @app.callback(invoke_without_command=True)
@@ -27,6 +32,9 @@ def invoke(
     vars: Optional[str] = typer.Option(None, "--vars", help="JSON structured inputs"),
     script: Optional[str] = typer.Option(None, "--script"),
     model: Optional[str] = typer.Option(None, "--model"),
+    servers: Optional[str] = typer.Option(
+        None, "--servers", help="Comma-separated list of MCP server names"
+    ),
 ) -> None:
     """Run either an agent (LLM) or a workflow from the user's app script."""
     if not agent and not workflow:
@@ -45,21 +53,23 @@ def invoke(
         raise typer.Exit(6)
 
     async def _run():
-        app_obj = load_user_app(Path(script) if script else Path("agent.py"))
+        script_path = detect_default_script(Path(script) if script else None)
+        app_obj = load_user_app(script_path)
         await app_obj.initialize()
         async with app_obj.run():
             if agent:
                 # Run via LLM
+                server_list = select_servers_from_config(servers, None, None)
                 llm = create_llm(
                     agent_name=agent,
-                    server_names=[],
+                    server_names=server_list,
                     provider=None,
                     model=model,
                     context=app_obj.context,
                 )
                 if message:
                     res = await llm.generate_str(message)
-                    console.print(res)
+                    console.print(res, end="\n\n\n")
                     return
                 if payload:
                     # If structured vars contain messages, prefer that key; else stringify
@@ -69,7 +79,7 @@ def invoke(
                         or json.dumps(payload)
                     )
                     res = await llm.generate_str(msg)
-                    console.print(res)
+                    console.print(res, end="\n\n\n")
                     return
                 typer.secho("No input provided", err=True, fg=typer.colors.YELLOW)
                 return
@@ -98,9 +108,7 @@ def invoke(
                 val = getattr(result, "value", result)
             except Exception:
                 val = result
-            console.print(val)
-
-    from pathlib import Path
+            console.print(val, end="\n\n\n")
 
     try:
         asyncio.run(_run())

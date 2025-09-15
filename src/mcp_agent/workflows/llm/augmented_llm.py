@@ -2,6 +2,7 @@ from abc import abstractmethod
 
 from typing import (
     Any,
+    Dict,
     Generic,
     List,
     Optional,
@@ -174,10 +175,24 @@ class RequestParams(CreateMessageRequestParams):
     Whether models that support strict mode should strictly enforce the response schema.
     """
 
-    tool_filter: Set[str] | None = None
+    tool_filter: Dict[str, Set[str]] | None = None
     """
-    Set of tool names to allow in this request. If specified, only these tools will be exposed to the LLM.
-    This overrides the server-level allowed_tools configuration. Tool names should match exactly.
+    Mapping of server names to sets of allowed tool names for this request.
+    If specified, only these tools will be exposed to the LLM for each server.
+    This overrides the server-level allowed_tools configuration.
+
+    Special reserved keys:
+        - "*": Wildcard filter for servers without explicit filters
+        - "non_namespaced_tools": Filter for non-namespaced tools (function tools, human input)
+
+    Examples:
+        - {"server1": {"tool1", "tool2"}} - Allow specific tools from server1
+        - {"*": {"tool1"}} - Allow tool1 from all servers without explicit filters
+        - {"non_namespaced_tools": {"human_input", "func1"}} - Allow specific non-namespaced tools
+        - {} - No tools allowed from any server
+        - None - No filtering applied (default behavior)
+
+    Tool names should match exactly as they appear in the server's tool list.
     """
 
 
@@ -545,7 +560,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
                     ],
                 )
 
-    async def list_tools(self, server_name: str | None = None, tool_filter: Set[str] | None = None) -> ListToolsResult:
+    async def list_tools(self, server_name: str | None = None, tool_filter: Dict[str, Set[str]] | None = None) -> ListToolsResult:
         """Call the underlying agent's list_tools method for a given server."""
         return await self.agent.list_tools(server_name=server_name, tool_filter=tool_filter)
 

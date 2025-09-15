@@ -1,18 +1,14 @@
-import json
-import textwrap
 from typing import Optional
-from datetime import datetime
 
 import typer
-from rich.console import Group
-from rich.padding import Padding
 from rich.panel import Panel
 from rich.prompt import Prompt
-from rich.syntax import Syntax
-from rich.table import Table
-from rich.text import Text
 
 from mcp_agent.cli.auth import load_api_key_credentials
+from mcp_agent.cli.cloud.commands.workflows.utils import (
+    print_workflows,
+    print_workflow_runs,
+)
 from mcp_agent.cli.config import settings
 from mcp_agent.cli.core.api_client import UnauthenticatedError
 from mcp_agent.cli.core.constants import (
@@ -21,6 +17,7 @@ from mcp_agent.cli.core.constants import (
     ENV_API_KEY,
 )
 from mcp_agent.cli.core.utils import run_async
+from ...utils import resolve_server
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.mcp_app.api_client import MCPAppClient
 from mcp_agent.cli.mcp_app.mcp_client import (
@@ -72,7 +69,7 @@ def list_app_workflows(
         )
 
     try:
-        app_or_config = run_async(client.get_app_or_config(app_id_or_url))
+        app_or_config = resolve_server(client, app_id_or_url)
 
         if not app_or_config:
             raise CLIError(f"App or config with ID or URL '{app_id_or_url}' not found.")
@@ -117,35 +114,25 @@ async def print_mcp_server_workflow_details(server_url: str, api_key: str) -> No
             for key, description in choices.items():
                 console.print(f"[cyan]{key}[/cyan]: {description}")
 
-            choice = Prompt.ask(
-                "\nWhat would you like to display?",
-                choices=list(choices.keys()),
-                default="0",
-                show_choices=False,
-            )
+            try:
+                choice = Prompt.ask(
+                    "\nWhat would you like to display?",
+                    choices=list(choices.keys()),
+                    default="0",
+                    show_choices=False,
+                )
 
-            if choice in ["0", "1"]:
-                await print_workflows_list(mcp_client_session)
-            if choice in ["0", "2"]:
-                await print_runs_list(mcp_client_session)
+                if choice in ["0", "1"]:
+                    await print_workflows_list(mcp_client_session)
+                if choice in ["0", "2"]:
+                    await print_runs_list(mcp_client_session)
+            except (EOFError, KeyboardInterrupt):
+                return
 
     except Exception as e:
         raise CLIError(
-            f"Error connecting to MCP server at {server_url}: {str(e)}"
+            f"Error getting workflow details from MCP server at {server_url}: {str(e)}"
         ) from e
-
-
-# FastTool includes 'self' in the run parameters schema, so remove it for clarity
-def clean_run_parameters(schema: dict) -> dict:
-    schema = schema.copy()
-
-    if "properties" in schema and "self" in schema["properties"]:
-        schema["properties"].pop("self")
-
-    if "required" in schema and "self" in schema["required"]:
-        schema["required"] = [r for r in schema["required"] if r != "self"]
-
-    return schema
 
 
 async def print_workflows_list(session: MCPClientSession) -> None:
@@ -154,63 +141,7 @@ async def print_workflows_list(session: MCPClientSession) -> None:
         with console.status("[bold green]Fetching server workflows...", spinner="dots"):
             res = await session.list_workflows()
 
-        if not res.workflows:
-            console.print(
-                Panel(
-                    "[yellow]No workflows found[/yellow]",
-                    title="Workflows",
-                    border_style="blue",
-                )
-            )
-            return
-
-        panels = []
-
-        for workflow in res.workflows:
-            header = Text(workflow.name, style="bold cyan")
-            desc = textwrap.dedent(
-                workflow.description or "No description available"
-            ).strip()
-            body_parts: list = [Text(desc, style="white")]
-
-            # Capabilities
-            capabilities = getattr(workflow, "capabilities", [])
-            cap_text = Text("\nCapabilities:\n", style="bold green")
-            cap_text.append_text(Text(", ".join(capabilities) or "None", style="white"))
-            body_parts.append(cap_text)
-
-            # Tool Endpoints
-            tool_endpoints = getattr(workflow, "tool_endpoints", [])
-            endpoints_text = Text("\nTool Endpoints:\n", style="bold green")
-            endpoints_text.append_text(
-                Text("\n".join(tool_endpoints) or "None", style="white")
-            )
-            body_parts.append(endpoints_text)
-
-            # Run Parameters
-            if workflow.run_parameters:
-                run_params = clean_run_parameters(workflow.run_parameters)
-                properties = run_params.get("properties", {})
-                if len(properties) > 0:
-                    schema_str = json.dumps(run_params, indent=2)
-                    schema_syntax = Syntax(
-                        schema_str, "json", theme="monokai", word_wrap=True
-                    )
-                    body_parts.append(Text("\nRun Parameters:", style="bold magenta"))
-                    body_parts.append(schema_syntax)
-
-            body = Group(*body_parts)
-
-            panels.append(
-                Panel(
-                    body,
-                    title=header,
-                    border_style="green",
-                    expand=False,
-                )
-            )
-
-        console.print(Panel(Group(*panels), title="Workflows", border_style="blue"))
+        print_workflows(res.workflows if res and res.workflows else [])
 
     except Exception as e:
         print_error(f"Error fetching workflows: {str(e)}")
@@ -234,7 +165,11 @@ async def print_runs_list(session: MCPClientSession) -> None:
 
         def get_start_time(run: WorkflowRun):
             try:
-                return run.temporal.start_time if run.temporal else 0
+                return (
+                    run.temporal.start_time
+                    if run.temporal and run.temporal.start_time is not None
+                    else 0
+                )
             except AttributeError:
                 return 0
 
@@ -244,48 +179,7 @@ async def print_runs_list(session: MCPClientSession) -> None:
             reverse=True,
         )
 
-        table = Table(title="Workflow Runs", show_lines=False, border_style="blue")
-        table.add_column("Name", style="white", overflow="fold")
-        table.add_column("Workflow ID", style="bold cyan", no_wrap=True)
-        table.add_column("Run ID", style="blue", overflow="fold")
-        table.add_column("Status", overflow="fold")
-        table.add_column("Start Time", style="magenta", overflow="fold")
-        table.add_column("End Time", style="yellow", overflow="fold")
-
-        for idx, run in enumerate(sorted_runs):
-            is_last_row = idx == len(sorted_runs) - 1
-            start = getattr(run.temporal, "start_time", None)
-            start_str = (
-                datetime.fromtimestamp(start).strftime("%Y-%m-%d %H:%M:%S")
-                if start
-                else "N/A"
-            )
-
-            end = getattr(run.temporal, "close_time", None)
-            end_str = (
-                datetime.fromtimestamp(end).strftime("%Y-%m-%d %H:%M:%S")
-                if end
-                else "N/A"
-            )
-
-            status = run.status.lower()
-            if status == "completed":
-                status_text = f"[green]{status}[/green]"
-            elif status == "error":
-                status_text = f"[red]{status}[/red]"
-            else:
-                status_text = status
-
-            table.add_row(
-                run.name or "-",
-                run.temporal.workflow_id if run.temporal else "N/A",
-                Padding(run.id, (0, 0, 0 if is_last_row else 1, 0)),
-                status_text,
-                start_str,
-                end_str,
-            )
-
-        console.print(table)
+        print_workflow_runs(sorted_runs)
 
     except Exception as e:
         print_error(f"Error fetching workflow runs: {str(e)}")

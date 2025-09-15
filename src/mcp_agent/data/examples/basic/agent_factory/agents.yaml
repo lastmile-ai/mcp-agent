@@ -6,3 +6,4 @@ agents:
   - name: coder
     instruction: You can inspect and modify code files in the repository
     server_names: [filesystem]
+

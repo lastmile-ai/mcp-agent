@@ -18,6 +18,8 @@ from mcp_agent.cli.core.utils import (
     attach_stdio_servers,
     attach_url_servers,
     load_user_app,
+    detect_default_script,
+    select_servers_from_config,
 )
 from mcp_agent.cli.utils.url_parser import generate_server_configs, parse_server_urls
 from mcp_agent.workflows.factory import create_llm
@@ -268,8 +270,11 @@ def go(
     npx: Optional[str] = typer.Option(None, "--npx"),
     uvx: Optional[str] = typer.Option(None, "--uvx"),
     stdio: Optional[str] = typer.Option(None, "--stdio"),
-    script: Optional[Path] = typer.Option(Path("agent.py"), "--script"),
+    script: Optional[Path] = typer.Option(None, "--script"),
 ) -> None:
+    # Resolve script with auto-detection
+    script = detect_default_script(script)
+
     # Parse server names from config if provided
     server_list = servers.split(",") if servers else None
 
@@ -302,6 +307,11 @@ def go(
         else:
             server_list.extend(list(stdio_servers.keys()))
 
+    # Smart defaults from config if still unspecified
+    resolved_server_list = select_servers_from_config(
+        ",".join(server_list) if server_list else None, url_servers, stdio_servers
+    )
+
     # Multi-model support if comma-separated
     if model and "," in model:
         models = [m.strip() for m in model.split(",") if m.strip()]
@@ -311,7 +321,7 @@ def go(
                 asyncio.run(
                     _run_agent(
                         app_script=script,
-                        server_list=server_list,
+                        server_list=resolved_server_list,
                         model=m,
                         message=message,
                         prompt_file=prompt_file,
@@ -331,7 +341,7 @@ def go(
         asyncio.run(
             _run_agent(
                 app_script=script,
-                server_list=server_list,
+                server_list=resolved_server_list,
                 model=model,
                 message=message,
                 prompt_file=prompt_file,

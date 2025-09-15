@@ -19,7 +19,7 @@ from rich.live import Live
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from mcp_agent.server.app_server import create_mcp_server_for_app
-from mcp_agent.cli.core.utils import load_user_app
+from mcp_agent.cli.core.utils import load_user_app, detect_default_script
 from mcp_agent.config import get_settings
 
 
@@ -118,9 +118,9 @@ def serve(
     Start an MCP server for your app.
 
     Examples:
-        mcp-agent serve --script agent.py
-        mcp-agent serve --transport http --port 8000
-        mcp-agent serve --reload --debug
+        mcp-agent dev serve --script agent.py
+        mcp-agent dev serve --transport http --port 8000
+        mcp-agent dev serve --reload --debug
     """
 
     if ctx.invoked_subcommand:
@@ -138,12 +138,14 @@ def serve(
     # Load configuration path is handled after loading app by overriding app settings
 
     async def _run():
-        # Load the app
-        script_path = Path(script) if script else Path("agent.py")
+        # Load the app (auto-detect main.py preferred)
+        script_path = detect_default_script(Path(script) if script else None)
 
         if not script_path.exists():
             console.print(f"[red]Script not found: {script_path}[/red]")
-            console.print("\n[dim]Create an agent.py file or specify --script[/dim]")
+            console.print(
+                "\n[dim]Create a main.py (preferred) or agent.py file, or specify --script[/dim]"
+            )
             raise typer.Exit(1)
 
         console.print("\n[bold cyan]🚀 MCP-Agent Server[/bold cyan]")
@@ -191,6 +193,8 @@ def serve(
             info_table.add_row("Address", f"http://{address}")
             if transport == "sse":
                 info_table.add_row("SSE Endpoint", f"http://{address}/sse")
+            elif transport == "http":
+                info_table.add_row("HTTP Endpoint", f"http://{address}/mcp")
 
         # Show registered components
         if hasattr(app_obj, "workflows") and app_obj.workflows:
@@ -251,6 +255,7 @@ def serve(
         def signal_handler(sig, frame):
             console.print("\n[yellow]Shutting down server...[/yellow]")
             shutdown_event.set()
+            os._exit(0)
 
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
@@ -284,7 +289,7 @@ def serve(
 
                 # Configure uvicorn
                 uvicorn_config = uvicorn.Config(
-                    mcp.app,
+                    mcp.streamable_http_app if transport == "http" else mcp.sse_app,
                     host=host,
                     port=port or 8000,
                     log_level="debug" if debug else "info",
@@ -307,6 +312,10 @@ def serve(
 
                 if transport == "sse":
                     console.print(f"[bold]SSE:[/bold] http://{host}:{port or 8000}/sse")
+                elif transport == "http":
+                    console.print(
+                        f"[bold]HTTP:[/bold] http://{host}:{port or 8000}/mcp"
+                    )
 
                 console.print("\n[dim]Press Ctrl+C to stop the server[/dim]\n")
 
@@ -372,10 +381,13 @@ def test(
     timeout: float = typer.Option(5.0, "--timeout", "-t", help="Test timeout"),
 ) -> None:
     """Test if the server can be loaded and initialized."""
-    script_path = Path(script) if script else Path("agent.py")
+    script_path = detect_default_script(Path(script) if script else None)
 
     if not script_path.exists():
         console.print(f"[red]Script not found: {script_path}[/red]")
+        console.print(
+            "\n[dim]Create a main.py (preferred) or agent.py file, or specify --script[/dim]"
+        )
         raise typer.Exit(1)
 
     console.print(f"\n[bold]Testing server: {script_path}[/bold]\n")
@@ -456,7 +468,7 @@ def test(
             )
 
             console.print("\n[dim]Server is ready to run with:[/dim]")
-            console.print(f"  [cyan]mcp-agent serve --script {script_path}[/cyan]")
+            console.print(f"  [cyan]mcp-agent dev serve --script {script_path}[/cyan]")
 
         except Exception:
             console.print("\n[red bold]❌ Server test failed[/red bold]")
@@ -519,9 +531,11 @@ def generate(
     console.print("\n[bold]Next steps:[/bold]")
     console.print(f"1. Edit the server: [cyan]{output}[/cyan]")
     console.print(
-        f"2. Test the server: [cyan]mcp-agent serve test --script {output}[/cyan]"
+        f"2. Test the server: [cyan]mcp-agent dev serve test --script {output}[/cyan]"
     )
-    console.print(f"3. Run the server: [cyan]mcp-agent serve --script {output}[/cyan]")
     console.print(
-        f"4. Or serve via HTTP: [cyan]mcp-agent serve --script {output} --transport http --port 8000[/cyan]"
+        f"3. Run the server: [cyan]mcp-agent dev serve --script {output}[/cyan]"
+    )
+    console.print(
+        f"4. Or serve via HTTP: [cyan]mcp-agent dev serve --script {output} --transport http --port 8000[/cyan]"
     )

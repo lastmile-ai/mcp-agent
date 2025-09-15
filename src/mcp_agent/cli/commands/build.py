@@ -378,6 +378,9 @@ def build(
 
         console.print(server_table)
         console.print()
+    else:
+        console.print("[yellow]No MCP servers found in configuration[/yellow]")
+        console.print()
 
     # Show warnings
     if report["warnings"]:

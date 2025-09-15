@@ -9,9 +9,13 @@ progressively.
 
 from __future__ import annotations
 
+import logging
+from pathlib import Path
 
 import typer
 from rich.console import Console
+
+from mcp_agent.cli.utils.ux import print_error
 
 # Mount existing cloud CLI
 try:
@@ -21,23 +25,65 @@ except Exception:  # pragma: no cover - cloud is optional for non-cloud developm
 
 
 # Local command groups (scaffolded)
+from mcp_agent.cli.cloud.commands import deploy_config, login
+from mcp_agent.cli.commands import (
+    check as check_cmd,
+    chat as chat_cmd,
+    dev as dev_cmd,
+    invoke as invoke_cmd,
+    serve as serve_cmd,
+    server as server_cmd,
+    build as build_cmd,
+    logs as logs_cmd,
+    doctor as doctor_cmd,
+    configure as configure_cmd,
+)
+from mcp_agent.cli.commands import (
+    config as config_cmd,
+)
+from mcp_agent.cli.commands import (
+    go as go_cmd,
+)
 from mcp_agent.cli.commands import (
     init as init_cmd,
-    quickstart as quickstart_cmd,
-    config as config_cmd,
-    keys as keys_cmd,
-    models as models_cmd,
-    go as go_cmd,
-    check as check_cmd,
 )
-
+from mcp_agent.cli.commands import (
+    keys as keys_cmd,
+)
+from mcp_agent.cli.commands import (
+    models as models_cmd,
+)
+from mcp_agent.cli.commands import (
+    quickstart as quickstart_cmd,
+)
+from mcp_agent.cli.utils.typer_utils import HelpfulTyperGroup
 
 app = typer.Typer(
     help="mcp-agent CLI",
-    add_completion=False,
-    no_args_is_help=False,
+    add_completion=True,
+    no_args_is_help=True,
     context_settings={"help_option_names": ["-h", "--help"]},
+    cls=HelpfulTyperGroup,
 )
+
+# Local development umbrella group
+dev_group = typer.Typer(
+    help="Local development: start app, chat, invoke, serve, servers, build, logs",
+    no_args_is_help=False,
+    cls=HelpfulTyperGroup,
+)
+
+
+@dev_group.callback(invoke_without_command=True)
+def _dev_group_entry(
+    ctx: typer.Context,
+    script: Path = typer.Option(None, "--script", help="Entry script"),
+):
+    """If no subcommand is provided, behave like 'dev start'."""
+    if ctx.invoked_subcommand:
+        return
+    # Delegate to the existing dev implementation
+    dev_cmd.dev(script=script)
 
 
 console = Console(stderr=False)
@@ -97,68 +143,58 @@ def main(
         console.print("Run 'mcp-agent --help' to see all commands.")
 
 
-# Mount non-cloud command groups
+# Mount non-cloud command groups (top-level, curated)
 app.add_typer(init_cmd.app, name="init", help="Scaffold a new mcp-agent project")
 app.add_typer(quickstart_cmd.app, name="quickstart", help="Copy curated examples")
-app.add_typer(go_cmd.app, name="go", help="Quick interactive agent")
-app.add_typer(check_cmd.app, name="check", help="Check configuration and environment")
 app.add_typer(config_cmd.app, name="config", help="Manage and inspect configuration")
-app.add_typer(keys_cmd.app, name="keys", help="Manage provider API keys")
-app.add_typer(models_cmd.app, name="models", help="List and manage models")
+app.add_typer(doctor_cmd.app, name="doctor", help="Comprehensive diagnostics")
 
-# TODO: Uncomment after testing - Local Development and beyond
-# app.add_typer(chat_cmd.app, name="chat", help="Ephemeral REPL for quick iteration")
-# app.add_typer(dev_cmd.app, name="dev", help="Run app locally with live reload")
-# app.add_typer(
-#     invoke_cmd.app, name="invoke", help="Invoke agent/workflow programmatically"
-# )
-# app.add_typer(serve_cmd.app, name="serve", help="Serve app as an MCP server")
-# app.add_typer(server_cmd.app, name="server", help="Local server helpers")
-# app.add_typer(
-#     build_cmd.app, name="build", help="Preflight and bundle prep for deployment"
-# )
-# app.add_typer(logs_cmd.app, name="logs", help="Tail local logs")
-# app.add_typer(doctor_cmd.app, name="doctor", help="Comprehensive diagnostics")
-# app.add_typer(configure_cmd.app, name="configure", help="Client integration helpers")
+# Group local dev/runtime commands under `dev`
+dev_group.add_typer(dev_cmd.app, name="start", help="Run app locally with live reload")
+dev_group.add_typer(
+    chat_cmd.app, name="chat", help="Ephemeral REPL for quick iteration"
+)
+dev_group.add_typer(
+    invoke_cmd.app, name="invoke", help="Invoke agent/workflow programmatically"
+)
+dev_group.add_typer(serve_cmd.app, name="serve", help="Serve app as an MCP server")
+dev_group.add_typer(server_cmd.app, name="server", help="Local server helpers")
+dev_group.add_typer(
+    build_cmd.app, name="build", help="Preflight and bundle prep for deployment"
+)
+dev_group.add_typer(logs_cmd.app, name="logs", help="Tail local logs")
+dev_group.add_typer(
+    check_cmd.app, name="check", help="Check configuration and environment"
+)
+dev_group.add_typer(go_cmd.app, name="go", help="Quick interactive agent")
+dev_group.add_typer(keys_cmd.app, name="keys", help="Manage provider API keys")
+dev_group.add_typer(models_cmd.app, name="models", help="List and manage models")
+dev_group.add_typer(configure_cmd.app, name="client", help="Client integration helpers")
+
+# Mount the dev umbrella group
+app.add_typer(dev_group, name="dev", help="Local development and runtime")
 
 # Mount cloud commands
 app.add_typer(cloud_app, name="cloud", help="MCP Agent Cloud commands")
 
-
-# Back-compat top-level aliases -> cloud
-@app.command("deploy")
-def alias_deploy(*args: str) -> None:
-    """Alias for 'mcp-agent cloud deploy'."""
-    # Defer execution to cloud app main
-    from mcp_agent.cli.cloud.main import app as _cloud
-
-    # Re-invoke Typer subcommand programmatically
-    # Simple message to guide user
-    console.print("Use 'mcp-agent cloud deploy' (alias invoked).")
-    _cloud(
-        prog_name=f"{typer.get_app_dir('mcp-agent')}",
-        standalone_mode=False,
-    )
-
-
-@app.command("login")
-def alias_login() -> None:
-    console.print("Use 'mcp-agent cloud auth login' (alias).")
-
-
-@app.command("whoami")
-def alias_whoami() -> None:
-    console.print("Use 'mcp-agent cloud auth whoami' (alias).")
-
-
-@app.command("logout")
-def alias_logout() -> None:
-    console.print("Use 'mcp-agent cloud auth logout' (alias).")
+# Register key cloud commands directly as top-level aliases
+app.command("deploy", help="Deploy an MCP agent (alias for 'cloud deploy')")(
+    deploy_config
+)
+app.command(
+    "login", help="Authenticate to MCP Agent Cloud API (alias for 'cloud login')"
+)(login)
 
 
 def run() -> None:
-    """Entry for __main__."""
-    app()
+    """Run the CLI application."""
+    try:
+        app()
+    except Exception as e:
+        # Unexpected errors - log full exception and show clean error to user
+        logging.exception("Unhandled exception in CLI")
+        print_error(f"An unexpected error occurred: {str(e)}")
+        raise typer.Exit(1) from e
 
 
 if __name__ == "__main__":

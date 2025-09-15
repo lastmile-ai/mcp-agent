@@ -94,19 +94,19 @@ async def test_http_proxy_helpers_happy_and_error_paths(monkeypatch):
         client_proxy.httpx, "AsyncClient", lambda timeout: Client(rcodes)
     )
 
-    ok = await client_proxy.log_via_proxy(None, "run", "info", "ns", "msg")
+    ok = await client_proxy.log_via_proxy("run", "info", "ns", "msg")
     assert ok is True
-    ok = await client_proxy.log_via_proxy(None, "run", "info", "ns", "msg")
+    ok = await client_proxy.log_via_proxy("run", "info", "ns", "msg")
     assert ok is False
 
     # notify ok, then error
-    ok = await client_proxy.notify_via_proxy(None, "run", "m", {})
+    ok = await client_proxy.notify_via_proxy("run", "m", {})
     assert ok is True
-    ok = await client_proxy.notify_via_proxy(None, "run", "m", {})
+    ok = await client_proxy.notify_via_proxy("run", "m", {})
     assert ok is False
 
     # request ok, then error
-    res = await client_proxy.request_via_proxy(None, "run", "m", {})
+    res = await client_proxy.request_via_proxy("run", "m", {})
     assert isinstance(res, dict) and res.get("ok", True) in (True,)
-    res = await client_proxy.request_via_proxy(None, "run", "m", {})
+    res = await client_proxy.request_via_proxy("run", "m", {})
     assert isinstance(res, dict) and "error" in res

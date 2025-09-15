@@ -6,7 +6,7 @@ from typing import Union
 from mcp_agent.cli.auth import load_api_key_credentials
 from mcp_agent.cli.core.api_client import UnauthenticatedError
 from mcp_agent.cli.core.constants import DEFAULT_API_BASE_URL
-from mcp_agent.cli.core.utils import parse_app_identifier, run_async
+from mcp_agent.cli.core.utils import run_async
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.mcp_app.api_client import (
     MCPApp,
@@ -51,11 +51,11 @@ def validate_output_format(format: str) -> None:
 def resolve_server(
     client: MCPAppClient, id_or_url: str
 ) -> Union[MCPApp, MCPAppConfiguration]:
-    """Resolve server from ID.
+    """Resolve server from ID or URL.
 
     Args:
         client: Authenticated MCP App client
-        id_or_url: Server identifier (app ID or app config ID)
+        id_or_url: Server identifier (app ID, app config ID, or server URL)
 
     Returns:
         Server object (MCPApp or MCPAppConfiguration)
@@ -64,15 +64,8 @@ def resolve_server(
         CLIError: If server resolution fails
     """
     try:
-        app_id, config_id = parse_app_identifier(id_or_url)
+        return run_async(client.get_app_or_config(id_or_url))
 
-        if config_id:
-            return run_async(client.get_app_configuration(app_config_id=config_id))
-        else:
-            return run_async(client.get_app(app_id=app_id))
-
-    except ValueError as e:
-        raise CLIError(str(e)) from e
     except Exception as e:
         raise CLIError(f"Failed to resolve server '{id_or_url}': {str(e)}") from e
 

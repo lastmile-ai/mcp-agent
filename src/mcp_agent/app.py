@@ -26,6 +26,7 @@ from mcp_agent.executor.workflow_signal import SignalWaitCallback
 from mcp_agent.executor.workflow_task import GlobalWorkflowTaskRegistry
 from mcp_agent.human_input.types import HumanInputCallback
 from mcp_agent.elicitation.types import ElicitationCallback
+from mcp_agent.server.tool_adapter import validate_tool_schema
 from mcp_agent.tracing.telemetry import get_tracer
 from mcp_agent.utils.common import unwrap
 from mcp_agent.workflows.llm.llm_selector import ModelSelector
@@ -87,9 +88,11 @@ class MCPApp:
             upstream_session: Upstream session if the MCPApp is running as a server to an MCP client.
             initialize_model_selector: Initializes the built-in ModelSelector to help with model selection. Defaults to False.
         """
-        self.name = name
-        self.description = description or "MCP Agent Application"
         self.mcp = mcp
+        self.name = name or (mcp.name if mcp else None)
+        self.description = description or (
+            mcp.instructions if mcp else "MCP Agent Application"
+        )
 
         # We use these to initialize the context in initialize()
         if settings is None:
@@ -726,6 +729,12 @@ class MCPApp:
 
         def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
             tool_name = name or fn.__name__
+
+            # Early validation: Use the shared tool adapter logic to validate
+            # that the transformed function can be converted to JSON schema
+
+            validate_tool_schema(fn, tool_name)
+
             # Construct the workflow from function
             workflow_cls = self._create_workflow_from_function(
                 fn,
@@ -772,6 +781,13 @@ class MCPApp:
 
         def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
             workflow_name = name or fn.__name__
+
+            # Early validation: Use the shared tool adapter logic to validate
+            # that the transformed function can be converted to JSON schema
+            from mcp_agent.server.tool_adapter import validate_tool_schema
+
+            validate_tool_schema(fn, workflow_name)
+
             workflow_cls = self._create_workflow_from_function(
                 fn,
                 workflow_name=workflow_name,

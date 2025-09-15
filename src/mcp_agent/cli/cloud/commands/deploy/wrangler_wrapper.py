@@ -9,6 +9,9 @@ from pathlib import Path
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from mcp_agent.cli.config import settings
+from mcp_agent.cli.core.constants import (
+    MCP_SECRETS_FILENAME,
+)
 from mcp_agent.cli.utils.ux import console, print_error, print_warning
 
 from .constants import (
@@ -18,6 +21,27 @@ from .constants import (
 )
 from .settings import deployment_settings
 from .validation import validate_project
+
+# Pattern to match relative mcp-agent imports like "mcp-agent @ file://../../"
+RELATIVE_MCP_AGENT_PATTERN = re.compile(
+    r"^mcp-agent\s*@\s*file://[^\n]*$", re.MULTILINE
+)
+
+
+def _needs_requirements_modification(requirements_path: Path) -> bool:
+    """Check if requirements.txt contains relative mcp-agent imports that need modification."""
+    if not requirements_path.exists():
+        return False
+
+    content = requirements_path.read_text()
+    return bool(RELATIVE_MCP_AGENT_PATTERN.search(content))
+
+
+def _modify_requirements_txt(requirements_path: Path) -> None:
+    """Modify requirements.txt in place to replace relative mcp-agent imports with absolute ones."""
+    content = requirements_path.read_text()
+    modified_content = RELATIVE_MCP_AGENT_PATTERN.sub("mcp-agent", content)
+    requirements_path.write_text(modified_content)
 
 
 def _handle_wrangler_error(e: subprocess.CalledProcessError) -> None:
@@ -86,14 +110,15 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
     and upload it our internal cf storage.
 
     Some key details here:
+    - We copy the user's project to a temporary directory and perform all operations there
+    - Secrets file must be excluded from the bundle
     - We must add a temporary `wrangler.toml` to the project directory to set python_workers
       compatibility flag (CLI arg is not sufficient).
     - Python workers with a `requirements.txt` file cannot be published by Wrangler, so we must
       rename any `requirements.txt` file to `requirements.txt.mcpac.py` before bundling
     - Non-python files (e.g. `uv.lock`, `poetry.lock`, `pyproject.toml`) would be excluded by default
-    due to no py extension, so they are also copied with a `.mcpac.py` extension.
-    - Similarly, having a `.venv` in the python project directory will result in the same error as
-      `requirements.txt`, so we temporarily move it out of the project directory if it exists.
+    due to no py extension, so they are renamed with a `.mcpac.py` extension.
+    - We exclude .venv directories from the copy to avoid bundling issues.
 
     Args:
         app_id (str): The application ID.
@@ -123,43 +148,33 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
     # We require main.py to be present as the entrypoint / app definition
     main_py = "main.py"
 
-    # Set up a temporary wrangler configuration within the project
-    # to ensure compatibility_flags are set correctly.
-    wrangler_toml_path = project_dir / "wrangler.toml"
+    # Create a temporary directory for all operations
+    with tempfile.TemporaryDirectory(prefix="mcp-deploy-") as temp_dir_str:
+        temp_project_dir = Path(temp_dir_str) / "project"
 
-    # Temporarily move .venv if it exists
-    original_venv = project_dir / ".venv"
-    temp_venv = None
+        # Copy the entire project to temp directory, excluding unwanted directories and secrets file
+        def ignore_patterns(_path, names):
+            ignored = set()
+            for name in names:
+                if (name.startswith(".") and name not in {".env"}) or name in {
+                    "logs",
+                    "__pycache__",
+                    "node_modules",
+                    "venv",
+                    MCP_SECRETS_FILENAME,
+                }:
+                    ignored.add(name)
+            return ignored
 
-    # Create temporary wrangler.toml
-    wrangler_toml_content = textwrap.dedent(
-        f"""
-        name = "{app_id}"
-        main = "{main_py}"
-        compatibility_flags = ["python_workers"]
-        compatibility_date = "2025-06-26"
-    """
-    ).strip()
+        shutil.copytree(project_dir, temp_project_dir, ignore=ignore_patterns)
 
-    copied_py_files = []  # Track all files we copy with .py extension
+        # Handle requirements.txt modification if needed
+        requirements_path = temp_project_dir / "requirements.txt"
+        if _needs_requirements_modification(requirements_path):
+            _modify_requirements_txt(requirements_path)
 
-    try:
-        if original_venv.exists():
-            temp_dir = tempfile.TemporaryDirectory(prefix="mcp-venv-temp-")
-            temp_venv_path = Path(temp_dir.name) / ".venv"
-            original_venv.rename(temp_venv_path)
-            temp_venv = temp_dir  # keep ref to cleanup later
-
-        # Copy all files from project_dir and subdirs with a .mcpac.py extension for non-Python files
-        for root, dirs, files in os.walk(project_dir):
-            # Skip directories with dot prefixes, logs directory, and other common directories we don't want to bundle
-            dirs[:] = [
-                d
-                for d in dirs
-                if not d.startswith(".")
-                and d not in {"logs", "__pycache__", "node_modules", "venv"}
-            ]
-
+        # Process non-Python files to be included in the bundle
+        for root, _dirs, files in os.walk(temp_project_dir):
             for filename in files:
                 file_path = Path(root) / filename
 
@@ -167,7 +182,7 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
                 if filename.startswith(".") or filename.endswith((".bak", ".tmp")):
                     continue
 
-                # Skip wrangler.toml (we create our own)
+                # Skip wrangler.toml (we create our own below)
                 if filename == "wrangler.toml":
                     continue
 
@@ -175,21 +190,24 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
                 if filename.endswith(".py"):
                     continue
 
-                # For non-Python files, copy with .mcpac.py extension and hide original
-                relative_path = file_path.relative_to(project_dir)
-                py_path = project_dir / f"{relative_path}.mcpac.py"
+                # For non-Python files, rename with .mcpac.py extension to be included as py files
+                relative_path = file_path.relative_to(temp_project_dir)
+                py_path = temp_project_dir / f"{relative_path}.mcpac.py"
 
-                # Ensure parent directory exists
-                py_path.parent.mkdir(parents=True, exist_ok=True)
+                # Rename in place
+                file_path.rename(py_path)
 
-                shutil.copy(file_path, py_path)
-                copied_py_files.append(py_path)
+        # Create temporary wrangler.toml
+        wrangler_toml_content = textwrap.dedent(
+            f"""
+            name = "{app_id}"
+            main = "{main_py}"
+            compatibility_flags = ["python_workers"]
+            compatibility_date = "2025-06-26"
+        """
+        ).strip()
 
-                # Hide the original file by renaming it temporarily
-                temp_original = Path(str(file_path) + ".bak")
-                file_path.rename(temp_original)
-                copied_py_files.append(temp_original)  # Track for cleanup
-
+        wrangler_toml_path = temp_project_dir / "wrangler.toml"
         wrangler_toml_path.write_text(wrangler_toml_content)
 
         with Progress(
@@ -212,7 +230,7 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
                     ],
                     check=True,
                     env=env,
-                    cwd=str(project_dir),
+                    cwd=str(temp_project_dir),
                     capture_output=True,
                     text=True,
                 )
@@ -223,22 +241,3 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
                 progress.update(task, description="❌ Bundling failed")
                 _handle_wrangler_error(e)
                 raise
-
-    finally:
-        if temp_venv is not None:
-            temp_venv_path.rename(original_venv)
-            temp_venv.cleanup()
-
-        # Clean up all copied .py files and restore renamed originals
-        for py_file in copied_py_files:
-            if py_file.exists():
-                if py_file.suffix == ".bak":
-                    # Restore the original file by removing .bak suffix
-                    original_path = Path(str(py_file).replace(".bak", ""))
-                    py_file.rename(original_path)
-                else:
-                    # Remove the .mcpac.py copy
-                    os.remove(py_file)
-
-        if wrangler_toml_path.exists():
-            wrangler_toml_path.unlink()

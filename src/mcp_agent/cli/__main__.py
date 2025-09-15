@@ -25,35 +25,35 @@ GO_OPTIONS = {
 }
 
 KNOWN = {
-    "go",
-    "check",
-    "chat",
-    "dev",
-    "invoke",
-    "serve",
+    # Curated top-level commands
     "init",
     "quickstart",
     "config",
-    "keys",
-    "models",
-    "server",
-    "build",
-    "logs",
     "doctor",
-    "configure",
+    "deploy",
+    "login",
+    "whoami",
+    "logout",
     "cloud",
+    # Umbrella group
+    "dev",
 }
 
 
 def main():
     if len(sys.argv) > 1:
         first = sys.argv[1]
-        if first not in KNOWN:
+        # Back-compat: allow `mcp-agent go ...`
+        if first == "go":
+            sys.argv.insert(1, "dev")
+        elif first not in KNOWN:
             for i, arg in enumerate(sys.argv[1:], 1):
                 if arg in GO_OPTIONS or any(
                     arg.startswith(opt + "=") for opt in GO_OPTIONS
                 ):
-                    sys.argv.insert(i, "go")
+                    # Route bare chat-like invocations to dev go (legacy behavior)
+                    sys.argv.insert(i, "dev")
+                    sys.argv.insert(i + 1, "go")
                     break
     app()
 

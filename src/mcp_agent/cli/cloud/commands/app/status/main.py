@@ -19,6 +19,7 @@ from mcp_agent.cli.core.constants import (
     ENV_API_KEY,
 )
 from mcp_agent.cli.core.utils import run_async
+from ...utils import resolve_server
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.mcp_app.api_client import AppServerInfo, MCPAppClient
 from mcp_agent.cli.mcp_app.mcp_client import (
@@ -67,7 +68,7 @@ def get_app_status(
         raise CLIError("You must provide an app ID or server URL to get its status.")
 
     try:
-        app_or_config = run_async(client.get_app_or_config(app_id_or_url))
+        app_or_config = resolve_server(client, app_id_or_url)
 
         if not app_or_config:
             raise CLIError(f"App or config with ID or URL '{app_id_or_url}' not found.")
@@ -139,12 +140,15 @@ async def print_mcp_server_details(server_url: str, api_key: str) -> None:
                 console.print(f"[cyan]{key}[/cyan]: {description}")
 
             if sys.stdout.isatty():
-                choice = Prompt.ask(
-                    "\nWhat would you like to display?",
-                    choices=list(choices.keys()),
-                    default="0",
-                    show_choices=False,
-                )
+                try:
+                    choice = Prompt.ask(
+                        "\nWhat would you like to display?",
+                        choices=list(choices.keys()),
+                        default="0",
+                        show_choices=False,
+                    )
+                except (EOFError, KeyboardInterrupt):
+                    return
             else:
                 console.print("Choosing 0 (Show All)")
                 choice = "0"
@@ -160,7 +164,7 @@ async def print_mcp_server_details(server_url: str, api_key: str) -> None:
 
     except Exception as e:
         raise CLIError(
-            f"Error connecting to MCP server at {server_url}: {str(e)}"
+            f"Error obtaining details from MCP server at {server_url}: {str(e)}"
         ) from e
 
 

@@ -1,6 +1,6 @@
 """Tests for secret transformation functionality.
 
-This file tests the core functionality of transforming configurations with secret tags
+This file tests the core functionality of transforming configurations with raw secrets
 into deployment-ready configurations with secret handles.
 """
 
@@ -53,14 +53,14 @@ class TestTransformConfigRecursive:
     """Tests for the transform_config_recursive function."""
 
     @pytest.mark.asyncio
-    async def test_transform_developer_secret(self, mock_secrets_client):
-        """Test transforming developer secrets to UUIDs."""
-        # Create a config with a developer secret
-        config = {"api": {"key": DeveloperSecret("test-api-key")}}
+    async def test_transform_deployment_secret(self, mock_secrets_client):
+        """Test transforming raw secrets to deployment secret handles."""
+        # Create a config with raw secret values
+        config = {"api": {"key": "test-api-key-value"}}
 
-        # Transform the config - mock typer.prompt to avoid terminal interaction
+        # Transform the config - mock user choosing deployment secret (option 1)
         with (
-            patch("typer.prompt", return_value="test-value"),
+            patch("rich.prompt.Prompt.ask", return_value="1"),
             patch.dict("os.environ", {}, clear=True),
         ):
             result = await transform_config_recursive(config, mock_secrets_client)
@@ -69,30 +69,35 @@ class TestTransformConfigRecursive:
         assert "api" in result
         assert "key" in result["api"]
 
-        # Developer secret should be replaced with UUID
-        dev_uuid = result["api"]["key"]
-        assert isinstance(dev_uuid, str)
-        assert dev_uuid.startswith(UUID_PREFIX)
+        # Raw secret should be replaced with UUID handle
+        secret_handle = result["api"]["key"]
+        assert isinstance(secret_handle, str)
+        assert secret_handle.startswith(UUID_PREFIX)
 
         # Verify create_secret was called with the correct value
         mock_secrets_client.create_secret.assert_called_once()
         call_args = mock_secrets_client.create_secret.call_args
         assert call_args[1]["name"] == "api.key"
         assert call_args[1]["secret_type"] == SecretType.DEVELOPER
-        assert call_args[1]["value"] in ["test-api-key", "test-value"]
+        assert call_args[1]["value"] == "test-api-key-value"
 
     @pytest.mark.asyncio
     async def test_user_secret_remains(self, mock_secrets_client):
-        """Test that user secrets remain as tags during deploy phase."""
-        # Create a config with a user secret
-        config = {"user": {"password": UserSecret("user-password")}}
+        """Test that user secrets become tags when user chooses option 2."""
+        # Create a config with raw secret value
+        config = {"user": {"password": "user-password-value"}}
 
-        # Transform the config
-        result = await transform_config_recursive(config, mock_secrets_client)
+        # Transform the config - mock user choosing user secret (option 2)
+        with (
+            patch("rich.prompt.Prompt.ask", return_value="2"),
+            patch.dict("os.environ", {}, clear=True),
+        ):
+            result = await transform_config_recursive(config, mock_secrets_client)
 
-        # Verify the user secret remains as a UserSecret object
+        # Verify the raw secret becomes a UserSecret object
         assert isinstance(result["user"]["password"], UserSecret)
-        assert result["user"]["password"].value == "user-password"
+        # UserSecret objects don't store the original value in the new approach
+        assert result["user"]["password"].value is None
 
         # Verify create_secret was NOT called for user secrets
         mock_secrets_client.create_secret.assert_not_called()
@@ -100,38 +105,42 @@ class TestTransformConfigRecursive:
     @pytest.mark.asyncio
     async def test_mixed_secrets_and_nested_structures(self, mock_secrets_client):
         """Test transforming a complex config with both types of secrets."""
-        # Create a complex config with both types of secrets
+        # Create a complex config with raw secret values
         config = {
             "api": {
-                "key": DeveloperSecret("dev-api-key"),
-                "user_token": UserSecret("user-token"),
+                "key": "dev-api-key-value",
+                "user_token": "user-token-value",
             },
             "database": {
-                "password": DeveloperSecret("dev-db-password"),
-                "user_password": UserSecret(),  # Empty user secret
+                "password": "dev-db-password-value",
+                "user_password": "user-password-value",
             },
             "nested": {
                 "level2": {
                     "level3": {
-                        "api_key": DeveloperSecret("nested-key"),
-                        "user_key": UserSecret("nested-user-key"),
+                        "api_key": "nested-key-value",
+                        "user_key": "nested-user-key-value",
                     }
                 },
                 "array": [
-                    {"secret": DeveloperSecret("array-item-1")},
-                    {"secret": UserSecret("array-user-item")},
+                    {"secret": "array-item-1-value"},
+                    {"secret": "array-user-item-value"},
                 ],
             },
         }
 
-        # Transform the config - mock typer.prompt to avoid terminal interaction
+        # Mock the Prompt.ask to alternate between deployment (1) and user (2) secrets
+        mock_responses = ["1", "2", "1", "2", "1", "2", "1", "2"]  # 8 secrets total
+
         with (
-            patch("typer.prompt", return_value="test-value"),
+            patch("rich.prompt.Prompt.ask", side_effect=mock_responses),
             patch.dict("os.environ", {}, clear=True),
         ):
-            result = await transform_config_recursive(config, mock_secrets_client)
+            result = await transform_config_recursive(
+                config, mock_secrets_client, non_interactive=False
+            )
 
-        # Verify developer secrets are transformed
+        # Verify deployment secrets (every odd position) are transformed to handles
         assert isinstance(result["api"]["key"], str)
         assert result["api"]["key"].startswith(UUID_PREFIX)
 
@@ -144,71 +153,83 @@ class TestTransformConfigRecursive:
         assert isinstance(result["nested"]["array"][0]["secret"], str)
         assert result["nested"]["array"][0]["secret"].startswith(UUID_PREFIX)
 
-        # Verify user secrets remain as UserSecret objects
+        # Verify user secrets (every even position) remain as UserSecret objects
         assert isinstance(result["api"]["user_token"], UserSecret)
-        assert result["api"]["user_token"].value == "user-token"
+        assert result["api"]["user_token"].value is None
 
         assert isinstance(result["database"]["user_password"], UserSecret)
         assert result["database"]["user_password"].value is None
 
         assert isinstance(result["nested"]["level2"]["level3"]["user_key"], UserSecret)
-        assert (
-            result["nested"]["level2"]["level3"]["user_key"].value == "nested-user-key"
-        )
+        assert result["nested"]["level2"]["level3"]["user_key"].value is None
 
         assert isinstance(result["nested"]["array"][1]["secret"], UserSecret)
-        assert result["nested"]["array"][1]["secret"].value == "array-user-item"
+        assert result["nested"]["array"][1]["secret"].value is None
 
-        # Verify create_secret was called the correct number of times (only for developer secrets)
+        # Verify create_secret was called 4 times (only for deployment secrets)
         assert mock_secrets_client.create_secret.call_count == 4
 
     @pytest.mark.asyncio
-    async def test_environment_variable_resolution(self, mock_secrets_client):
-        """Test processing environment variables in developer secrets."""
-        # Test with environment variable resolution
-        dev_secret = DeveloperSecret("ENV_VAR_NAME")
+    async def test_raw_secret_processing_non_interactive(self, mock_secrets_client):
+        """Test processing raw secrets in non-interactive mode (becomes deployment secret)."""
+        # In non-interactive mode, all raw secrets become deployment secrets
+        config = {"api": {"key": "my-secret-value"}}
 
-        # Set up the environment variables
-        with (
-            patch.dict("os.environ", {"ENV_VAR_NAME": "env-value"}),
-            patch("typer.prompt", return_value="should-not-be-used"),
-        ):
-            # Transform the secret
-            result = await transform_config_recursive(
-                dev_secret,
-                mock_secrets_client,
-                "api.key",
-                non_interactive=False,
-            )
+        # Transform in non-interactive mode
+        result = await transform_config_recursive(
+            config,
+            mock_secrets_client,
+            non_interactive=True,
+        )
 
-            # Verify the result is a UUID handle
-            assert isinstance(result, str)
-            assert result.startswith(UUID_PREFIX)
+        # Verify the result contains deployment secret handles
+        assert isinstance(result["api"]["key"], str)
+        assert result["api"]["key"].startswith(UUID_PREFIX)
 
-            # Verify create_secret was called with the env var value
-            mock_secrets_client.create_secret.assert_called_once()
-            args, kwargs = mock_secrets_client.create_secret.call_args
-            assert kwargs["value"] == "env-value"
+        # Verify create_secret was called with the raw value
+        mock_secrets_client.create_secret.assert_called_once()
+        _args, kwargs = mock_secrets_client.create_secret.call_args
+        assert kwargs["name"] == "api.key"
+        assert kwargs["value"] == "my-secret-value"
+        assert kwargs["secret_type"] == SecretType.DEVELOPER
 
     @pytest.mark.asyncio
-    async def test_missing_env_var_with_non_interactive(self, mock_secrets_client):
-        """Test that missing env vars raise an error in non-interactive mode."""
-        # Create developer secret with env var reference
-        dev_secret = DeveloperSecret("NON_EXISTENT_ENV_VAR")
+    async def test_empty_secret_value_skipped(self, mock_secrets_client):
+        """Test that empty secret values are skipped."""
+        # Create config with empty secret value
+        config = {"server": {"api_key": ""}}
 
-        # Ensure env var doesn't exist and run in non-interactive mode
-        with (
-            patch.dict("os.environ", {}, clear=True),
-            pytest.raises(
-                ValueError,
-                match="Developer secret at .* has no value.*non-interactive is set",
-            ),
+        # Empty secret should be skipped, not raise an error
+        result = await transform_config_recursive(
+            config,
+            mock_secrets_client,
+            non_interactive=True,
+        )
+
+        # The secret should be skipped, so the key shouldn't be in the result
+        assert "server" not in result
+
+    @pytest.mark.asyncio
+    async def test_tagged_secrets_rejected_in_input(self, mock_secrets_client):
+        """Test that tagged secrets in input are rejected with clear error."""
+        dev_secret = DeveloperSecret("some-value")
+        user_secret = UserSecret()
+
+        # Attempt to transform the tagged secret - should be rejected
+        with pytest.raises(
+            ValueError,
+            match="Input secrets config at .* contains secret tag. Input should contain raw secrets, not tags.",
         ):
             await transform_config_recursive(
-                dev_secret,
-                mock_secrets_client,
-                "server.api_key",
-                non_interactive=True,
+                dev_secret, mock_secrets_client, "server.api_key", non_interactive=True
+            )
+
+        with pytest.raises(
+            ValueError,
+            match="Input secrets config at .* contains secret tag. Input should contain raw secrets, not tags.",
+        ):
+            await transform_config_recursive(
+                user_secret, mock_secrets_client, "server.api_key", non_interactive=True
             )
 
 
@@ -221,16 +242,19 @@ class TestProcessSecretsInConfig:
         yaml_content = """
         server:
           bedrock:
-            api_key: !developer_secret dev-api-key
-            user_api_key: !user_secret user-key
+            api_key: dev-api-key-value
+            user_api_key: user-key-value
         database:
-          password: !developer_secret db-password
-          user_password: !user_secret
+          password: db-password-value
+          user_password: user-password-value
         """
+
+        # Mock user choices: deployment, user, deployment, user
+        mock_responses = ["1", "2", "1", "2"]
 
         # Process the YAML content with mocked dependencies
         with (
-            patch("typer.prompt", return_value="test-value"),
+            patch("rich.prompt.Prompt.ask", side_effect=mock_responses),
             patch.dict("os.environ", {}, clear=True),
         ):
             result = await process_secrets_in_config_str(
@@ -243,11 +267,11 @@ class TestProcessSecretsInConfig:
         # Verify the output format
         assert result["server"]["bedrock"]["api_key"].startswith(UUID_PREFIX)
         assert isinstance(result["server"]["bedrock"]["user_api_key"], UserSecret)
-        assert result["server"]["bedrock"]["user_api_key"].value == "user-key"
+        assert result["server"]["bedrock"]["user_api_key"].value is None
         assert result["database"]["password"].startswith(UUID_PREFIX)
         assert isinstance(result["database"]["user_password"], UserSecret)
 
-        # Verify create_secret was called twice (only for developer secrets)
+        # Verify create_secret was called twice (only for deployment secrets)
         assert mock_secrets_client.create_secret.call_count == 2
 
 
@@ -263,16 +287,19 @@ class TestProcessConfigSecrets:
         yaml_content = """
         server:
           bedrock:
-            api_key: !developer_secret dev-api-key
-            user_api_key: !user_secret user-key
+            api_key: dev-api-key-value
+            user_api_key: user-key-value
         """
 
         with open(input_path, "w", encoding="utf-8") as f:
             f.write(yaml_content)
 
+        # Mock user choices: deployment, user
+        mock_responses = ["1", "2"]
+
         # Mock the file write operation and other dependencies
         with (
-            patch("typer.prompt", return_value="test-value"),
+            patch("rich.prompt.Prompt.ask", side_effect=mock_responses),
             patch.dict("os.environ", {}, clear=True),
             patch("mcp_agent.cli.secrets.processor.print_secret_summary"),
         ):
@@ -287,10 +314,20 @@ class TestProcessConfigSecrets:
             # Verify the output file was created
             assert output_path.exists()
 
+            with open(output_path, "r", encoding="utf-8") as f:
+                output_content = f.read()
+            deployed_secrets_yaml = load_yaml_with_secrets(output_content)
+            assert deployed_secrets_yaml["server"]["bedrock"]["api_key"].startswith(
+                UUID_PREFIX
+            )
+            assert isinstance(
+                deployed_secrets_yaml["server"]["bedrock"]["user_api_key"], UserSecret
+            )
+
             # Verify the result contains the expected stats
-            assert "developer_secrets" in result
+            assert "deployment_secrets" in result
             assert "user_secrets" in result
-            assert len(result["developer_secrets"]) == 1
+            assert len(result["deployment_secrets"]) == 1
             assert len(result["user_secrets"]) == 1
 
     @pytest.mark.asyncio
@@ -300,16 +337,16 @@ class TestProcessConfigSecrets:
         input_path = tmp_path / MCP_SECRETS_FILENAME
         output_path = tmp_path / MCP_DEPLOYED_SECRETS_FILENAME
 
-        # Input YAML with developer secrets
+        # Input YAML with raw secret values
         input_yaml_content = """
         server:
           bedrock:
-            api_key: !developer_secret BEDROCK_API_KEY
-            user_api_key: !user_secret user-key
+            api_key: bedrock-secret-value
+            user_api_key: user-key-value
           anthropic:
-            api_key: !developer_secret ANTHROPIC_API_KEY
+            api_key: anthropic-secret-value
         database:
-          password: !developer_secret DB_PASSWORD
+          password: db-password-value
         """
 
         existing_bedrock_api_key = f"{UUID_PREFIX}00000000-1234-1234-1234-123456789000"
@@ -323,10 +360,10 @@ class TestProcessConfigSecrets:
         server:
           bedrock:
             api_key: {existing_bedrock_api_key}
-            user_api_key: !user_secret user-key
+            user_api_key: !user_secret
           anthropic:
             api_key: {existing_anthropic_api_key}
-        # This key doesn't exist in the new input
+        # This key doesn't exist in the new input - should be excluded
         removed:
           key: {existing_key_to_exclude}
         """
@@ -338,9 +375,30 @@ class TestProcessConfigSecrets:
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(existing_output_yaml)
 
+        # Mock get_secret_value to return values that match input for reuse
+        async def mock_get_secret_value(secret_handle):
+            if secret_handle == existing_bedrock_api_key:
+                return "bedrock-secret-value"
+            elif secret_handle == existing_anthropic_api_key:
+                return "anthropic-secret-value"
+            elif secret_handle == existing_key_to_exclude:
+                return "old-removed-value"
+            return None
+
+        mock_secrets_client.get_secret_value.side_effect = mock_get_secret_value
+
+        # Mock user choices and prompts
+        # Only user_api_key and database.password need choices (bedrock and anthropic api_key are reused)
+        mock_responses = [
+            "2",
+            "1",
+        ]  # user secret for user_api_key, deployment for database.password
+        mock_confirmations = [True]  # Exclude the removed key
+
         # Set up our mocks
         with (
-            patch("typer.prompt", return_value="test-value"),
+            patch("rich.prompt.Prompt.ask", side_effect=mock_responses),
+            patch("typer.confirm", side_effect=mock_confirmations),
             patch.dict("os.environ", {}, clear=True),
             patch("mcp_agent.cli.secrets.processor.print_secret_summary"),
         ):
@@ -381,16 +439,12 @@ class TestProcessConfigSecrets:
                 deployed_secrets_yaml["server"]["bedrock"]["user_api_key"],
                 UserSecret,
             )
-            assert (
-                deployed_secrets_yaml["server"]["bedrock"]["user_api_key"].value
-                == "user-key"
-            )
 
             # Verify the context has the correct stats
-            assert "developer_secrets" in result
+            assert "deployment_secrets" in result
             assert "user_secrets" in result
             assert "reused_secrets" in result
             # Check if we have exactly 1 new secret and 2 reused secrets
-            assert len(result["developer_secrets"]) == 1  # Only DB_PASSWORD
+            assert len(result["deployment_secrets"]) == 1  # Only DB_PASSWORD
             assert len(result["reused_secrets"]) == 2  # The bedrock and anthropic keys
             assert len(result["user_secrets"]) == 1  # user_api_key

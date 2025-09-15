@@ -5,20 +5,85 @@ from typing import Optional
 
 import typer
 import yaml
-from rich.table import Table
 
+from mcp_agent.cli.auth.main import load_api_key_credentials
+from mcp_agent.cli.cloud.commands.workflows.utils import (
+    print_workflow_runs,
+)
 from mcp_agent.cli.core.utils import run_async
-from mcp_agent.cli.mcp_app.api_client import WorkflowExecutionStatus
+from mcp_agent.cli.exceptions import CLIError
+from mcp_agent.cli.mcp_app.mcp_client import WorkflowRun, mcp_connection_session
+from mcp_agent.cli.utils.ux import console, print_error
+
 from ...utils import (
+    resolve_server,
     setup_authenticated_client,
     validate_output_format,
-    handle_server_api_errors,
-    resolve_server,
 )
-from mcp_agent.cli.utils.ux import console, print_info
 
 
-@handle_server_api_errors
+async def _list_workflow_runs_async(
+    server_id_or_url: str, limit: Optional[int], status: Optional[str], format: str
+) -> None:
+    """List workflow runs using MCP tool calls to a deployed server."""
+    if server_id_or_url.startswith(("http://", "https://")):
+        server_url = server_id_or_url
+    else:
+        client = setup_authenticated_client()
+        server = resolve_server(client, server_id_or_url)
+
+        if hasattr(server, "appServerInfo") and server.appServerInfo:
+            server_url = server.appServerInfo.serverUrl
+        else:
+            raise CLIError(
+                f"Server '{server_id_or_url}' is not deployed or has no server URL"
+            )
+
+        if not server_url:
+            raise CLIError(f"No server URL found for server '{server_id_or_url}'")
+
+    effective_api_key = load_api_key_credentials()
+
+    if not effective_api_key:
+        raise CLIError("Must be logged in to access server. Run 'mcp-agent login'.")
+
+    try:
+        async with mcp_connection_session(
+            server_url, effective_api_key
+        ) as mcp_client_session:
+            try:
+                with console.status(
+                    "[bold green]Fetching workflow runs...", spinner="dots"
+                ):
+                    result = await mcp_client_session.list_workflow_runs()
+
+                workflows = (
+                    result.workflow_runs if result and result.workflow_runs else []
+                )
+
+                if status:
+                    workflows = [w for w in workflows if _matches_status(w, status)]
+
+                if limit:
+                    workflows = workflows[:limit]
+
+                if format == "json":
+                    _print_workflows_json(workflows)
+                elif format == "yaml":
+                    _print_workflows_yaml(workflows)
+                else:
+                    print_workflow_runs(workflows, status)
+            except Exception as e:
+                print_error(
+                    f"Error listing workflow runs for server {server_id_or_url}: {str(e)}"
+                )
+
+    except Exception as e:
+        raise CLIError(
+            f"Error listing workflow runs for server {server_id_or_url}: {str(e)}"
+        ) from e
+
+
 def list_workflow_runs(
     server_id_or_url: str = typer.Argument(
         ..., help="Server ID, app config ID, or server URL to list workflow runs for"
@@ -29,7 +94,8 @@ def list_workflow_runs(
     status: Optional[str] = typer.Option(
         None,
         "--status",
-        help="Filter by status: running|failed|timed_out|canceled|terminated|completed|continued",
+        help="Filter by status: running|failed|timed_out|timeout|canceled|terminated|completed|continued",
+        callback=lambda value: _get_status_filter(value) if value else None,
     ),
     format: Optional[str] = typer.Option(
         "text", "--format", help="Output format (text|json|yaml)"
@@ -46,156 +112,60 @@ def list_workflow_runs(
         mcp-agent cloud workflows runs apcnf_xyz789 --limit 10 --format json
     """
     validate_output_format(format)
-    client = setup_authenticated_client()
+    run_async(_list_workflow_runs_async(server_id_or_url, limit, status, format))
 
-    if server_id_or_url.startswith(("http://", "https://")):
-        resolved_server = resolve_server(client, server_id_or_url)
 
-        if hasattr(resolved_server, "appId"):
-            app_id_or_config_id = resolved_server.appId
-        elif hasattr(resolved_server, "appConfigurationId"):
-            app_id_or_config_id = resolved_server.appConfigurationId
-        else:
-            raise ValueError(
-                f"Could not extract app ID or config ID from server: {server_id_or_url}"
-            )
+def _get_status_filter(status: str) -> str:
+    """Convert status string to normalized status."""
+    status_map = {
+        "running": "running",
+        "failed": "error",
+        "error": "error",
+        "timed_out": "timed_out",
+        "timeout": "timed_out",  # alias
+        "canceled": "canceled",
+        "cancelled": "canceled",  # alias
+        "terminated": "terminated",
+        "completed": "completed",
+        "continued": "continued",
+        "continued_as_new": "continued",
+    }
+    normalized_status = status_map.get(status.lower())
+    if not normalized_status:
+        valid_statuses = (
+            "running|failed|timed_out|timeout|canceled|terminated|completed|continued"
+        )
+        raise typer.BadParameter(
+            f"Invalid status '{status}'. Valid options: {valid_statuses}"
+        )
+    return normalized_status
+
+
+def _matches_status(workflow, status_filter: str) -> bool:
+    """Check if workflow matches the status filter.
+
+    Note: We use string-based matching instead of protobuf enum values because
+    the MCP tool response format returns status as strings, not enum objects.
+    This approach is more flexible and doesn't require maintaining sync with
+    the protobuf definitions.
+    """
+    if isinstance(workflow, dict):
+        workflow_status = workflow.get("status", "")
     else:
-        app_id_or_config_id = server_id_or_url
+        workflow_status = getattr(workflow, "status", "")
 
-    max_results = limit or 100
-
-    status_filter = None
-    if status:
-        status_map = {
-            "running": WorkflowExecutionStatus.WORKFLOW_EXECUTION_STATUS_RUNNING,
-            "failed": WorkflowExecutionStatus.WORKFLOW_EXECUTION_STATUS_FAILED,
-            "timed_out": WorkflowExecutionStatus.WORKFLOW_EXECUTION_STATUS_TIMED_OUT,
-            "timeout": WorkflowExecutionStatus.WORKFLOW_EXECUTION_STATUS_TIMED_OUT,  # alias
-            "canceled": WorkflowExecutionStatus.WORKFLOW_EXECUTION_STATUS_CANCELED,
-            "cancelled": WorkflowExecutionStatus.WORKFLOW_EXECUTION_STATUS_CANCELED,  # alias
-            "terminated": WorkflowExecutionStatus.WORKFLOW_EXECUTION_STATUS_TERMINATED,
-            "completed": WorkflowExecutionStatus.WORKFLOW_EXECUTION_STATUS_COMPLETED,
-            "continued": WorkflowExecutionStatus.WORKFLOW_EXECUTION_STATUS_CONTINUED_AS_NEW,
-            "continued_as_new": WorkflowExecutionStatus.WORKFLOW_EXECUTION_STATUS_CONTINUED_AS_NEW,
-        }
-        status_filter = status_map.get(status.lower())
-        if not status_filter:
-            valid_statuses = "running|failed|timed_out|timeout|canceled|cancelled|terminated|completed|continued|continued_as_new"
-            raise typer.BadParameter(
-                f"Invalid status '{status}'. Valid options: {valid_statuses}"
-            )
-
-    async def list_workflows_async():
-        return await client.list_workflows(
-            app_id_or_config_id=app_id_or_config_id, max_results=max_results
-        )
-
-    response = run_async(list_workflows_async())
-    workflows = response.workflows or []
-
-    if status_filter:
-        workflows = [w for w in workflows if w.execution_status == status_filter]
-
-    if format == "json":
-        _print_workflows_json(workflows)
-    elif format == "yaml":
-        _print_workflows_yaml(workflows)
-    else:
-        _print_workflows_text(workflows, status, server_id_or_url)
+    if isinstance(workflow_status, str):
+        return status_filter.lower() in workflow_status.lower()
+    return False
 
 
-def _print_workflows_text(workflows, status_filter, server_id_or_url):
-    """Print workflows in text format."""
-    server_name = server_id_or_url
-
-    console.print(
-        f"\n[bold blue]📊 Workflow Runs for Server: {server_name}[/bold blue]"
-    )
-
-    if not workflows:
-        print_info("No workflow runs found for this server.")
-        return
-
-    console.print(f"\nFound {len(workflows)} workflow run(s):")
-
-    table = Table(show_header=True, header_style="bold blue")
-    table.add_column("Workflow ID", style="cyan", width=20)
-    table.add_column("Name", style="green", width=20)
-    table.add_column("Status", style="yellow", width=15)
-    table.add_column("Run ID", style="dim", width=15)
-    table.add_column("Created", style="dim", width=20)
-    table.add_column("Principal", style="dim", width=15)
-
-    for workflow in workflows:
-        status_display = _get_status_display(workflow.execution_status)
-        created_display = (
-            workflow.created_at.strftime("%Y-%m-%d %H:%M:%S")
-            if workflow.created_at
-            else "N/A"
-        )
-        run_id_display = _truncate_string(workflow.run_id or "N/A", 15)
-
-        table.add_row(
-            _truncate_string(workflow.workflow_id, 20),
-            _truncate_string(workflow.name, 20),
-            status_display,
-            run_id_display,
-            created_display,
-            _truncate_string(workflow.principal_id, 15),
-        )
-
-    console.print(table)
-
-    if status_filter:
-        console.print(f"\n[dim]Filtered by status: {status_filter}[/dim]")
-
-
-def _print_workflows_json(workflows):
+def _print_workflows_json(workflows: list[WorkflowRun]):
     """Print workflows in JSON format."""
-    workflows_data = [_workflow_to_dict(workflow) for workflow in workflows]
+    workflows_data = [workflow.model_dump() for workflow in workflows]
     print(json.dumps({"workflow_runs": workflows_data}, indent=2, default=str))
 
 
-def _print_workflows_yaml(workflows):
+def _print_workflows_yaml(workflows: list[WorkflowRun]):
     """Print workflows in YAML format."""
-    workflows_data = [_workflow_to_dict(workflow) for workflow in workflows]
+    workflows_data = [workflow.model_dump() for workflow in workflows]
     print(yaml.dump({"workflow_runs": workflows_data}, default_flow_style=False))
-
-
-def _workflow_to_dict(workflow):
-    """Convert WorkflowInfo to dictionary."""
-    return {
-        "workflow_id": workflow.workflow_id,
-        "run_id": workflow.run_id,
-        "name": workflow.name,
-        "created_at": workflow.created_at.isoformat() if workflow.created_at else None,
-        "principal_id": workflow.principal_id,
-        "execution_status": workflow.execution_status.value
-        if workflow.execution_status
-        else None,
-    }
-
-
-def _truncate_string(text: str, max_length: int) -> str:
-    """Truncate string to max_length, adding ellipsis if truncated."""
-    if len(text) <= max_length:
-        return text
-    return text[: max_length - 3] + "..."
-
-
-def _get_status_display(status):
-    """Convert WorkflowExecutionStatus to display string with emoji."""
-    if not status:
-        return "❓ Unknown"
-
-    status_map = {
-        WorkflowExecutionStatus.WORKFLOW_EXECUTION_STATUS_RUNNING: "[green]🟢 Running[/green]",
-        WorkflowExecutionStatus.WORKFLOW_EXECUTION_STATUS_COMPLETED: "[blue]✅ Completed[/blue]",
-        WorkflowExecutionStatus.WORKFLOW_EXECUTION_STATUS_FAILED: "[red]❌ Failed[/red]",
-        WorkflowExecutionStatus.WORKFLOW_EXECUTION_STATUS_CANCELED: "[yellow]🟡 Canceled[/yellow]",
-        WorkflowExecutionStatus.WORKFLOW_EXECUTION_STATUS_TERMINATED: "[red]🔴 Terminated[/red]",
-        WorkflowExecutionStatus.WORKFLOW_EXECUTION_STATUS_TIMED_OUT: "[orange]⏰ Timed Out[/orange]",
-        WorkflowExecutionStatus.WORKFLOW_EXECUTION_STATUS_CONTINUED_AS_NEW: "[purple]🔄 Continued[/purple]",
-    }
-
-    return status_map.get(status, "❓ Unknown")

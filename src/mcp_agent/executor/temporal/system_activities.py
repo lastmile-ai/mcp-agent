@@ -1,4 +1,6 @@
 from typing import Any, Dict
+import anyio
+import os
 
 from temporalio import activity
 
@@ -23,11 +25,9 @@ class SystemActivities(ContextDependent):
         message: str,
         data: Dict[str, Any] | None = None,
     ) -> bool:
-        registry = self.context.server_registry
         gateway_url = getattr(self.context, "gateway_url", None)
         gateway_token = getattr(self.context, "gateway_token", None)
         return await log_via_proxy(
-            registry,
             execution_id=execution_id,
             level=level,
             namespace=namespace,
@@ -47,11 +47,9 @@ class SystemActivities(ContextDependent):
         signal_name: str = "human_input",
     ) -> Dict[str, Any]:
         # Reuse proxy ask API; returns {result} or {error}
-        registry = self.context.server_registry
         gateway_url = getattr(self.context, "gateway_url", None)
         gateway_token = getattr(self.context, "gateway_token", None)
         return await ask_via_proxy(
-            registry,
             execution_id=execution_id,
             prompt=prompt,
             metadata={
@@ -67,27 +65,36 @@ class SystemActivities(ContextDependent):
     async def relay_notify(
         self, execution_id: str, method: str, params: Dict[str, Any] | None = None
     ) -> bool:
-        registry = self.context.server_registry
         gateway_url = getattr(self.context, "gateway_url", None)
         gateway_token = getattr(self.context, "gateway_token", None)
-        return await notify_via_proxy(
-            registry,
-            execution_id=execution_id,
-            method=method,
-            params=params or {},
-            gateway_url=gateway_url,
-            gateway_token=gateway_token,
-        )
+        # Fire-and-forget semantics with a short timeout (best-effort)
+        timeout_str = os.environ.get("MCP_NOTIFY_TIMEOUT", "2.0")
+        try:
+            timeout = float(timeout_str)
+        except Exception:
+            timeout = None
+
+        ok = True
+        try:
+            with anyio.move_on_after(timeout):
+                ok = await notify_via_proxy(
+                    execution_id=execution_id,
+                    method=method,
+                    params=params or {},
+                    gateway_url=gateway_url,
+                    gateway_token=gateway_token,
+                )
+        except Exception:
+            ok = False
+        return ok
 
     @activity.defn(name="mcp_relay_request")
     async def relay_request(
         self, execution_id: str, method: str, params: Dict[str, Any] | None = None
     ) -> Dict[str, Any]:
-        registry = self.context.server_registry
         gateway_url = getattr(self.context, "gateway_url", None)
         gateway_token = getattr(self.context, "gateway_token", None)
         return await request_via_proxy(
-            registry,
             execution_id=execution_id,
             method=method,
             params=params or {},

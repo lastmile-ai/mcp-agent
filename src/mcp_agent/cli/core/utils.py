@@ -1,16 +1,12 @@
 import asyncio
 import importlib.util
-import httpx
 import sys
 
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from mcp_agent.app import MCPApp
-from mcp_agent.cli.exceptions import CLIError
-from mcp_agent.cli.auth import UserCredentials
-from mcp_agent.cli.core.constants import DEFAULT_API_BASE_URL
-from mcp_agent.config import MCPServerSettings, MCPSettings
+from mcp_agent.config import MCPServerSettings, MCPSettings, Settings, get_settings
 
 
 def run_async(coro):
@@ -31,13 +27,19 @@ def run_async(coro):
         raise
 
 
-def load_user_app(script_path: Path | None) -> MCPApp:
+def load_user_app(
+    script_path: Path | None, settings_override: Optional[Settings] = None
+) -> MCPApp:
     """Import a user script and return an MCPApp instance.
 
     Resolution order within module globals:
       1) variable named 'app' that is MCPApp
       2) callable 'create_app' or 'get_app' that returns MCPApp
       3) first MCPApp instance found in globals
+
+    Args:
+        script_path: Path to the Python script containing the MCPApp
+        settings_override: Optional settings to override the app's configuration
     """
     if script_path is None:
         raise FileNotFoundError("No script specified")
@@ -56,6 +58,8 @@ def load_user_app(script_path: Path | None) -> MCPApp:
     # 1) app variable
     app_obj = getattr(module, "app", None)
     if isinstance(app_obj, MCPApp):
+        if settings_override:
+            app_obj._config = settings_override
         return app_obj
 
     # 2) factory
@@ -64,11 +68,15 @@ def load_user_app(script_path: Path | None) -> MCPApp:
         if callable(fn):
             res = fn()
             if isinstance(res, MCPApp):
+                if settings_override:
+                    res._config = settings_override
                 return res
 
     # 3) scan globals
     for val in module.__dict__.values():
         if isinstance(val, MCPApp):
+            if settings_override:
+                val._config = settings_override
             return val
 
     raise RuntimeError(
@@ -83,6 +91,57 @@ def ensure_mcp_servers(app: MCPApp) -> None:
         cfg.mcp = MCPSettings()
     if cfg.mcp.servers is None:
         cfg.mcp.servers = {}
+
+
+def detect_default_script(explicit: Optional[Path]) -> Path:
+    """Choose a default script path.
+
+    Preference order:
+      1) explicit value if provided
+      2) ./main.py
+      3) ./agent.py
+    Returns the first existing file; if none exist, returns the first preference path (main.py).
+    """
+    if explicit:
+        return explicit
+    cwd = Path.cwd()
+    main_candidate = cwd / "main.py"
+    agent_candidate = cwd / "agent.py"
+    if main_candidate.exists():
+        return main_candidate
+    if agent_candidate.exists():
+        return agent_candidate
+    # Fall back to main.py (even if missing) so callers can show a helpful message
+    return main_candidate
+
+
+def select_servers_from_config(
+    explicit_servers_csv: Optional[str],
+    url_servers: Optional[Dict[str, Dict[str, Any]]],
+    stdio_servers: Optional[Dict[str, Dict[str, Any]]],
+) -> List[str]:
+    """Resolve which servers should be active based on inputs and config.
+
+    - If explicit --servers provided, use those
+    - Else, if dynamic URL/stdio servers provided, use their names
+    - Else, use all servers from mcp_agent.config.yaml (if present)
+    """
+    if explicit_servers_csv:
+        items = [s.strip() for s in explicit_servers_csv.split(",") if s.strip()]
+        return items
+
+    names: List[str] = []
+    if url_servers:
+        names.extend(list(url_servers.keys()))
+    if stdio_servers:
+        names.extend(list(stdio_servers.keys()))
+    if names:
+        return names
+
+    settings = get_settings()
+    if settings.mcp and settings.mcp.servers:
+        return list(settings.mcp.servers.keys())
+    return []
 
 
 def attach_url_servers(app: MCPApp, servers: Dict[str, Dict[str, Any]] | None) -> None:
@@ -113,96 +172,3 @@ def attach_stdio_servers(
             args=desc.get("args", []),
         )
         app.context.config.mcp.servers[name] = settings
-
-
-def parse_app_identifier(identifier: str) -> Tuple[Optional[str], Optional[str]]:
-    """Parse app identifier to extract app ID and config ID.
-
-    Args:
-        identifier: App identifier (must be app_... or apcnf_...)
-
-    Returns:
-        Tuple of (app_id, config_id)
-
-    Raises:
-        ValueError: If identifier format is not recognized
-    """
-
-    if identifier.startswith("apcnf_"):
-        return None, identifier
-
-    if identifier.startswith("app_"):
-        return identifier, None
-
-    raise ValueError(
-        f"Invalid identifier format: '{identifier}'. Must be an app ID (app_...) or app configuration ID (apcnf_...)"
-    )
-
-
-async def resolve_server_url(
-    app_id: Optional[str],
-    config_id: Optional[str],
-    credentials: UserCredentials,
-) -> str:
-    """Resolve server URL from app ID or configuration ID."""
-
-    if not app_id and not config_id:
-        raise CLIError("Either app_id or config_id must be provided")
-
-    if app_id:
-        endpoint = "/mcp_app/get_app"
-        payload = {"app_id": app_id}
-        response_key = "app"
-        not_found_msg = f"App '{app_id}' not found"
-        not_deployed_msg = f"App '{app_id}' is not deployed yet"
-        no_url_msg = f"No server URL found for app '{app_id}'"
-        offline_msg = f"App '{app_id}' server is offline"
-        api_error_msg = "Failed to get app info"
-    else:
-        endpoint = "/mcp_app/get_app_configuration"
-        payload = {"app_configuration_id": config_id}
-        response_key = "appConfiguration"
-        not_found_msg = f"App configuration '{config_id}' not found"
-        not_deployed_msg = f"App configuration '{config_id}' is not deployed yet"
-        no_url_msg = f"No server URL found for app configuration '{config_id}'"
-        offline_msg = f"App configuration '{config_id}' server is offline"
-        api_error_msg = "Failed to get app configuration"
-
-    api_base = DEFAULT_API_BASE_URL
-    headers = {
-        "Authorization": f"Bearer {credentials.api_key}",
-        "Content-Type": "application/json",
-    }
-
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                f"{api_base}{endpoint}", json=payload, headers=headers
-            )
-
-            if response.status_code == 404:
-                raise CLIError(not_found_msg)
-            elif response.status_code != 200:
-                raise CLIError(
-                    f"{api_error_msg}: {response.status_code} {response.text}"
-                )
-
-            data = response.json()
-            resource_info = data.get(response_key, {})
-            server_info = resource_info.get("appServerInfo")
-
-            if not server_info:
-                raise CLIError(not_deployed_msg)
-
-            server_url = server_info.get("serverUrl")
-            if not server_url:
-                raise CLIError(no_url_msg)
-
-            status = server_info.get("status", "APP_SERVER_STATUS_UNSPECIFIED")
-            if status == "APP_SERVER_STATUS_OFFLINE":
-                raise CLIError(offline_msg)
-
-            return server_url
-
-    except httpx.RequestError as e:
-        raise CLIError(f"Failed to connect to API: {e}")

@@ -4,16 +4,15 @@ from typing import Optional
 
 import typer
 
-from mcp_agent.app import MCPApp
+from mcp_agent.cli.auth.main import load_api_key_credentials
 from mcp_agent.cli.core.utils import run_async
 from mcp_agent.cli.exceptions import CLIError
-from mcp_agent.cli.utils.ux import console
-from mcp_agent.config import MCPServerSettings, Settings, LoggerSettings
-from mcp_agent.mcp.gen_client import gen_client
+from mcp_agent.cli.mcp_app.mcp_client import mcp_connection_session
+from mcp_agent.cli.utils.ux import console, print_error
 from ...utils import (
     setup_authenticated_client,
-    resolve_server,
     handle_server_api_errors,
+    resolve_server,
 )
 
 
@@ -37,43 +36,31 @@ async def _cancel_workflow_async(
         if not server_url:
             raise CLIError(f"No server URL found for server '{server_id_or_url}'")
 
-    quiet_settings = Settings(logger=LoggerSettings(level="error"))
-    app = MCPApp(name="workflows_cli", settings=quiet_settings)
+    effective_api_key = load_api_key_credentials()
+
+    if not effective_api_key:
+        raise CLIError("Must be logged in to access server. Run 'mcp-agent login'.")
 
     try:
-        async with app.run() as workflow_app:
-            context = workflow_app.context
-
-            sse_url = (
-                f"{server_url.rstrip('/')}/sse"
-                if not server_url.endswith("/sse")
-                else server_url
-            )
-            context.server_registry.registry["workflow_server"] = MCPServerSettings(
-                name="workflow_server",
-                description=f"Deployed MCP server {server_url}",
-                url=sse_url,
-                transport="sse",
-            )
-
-            async with gen_client(
-                "workflow_server", server_registry=context.server_registry
-            ) as client:
-                tool_params = {"run_id": run_id}
-
-                result = await client.call_tool("workflows-cancel", tool_params)
-
-                success = result.content[0].text if result.content else False
-                if isinstance(success, str):
-                    success = success.lower() == "true"
+        async with mcp_connection_session(
+            server_url, effective_api_key
+        ) as mcp_client_session:
+            try:
+                with console.status(
+                    "[bold yellow]Cancelling workflow...", spinner="dots"
+                ):
+                    success = await mcp_client_session.cancel_workflow(run_id)
 
                 if success:
-                    console.print("[yellow]⚠[/yellow] Successfully cancelled workflow")
+                    console.print()
+                    console.print("[yellow]🚫 Successfully cancelled workflow[/yellow]")
                     console.print(f"  Run ID: [cyan]{run_id}[/cyan]")
                     if reason:
                         console.print(f"  Reason: [dim]{reason}[/dim]")
                 else:
-                    raise CLIError(f"Failed to cancel workflow with run ID {run_id}")
+                    print_error(f"Failed to cancel workflow with run ID {run_id}")
+            except Exception as e:
+                print_error(f"Error cancelling workflow with run ID {run_id}: {str(e)}")
 
     except Exception as e:
         raise CLIError(

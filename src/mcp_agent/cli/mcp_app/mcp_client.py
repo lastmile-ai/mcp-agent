@@ -1,8 +1,9 @@
+import ast
 import asyncio
 import json
 from contextlib import asynccontextmanager
 from enum import Enum
-from typing import Any, AsyncGenerator, Optional
+from typing import Any, AsyncGenerator, Optional, Union
 
 import mcp.types as types
 from mcp import ClientSession
@@ -10,9 +11,9 @@ from mcp.client.sse import sse_client
 from mcp.client.streamable_http import streamablehttp_client
 from pydantic import AnyUrl, BaseModel
 
+from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.utils.ux import (
     console,
-    print_error,
     print_success,
 )
 
@@ -25,7 +26,7 @@ class Workflow(BaseModel):
     name: str
     """A human-readable name for this resource."""
 
-    description: Optional[str | None] = None
+    description: Optional[str] = None
     """A description of what this resource represents."""
 
     capabilities: Optional[list[str]] = []
@@ -55,17 +56,20 @@ class WorkflowRunState(BaseModel):
     updated_at: float
     """The time when the workflow run state was last updated."""
 
-    error: Optional[str] = None
+    error: Optional[Union[str, dict]] = None
     """An error message if the workflow run failed, otherwise None."""
 
 
 class WorkflowRunResult(BaseModel):
     """The result of a workflow run."""
 
+    kind: str
+    """The kind/type of result returned by the workflow run."""
+
     value: str
     """The value returned by the workflow run, if any."""
 
-    metadata: dict
+    metadata: Optional[dict[str, Any]] = None
     """Metadata associated with the workflow run result."""
 
     start_time: Optional[float] = None
@@ -98,6 +102,9 @@ class WorkflowRunTemporal(BaseModel):
 
     close_time: Optional[float] = None
     """The time when the workflow run completed."""
+
+    execution_time: Optional[float] = None
+    """The total time taken for the workflow run."""
 
 
 class WorkflowRun(BaseModel):
@@ -186,12 +193,128 @@ class MCPClientSession(ClientSession):
             if isinstance(item, types.TextContent):
                 # Assuming the content is a JSON string representing a WorkflowRun item dict
                 try:
-                    run_data = json.loads(item.text)
-                    runs.append(WorkflowRun(**run_data))
-                except json.JSONDecodeError as e:
-                    raise ValueError(f"Invalid workflow run data: {e}")
+                    workflow_run = MCPClientSession.deserialize_workflow_run(item.text)
+                    runs.append(workflow_run)
+                except (json.JSONDecodeError, ValueError) as e:
+                    raise ValueError(f"Invalid workflow run data: {e}") from e
 
         return ListWorkflowRunsResult(workflow_runs=runs)
+
+    @staticmethod
+    def deserialize_workflow_run(text: str) -> WorkflowRun:
+        """Deserialize a JSON string into a WorkflowRun object."""
+        try:
+            run_data = json.loads(text)
+            if "result" in run_data and isinstance(run_data["result"], str):
+                try:
+                    # Could be stringified python dict instead of valid JSON
+                    run_data["result"] = ast.literal_eval(run_data["result"])
+                except (ValueError, SyntaxError) as e:
+                    try:
+                        run_data["result"] = json.loads(run_data["result"])
+                    except json.JSONDecodeError:
+                        raise ValueError(
+                            f"Invalid workflow run result data: {e}"
+                        ) from e
+            return WorkflowRun(**run_data)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid workflow run data: {e}") from e
+
+    async def get_workflow_status(
+        self, run_id: Optional[str] = None, workflow_id: Optional[str] = None
+    ) -> WorkflowRun:
+        """Send a workflows-get_status request."""
+        if not run_id and not workflow_id:
+            raise ValueError("Either run_id or workflow_id must be provided")
+
+        params = {}
+        if run_id:
+            params["run_id"] = run_id
+        if workflow_id:
+            params["workflow_id"] = workflow_id
+
+        status_response = await self.call_tool("workflows-get_status", params)
+        if status_response.isError:
+            error_message = (
+                status_response.content[0].text
+                if len(status_response.content) > 0
+                and status_response.content[0].type == "text"
+                else "Error getting workflow status"
+            )
+            raise RuntimeError(error_message)
+
+        if not status_response.content or not isinstance(
+            status_response.content[0], types.TextContent
+        ):
+            raise ValueError("Invalid response content for workflow status")
+
+        try:
+            return MCPClientSession.deserialize_workflow_run(
+                status_response.content[0].text
+            )
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid workflow status data: {e}") from e
+
+    async def cancel_workflow(self, run_id: str) -> bool:
+        """Send a workflows-cancel request."""
+        if not run_id:
+            raise ValueError("run_id must be provided to cancel a workflow")
+
+        params = {"run_id": run_id}
+
+        cancel_response = await self.call_tool("workflows-cancel", params)
+        if cancel_response.isError:
+            error_message = (
+                cancel_response.content[0].text
+                if len(cancel_response.content) > 0
+                and cancel_response.content[0].type == "text"
+                else "Error cancelling workflow"
+            )
+            raise RuntimeError(error_message)
+
+        if not cancel_response.content or not isinstance(
+            cancel_response.content[0], types.TextContent
+        ):
+            raise ValueError("Invalid response content for workflow cancellation")
+
+        success = cancel_response.content[0].text if cancel_response.content else False
+        if isinstance(success, str):
+            success = success.lower() == "true"
+        return success
+
+    async def resume_workflow(
+        self,
+        run_id: str,
+        signal_name: Optional[str] = "resume",
+        payload: Optional[dict[str, Any]] = None,
+    ) -> bool:
+        """Send a workflows-resume request."""
+        if not run_id:
+            raise ValueError("run_id must be provided to resume a workflow")
+
+        params = {"run_id": run_id, "signal_name": signal_name or "resume"}
+        if payload:
+            params["payload"] = payload
+
+        resume_response = await self.call_tool("workflows-resume", params)
+        if resume_response.isError:
+            error_message = (
+                resume_response.content[0].text
+                if len(resume_response.content) > 0
+                and resume_response.content[0].type == "text"
+                else "Error resuming workflow"
+            )
+            raise RuntimeError(error_message)
+
+        if not resume_response.content or not isinstance(
+            resume_response.content[0], types.TextContent
+        ):
+            raise ValueError("Invalid response content for workflow resumption")
+
+        success = resume_response.content[0].text if resume_response.content else False
+        if isinstance(success, str):
+            success = success.lower() == "true"
+        return success
 
 
 class TransportType(Enum):
@@ -277,13 +400,10 @@ async def mcp_connection_session(server_url: str, api_key: str):
     except Exception as e:
         status.stop()
         if isinstance(e, asyncio.TimeoutError):
-            print_error(
+            raise CLIError(
                 f"Connection to MCP server at {server_url} timed out using SSE. Please check the server URL and your network connection.",
-                e,
-            )
+            ) from e
         else:
-            print_error(
+            raise CLIError(
                 f"Error connecting to MCP server using SSE at {server_url}: {str(e)}",
-            )
-
-        raise e
+            ) from e

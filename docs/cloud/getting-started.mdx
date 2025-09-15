@@ -4,7 +4,7 @@ description: "Deploy your first agent to the cloud in under 5 minutes"
 ---
 
 <Info>
-  MCP Agent Cloud is currently in open beta. Follow the instructions below to get started, or reach out to team@lastmileai.dev for feedback or to get early access to new features.
+  MCP Agent Cloud is currently in open beta. Follow the instructions below to get started. For feedback, issues and feature requests, visit https://github.com/lastmile-ai/mcp-agent/issues or join our Discord at https://lmai.link/discord/mcp-agent.
 </Info>
 
 ## Prerequisites
@@ -14,9 +14,12 @@ Before you begin, make sure you have:
 <CardGroup cols={2}>
   <Card title="mcp-agent installed" icon="package">
     ```bash
+    # Using uv (recommended)
+    uv tool install mcp-agent
+    
+    # Or using pip
     pip install mcp-agent
-    # or
-    uv add mcp-agent
+
     ```
   </Card>
   <Card title="A working agent" icon="robot">
@@ -34,11 +37,7 @@ Before you begin, make sure you have:
     mcp-agent login
     ```
     
-    This will open your browser for authentication. If you prefer device flow:
-    
-    ```bash
-    mcp-agent login --device
-    ```
+    This will direct you to the API keys page for obtaining credentials.
   </Step>
   
   <Step title="Prepare Your Project">
@@ -67,7 +66,9 @@ Before you begin, make sure you have:
     ```yaml mcp_agent.secrets.yaml
     openai:
       api_key: !developer_secret
-    # Other secrets
+    anthropic:
+      api_key: !developer_secret
+    # Other secrets as needed
     ```
   </Step>
   
@@ -75,26 +76,20 @@ Before you begin, make sure you have:
     Deploy your agent with a single command:
     
     ```bash
-    mcp-agent deploy --name "my-first-agent"
+    mcp-agent deploy my-first-agent
     ```
+    
+    The deployment process will:
+    1. Check for existing app with this name or create a new one
+    2. Process your secrets file (transforming !developer_secret tags to secure handles)
+    3. Bundle and upload your code using Wrangler
+    4. Deploy to MCP Agent Cloud's managed infrastructure
     
     You'll see output like:
     ```
-    🚀 Deploying my-first-agent...
-    📦 Uploading project files...
-    🔨 Building agent image...
-    ⚡ Starting Temporal workers...
-    ✅ Deployment successful!
-    
-    🌐 Server URL: https://api.mcp-agent.cloud/servers/my-first-agent
-    🆔 Server ID: srv_abc123xyz
-    
-    Available tools:
-      • workflows-list
-      • workflows-MyWorkflow-run
-      • workflows-get_status
-    
-    View in console: https://console.mcp-agent.cloud/servers/srv_abc123xyz
+    App ID: app_abc123xyz
+    App URL: https://deployments.mcp-agent.com/servers/my-first-agent
+    App Status: ONLINE
     ```
   </Step>
   
@@ -109,11 +104,18 @@ Before you begin, make sure you have:
     
     ```bash
     # Get server details
-    mcp-agent cloud servers describe srv_abc123xyz
+    mcp-agent cloud servers describe app_abc123xyz
     
-    # View logs
-    mcp-agent cloud logger tail srv_abc123xyz
+    # View logs - this is essential for debugging!
+    mcp-agent cloud logger tail app_abc123xyz --follow
+    
+    # Filter for errors
+    mcp-agent cloud logger tail app_abc123xyz --grep "ERROR" --since 5m
     ```
+    
+    <Tip>
+    The `cloud logger tail` command is your best friend for debugging deployments. Use `--follow` to stream logs in real-time and `--grep` to filter for specific patterns.
+    </Tip>
   </Step>
 </Steps>
 
@@ -198,10 +200,14 @@ openai:
 
 ```bash
 # Deploy the agent
-mcp-agent deploy --name "web-summarizer" --wait
+mcp-agent deploy web-summarizer
 
-# The --wait flag waits for deployment to complete
-# Omit it for async deployment
+# Or deploy from a specific app directory
+mcp-agent deploy web-summarizer -c <path-to-app-directory>
+
+
+# or deploy with a custom app description
+mcp-agent deploy web-summarizer --app-description "Web content summarizer agent"
 ```
 
 ### Use Your Cloud Agent
@@ -210,15 +216,27 @@ Your agent is now available as an MCP server. Here's how to use it:
 
 <Tabs>
   <Tab title="Claude Desktop">
-    Add to your Claude Desktop config (`~/.claude-desktop/config.json`):
+    First configure the agent (this handles authentication and user secrets):
+    
+    ```bash
+    mcp-agent cloud configure --id https://deployments.mcp-agent.com/servers/web-summarizer
+    ```
+    
+    Then add to your Claude Desktop config (`~/.claude-desktop/config.json`):
     
     ```json
     {
       "servers": {
         "web-summarizer": {
-          "command": "mcp-agent",
-          "args": ["cloud", "connect", "srv_abc123xyz"]
-        }
+          "command": "npx",
+          "args": [
+            "-y",
+            "mcp-remote",
+            "https://deployments.mcp-agent.com/servers/web-summarizer/sse",
+            "--header",
+            "Authorization: Bearer <MCP_AGENT_API_KEY>"
+          ]
+        },
       }
     }
     ```
@@ -232,7 +250,7 @@ Your agent is now available as an MCP server. Here's how to use it:
     
     async def use_cloud_agent():
         # Connect to your cloud agent
-        async with gen_client("https://api.mcp-agent.cloud/servers/web-summarizer") as server:
+        async with gen_client("https://deployments.mcp-agent.com/servers/web-summarizer") as server:
             # Run the workflow
             result = await server.call_tool(
                 "workflows-WebSummarizerWorkflow-run",
@@ -259,7 +277,7 @@ Your agent is now available as an MCP server. Here's how to use it:
   <Tab title="cURL">
     ```bash
     # Run workflow
-    curl -X POST https://api.mcp-agent.cloud/servers/web-summarizer/call_tool \
+    curl -X POST https://deployments.mcp-agent.com/servers/web-summarizer/call_tool \
       -H "Authorization: Bearer $MCP_AGENT_TOKEN" \
       -H "Content-Type: application/json" \
       -d '{
@@ -281,46 +299,88 @@ Your agent is now available as an MCP server. Here's how to use it:
 Control your deployment with additional options:
 
 ```bash
-# Deploy with custom settings
-mcp-agent deploy \
-  --name "my-agent" \
-  --region "us-west-2" \
-  --env "CUSTOM_VAR=value" \
-  --env "ANOTHER_VAR=value2" \
-  --instance-type "small" \
-  --min-replicas 2 \
-  --max-replicas 10
+# Deploy with custom configuration directory
+mcp-agent deploy my-agent --config-dir ./my-config
+
+# Skip secrets processing if not needed
+mcp-agent deploy my-agent --no-secrets
+
+# Non-interactive mode (fail if secrets require prompting)
+mcp-agent deploy my-agent --non-interactive
+
+# Dry run to validate without deploying
+mcp-agent deploy my-agent --dry-run
+
+# Deploy with description
+mcp-agent deploy my-agent --app-description "My production agent"
 ```
 
 ### Environment Variables
 
-Pass environment variables to your deployment:
+Environment variables for the CLI:
 
 ```bash
-# Single variable
-mcp-agent deploy --env "API_KEY=secret"
+# Set API base URL
+export MCP_API_BASE_URL="https://deployments.mcp-agent.com"
 
-# Multiple variables
-mcp-agent deploy \
-  --env "DATABASE_URL=postgres://..." \
-  --env "REDIS_URL=redis://..." \
-  --env "LOG_LEVEL=debug"
+# Set API key (alternative to login)
+export MCP_API_KEY="your-api-key"
+
+# Deploy with environment variables
+MCP_API_KEY="your-key" mcp-agent deploy my-agent
 ```
 
 ### Secrets Management
 
-MCP Agent Cloud provides secure secrets management:
+MCP Agent Cloud securely handles secrets through the `mcp_agent.secrets.yaml` file:
 
-```bash
-# Set a secret
-mcp-agent cloud secrets set MY_API_KEY "secret-value"
+```yaml
+# mcp_agent.secrets.yaml
+openai:
+  api_key: !developer_secret  # Will be stored securely
 
-# List secrets
-mcp-agent cloud secrets list
+anthropic:
+  api_key: !developer_secret
 
-# Use in deployment
-mcp-agent deploy --secret "API_KEY=MY_API_KEY"
+custom_service:
+  token: !developer_secret
 ```
+
+During deployment, secrets marked with `!developer_secret` are:
+1. Prompted for if not already stored
+2. Securely uploaded to MCP Agent Cloud's vault
+3. Referenced by handle in the deployed configuration
+
+## Testing with MCP Inspector
+
+<Info>
+MCP Inspector is a powerful tool for testing and debugging your deployed MCP servers. It provides a web interface to interact with your agent's tools and resources.
+</Info>
+
+### Using MCP Inspector
+
+Test your deployed agent with the MCP Inspector:
+
+1. **Open MCP Inspector**: Visit [https://modelcontextprotocol.io/inspector](https://modelcontextprotocol.io/inspector)
+
+2. **Connect to your server**: 
+   - Select "SSE" as the transport
+   - Enter your server URL, and append "/sse"
+   - Add the required authentication headers (`Bearer $MCP_AGENT_CLOUD_API_KEY`)
+
+3. **Test your tools**:
+   - Browse available tools and resources
+   - Execute tool calls interactively
+   - View request/response payloads
+   - Debug workflow executions
+
+<Tip>
+MCP Inspector is especially useful for:
+- Testing tool implementations before integrating with clients
+- Debugging authentication issues
+- Understanding the exact payloads your agent expects
+- Verifying workflow execution flows
+</Tip>
 
 ## Managing Deployments
 
@@ -331,43 +391,43 @@ mcp-agent deploy --secret "API_KEY=MY_API_KEY"
 mcp-agent cloud servers list
 
 # Get details
-mcp-agent cloud servers describe srv_abc123xyz
+mcp-agent cloud servers describe app_abc123xyz
 
-# View statistics
-mcp-agent cloud servers stats srv_abc123xyz
+# View statistics (if available)
+mcp-agent cloud servers stats app_abc123xyz
 ```
 
 ### Monitor Workflows
 
 ```bash
 # List workflow runs
-mcp-agent cloud servers workflows srv_abc123xyz
+mcp-agent cloud servers workflows app_abc123xyz
 
 # Get workflow status
-mcp-agent cloud workflows describe srv_abc123xyz run_123
+mcp-agent cloud workflows describe app_abc123xyz run_123
 
-# Pause a workflow
-mcp-agent cloud workflows suspend srv_abc123xyz run_123
+# Suspend a workflow
+mcp-agent cloud workflows suspend app_abc123xyz run_123
 
 # Resume with data
-mcp-agent cloud workflows resume srv_abc123xyz run_123 \
+mcp-agent cloud workflows resume app_abc123xyz run_123 \
   --payload '{"continue": true}'
 
 # Cancel a workflow
-mcp-agent cloud workflows cancel srv_abc123xyz run_123
+mcp-agent cloud workflows cancel app_abc123xyz run_123
 ```
 
 ### View Logs
 
 ```bash
 # Tail logs
-mcp-agent cloud logger tail srv_abc123xyz
+mcp-agent cloud logger tail app_abc123xyz
 
 # Follow logs
-mcp-agent cloud logger tail srv_abc123xyz --follow
+mcp-agent cloud logger tail app_abc123xyz --follow
 
 # Filter logs
-mcp-agent cloud logger tail srv_abc123xyz \
+mcp-agent cloud logger tail app_abc123xyz \
   --since 1h \
   --grep "ERROR" \
   --limit 100
@@ -376,61 +436,35 @@ mcp-agent cloud logger tail srv_abc123xyz \
 ### Update Deployment
 
 ```bash
-# Redeploy with latest code
-mcp-agent deploy --name "my-agent" --update
+# Redeploy with latest code (simply run deploy again)
+mcp-agent deploy my-agent
 
-# Scale deployment
-mcp-agent cloud servers scale srv_abc123xyz --replicas 5
-
-# Update environment
-mcp-agent cloud servers update srv_abc123xyz \
-  --env "NEW_VAR=value"
+# The deployment will update the existing app if it already exists
 ```
 
 ### Delete Deployment
 
 ```bash
 # Delete a deployment
-mcp-agent cloud servers delete srv_abc123xyz
+mcp-agent cloud servers delete app_abc123xyz
 
 # Force delete (skip confirmation)
-mcp-agent cloud servers delete srv_abc123xyz --force
+mcp-agent cloud servers delete app_abc123xyz --force
 ```
-
-## Web Console
-
-Access the web console for visual management:
-
-```bash
-# Open console home
-mcp-agent cloud open
-
-# Open specific server
-mcp-agent cloud open --server srv_abc123xyz
-```
-
-The web console provides:
-- Real-time workflow monitoring
-- Log visualization
-- Metrics and analytics
-- Team management
-- Billing and usage
 
 ## Client Integration
 
-Help others connect to your deployed agent:
+Help users connect to your deployed agent:
 
 ```bash
-# Generate integration code for Claude Desktop
-mcp-agent configure https://api.mcp-agent.cloud/servers/my-agent \
-  --client claude \
-  --write
+# Configure access for a deployed agent (handles auth and secrets)
+mcp-agent cloud configure --id https://deployments.mcp-agent.com/servers/my-agent
 
-# For VS Code
-mcp-agent configure https://api.mcp-agent.cloud/servers/my-agent \
-  --client vscode \
-  --write
+# Show required parameters for configuration
+mcp-agent cloud configure --id https://deployments.mcp-agent.com/servers/my-agent --params
 ```
+
+After configuration, users can connect with their MCP client using the server URL and appropriate transport (SSE or streamable HTTP).
 
 ## Best Practices
 
@@ -472,7 +506,9 @@ mcp-agent configure https://api.mcp-agent.cloud/servers/my-agent \
     Tag your deployments for easy rollback:
     
     ```bash
-    mcp-agent deploy --name "my-agent" --tag "v1.2.0"
+    git tag v1.2.0
+    git push origin v1.2.0
+    mcp-agent deploy my-agent
     ```
   </Accordion>
 </AccordionGroup>
@@ -483,7 +519,7 @@ mcp-agent configure https://api.mcp-agent.cloud/servers/my-agent \
   <Accordion title="Deployment Fails">
     Check build logs:
     ```bash
-    mcp-agent cloud logger tail srv_abc123xyz --since 10m
+    mcp-agent cloud logger tail app_abc123xyz --since 10m
     ```
     
     Common issues:
@@ -495,7 +531,7 @@ mcp-agent configure https://api.mcp-agent.cloud/servers/my-agent \
   <Accordion title="Workflow Not Starting">
     Verify worker is running:
     ```bash
-    mcp-agent cloud servers describe srv_abc123xyz
+    mcp-agent cloud servers describe app_abc123xyz
     ```
     
     Check for "Workers: Running" in the output.
@@ -522,32 +558,32 @@ Explore complete examples:
 
 <CardGroup cols={2}>
   <Card 
-    title="Web Research Agent" 
-    icon="magnifying-glass"
-    href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/cloud/web-research"
+    title="Basic Agent Examples" 
+    icon="robot"
+    href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/basic"
   >
-    Multi-step research with citations
+    Simple agents with MCP servers
   </Card>
   <Card 
-    title="Customer Support Bot" 
-    icon="headset"
-    href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/cloud/support-bot"
+    title="Workflow Patterns" 
+    icon="diagram-project"
+    href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows"
   >
-    Ticket handling with escalation
+    All workflow pattern implementations
   </Card>
   <Card 
-    title="Data Pipeline" 
-    icon="pipe"
-    href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/cloud/data-pipeline"
+    title="MCP Agent Server" 
+    icon="server"
+    href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp_agent_server"
   >
-    ETL with multiple agents
+    Agent-as-server examples
   </Card>
   <Card 
-    title="Code Review Agent" 
-    icon="code"
-    href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/cloud/code-review"
+    title="Temporal Examples" 
+    icon="clock"
+    href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/temporal"
   >
-    Automated PR reviews
+    Durable workflow examples
   </Card>
 </CardGroup>
 
@@ -560,7 +596,7 @@ Explore complete examples:
   <Card title="Workflow Management" icon="diagram-project" href="/workflows/overview">
     Manage long-running workflows
   </Card>
-  <Card title="CLI Reference" icon="terminal" href="/cloud/cli-reference">
+  <Card title="CLI Reference" icon="terminal" href="/cli-reference">
     Complete command reference
   </Card>
   <Card title="Monitoring" icon="chart-line" href="/advanced/monitoring">
