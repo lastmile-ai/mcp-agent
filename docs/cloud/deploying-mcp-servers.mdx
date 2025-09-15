@@ -5,9 +5,9 @@ description: "Deploy standard MCP servers to MCP Agent Cloud infrastructure"
 
 ## Overview
 
-MCP Agent Cloud can deploy both AI agents **and** standard MCP servers. Since agents deployed to MCP Agent Cloud are exposed as MCP servers themselves, the platform naturally supports deploying any MCP-compatible server implementation.
+**mcp-agent cloud** can deploy both AI agents **and** standard MCP servers. Since agents deployed to **mcp-agent cloud** are exposed as MCP servers themselves, the platform naturally supports deploying any MCP-compatible server implementation.
 
-This means you can use MCP Agent Cloud to:
+This means you can use **mcp-agent cloud** to:
 - Deploy regular MCP servers built with FastMCP or other frameworks
 - Host tool servers that don't use AI workflows
 - Deploy resource servers for data access
@@ -44,7 +44,7 @@ async def current_weather_resource():
     """Provide current weather data."""
     return {"temperature": 72, "condition": "sunny"}
 
-# Deploy with MCP Agent Cloud
+# Deploy with mcp-agent cloud
 # mcp-agent deploy my-weather-server
 ```
 
@@ -168,7 +168,7 @@ async def create_ticket(title: str, description: str) -> dict:
 The deployment process is identical whether you're deploying a simple MCP server or a full agent:
 
 ```bash
-# 1. Authenticate with MCP Agent Cloud
+# 1. Authenticate with mcp-agent cloud
 mcp-agent cloud auth login
 
 # 2. Deploy your server
@@ -181,18 +181,17 @@ mcp-agent cloud servers describe <deployment-id>
 mcp-agent configure <server-url> --client claude
 ```
 
-## Benefits of Using MCP Agent Cloud
+## Benefits of Using **mcp-agent cloud**
 
-Even for simple MCP servers, MCP Agent Cloud provides:
+Even for simple MCP servers, **mcp-agent cloud** provides:
 
 ### Infrastructure Management
 - Automatic SSL/TLS termination
 - Load balancing and auto-scaling
-- Regional deployment options
 - High availability
 
 ### Security
-- Secure secrets management via Vault
+- Secure secrets management
 - Authentication and authorization
 - End-to-end encryption
 - Audit logging
