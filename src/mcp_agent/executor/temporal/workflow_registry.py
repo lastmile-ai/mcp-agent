@@ -1,6 +1,6 @@
 import asyncio
 import base64
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import (
     Any,
     Dict,
@@ -225,7 +225,7 @@ class TemporalWorkflowRegistry(WorkflowRegistry):
         page_size: int | None = None,
         next_page_token: bytes | None = None,
         rpc_metadata: Dict[str, str] | None = None,
-        rpc_timeout: Any | None = None,
+        rpc_timeout: timedelta | None = None,
     ) -> List[Dict[str, Any]] | WorkflowRunsPage:
         """
         List workflow runs by querying Temporal visibility (preferred).
@@ -252,20 +252,17 @@ class TemporalWorkflowRegistry(WorkflowRegistry):
             await self._executor.ensure_client()
             client = self._executor.client
 
-            # Use caller query if provided; else default to newest first
-            query_local = query or "order by StartTime desc"
-
             # TODO(saqadri): Multi-user auth scoping
             # When supporting multiple users on one server, auth scoping should be enforced
             # by the proxy layer using RPC metadata (e.g., API key). This client code should
             # simply pass through rpc_metadata and let the backend filter results and manage
             # pagination accordingly.
             iterator = client.list_workflows(
-                query=query_local,
+                query=query,
                 limit=limit,
-                page_size=page_size,
+                page_size=page_size or 1000,
                 next_page_token=next_page_token,
-                rpc_metadata=rpc_metadata,
+                rpc_metadata=rpc_metadata or {},
                 rpc_timeout=rpc_timeout,
             )
 
