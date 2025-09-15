@@ -135,6 +135,9 @@ async def retry_async_with_exponential_backoff(
         except Exception as e:
             last_exception = e
 
+            if isinstance(e, asyncio.CancelledError):
+                raise
+
             if attempt == max_attempts or not retryable_check(e):
                 break
 
