@@ -27,7 +27,9 @@ def save_credentials(credentials: UserCredentials) -> None:
 
     # Write atomically to avoid partial or trailing content issues
     # Use a temp file in the same directory, then replace
-    tmp_fd, tmp_path = tempfile.mkstemp(prefix=".credentials.json.", dir=cred_dir, text=True)
+    tmp_fd, tmp_path = tempfile.mkstemp(
+        prefix=".credentials.json.", dir=cred_dir, text=True
+    )
     try:
         with os.fdopen(tmp_fd, "w") as f:
             f.write(credentials.to_json())
@@ -62,7 +64,9 @@ def load_credentials() -> Optional[UserCredentials]:
     """
     # Try primary location
     primary_path = os.path.expanduser(DEFAULT_CREDENTIALS_PATH)
-    paths_to_try = [primary_path] + [os.path.expanduser(p) for p in ALTERNATE_CREDENTIALS_PATHS]
+    paths_to_try = [primary_path] + [
+        os.path.expanduser(p) for p in ALTERNATE_CREDENTIALS_PATHS
+    ]
 
     for path in paths_to_try:
         if os.path.exists(path):

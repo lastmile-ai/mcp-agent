@@ -21,7 +21,6 @@ from mcp_agent.cli.cloud.commands.app import (
     get_app_status,
     list_app_workflows,
 )
-from mcp_agent.cli.cloud.commands.apps import list_apps
 from mcp_agent.cli.cloud.commands.logger import tail_logs
 from mcp_agent.cli.cloud.commands.servers import (
     delete_server,

@@ -42,6 +42,7 @@ async def _describe_workflow_async(
             raise CLIError(f"No server URL found for server '{server_id_or_url}'")
 
     from mcp_agent.cli.config import settings as _settings
+
     effective_api_key = _settings.API_KEY or load_api_key_credentials()
 
     if not effective_api_key:
