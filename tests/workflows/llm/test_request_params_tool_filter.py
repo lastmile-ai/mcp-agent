@@ -558,10 +558,10 @@ class TestBackwardCompatibilityIntegration:
         
         # Test 3: Override with existing params only
         override_params2 = RequestParams(temperature=0.9)
-        result3 = llm.get_request_params(request_params=override_params2)
-        assert result3.maxTokens == 1000  # From default
-        assert result3.temperature == 0.9  # From override
-        assert result3.tool_filter is None  # Default
+        result4 = llm.get_request_params(request_params=override_params2)
+        assert result4.maxTokens == 1000  # From default
+        assert result4.temperature == 0.9  # From override
+        assert result4.tool_filter is None  # Default
 
     @pytest.mark.asyncio
     async def test_augmented_llm_list_tools_method_signature_compatible(self):
