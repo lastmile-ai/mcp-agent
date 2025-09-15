@@ -16,7 +16,7 @@ from mcp_agent.cli.utils.ux import console, print_error
 
 from ...utils import (
     handle_server_api_errors,
-    resolve_server,
+    resolve_server_async,
     setup_authenticated_client,
 )
 
@@ -29,7 +29,7 @@ async def _describe_workflow_async(
         server_url = server_id_or_url
     else:
         client = setup_authenticated_client()
-        server = resolve_server(client, server_id_or_url)
+        server = await resolve_server_async(client, server_id_or_url)
 
         if hasattr(server, "appServerInfo") and server.appServerInfo:
             server_url = server.appServerInfo.serverUrl
@@ -41,7 +41,9 @@ async def _describe_workflow_async(
         if not server_url:
             raise CLIError(f"No server URL found for server '{server_id_or_url}'")
 
-    effective_api_key = load_api_key_credentials()
+    from mcp_agent.cli.config import settings as _settings
+
+    effective_api_key = _settings.API_KEY or load_api_key_credentials()
 
     if not effective_api_key:
         raise CLIError("Must be logged in to access server. Run 'mcp-agent login'.")

@@ -21,7 +21,6 @@ from mcp_agent.cli.cloud.commands.app import (
     get_app_status,
     list_app_workflows,
 )
-from mcp_agent.cli.cloud.commands.apps import list_apps
 from mcp_agent.cli.cloud.commands.logger import tail_logs
 from mcp_agent.cli.cloud.commands.servers import (
     delete_server,
@@ -78,16 +77,6 @@ app.command(name="deploy", help="Deploy an MCP agent (alias for 'cloud deploy')"
     deploy_config
 )
 
-
-# Sub-typer for `mcp-agent apps` commands
-app_cmd_apps = typer.Typer(
-    help="Management commands for multiple MCP Apps",
-    no_args_is_help=True,
-    cls=HelpfulTyperGroup,
-)
-app_cmd_apps.command(name="list")(list_apps)
-app.add_typer(app_cmd_apps, name="apps", help="Manage MCP Apps")
-
 # Sub-typer for `mcp-agent app` commands
 app_cmd_app = typer.Typer(
     help="Management commands for an MCP App",
@@ -98,7 +87,7 @@ app_cmd_app.command(name="list")(list_servers)
 app_cmd_app.command(name="delete")(delete_app)
 app_cmd_app.command(name="status")(get_app_status)
 app_cmd_app.command(name="workflows")(list_app_workflows)
-app.add_typer(app_cmd_app, name="app", help="Manage an MCP App")
+app.add_typer(app_cmd_app, name="apps", help="Manage an MCP App")
 
 # Sub-typer for `mcp-agent workflows` commands
 app_cmd_workflows = typer.Typer(
