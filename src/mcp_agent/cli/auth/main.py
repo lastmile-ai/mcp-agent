@@ -1,8 +1,10 @@
 import json
 import os
+import tempfile
 from typing import Optional
 
-from .constants import DEFAULT_CREDENTIALS_PATH
+from .constants import DEFAULT_CREDENTIALS_PATH, ALTERNATE_CREDENTIALS_PATHS
+from mcp_agent.cli.utils.ux import print_warning
 from .models import UserCredentials
 
 
@@ -23,10 +25,33 @@ def save_credentials(credentials: UserCredentials) -> None:
     except OSError:
         pass
 
-    # Create file with restricted permissions (0600) to prevent leakage
-    fd = os.open(credentials_path, os.O_WRONLY | os.O_CREAT, 0o600)
-    with os.fdopen(fd, "w") as f:
-        f.write(credentials.to_json())
+    # Write atomically to avoid partial or trailing content issues
+    # Use a temp file in the same directory, then replace
+    tmp_fd, tmp_path = tempfile.mkstemp(prefix=".credentials.json.", dir=cred_dir, text=True)
+    try:
+        with os.fdopen(tmp_fd, "w") as f:
+            f.write(credentials.to_json())
+            f.flush()
+            os.fsync(f.fileno())
+        # Ensure restricted permissions (0600)
+        try:
+            os.chmod(tmp_path, 0o600)
+        except OSError:
+            pass
+        # Atomic replace
+        os.replace(tmp_path, credentials_path)
+        # Ensure final file perms in case replace inherited different mode
+        try:
+            os.chmod(credentials_path, 0o600)
+        except OSError:
+            pass
+    finally:
+        # Clean up temp if replace failed
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except OSError:
+            pass
 
 
 def load_credentials() -> Optional[UserCredentials]:
@@ -35,14 +60,24 @@ def load_credentials() -> Optional[UserCredentials]:
     Returns:
         UserCredentials object if it exists, None otherwise
     """
-    credentials_path = os.path.expanduser(DEFAULT_CREDENTIALS_PATH)
-    if os.path.exists(credentials_path):
-        try:
-            with open(credentials_path, "r", encoding="utf-8") as f:
-                return UserCredentials.from_json(f.read())
-        except (json.JSONDecodeError, KeyError, ValueError):
-            # Handle corrupted or old format credentials
-            return None
+    # Try primary location
+    primary_path = os.path.expanduser(DEFAULT_CREDENTIALS_PATH)
+    paths_to_try = [primary_path] + [os.path.expanduser(p) for p in ALTERNATE_CREDENTIALS_PATHS]
+
+    for path in paths_to_try:
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    return UserCredentials.from_json(f.read())
+            except (json.JSONDecodeError, KeyError, ValueError):
+                # Corrupted credentials; warn and continue to other locations
+                try:
+                    print_warning(
+                        f"Detected corrupted credentials file at {path}. Please run 'mcp-agent login' again to re-authenticate."
+                    )
+                except Exception:
+                    pass
+                continue
     return None
 
 
@@ -52,11 +87,18 @@ def clear_credentials() -> bool:
     Returns:
         bool: True if credentials were cleared, False if none existed
     """
-    credentials_path = os.path.expanduser(DEFAULT_CREDENTIALS_PATH)
-    if os.path.exists(credentials_path):
-        os.remove(credentials_path)
-        return True
-    return False
+    removed = False
+    paths = [os.path.expanduser(DEFAULT_CREDENTIALS_PATH)] + [
+        os.path.expanduser(p) for p in ALTERNATE_CREDENTIALS_PATHS
+    ]
+    for path in paths:
+        if os.path.exists(path):
+            try:
+                os.remove(path)
+                removed = True
+            except OSError:
+                pass
+    return removed
 
 
 def load_api_key_credentials() -> Optional[str]:

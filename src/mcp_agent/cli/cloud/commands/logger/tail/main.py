@@ -19,6 +19,7 @@ from rich.text import Text
 
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.auth import load_credentials, UserCredentials
+from mcp_agent.cli.config import settings as _settings
 from mcp_agent.cli.cloud.commands.utils import (
     setup_authenticated_client,
     resolve_server,
@@ -103,8 +104,13 @@ def tail_logs(
     """
 
     credentials = load_credentials()
+    # Prefer environment variable if present
+    if not credentials and _settings.API_KEY:
+        credentials = UserCredentials(api_key=_settings.API_KEY)
     if not credentials:
-        print_error("Not authenticated. Run 'mcp-agent login' first.")
+        print_error(
+            "Not authenticated. Set MCP_API_KEY environment variable or run 'mcp-agent login'."
+        )
         raise typer.Exit(4)
 
     # Validate conflicting options

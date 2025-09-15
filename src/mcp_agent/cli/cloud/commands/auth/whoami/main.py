@@ -4,7 +4,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from mcp_agent.cli.auth import load_credentials
+from mcp_agent.cli.auth import load_credentials, UserCredentials
+from mcp_agent.cli.config import settings as _settings
 from mcp_agent.cli.exceptions import CLIError
 
 
@@ -13,11 +14,22 @@ def whoami() -> None:
 
     Shows the authenticated user information and organization memberships.
     """
+    console = Console()
     credentials = load_credentials()
-
+    # If no stored credentials, allow environment variable key
+    if not credentials and _settings.API_KEY:
+        credentials = UserCredentials(api_key=_settings.API_KEY)
+        # Print a brief note that this is env-based auth
+        console.print(
+            Panel(
+                "Using MCP_API_KEY environment variable for authentication.",
+                title="Auth Source",
+                border_style="green",
+            )
+        )
     if not credentials:
         raise CLIError(
-            "Not logged in. Use 'mcp-agent login' to authenticate.", exit_code=4
+            "Not authenticated. Set MCP_API_KEY or run 'mcp-agent login'.", exit_code=4
         )
 
     if credentials.is_token_expired:
@@ -25,8 +37,6 @@ def whoami() -> None:
             "Authentication token has expired. Use 'mcp-agent login' to re-authenticate.",
             exit_code=4,
         )
-
-    console = Console()
 
     user_table = Table(show_header=False, box=None)
     user_table.add_column("Field", style="bold")
