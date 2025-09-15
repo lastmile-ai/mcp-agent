@@ -315,11 +315,15 @@ class TemporalWorkflowRegistry(WorkflowRegistry):
                     close_time = workflow_info.close_time
                     execution_time = workflow_info.execution_time
 
-                    def _to_timestamp(dt: datetime):
+                    def _to_timestamp(dt: datetime | None):
+                        if dt is None:
+                            return None
                         try:
-                            return dt.timestamp() if dt is not None else None
+                            if isinstance(dt, (int, float)):
+                                return float(dt)
+                            return dt.timestamp()
                         except Exception:
-                            return dt
+                            return None
 
                     workflow_type = workflow_info.workflow_type
 
@@ -362,12 +366,17 @@ class TemporalWorkflowRegistry(WorkflowRegistry):
                 if max_count is not None and count >= max_count:
                     break
 
-            if iterator.next_page_token:
+            token = getattr(iterator, "next_page_token", None)
+            if token:
+                if isinstance(token, str):
+                    try:
+                        token = token.encode("utf-8")
+                    except Exception:
+                        token = None
+            if token:
                 return WorkflowRunsPage(
                     runs=results,
-                    next_page_token=base64.b64encode(iterator.next_page_token).decode(
-                        "ascii"
-                    ),
+                    next_page_token=base64.b64encode(token).decode("ascii"),
                 )
             else:
                 return results
