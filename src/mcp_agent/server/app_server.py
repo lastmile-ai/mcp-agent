@@ -528,7 +528,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                 logger.error(
                     f"[notify] error forwarding for execution_id={execution_id}: {e_mapped}"
                 )
-                return JSONResponse({"ok": False, "error": str(e_mapped)}, status_code=500)
+                return JSONResponse(
+                    {"ok": False, "error": str(e_mapped)}, status_code=500
+                )
 
         @mcp_server.custom_route(
             "/internal/session/by-run/{execution_id}/request",
@@ -604,7 +606,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         except Exception:
                             pass
                         return JSONResponse(
-                            result.model_dump(by_alias=True, mode="json", exclude_none=True)
+                            result.model_dump(
+                                by_alias=True, mode="json", exclude_none=True
+                            )
                         )
                     elif method == "elicitation/create":
                         req = ServerRequest(
@@ -626,7 +630,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         except Exception:
                             pass
                         return JSONResponse(
-                            result.model_dump(by_alias=True, mode="json", exclude_none=True)
+                            result.model_dump(
+                                by_alias=True, mode="json", exclude_none=True
+                            )
                         )
                     elif method == "roots/list":
                         req = ServerRequest(ListRootsRequest(method="roots/list"))
@@ -643,7 +649,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         except Exception:
                             pass
                         return JSONResponse(
-                            result.model_dump(by_alias=True, mode="json", exclude_none=True)
+                            result.model_dump(
+                                by_alias=True, mode="json", exclude_none=True
+                            )
                         )
                     elif method == "ping":
                         req = ServerRequest(PingRequest(method="ping"))
@@ -660,7 +668,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         except Exception:
                             pass
                         return JSONResponse(
-                            result.model_dump(by_alias=True, mode="json", exclude_none=True)
+                            result.model_dump(
+                                by_alias=True, mode="json", exclude_none=True
+                            )
                         )
                 except Exception as e_latest:
                     logger.warning(
@@ -673,9 +683,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                 logger.warning(
                     f"[request] session_not_available for execution_id={execution_id}"
                 )
-                return JSONResponse(
-                    {"error": "session_not_available"}, status_code=503
-                )
+                return JSONResponse({"error": "session_not_available"}, status_code=503)
 
             try:
                 # Prefer generic request passthrough if available
@@ -858,7 +866,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             metadata = body.get("metadata") or {}
             try:
                 logger.info(
-                    f"[human] incoming execution_id={execution_id} signal_name={metadata.get('signal_name','human_input')}"
+                    f"[human] incoming execution_id={execution_id} signal_name={metadata.get('signal_name', 'human_input')}"
                 )
             except Exception:
                 pass
@@ -927,7 +935,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                 # Fallback to mapped session
                 session = await _get_session(execution_id)
                 if not session:
-                    return JSONResponse({"error": "session_not_available"}, status_code=503)
+                    return JSONResponse(
+                        {"error": "session_not_available"}, status_code=503
+                    )
                 await session.send_log_message(
                     level="info",  # type: ignore[arg-type]
                     data=payload,
