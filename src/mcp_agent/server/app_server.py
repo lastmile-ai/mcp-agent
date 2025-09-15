@@ -1842,6 +1842,27 @@ async def _workflow_run(
                     except Exception:
                         gateway_url = None
 
+            # Normalize gateway URL if it points to a non-routable bind address
+            def _normalize_gateway_url(url: str | None) -> str | None:
+                if not url:
+                    return url
+                try:
+                    from urllib.parse import urlparse, urlunparse
+
+                    parsed = urlparse(url)
+                    host = parsed.hostname or ""
+                    # Replace wildcard binds with a loopback address that's actually connectable
+                    if host in ("0.0.0.0", "::", "[::]"):
+                        new_host = "127.0.0.1" if host == "0.0.0.0" else "localhost"
+                        netloc = parsed.netloc.replace(host, new_host)
+                        parsed = parsed._replace(netloc=netloc)
+                        return urlunparse(parsed)
+                except Exception:
+                    pass
+                return url
+
+            gateway_url = _normalize_gateway_url(gateway_url)
+
             # Final fallback: environment variables (useful if proxies don't set headers)
             try:
                 import os as _os
