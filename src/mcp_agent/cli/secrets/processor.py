@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional, Sequence, Union
 
 import typer
 import yaml
+from rich.prompt import Prompt
 
 from mcp_agent.cli.auth import load_api_key_credentials
 from mcp_agent.cli.config import settings
@@ -20,6 +21,7 @@ from mcp_agent.cli.core.constants import (
     SECRET_ID_PATTERN,
     SecretType,
 )
+from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.secrets.api_client import SecretsClient
 from mcp_agent.cli.secrets.yaml_tags import (
     DeveloperSecret,
@@ -31,7 +33,6 @@ from mcp_agent.cli.utils.ux import (
     console,
     print_error,
     print_info,
-    print_secret_prompt,
     print_secret_summary,
     print_warning,
 )
@@ -48,21 +49,25 @@ async def process_config_secrets(
     """Process secrets in a configuration file.
 
     This function:
-    1. Loads a YAML configuration file with custom tag handlers
-    2. Loads existing transformed configuration if output_path exists
-    3. Transforms the configuration recursively, replacing developer secrets with UUID handles
-       - Reuses existing transformed secrets from output_path where possible
-       - Transforms new developer secrets not found in output_path
-       - Removes old transformed secrets that are no longer in the input
-    4. Writes the transformed configuration to an output file
+    1. Loads a YAML secrets file from input_path
+    2. Loads existing transformed secrets file from output_path if it exists
+    3. Transforms the input secrets recursively:
+        - If non-interactive is True, automatically transforms all secrets to
+            developer secrets without prompting, reusing existing secrets where applicable
+        - Otherwise:
+            - Prompts to determine whether a secret is a developer secret to transform
+                or a user secret to tag as !user_secret for subsequent configured deployments
+            - Prompts to handle existing secrets that appear in both output and input files
+            - Prompts to remove old transformed secrets that are no longer in the input
+    4. Writes the transformed secrets configuration to the output file
 
     Args:
-        input_path: Path to the input configuration file
-        output_path: Path to write the transformed configuration
+        input_path: Path to the input secrets file
+        output_path: Path to write the transformed secrets configuration
         client: SecretsClient instance (optional, will create one if not provided)
         api_url: API URL for creating a new client (ignored if client is provided)
         api_key: API key for creating a new client (ignored if client is provided)
-        non_interactive: Never prompt for missing values (fail instead)
+        non_interactive: Never prompt for transformation decisions, follow specification above
 
     Returns:
         Dict with statistics about processed secrets
@@ -87,8 +92,9 @@ async def process_config_secrets(
         effective_api_key = api_key or settings.API_KEY or load_api_key_credentials()
 
         if not effective_api_key:
-            print_warning("No API key provided. Using empty key.")
-            effective_api_key = ""
+            raise CLIError(
+                "Must have API key to process secrets. Login via 'mcp-agent login'."
+            )
 
         # Create a new client
         client = SecretsClient(api_url=effective_api_url, api_key=effective_api_key)
@@ -103,7 +109,9 @@ async def process_config_secrets(
             with open(output_path, "r", encoding="utf-8") as f:
                 existing_secrets_content = f.read()
         except Exception as e:
-            print_warning(f"Failed to load existing secrets for reuse: {str(e)}")
+            raise CLIError(
+                f"Failed to load existing secrets for reuse: {str(e)}"
+            ) from e
 
     # Process the content
     try:
@@ -116,8 +124,7 @@ async def process_config_secrets(
 
         processed_content = dump_yaml_with_secrets(transformed_config)
     except Exception as e:
-        print_error(f"Failed to process secrets: {str(e)}")
-        raise
+        raise CLIError(f"Failed to process secrets: {str(e)}") from e
 
     if output_path:
         try:
@@ -125,8 +132,7 @@ async def process_config_secrets(
                 f.write(processed_content)
             print_info(f"Transformed config written to {output_path}")
         except Exception as e:
-            print_error(f"Failed to write output file: {str(e)}")
-            raise
+            raise CLIError(f"Failed to write output file: {str(e)}") from e
 
     # Get the secrets context from the client if available
     if hasattr(client, "secrets_context"):
@@ -134,11 +140,10 @@ async def process_config_secrets(
     else:
         # Create a basic context if not available from the client
         secrets_context = {
-            "developer_secrets": [],
+            "deployment_secrets": [],
             "user_secrets": [],
-            "env_loaded": [],
-            "prompted": [],
             "reused_secrets": [],
+            "skipped_secrets": [],
         }
 
     # Show a summary of the processed secrets
@@ -156,38 +161,37 @@ async def process_secrets_in_config_str(
     """Process secrets in a configuration string.
 
     This function:
-    1. Parses a YAML string with custom tag handlers
-    2. If existing_secrets_content is provided, parses it to reuse secrets
-    3. Transforms the parsed object recursively, reusing existing secrets where possible
+    1. Parses an input YAML string with raw secrets
+    2. If existing_secrets_content is provided, parses it to possibly reuse secrets (prompting if needed)
+    3. Transforms the parsed object recursively
     4. Returns the transformed object (not a string)
 
     Args:
-        input_secrets_content: YAML string with secret tags
-        existing_secrets_content: Optional YAML string with existing transformed secrets
+        input_secrets_content: YAML string with raw secrets
+        existing_secrets_content: Optional YAML string with existing transformed secrets and tags
         client: SecretsClient instance for creating secrets
-        non_interactive: Never prompt for missing values (fail instead)
+        non_interactive: Never prompt for transformation decisions, reuse existing secrets where applicable
 
     Returns:
-        Transformed configuration object with developer secrets replaced by handles
+        Transformed configuration object with raw secrets replaced by secret handles and user secrets replaced
+        by !user_secret tags
     """
     # Initialize secrets context for tracking statistics
     secrets_context: Dict[str, Sequence] = {
-        "developer_secrets": [],
+        "deployment_secrets": [],
         "user_secrets": [],
-        "env_loaded": [],
-        "prompted": [],
         "reused_secrets": [],
+        "skipped_secrets": [],
     }
 
     # Make the context available to the client for later retrieval
     setattr(client, "secrets_context", secrets_context)
 
-    # Parse the input YAML with custom tag handling
+    # Parse the input secrets YAML (should not have custom tags)
     try:
-        input_config = load_yaml_with_secrets(input_secrets_content)
+        input_config = yaml.safe_load(input_secrets_content)
     except Exception as e:
-        print_error(f"Failed to parse input YAML: {str(e)}")
-        raise
+        raise CLIError(f"Failed to parse input YAML: {str(e)}") from e
 
     # Parse the existing secrets YAML if provided
     existing_config = None
@@ -196,12 +200,13 @@ async def process_secrets_in_config_str(
             existing_config = load_yaml_with_secrets(existing_secrets_content)
             print_info("Loaded existing secrets configuration for reuse")
         except Exception as e:
-            print_warning(f"Failed to parse existing secrets YAML: {str(e)}")
-            existing_config = None
+            raise CLIError(f"Failed to parse existing secrets YAML: {str(e)}") from e
 
     # Make sure the existing config secrets are actually valid for the user
     if existing_config:
-        await validate_config_secrets(existing_config, client)
+        existing_config = await get_validated_config_secrets(
+            input_config, existing_config, client, non_interactive, ""
+        )
 
     # Transform the config recursively, passing existing config for reuse
     transformed_config = await transform_config_recursive(
@@ -216,41 +221,120 @@ async def process_secrets_in_config_str(
     return transformed_config
 
 
-async def validate_config_secrets(config: Dict[str, Any], client: SecretsClient):
-    """Validate the secrets in the configuration against the SecretsClient with current API key
-    to ensure they can be resolved.
+async def get_validated_config_secrets(
+    input_config: Dict[str, Any],
+    existing_config: Dict[str, Any],
+    client: SecretsClient,
+    non_interactive: bool,
+    path: str = "",
+) -> Dict[str, Any]:
+    """Validate the secrets in the existing_config against the SecretsClient with current API key
+    to ensure they can be resolved. Return a subset of existing_config containing only keys/values
+    that exist in input_config and match the input values, without reprocessing them.
+
+    Args:
+        input_config: The new input configuration (should contain raw secrets, not tags)
+        existing_config: The existing transformed configuration
+        client: SecretsClient for validating secret handles
+        non_interactive: Whether to skip interactive prompts
+
+    Returns:
+        A subset of existing_config with keys/values that are good to keep as-is
     """
-    for value in config.values():
-        if isinstance(value, str) and SECRET_ID_PATTERN.match(value):
-            # Check if the secret can be accessed
+    validated_config = {}
+
+    for key, existing_value in existing_config.items():
+        current_path = f"{path}.{key}" if path else key
+
+        if isinstance(existing_value, str) and SECRET_ID_PATTERN.match(existing_value):
+            if key not in input_config:
+                if not non_interactive:
+                    should_exclude = typer.confirm(
+                        f"Secret at '{current_path}' exists in existing transformed secrets file but not in raw secrets file. Exclude it?",
+                        default=True,
+                    )
+                    if should_exclude:
+                        continue
+                else:
+                    continue
+            else:
+                # Validate input config value is raw (not tagged)
+                input_value = input_config[key]
+                if isinstance(input_value, (DeveloperSecret, UserSecret)):
+                    raise ValueError(
+                        f"Input secrets config at '{current_path}' contains secret tag. Input should contain raw secrets, not tags."
+                    )
+
+            # Validate the secret can be resolved and then validate it against existing input value
             try:
-                if not await client.get_secret_value(value):
-                    raise ValueError(f"Unable to resolve secret: {value}")
+                secret_value = await client.get_secret_value(existing_value)
+                if not secret_value:
+                    raise ValueError(
+                        f"Transformed secret handle '{existing_value}' at '{current_path}' could not be resolved."
+                    )
+
+                if key in input_config:
+                    if input_config[key] == secret_value:
+                        validated_config[key] = existing_value
+                    else:
+                        if non_interactive:
+                            print_warning(
+                                f"Secret at '{current_path}' value in transformed secrets file does not match raw secrets file. It will be reprocessed."
+                            )
+                        else:
+                            reprocess = typer.confirm(
+                                f"Secret at '{current_path}' value in transformed secrets file does not match raw secrets file. Do you want to reprocess it?",
+                                default=True,
+                            )
+                            if reprocess:
+                                continue
+                            else:
+                                validated_config[key] = existing_value
+
             except Exception as e:
-                raise ValueError(f"Error resolving secret '{value}': {str(e)}")
-        elif isinstance(value, dict):
-            # Recursively validate nested dictionaries
-            await validate_config_secrets(value, client)
+                raise CLIError(
+                    f"Failed to validate secret at '{current_path}' in transformed secrets file: {str(e)}"
+                ) from e
+
+        elif isinstance(existing_value, DeveloperSecret):
+            raise ValueError(
+                f"Found unexpected !developer_secret tag in existing transformed config at '{current_path}'. Existing config should only contain secret handles or !user_secret tags."
+            )
+
+        elif isinstance(existing_value, dict):
+            # Always recursively process nested dictionaries
+            input_dict = (
+                input_config.get(key, {})
+                if isinstance(input_config.get(key), dict)
+                else {}
+            )
+            nested_validated = await get_validated_config_secrets(
+                input_dict, existing_value, client, non_interactive, current_path
+            )
+
+            if nested_validated:
+                validated_config[key] = nested_validated
+
+    return validated_config
 
 
 async def transform_config_recursive(
-    config: Any,
+    config_value: Any,
     client: SecretsClient,
     path: str = "",
     non_interactive: bool = False,
     secrets_context: Optional[Dict[str, Any]] = None,
     existing_config: Optional[Dict[str, Any]] = None,
 ) -> Any:
-    """Recursively transform a config dictionary, replacing developer secrets with handles.
+    """Recursively transform a config dictionary, replacing raw secrets with handles or !user_secret tags.
 
-    For deploy-phase, only developer secrets are processed and replaced with secret handles.
-    User secrets are left as-is to be processed during the configure phase.
-
-    If existing_config is provided, the function will attempt to reuse existing secret handles
-    for developer secrets that are already transformed in the existing configuration.
+    If existing_config is provided, the function will reuse existing secret handles that are already transformed
+    in the existing configuration. The remaining raw secrets in the input config will be transformed to handles
+    or !user_secret tags based on user prompts (unless non_interactive is True, in which case the raw secrets will
+    be transformed to secret handles without prompting).
 
     Args:
-        config: The configuration dictionary/value to transform
+        config_value: The input (raw secrets) configuration dictionary/value to transform. Recursively passed config value.
         client: The secrets client
         path: The current path in the config (for naming secrets)
         non_interactive: Never prompt for missing values (fail instead)
@@ -263,55 +347,107 @@ async def transform_config_recursive(
     # Initialize context if not provided
     if secrets_context is None:
         secrets_context = {
-            "developer_secrets": [],
+            "deployment_secrets": [],
             "user_secrets": [],
-            "env_loaded": [],
-            "prompted": [],
             "reused_secrets": [],
+            "skipped_secrets": [],
         }
 
-    # For debugging, check if the config is a string with a tag prefix
-    if isinstance(config, str) and (
-        config.startswith("!developer_secret") or config.startswith("!user_secret")
-    ):
-        print_warning(f"Found raw string with tag prefix at path '{path}': {config}")
-        # This indicates a YAML parsing issue - tags should be objects, not strings
+    if isinstance(config_value, (DeveloperSecret, UserSecret)):
+        raise ValueError(
+            f"\nInput secrets config at path '{path}' contains secret tag. Input should contain raw secrets, not tags."
+        )
 
-    # Helper function to get value at a specific path in the existing config
-    def get_at_path(config_dict, path_str):
-        if not config_dict or not path_str:
-            return None
+    elif isinstance(config_value, dict):
+        # Process each key in the dictionary
+        result = {}
+        for key, value in config_value.items():
+            new_path = f"{path}.{key}" if path else key
+            try:
+                transformed_value = await transform_config_recursive(
+                    value,
+                    client,
+                    new_path,
+                    non_interactive,
+                    secrets_context,
+                    existing_config,
+                )
+                if transformed_value:
+                    result[key] = transformed_value
+            except Exception as e:
+                print_error(
+                    f"\nError processing secret at '{new_path}': {str(e)}\n Skipping this secret."
+                )
+                if "skipped_secrets" not in secrets_context:
+                    secrets_context["skipped_secrets"] = []
+                secrets_context["skipped_secrets"].append(new_path)
+                # Just skip this key since raising would abort all valid processing
+                continue
+        return result
 
-        parts = path_str.split(".")
-        curr = config_dict
+    elif isinstance(config_value, list):
+        # Process each item in the list
+        result_list = []
+        for i, value in enumerate(config_value):
+            new_path = f"{path}[{i}]" if path else f"[{i}]"
+            result_list.append(
+                await transform_config_recursive(
+                    value,
+                    client,
+                    new_path,
+                    non_interactive,
+                    secrets_context,
+                    existing_config,
+                )
+            )
+        return result_list
 
-        for part in parts:
-            if isinstance(curr, dict) and part in curr:
-                curr = curr[part]
-            else:
-                # Handle array indices in path like "path[0]"
-                if "[" in part and "]" in part:
-                    base_part = part.split("[")[0]
-                    idx_str = part.split("[")[1].split("]")[0]
-                    try:
-                        idx = int(idx_str)
-                        if (
-                            base_part in curr
-                            and isinstance(curr[base_part], list)
-                            and idx < len(curr[base_part])
-                        ):
-                            curr = curr[base_part][idx]
-                        else:
-                            return None
-                    except (ValueError, IndexError):
-                        return None
+    elif isinstance(config_value, str):
+        # Skip processing $schema key since we know it's not a secret
+        if path == "$schema":
+            return config_value
+
+        if config_value.startswith("!developer_secret") or config_value.startswith(
+            "!user_secret"
+        ):
+            # This indicates a YAML parsing issue - tags should be objects, not strings
+            raise ValueError(
+                f"\nFound raw string with tag prefix at path '{path}' in secrets file"
+            )
+
+        # Helper function to get value at a specific path in the existing config
+        def get_at_path(config_dict, path_str):
+            if not config_dict or not path_str:
+                return None
+
+            parts = path_str.split(".")
+            curr = config_dict
+
+            for part in parts:
+                if isinstance(curr, dict) and part in curr:
+                    curr = curr[part]
                 else:
-                    return None
+                    # Handle array indices in path like "path[0]"
+                    if "[" in part and "]" in part:
+                        base_part = part.split("[")[0]
+                        idx_str = part.split("[")[1].split("]")[0]
+                        try:
+                            idx = int(idx_str)
+                            if (
+                                base_part in curr
+                                and isinstance(curr[base_part], list)
+                                and idx < len(curr[base_part])
+                            ):
+                                curr = curr[base_part][idx]
+                            else:
+                                return None
+                        except (ValueError, IndexError):
+                            return None
+                    else:
+                        return None
+            return curr
 
-        return curr
-
-    if isinstance(config, DeveloperSecret):
-        # Check if this developer secret already exists in the transformed config
+        # Reuse existing secret if available
         existing_handle = None
         if existing_config is not None:
             existing_handle = get_at_path(existing_config, path)
@@ -320,9 +456,8 @@ async def transform_config_recursive(
             if isinstance(existing_handle, str) and SECRET_ID_PATTERN.match(
                 existing_handle
             ):
-                # Reuse the existing handle instead of creating a new secret
                 print_info(
-                    f"Reusing existing developer secret handle at '{path}': {existing_handle}"
+                    f"\nReusing existing deployment secret handle at '{path}': {existing_handle}"
                 )
 
                 # Add to the secrets context
@@ -338,167 +473,65 @@ async def transform_config_recursive(
 
                 return existing_handle
 
-        # Process developer secret - create a new one if no existing handle found
-        value = config.value
-        from_env = False
-        was_prompted = False
-        env_var = None
+        # Check if it's a deployment secret or a user secret
+        if not non_interactive:
+            choices = {
+                "1": "Deployment Secret: The secret value will be stored securely and accessible to the deployed application runtime.",
+                "2": "User Secret: No secret value will be stored. The 'configure' command must be used to create a configured application with this secret.",
+            }
 
-        # Process environment variable references directly from the tag value
-        # This is where environment variable resolution happens
-        if isinstance(value, str):
-            env_var = value  # The value is the environment variable name
-            env_value = os.environ.get(env_var)
-            if env_value is None:
-                if non_interactive:
-                    # Fail immediately when env var is missing and --non-interactive is set
-                    error_msg = f"Developer secret at {path} has no value. Environment variable {env_var} not found and --non-interactive is set."
-                    print_error(error_msg)
-                    raise ValueError(error_msg)
-                else:
-                    print_secret_prompt(env_var, path)
-                    env_value = typer.prompt(
-                        f"Enter value for {env_var}",
-                        hide_input=True,
-                        default="",
-                        show_default=False,
-                    )
-                    was_prompted = True
-                    secrets_context["prompted"].append(path)
-                    if not env_value:
-                        print_warning(f"No value provided for {env_var}.")
-            else:
-                # Value was found in environment
-                from_env = True
-                secrets_context["env_loaded"].append(path)
-                print_info(
-                    f"Loaded secret value for {path} from environment variable {env_var}"
-                )
+            # Print the numbered options
+            console.print(f"\n[bold]Select secret type for '{path}'[/bold]")
+            for key, description in choices.items():
+                console.print(f"[cyan]{key}[/cyan]: {description}")
 
-            value = env_value
+            choice = Prompt.ask(
+                "\nSelect secret type:",
+                choices=list(choices.keys()),
+                default="1",
+                show_choices=False,
+            )
 
-        # Create the secret in the backend
+            if choice == "2":
+                print_info(f"Tagging '{path}' as a user secret (!user_secret)")
+                if "user_secrets" not in secrets_context:
+                    secrets_context["user_secrets"] = []
+                secrets_context["user_secrets"].append(path)
+                return UserSecret()
+
+        # Create a transformed deployment secret
         try:
-            # Record that we're creating this secret (only log to file)
             print_info(
-                f"Creating developer secret at {path}...",
+                f"\nCreating deployment secret at {path}...",
                 log=True,
                 console_output=False,
             )
-            # Developer secrets must have values
-            if value is None or value == "":
-                if non_interactive:
-                    # Don't prompt - just fail immediately
-                    error_msg = f"Developer secret at {path} has no value. Developer secrets must have values. (--non-interactive is set)"
-                    print_error(error_msg)
-                    raise ValueError(error_msg)
-                else:
-                    # Prompt for a value with retries
-                    max_attempts = 3
-                    attempt = 1
-
-                    while (value is None or value == "") and attempt <= max_attempts:
-                        if attempt > 1:
-                            print_warning(
-                                f"Attempt {attempt}/{max_attempts}: Developer secret at {path} still has no value."
-                            )
-                        else:
-                            print_warning(
-                                f"Developer secret at {path} has no value. Developer secrets must have values."
-                            )
-
-                        # Give the user a chance to provide a value
-                        value = typer.prompt(
-                            f"Enter value for developer secret at {path}",
-                            hide_input=True,
-                            default="",
-                            show_default=False,
-                        )
-                        attempt += 1
-
-                    if value is None or value == "":
-                        error_msg = f"Developer secret at {path} has no value after {max_attempts} attempts. Developer secrets must have values."
-                        print_error(error_msg)
-                        raise ValueError(error_msg)
+            if config_value is None or config_value == "":
+                raise ValueError(
+                    f"\nSecret at {path} has no value. Deployment secrets must have values."
+                )
 
             # Create the secret in the backend, getting a handle in return
             handle = await client.create_secret(
                 name=path or "unknown.path",
                 secret_type=SecretType.DEVELOPER,
-                value=value or "",  # Ensure value is never None
+                value=config_value,
             )
 
-            # Announce successful creation to console
             print_info(f"Secret created at '{path}' with handle: {handle}")
-
-            # Add to the secrets context
-            secrets_context["developer_secrets"].append(
+            secrets_context["deployment_secrets"].append(
                 {
                     "path": path,
                     "handle": handle,
-                    "from_env": from_env,
-                    "was_prompted": was_prompted,
                 }
             )
 
             return handle
 
         except Exception as e:
-            print_error(f"Failed to create developer secret at {path}: {str(e)}")
-            raise
-
-    elif isinstance(config, UserSecret):
-        # For deploy phase, keep user secrets as-is
-        # They will be processed during the configure phase
-        print_info(
-            f"Keeping user secret at {path} as-is for configure phase",
-            console_output=False,
-        )
-        if path not in secrets_context["user_secrets"]:
-            secrets_context["user_secrets"].append(path)
-        return config
-
-    elif isinstance(config, dict):
-        # Process each key in the dictionary
-        result = {}
-        for key, value in config.items():
-            new_path = f"{path}.{key}" if path else key
-            result[key] = await transform_config_recursive(
-                value,
-                client,
-                new_path,
-                non_interactive,
-                secrets_context,
-                existing_config,
-            )
-        return result
-
-    elif isinstance(config, list):
-        # Process each item in the list
-        result_list = []
-        for i, value in enumerate(config):
-            new_path = f"{path}[{i}]" if path else f"[{i}]"
-            result_list.append(
-                await transform_config_recursive(
-                    value,
-                    client,
-                    new_path,
-                    non_interactive,
-                    secrets_context,
-                    existing_config,
-                )
-            )
-        return result_list
-
-    else:
-        # We only want to support explicit developer and user secrets tags. Raw string values should not be processed.
-        # However, allow $schema since that defines the structure of the config.
-        if path == "$schema":
-            return config
-
-        raise ValueError(
-            f"Unsupported value at path '{path}'. Secrets must be tagged with !developer_secret or !user_secret."
-        )
+            raise CLIError(
+                f"\nFailed to create deployment secret handle for {path}: {str(e)}"
+            ) from e
 
 
 async def configure_user_secrets(
