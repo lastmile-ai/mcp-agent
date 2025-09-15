@@ -223,45 +223,6 @@ async def notify_progress(
     return "ok"
 
 
-@app.tool(name="elicitation_demo")
-async def elicitation_demo(
-    action: str = "proceed", app_ctx: Optional[AppContext] = None
-) -> str:
-    """
-    Demonstrate MCP elicitation via a nested MCP server tool.
-
-    - In asyncio (no upstream client), this triggers local elicitation handled by console.
-    - When an MCP client is connected, the elicitation request is proxied upstream.
-    """
-    _app = app_ctx.app if app_ctx else app
-
-    nested_name = "nested_elicitation"
-    nested_path = os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__), "..", "shared", "nested_elicitation_server.py"
-        )
-    )
-    _app.context.config.mcp.servers[nested_name] = MCPServerSettings(
-        name=nested_name,
-        command="uv",
-        args=["run", nested_path],
-        description="Nested server demonstrating elicitation",
-    )
-
-    async with gen_client(
-        nested_name, _app.context.server_registry, context=_app.context
-    ) as client:
-        # The nested server will call context.session.elicit() internally
-        result = await client.call_tool("confirm_action", {"action": action})
-
-        try:
-            if result.content and len(result.content) > 0:
-                return result.content[0].text or ""
-        except Exception:
-            pass
-    return ""
-
-
 @app.tool
 async def grade_story(story: str, app_ctx: Optional[AppContext] = None) -> str:
     """

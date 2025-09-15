@@ -5,7 +5,6 @@ import argparse
 from mcp_agent.app import MCPApp
 from mcp_agent.config import Settings, LoggerSettings, MCPSettings
 import yaml
-from mcp_agent.human_input.handler import console_input_callback
 from mcp_agent.elicitation.handler import console_elicitation_callback
 from mcp_agent.config import MCPServerSettings
 from mcp_agent.core.context import Context
@@ -90,11 +89,7 @@ async def main():
             def _deep_merge(base: dict, overlay: dict) -> dict:
                 out = dict(base)
                 for k, v in (overlay or {}).items():
-                    if (
-                        k in out
-                        and isinstance(out[k], dict)
-                        and isinstance(v, dict)
-                    ):
+                    if k in out and isinstance(out[k], dict) and isinstance(v, dict):
                         out[k] = _deep_merge(out[k], v)
                     else:
                         out[k] = v

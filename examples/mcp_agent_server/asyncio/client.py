@@ -177,7 +177,10 @@ async def main():
                             run_payload = sc.get("result") or sc
                     if not run_payload:
                         # Last resort: parse unstructured content if present and non-empty
-                        if getattr(run_result, "content", None) and run_result.content[0].text:
+                        if (
+                            getattr(run_result, "content", None)
+                            and run_result.content[0].text
+                        ):
                             run_payload = json.loads(run_result.content[0].text)
                         else:
                             raise RuntimeError(
@@ -304,9 +307,9 @@ async def main():
                             arguments={"story": "This is a test story."},
                         )
                         async_ids = (
-                            (getattr(async_run_result, "structuredContent", {}) or {}).get(
-                                "result"
-                            )
+                            (
+                                getattr(async_run_result, "structuredContent", {}) or {}
+                            ).get("result")
                             or _tool_result_to_json(async_run_result)
                             or json.loads(async_run_result.content[0].text)
                         )
@@ -363,7 +366,8 @@ async def main():
                             "elicitation_demo", arguments={"action": "proceed"}
                         )
                         logger.info(
-                            "elicitation_demo result:", data=_tool_result_to_json(el) or el
+                            "elicitation_demo result:",
+                            data=_tool_result_to_json(el) or el,
                         )
                     except Exception as e:
                         logger.error("elicitation_demo failed", data=str(e))
@@ -373,14 +377,16 @@ async def main():
                     try:
                         n1 = await server.call_tool("notify_resources", arguments={})
                         logger.info(
-                            "notify_resources result:", data=_tool_result_to_json(n1) or n1
+                            "notify_resources result:",
+                            data=_tool_result_to_json(n1) or n1,
                         )
                         n2 = await server.call_tool(
                             "notify_progress",
                             arguments={"progress": 0.5, "message": "Halfway there"},
                         )
                         logger.info(
-                            "notify_progress result:", data=_tool_result_to_json(n2) or n2
+                            "notify_progress result:",
+                            data=_tool_result_to_json(n2) or n2,
                         )
                     except Exception as e:
                         logger.error("notifications demo failed", data=str(e))
@@ -396,7 +402,9 @@ async def main():
                     logger.debug("Ignored BrokenResourceError from stdio shutdown")
                 else:
                     raise
-            elif _BrokenResourceError is not None and isinstance(e, _BrokenResourceError):
+            elif _BrokenResourceError is not None and isinstance(
+                e, _BrokenResourceError
+            ):
                 logger.debug("Ignored BrokenResourceError from stdio shutdown")
             elif "BrokenResourceError" in str(e):
                 logger.debug(

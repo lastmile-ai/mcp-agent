@@ -72,7 +72,9 @@ class BasicAgentWorkflow(Workflow[str]):
         # Use of the app.logger will forward logs back to the mcp client
         app_logger = app.logger
 
-        app_logger.info("[workflow-mode] Starting finder agent in BasicAgentWorkflow.run")
+        app_logger.info(
+            "[workflow-mode] Starting finder agent in BasicAgentWorkflow.run"
+        )
         async with finder_agent:
             finder_llm = await finder_agent.attach_llm(OpenAIAugmentedLLM)
 
@@ -171,8 +173,8 @@ class PauseResumeWorkflow(Workflow[str]):
 @app.workflow_task(name="call_nested_sampling")
 async def call_nested_sampling(topic: str) -> str:
     """Activity: call a nested MCP server tool that uses sampling."""
-    ctx: Context = app.context
-    ctx.app.logger.info(
+    app_ctx: Context = app.context
+    app_ctx.app.logger.info(
         "[activity-mode] call_nested_sampling starting",
         data={"topic": topic},
     )
@@ -182,7 +184,7 @@ async def call_nested_sampling(topic: str) -> str:
             os.path.dirname(__file__), "..", "shared", "nested_sampling_server.py"
         )
     )
-    ctx.config.mcp.servers[nested_name] = MCPServerSettings(
+    app_ctx.config.mcp.servers[nested_name] = MCPServerSettings(
         name=nested_name,
         command="uv",
         args=["run", nested_path],
@@ -190,13 +192,13 @@ async def call_nested_sampling(topic: str) -> str:
     )
 
     async with gen_client(
-        nested_name, ctx.server_registry, context=ctx
+        nested_name, app_ctx.server_registry, context=app_ctx
     ) as client:
-        ctx.app.logger.info(
+        app_ctx.app.logger.info(
             "[activity-mode] call_nested_sampling connected to nested server"
         )
         result = await client.call_tool("get_haiku", {"topic": topic})
-        ctx.app.logger.info(
+        app_ctx.app.logger.info(
             "[activity-mode] call_nested_sampling received result",
             data={"structured": getattr(result, "structuredContent", None)},
         )
@@ -211,8 +213,8 @@ async def call_nested_sampling(topic: str) -> str:
 @app.workflow_task(name="call_nested_elicitation")
 async def call_nested_elicitation(action: str) -> str:
     """Activity: call a nested MCP server tool that triggers elicitation."""
-    ctx: Context = app.context
-    ctx.app.logger.info(
+    app_ctx: Context = app.context
+    app_ctx.app.logger.info(
         "[activity-mode] call_nested_elicitation starting",
         data={"action": action},
     )
@@ -222,7 +224,7 @@ async def call_nested_elicitation(action: str) -> str:
             os.path.dirname(__file__), "..", "shared", "nested_elicitation_server.py"
         )
     )
-    ctx.config.mcp.servers[nested_name] = MCPServerSettings(
+    app_ctx.config.mcp.servers[nested_name] = MCPServerSettings(
         name=nested_name,
         command="uv",
         args=["run", nested_path],
@@ -230,13 +232,13 @@ async def call_nested_elicitation(action: str) -> str:
     )
 
     async with gen_client(
-        nested_name, ctx.server_registry, context=ctx
+        nested_name, app_ctx.server_registry, context=app_ctx
     ) as client:
-        ctx.app.logger.info(
+        app_ctx.app.logger.info(
             "[activity-mode] call_nested_elicitation connected to nested server"
         )
         result = await client.call_tool("confirm_action", {"action": action})
-        ctx.app.logger.info(
+        app_ctx.app.logger.info(
             "[activity-mode] call_nested_elicitation received result",
             data={"structured": getattr(result, "structuredContent", None)},
         )
@@ -285,7 +287,9 @@ class SamplingWorkflow(Workflow[str]):
             )
             try:
                 direct_text = (
-                    direct.content.text if isinstance(direct.content, TextContent) else ""
+                    direct.content.text
+                    if isinstance(direct.content, TextContent)
+                    else ""
                 )
             except Exception:
                 direct_text = ""
@@ -304,9 +308,7 @@ class SamplingWorkflow(Workflow[str]):
             "[activity-mode] Invoking call_nested_sampling via executor.execute",
             data={"topic": input},
         )
-        result = await app.context.executor.execute(
-            call_nested_sampling, input
-        )
+        result = await app.context.executor.execute(call_nested_sampling, input)
         # Log and return
         app.logger.info(
             "[activity-mode] Nested sampling result",
@@ -347,9 +349,7 @@ class ElicitationWorkflow(Workflow[str]):
             "[activity-mode] Invoking call_nested_elicitation via executor.execute",
             data={"action": input},
         )
-        nested = await app.context.executor.execute(
-            call_nested_elicitation, input
-        )
+        nested = await app.context.executor.execute(call_nested_elicitation, input)
 
         app.logger.info(
             "[workflow-mode] Elicitation results",

@@ -179,9 +179,9 @@ class TemporalExecutor(Executor):
         activity_registry = self.context.task_registry
         activity_task = activity_registry.get_activity(activity_name)
 
-        # Prefer per-activity timeout when provided; otherwise fall back to executor default.
-        schedule_to_close = execution_metadata.get(
-            "schedule_to_close_timeout", self.config.timeout_seconds
+        # Config timeout takes priority over metadata timeout (per tests).
+        schedule_to_close = self.config.timeout_seconds or execution_metadata.get(
+            "schedule_to_close_timeout"
         )
 
         if schedule_to_close is not None and not isinstance(
