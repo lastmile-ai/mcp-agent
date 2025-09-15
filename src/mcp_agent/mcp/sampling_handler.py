@@ -154,7 +154,7 @@ class SamplingHandler(ContextDependent):
             provider=model_info.provider,
             model=model_info.name,
             request_params=None,
-            context=None,
+            context=self.context,
         )
 
         # Flatten MCP SamplingMessage list to raw strings for generate_str
