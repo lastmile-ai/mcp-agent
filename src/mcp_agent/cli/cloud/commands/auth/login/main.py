@@ -88,7 +88,7 @@ def login(
     if api_key:
         print_info("Using provided API key for authentication (MCP_API_KEY).")
         if not _is_valid_api_key(api_key):
-            raise CLIError("Invalid API key provided.")
+            raise CLIError("Invalid API key provided.", retriable=False)
 
         credentials = _load_user_credentials(api_key)
 
@@ -139,11 +139,11 @@ def _handle_manual_key_input() -> str:
 
     if not input_api_key:
         print_warning("No API key provided.")
-        raise CLIError("Failed to set valid API key")
+        raise CLIError("Failed to set valid API key", retriable=False)
 
     if not _is_valid_api_key(input_api_key):
         print_warning("Invalid API key provided.")
-        raise CLIError("Failed to set valid API key")
+        raise CLIError("Failed to set valid API key", retriable=False)
 
     credentials = _load_user_credentials(input_api_key)
 

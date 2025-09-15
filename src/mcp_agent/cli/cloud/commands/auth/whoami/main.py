@@ -29,13 +29,14 @@ def whoami() -> None:
         )
     if not credentials:
         raise CLIError(
-            "Not authenticated. Set MCP_API_KEY or run 'mcp-agent login'.", exit_code=4
+            "Not authenticated. Set MCP_API_KEY or run 'mcp-agent login'.", exit_code=4, retriable=False
         )
 
     if credentials.is_token_expired:
         raise CLIError(
             "Authentication token has expired. Use 'mcp-agent login' to re-authenticate.",
             exit_code=4,
+            retriable=False,
         )
 
     user_table = Table(show_header=False, box=None)

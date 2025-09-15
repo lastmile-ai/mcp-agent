@@ -57,7 +57,8 @@ def get_app_status(
 
     if not effective_api_key:
         raise CLIError(
-            "Must be logged in to get app status. Run 'mcp-agent login', set MCP_API_KEY environment variable or specify --api-key option."
+            "Must be logged in to get app status. Run 'mcp-agent login', set MCP_API_KEY environment variable or specify --api-key option.",
+            retriable=False
         )
 
     client = MCPAppClient(
@@ -92,7 +93,8 @@ def get_app_status(
 
     except UnauthenticatedError as e:
         raise CLIError(
-            "Invalid API key. Run 'mcp-agent login' or set MCP_API_KEY environment variable with new API key."
+            "Invalid API key. Run 'mcp-agent login' or set MCP_API_KEY environment variable with new API key.",
+            retriable=False
         ) from e
     except Exception as e:
         # Re-raise with more context - top-level CLI handler will show clean message

@@ -46,7 +46,7 @@ async def _describe_workflow_async(
     effective_api_key = _settings.API_KEY or load_api_key_credentials()
 
     if not effective_api_key:
-        raise CLIError("Must be logged in to access server. Run 'mcp-agent login'.")
+        raise CLIError("Must be logged in to access server. Run 'mcp-agent login'.", retriable=False)
 
     try:
         async with mcp_connection_session(
