@@ -45,6 +45,33 @@ def _write(path: Path, content: str, force: bool) -> bool:
         return False
 
 
+def _write_readme(dir_path: Path, content: str, force: bool) -> str | None:
+    """Create a README file with fallback naming if a README already exists.
+
+    Returns the filename created, or None if it could not be written (in which case
+    the content is printed to console as a fallback).
+    """
+    candidates = [
+        "README.md",
+        "README.mcp-agent.md",
+        "README.mcp.md",
+    ]
+    # Add numeric fallbacks
+    candidates += [f"README.{i}.md" for i in range(1, 6)]
+
+    for name in candidates:
+        path = dir_path / name
+        if not path.exists() or force:
+            ok = _write(path, content, force)
+            if ok:
+                return name
+    # Fallback: print content to console if we couldn't write any variant
+    console.print("\n[yellow]A README already exists and could not be overwritten.[/yellow]")
+    console.print("[bold]Suggested README contents:[/bold]\n")
+    console.print(content)
+    return None
+
+
 @app.callback(invoke_without_command=True)
 def init(
     ctx: typer.Context,
@@ -153,6 +180,15 @@ def init(
                 except Exception:
                     pass
 
+        # No separate agents.yaml needed; agent definitions live in mcp_agent.config.yaml
+
+        # Create README for the basic template
+        readme_content = _load_template("README_init.md")
+        if readme_content:
+            created = _write_readme(dir, readme_content, force)
+            if created:
+                files_created.append(created)
+
     elif template == "server":
         server_path = dir / "server.py"
         server_content = _load_template("basic_agent_server.py")
@@ -164,6 +200,13 @@ def init(
             except Exception:
                 pass
 
+        # README for server template
+        readme_content = _load_template("README_init.md")
+        if readme_content:
+            created = _write_readme(dir, readme_content, force)
+            if created:
+                files_created.append(created)
+
     elif template == "token":
         token_path = dir / "token_example.py"
         token_content = _load_template("token_counter.py")
@@ -174,6 +217,12 @@ def init(
                 token_path.chmod(token_path.stat().st_mode | 0o111)
             except Exception:
                 pass
+
+        readme_content = _load_template("README_init.md")
+        if readme_content:
+            created = _write_readme(dir, readme_content, force)
+            if created:
+                files_created.append(created)
 
     elif template == "factory":
         factory_path = dir / "factory.py"
@@ -191,6 +240,12 @@ def init(
         agents_content = _load_template("agents.yaml")
         if agents_content and _write(agents_path, agents_content, force):
             files_created.append("agents.yaml")
+
+        readme_content = _load_template("README_init.md")
+        if readme_content:
+            created = _write_readme(dir, readme_content, force)
+            if created:
+                files_created.append(created)
 
     # Display results
     if files_created:
@@ -229,9 +284,9 @@ def init(
         elif template == "factory":
             console.print("3. Customize agents in [cyan]agents.yaml[/cyan]")
             console.print("4. Run the factory: [cyan]uv run factory.py[/cyan]")
-        elif template == "minimal":
-            console.print("3. Create your agent script")
-            console.print("   See examples: [cyan]mcp-agent quickstart[/cyan]")
+    elif template == "minimal":
+        console.print("3. Create your agent script")
+        console.print("   See examples: [cyan]mcp-agent quickstart[/cyan]")
 
         console.print(
             "\n[dim]Run [cyan]mcp-agent doctor[/cyan] to check your configuration[/dim]"

@@ -36,8 +36,18 @@ mcp:
     
     # Brave search server (requires BRAVE_API_KEY in secrets)
     # brave-search:
-    #   command: npx
-    #   args: ["-y", "@modelcontextprotocol/server-brave-search"]
+      #   command: npx
+      #   args: ["-y", "@modelcontextprotocol/server-brave-search"]
+
+# Optional: Define simple agents inline to use with tools like run_agent
+agents:
+  definitions:
+    - name: filesystem_helper
+      instruction: "You can read files and summarize their contents."
+      server_names: [filesystem]
+    - name: web_helper
+      instruction: "You can fetch web pages and summarize their content."
+      server_names: [fetch]
 
 # Model provider defaults (API keys go in mcp_agent.secrets.yaml)
 openai:
