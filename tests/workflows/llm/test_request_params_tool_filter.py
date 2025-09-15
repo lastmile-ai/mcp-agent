@@ -1,6 +1,4 @@
 import pytest
-import logging
-from typing import Dict, Set
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from mcp.types import Tool, ListToolsResult
