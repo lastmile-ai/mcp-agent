@@ -22,6 +22,7 @@ The framework handles:
 - Connect to any MCP server via stdio, SSE, WebSocket, or HTTP
 - Access tools, resources, prompts, and file system roots
 - Automatic tool discovery and integration
+- Sampling, elicitation, and notifications
 
 ### Agent Patterns
 Implementation of all patterns from Anthropic's research:
@@ -48,7 +49,7 @@ Works with:
 
 ## Quick Example
 
-```python
+```python main.py
 import asyncio
 from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
@@ -56,8 +57,14 @@ from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 
 app = MCPApp(name="example_agent")
 
-async def main():
+@app.tool
+async def research()->str:
+    '''
+    Research quatum computing function / tool call
+    '''
+    result=""
     async with app.run() as mcp_agent_app:
+
         # Create agent with MCP server access
         agent = Agent(
             name="researcher",
@@ -76,9 +83,10 @@ async def main():
             # Agent can now use MCP server tools
             result = await llm.generate_str("Research quantum computing")
             print(result)
+    return result
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(research())
 ```
 
 ## Example Applications
@@ -135,7 +143,7 @@ uv add "mcp-agent[openai,anthropic,azure,bedrock,google]"
 mcp-agent uses two configuration files:
 
 **mcp_agent.config.yaml** - Application configuration:
-```yaml
+```yaml mcp_agent.config.yaml
 execution_engine: asyncio  # or temporal
 logger:
   transports: [console]
@@ -155,7 +163,7 @@ openai:
 ```
 
 **mcp_agent.secrets.yaml** - API keys and secrets:
-```yaml
+```yaml mcp_agent.secrets.yaml
 openai:
   api_key: "sk-..."
 ```
@@ -175,14 +183,14 @@ your-project/
 ### Local Development
 Run agents locally with asyncio execution engine for rapid development.
 
-### Production with Temporal
+### [Production with Temporal](advanced/temporal)
 Use Temporal for durable execution, automatic retries, and workflow management.
 
-### As MCP Server
+### [As a MCP Server](cloud/agent-server)
 Expose your agents as MCP servers that can be used by Claude Desktop, VS Code, or other MCP clients.
 
-### MCP Agent Cloud
-Deploy agents to managed cloud infrastructure with one command (coming soon).
+### [MCP Agent Cloud](cloud/overview)
+Deploy agents to managed cloud infrastructure with one command.
 
 ## Examples
 
