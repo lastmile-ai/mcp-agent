@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List, Type
+import asyncio
 
 import anyio
 import mcp.types as types
@@ -86,14 +87,23 @@ class SessionProxy(ServerSession):
         if _in_workflow_runtime():
             try:
                 act = self._context.task_registry.get_activity("mcp_relay_notify")
-                await self._executor.execute(act, exec_id, method, params or {})
+                await self._executor.execute(
+                    act,
+                    exec_id,
+                    method,
+                    params or {},
+                )
                 return True
             except Exception:
                 return False
-        # Non-workflow (activity/asyncio)
-        return bool(
-            await self._system_activities.relay_notify(exec_id, method, params or {})
-        )
+        # Non-workflow (activity/asyncio): fire-and-forget best-effort
+        try:
+            asyncio.create_task(
+                self._system_activities.relay_notify(exec_id, method, params or {})
+            )
+        except Exception:
+            pass
+        return True
 
     async def request(
         self, method: str, params: Dict[str, Any] | None = None
@@ -107,7 +117,12 @@ class SessionProxy(ServerSession):
 
         if _in_workflow_runtime():
             act = self._context.task_registry.get_activity("mcp_relay_request")
-            return await self._executor.execute(act, exec_id, method, params or {})
+            return await self._executor.execute(
+                act,
+                exec_id,
+                method,
+                params or {},
+            )
         return await self._system_activities.relay_request(
             exec_id, method, params or {}
         )
@@ -268,7 +283,10 @@ class SessionProxy(ServerSession):
             params["related_request_id"] = related_request_id
 
         result = await self.request("sampling/createMessage", params)
-        return types.CreateMessageResult.model_validate(result)
+        try:
+            return types.CreateMessageResult.model_validate(result)
+        except Exception as e:
+            raise RuntimeError(f"sampling/createMessage returned invalid result: {e}")
 
     async def elicit(
         self,
@@ -283,7 +301,10 @@ class SessionProxy(ServerSession):
         if related_request_id is not None:
             params["related_request_id"] = related_request_id
         result = await self.request("elicitation/create", params)
-        return types.ElicitResult.model_validate(result)
+        try:
+            return types.ElicitResult.model_validate(result)
+        except Exception as e:
+            raise RuntimeError(f"elicitation/create returned invalid result: {e}")
 
 
 def _in_workflow_runtime() -> bool:

@@ -182,14 +182,83 @@ async def elicitation_demo(
     async with gen_client(
         nested_name, _app.context.server_registry, context=_app.context
     ) as client:
+        result = await client.call_tool("confirm_action", {"action": action})
+        try:
+            if result.content and len(result.content) > 0:
+                return result.content[0].text or ""
+        except Exception:
+            pass
+    return ""
+
+
+@app.tool(name="notify_resources")
+async def notify_resources(app_ctx: Optional[AppContext] = None) -> str:
+    """Trigger a non-logging resource list changed notification."""
+    _app = app_ctx.app if app_ctx else app
+    upstream = getattr(_app.context, "upstream_session", None)
+    if upstream is None:
+        _app.logger.warning("No upstream session to notify")
+        return "no-upstream"
+    await upstream.send_resource_list_changed()
+    _app.logger.info("Sent notifications/resources/list_changed")
+    return "ok"
+
+
+@app.tool(name="notify_progress")
+async def notify_progress(
+    progress: float = 0.5,
+    message: str | None = "Asyncio progress demo",
+    app_ctx: Optional[AppContext] = None,
+) -> str:
+    """Trigger a non-logging progress notification."""
+    _app = app_ctx.app if app_ctx else app
+    upstream = getattr(_app.context, "upstream_session", None)
+    if upstream is None:
+        _app.logger.warning("No upstream session to notify")
+        return "no-upstream"
+    await upstream.send_progress_notification(
+        progress_token="asyncio-demo", progress=progress, message=message
+    )
+    _app.logger.info("Sent notifications/progress")
+    return "ok"
+
+
+@app.tool(name="elicitation_demo")
+async def elicitation_demo(
+    action: str = "proceed", app_ctx: Optional[AppContext] = None
+) -> str:
+    """
+    Demonstrate MCP elicitation via a nested MCP server tool.
+
+    - In asyncio (no upstream client), this triggers local elicitation handled by console.
+    - When an MCP client is connected, the elicitation request is proxied upstream.
+    """
+    _app = app_ctx.app if app_ctx else app
+
+    nested_name = "nested_elicitation"
+    nested_path = os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__), "..", "shared", "nested_elicitation_server.py"
+        )
+    )
+    _app.context.config.mcp.servers[nested_name] = MCPServerSettings(
+        name=nested_name,
+        command="uv",
+        args=["run", nested_path],
+        description="Nested server demonstrating elicitation",
+    )
+
+    async with gen_client(
+        nested_name, _app.context.server_registry, context=_app.context
+    ) as client:
         # The nested server will call context.session.elicit() internally
         result = await client.call_tool("confirm_action", {"action": action})
 
-    try:
-        if result.content and len(result.content) > 0:
-            return result.content[0].text or ""
-    except Exception:
-        pass
+        try:
+            if result.content and len(result.content) > 0:
+                return result.content[0].text or ""
+        except Exception:
+            pass
     return ""
 
 

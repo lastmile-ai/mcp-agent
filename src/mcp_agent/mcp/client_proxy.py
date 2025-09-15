@@ -163,8 +163,23 @@ async def request_via_proxy(
     if tok:
         headers["X-MCP-Gateway-Token"] = tok
         headers["Authorization"] = f"Bearer {tok}"
-    timeout = float(os.environ.get("MCP_GATEWAY_TIMEOUT", "20"))
+    # Requests require a response; default to no HTTP timeout.
+    # Configure with MCP_GATEWAY_REQUEST_TIMEOUT (seconds). If unset or <= 0, no timeout is applied.
+    timeout_str = os.environ.get("MCP_GATEWAY_REQUEST_TIMEOUT")
+    timeout_float: float | None
+    if timeout_str is None:
+        timeout_float = None  # no timeout by default; activity timeouts still apply
+    else:
+        try:
+            timeout_float = float(str(timeout_str).strip())
+        except Exception:
+            timeout_float = None
     try:
+        # If timeout is None, pass a Timeout object with no limits
+        if timeout_float is None:
+            timeout = httpx.Timeout(None)
+        else:
+            timeout = timeout_float
         async with httpx.AsyncClient(timeout=timeout) as client:
             r = await client.post(
                 url, json={"method": method, "params": params or {}}, headers=headers

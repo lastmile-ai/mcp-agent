@@ -146,17 +146,19 @@ class SamplingHandler(ContextDependent):
         # Lazy import to avoid circulars, and create a clean LLM instance without current context
         from mcp_agent.workflows.factory import create_llm
 
+        # Honor the caller's systemPrompt as instruction when constructing the LLM
         llm = create_llm(
             agent_name="sampling",
             server_names=[],
-            instruction=None,
+            instruction=getattr(params, "systemPrompt", None),
             provider=model_info.provider,
             model=model_info.name,
             request_params=None,
             context=None,
         )
 
-        messages = []
+        # Flatten MCP SamplingMessage list to raw strings for generate_str
+        messages: list[str] = []
         for m in params.messages:
             if hasattr(m.content, "text") and m.content.text:
                 messages.append(m.content.text)
@@ -165,14 +167,26 @@ class SamplingHandler(ContextDependent):
             else:
                 messages.append(str(m.content))
 
+        # Coerce optional temperature to a sane default if missing
+        temperature = getattr(params, "temperature", None)
+        if temperature is None:
+            temperature = 0.7
+
+        # Build request params by extending CreateMessageRequestParams so
+        # everything the user provided is forwarded to the LLM
         req_params = LLMRequestParams(
             maxTokens=params.maxTokens or 2048,
-            temperature=getattr(params, "temperature", 0.7),
+            temperature=temperature,
+            systemPrompt=getattr(params, "systemPrompt", None),
+            includeContext=getattr(params, "includeContext", None),
+            stopSequences=getattr(params, "stopSequences", None),
+            metadata=getattr(params, "metadata", None),
+            modelPreferences=params.modelPreferences,
+            # Keep local generation simple/deterministic
             max_iterations=1,
             parallel_tool_calls=False,
             use_history=False,
             messages=None,
-            modelPreferences=params.modelPreferences,
         )
 
         text = await llm.generate_str(message=messages, request_params=req_params)

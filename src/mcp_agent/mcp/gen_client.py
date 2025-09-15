@@ -18,7 +18,12 @@ async def gen_client(
     server_name: str,
     server_registry: ServerRegistry,
     client_session_factory: Callable[
-        [MemoryObjectReceiveStream, MemoryObjectSendStream, timedelta | None],
+        [
+            MemoryObjectReceiveStream,
+            MemoryObjectSendStream,
+            timedelta | None,
+            Optional[Context],
+        ],
         ClientSession,
     ] = MCPAgentClientSession,
     session_id: str | None = None,
@@ -48,7 +53,12 @@ async def connect(
     server_name: str,
     server_registry: ServerRegistry,
     client_session_factory: Callable[
-        [MemoryObjectReceiveStream, MemoryObjectSendStream, timedelta | None],
+        [
+            MemoryObjectReceiveStream,
+            MemoryObjectSendStream,
+            timedelta | None,
+            Optional[Context],
+        ],
         ClientSession,
     ] = MCPAgentClientSession,
     session_id: str | None = None,

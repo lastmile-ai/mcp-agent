@@ -1,4 +1,6 @@
 from typing import Any, Dict
+import anyio
+import os
 
 from temporalio import activity
 
@@ -65,14 +67,26 @@ class SystemActivities(ContextDependent):
     ) -> bool:
         gateway_url = getattr(self.context, "gateway_url", None)
         gateway_token = getattr(self.context, "gateway_token", None)
+        # Fire-and-forget semantics with a short timeout (best-effort)
+        timeout_str = os.environ.get("MCP_NOTIFY_TIMEOUT", "2.0")
+        try:
+            timeout = float(timeout_str)
+        except Exception:
+            timeout = None
 
-        return await notify_via_proxy(
-            execution_id=execution_id,
-            method=method,
-            params=params or {},
-            gateway_url=gateway_url,
-            gateway_token=gateway_token,
-        )
+        ok = True
+        try:
+            with anyio.move_on_after(timeout):
+                ok = await notify_via_proxy(
+                    execution_id=execution_id,
+                    method=method,
+                    params=params or {},
+                    gateway_url=gateway_url,
+                    gateway_token=gateway_token,
+                )
+        except Exception:
+            ok = False
+        return ok
 
     @activity.defn(name="mcp_relay_request")
     async def relay_request(

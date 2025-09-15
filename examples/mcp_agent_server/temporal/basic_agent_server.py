@@ -72,7 +72,7 @@ class BasicAgentWorkflow(Workflow[str]):
         # Use of the app.logger will forward logs back to the mcp client
         app_logger = app.logger
 
-        app_logger.info("Starting finder agent")
+        app_logger.info("[workflow-mode] Starting finder agent in BasicAgentWorkflow.run")
         async with finder_agent:
             finder_llm = await finder_agent.attach_llm(OpenAIAugmentedLLM)
 
@@ -81,7 +81,9 @@ class BasicAgentWorkflow(Workflow[str]):
             )
 
             # forwards the log to the caller
-            app_logger.info(f"Finder agent completed with result {result}")
+            app_logger.info(
+                f"[workflow-mode] Finder agent completed with result {result}"
+            )
             # print to the console (for when running locally)
             print(f"Agent result: {result}")
             return WorkflowResult(value=result)
@@ -107,7 +109,7 @@ async def finder_tool(request: str, app_ctx: Context | None = None) -> str:
     app = app_ctx.app
 
     logger = app.logger
-    logger.info(f"Running finder_tool with input: {request}")
+    logger.info("[workflow-mode] Running finder_tool", data={"input": request})
 
     finder_agent = Agent(
         name="finder",
@@ -124,7 +126,7 @@ async def finder_tool(request: str, app_ctx: Context | None = None) -> str:
         result = await finder_llm.generate_str(
             message=request,
         )
-        logger.info(f"Agent result: {result}")
+        logger.info("[workflow-mode] finder_tool agent result", data={"result": result})
 
     return result
 
@@ -167,15 +169,20 @@ class PauseResumeWorkflow(Workflow[str]):
 
 
 @app.workflow_task(name="call_nested_sampling")
-async def call_nested_sampling(topic: str, app_ctx: Context) -> str:
+async def call_nested_sampling(topic: str) -> str:
     """Activity: call a nested MCP server tool that uses sampling."""
+    ctx: Context = app.context
+    ctx.app.logger.info(
+        "[activity-mode] call_nested_sampling starting",
+        data={"topic": topic},
+    )
     nested_name = "nested_sampling"
     nested_path = os.path.abspath(
         os.path.join(
             os.path.dirname(__file__), "..", "shared", "nested_sampling_server.py"
         )
     )
-    app_ctx.config.mcp.servers[nested_name] = MCPServerSettings(
+    ctx.config.mcp.servers[nested_name] = MCPServerSettings(
         name=nested_name,
         command="uv",
         args=["run", nested_path],
@@ -183,9 +190,16 @@ async def call_nested_sampling(topic: str, app_ctx: Context) -> str:
     )
 
     async with gen_client(
-        nested_name, app_ctx.server_registry, context=app_ctx
+        nested_name, ctx.server_registry, context=ctx
     ) as client:
+        ctx.app.logger.info(
+            "[activity-mode] call_nested_sampling connected to nested server"
+        )
         result = await client.call_tool("get_haiku", {"topic": topic})
+        ctx.app.logger.info(
+            "[activity-mode] call_nested_sampling received result",
+            data={"structured": getattr(result, "structuredContent", None)},
+        )
     try:
         if result.content and len(result.content) > 0:
             return result.content[0].text or ""
@@ -195,15 +209,20 @@ async def call_nested_sampling(topic: str, app_ctx: Context) -> str:
 
 
 @app.workflow_task(name="call_nested_elicitation")
-async def call_nested_elicitation(action: str, app_ctx: Context) -> str:
+async def call_nested_elicitation(action: str) -> str:
     """Activity: call a nested MCP server tool that triggers elicitation."""
+    ctx: Context = app.context
+    ctx.app.logger.info(
+        "[activity-mode] call_nested_elicitation starting",
+        data={"action": action},
+    )
     nested_name = "nested_elicitation"
     nested_path = os.path.abspath(
         os.path.join(
             os.path.dirname(__file__), "..", "shared", "nested_elicitation_server.py"
         )
     )
-    app_ctx.config.mcp.servers[nested_name] = MCPServerSettings(
+    ctx.config.mcp.servers[nested_name] = MCPServerSettings(
         name=nested_name,
         command="uv",
         args=["run", nested_path],
@@ -211,9 +230,16 @@ async def call_nested_elicitation(action: str, app_ctx: Context) -> str:
     )
 
     async with gen_client(
-        nested_name, app_ctx.server_registry, context=app_ctx
+        nested_name, ctx.server_registry, context=ctx
     ) as client:
+        ctx.app.logger.info(
+            "[activity-mode] call_nested_elicitation connected to nested server"
+        )
         result = await client.call_tool("confirm_action", {"action": action})
+        ctx.app.logger.info(
+            "[activity-mode] call_nested_elicitation received result",
+            data={"structured": getattr(result, "structuredContent", None)},
+        )
     try:
         if result.content and len(result.content) > 0:
             return result.content[0].text or ""
@@ -228,42 +254,64 @@ class SamplingWorkflow(Workflow[str]):
 
     @app.workflow_run
     async def run(self, input: str = "space exploration") -> WorkflowResult[str]:
-        logger.info(
-            "Running SamplingWorkflow; sampling should be proxied via activities"
+        app.logger.info(
+            "[workflow-mode] SamplingWorkflow starting",
+            data={"note": "direct sampling via SessionProxy, then activity sampling"},
         )
         # 1) Direct workflow sampling via SessionProxy (will schedule mcp_relay_request activity)
-        direct = await app.context.upstream_session.create_message(
-            messages=[
-                SamplingMessage(
-                    role="user",
-                    content=TextContent(
-                        type="text", text=f"Write a haiku about {input}."
-                    ),
-                )
-            ],
-            system_prompt="You are a poet.",
-            max_tokens=80,
-            model_preferences=ModelPreferences(
-                hints=[ModelHint(name="gpt-4o-mini")],
-                costPriority=0.1,
-                speedPriority=0.8,
-                intelligencePriority=0.1,
-            ),
+        app.logger.info(
+            "[workflow-mode] SessionProxy.create_message (direct)",
+            data={"path": "mcp_relay_request activity"},
         )
+        direct_text = ""
         try:
-            direct_text = (
-                direct.content.text if isinstance(direct.content, TextContent) else ""
+            direct = await app.context.upstream_session.create_message(
+                messages=[
+                    SamplingMessage(
+                        role="user",
+                        content=TextContent(
+                            type="text", text=f"Write a haiku about {input}."
+                        ),
+                    )
+                ],
+                system_prompt="You are a poet.",
+                max_tokens=80,
+                model_preferences=ModelPreferences(
+                    hints=[ModelHint(name="gpt-4o-mini")],
+                    costPriority=0.1,
+                    speedPriority=0.8,
+                    intelligencePriority=0.1,
+                ),
             )
-        except Exception:
-            direct_text = ""
-        app.logger.info(f"Direct sampling result: {direct_text}")
+            try:
+                direct_text = (
+                    direct.content.text if isinstance(direct.content, TextContent) else ""
+                )
+            except Exception:
+                direct_text = ""
+        except Exception as e:
+            app.logger.warning(
+                "[workflow-mode] Direct sampling failed; continuing with nested",
+                data={"error": str(e)},
+            )
+        app.logger.info(
+            "[workflow-mode] Direct sampling result",
+            data={"text": direct_text},
+        )
 
         # 2) Nested server sampling executed as an activity
+        app.logger.info(
+            "[activity-mode] Invoking call_nested_sampling via executor.execute",
+            data={"topic": input},
+        )
         result = await app.context.executor.execute(
-            call_nested_sampling, {"topic": input, "app_ctx": app.context}
+            call_nested_sampling, input
         )
         # Log and return
-        app.logger.info(f"Nested sampling result: {result}")
+        app.logger.info(
+            "[activity-mode] Nested sampling result",
+            data={"text": result},
+        )
         return WorkflowResult(value=f"direct={direct_text}\nnested={result}")
 
 
@@ -273,8 +321,9 @@ class ElicitationWorkflow(Workflow[str]):
 
     @app.workflow_run
     async def run(self, input: str = "proceed") -> WorkflowResult[str]:
-        logger.info(
-            "Running ElicitationWorkflow; should proxy to /request elicitation/create"
+        app.logger.info(
+            "[workflow-mode] ElicitationWorkflow starting",
+            data={"note": "direct elicit via SessionProxy, then activity elicitation"},
         )
 
         # 1) Direct elicitation via SessionProxy (schedules mcp_relay_request)
@@ -283,6 +332,10 @@ class ElicitationWorkflow(Workflow[str]):
             "properties": {"confirm": {"type": "boolean"}},
             "required": ["confirm"],
         }
+        app.logger.info(
+            "[workflow-mode] SessionProxy.elicit (direct)",
+            data={"path": "mcp_relay_request activity"},
+        )
         direct = await app.context.upstream_session.elicit(
             message=f"Do you want to {input}?",
             requestedSchema=schema,
@@ -290,12 +343,42 @@ class ElicitationWorkflow(Workflow[str]):
         direct_text = f"accepted={getattr(direct, 'action', '')}"
 
         # 2) Nested elicitation via activity
+        app.logger.info(
+            "[activity-mode] Invoking call_nested_elicitation via executor.execute",
+            data={"action": input},
+        )
         nested = await app.context.executor.execute(
-            call_nested_elicitation, {"action": input, "app_ctx": app.context}
+            call_nested_elicitation, input
         )
 
-        app.logger.info(f"Elicitation results: direct={direct_text} nested={nested}")
+        app.logger.info(
+            "[workflow-mode] Elicitation results",
+            data={"direct": direct_text, "nested": nested},
+        )
         return WorkflowResult(value=f"direct={direct_text}\nnested={nested}")
+
+
+@app.workflow
+class NotificationsWorkflow(Workflow[str]):
+    """Temporal workflow that triggers non-logging notifications via proxy."""
+
+    @app.workflow_run
+    async def run(self, input: str = "notifications-demo") -> WorkflowResult[str]:
+        app.logger.info(
+            "[workflow-mode] NotificationsWorkflow starting; sending notifications via SessionProxy",
+            data={"path": "mcp_relay_notify activity"},
+        )
+        # These calls occur inside workflow and will use SessionProxy -> mcp_relay_notify activity
+        app.logger.info(
+            "[workflow-mode] send_progress_notification",
+            data={"token": f"{input}-token", "progress": 0.25},
+        )
+        await app.context.upstream_session.send_progress_notification(
+            progress_token=f"{input}-token", progress=0.25, message="Quarter complete"
+        )
+        app.logger.info("[workflow-mode] send_resource_list_changed")
+        await app.context.upstream_session.send_resource_list_changed()
+        return WorkflowResult(value="ok")
 
 
 async def main():
