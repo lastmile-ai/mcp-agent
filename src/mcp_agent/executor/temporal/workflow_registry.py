@@ -1,5 +1,6 @@
 import asyncio
 import base64
+from datetime import datetime
 from typing import (
     Any,
     Dict,
@@ -254,6 +255,11 @@ class TemporalWorkflowRegistry(WorkflowRegistry):
             # Use caller query if provided; else default to newest first
             query_local = query or "order by StartTime desc"
 
+            # TODO(saqadri): Multi-user auth scoping
+            # When supporting multiple users on one server, auth scoping should be enforced
+            # by the proxy layer using RPC metadata (e.g., API key). This client code should
+            # simply pass through rpc_metadata and let the backend filter results and manage
+            # pagination accordingly.
             iterator = client.list_workflows(
                 query=query_local,
                 limit=limit,
@@ -298,14 +304,50 @@ class TemporalWorkflowRegistry(WorkflowRegistry):
                         "state": {"status": "unknown", "metadata": {}, "error": None},
                     }
 
-                # Merge Temporal visibility/describe details
-                temporal_status = await self._get_temporal_workflow_status(
-                    workflow_id=workflow_id, run_id=run_id
-                )
+                temporal_status: Dict[str, Any] = {}
+                try:
+                    status: str | None = None
+                    if workflow_info.status:
+                        status = (
+                            workflow_info.status.name
+                            if workflow_info.status.name
+                            else str(workflow_info.status)
+                        )
+
+                    start_time = workflow_info.start_time
+                    close_time = workflow_info.close_time
+                    execution_time = workflow_info.execution_time
+
+                    def _to_timestamp(dt: datetime):
+                        try:
+                            return dt.timestamp() if dt is not None else None
+                        except Exception:
+                            return dt
+
+                    workflow_type = workflow_info.workflow_type
+
+                    temporal_status = {
+                        "id": workflow_id,
+                        "workflow_id": workflow_id,
+                        "run_id": run_id,
+                        "name": workflow_info.id,
+                        "type": workflow_type,
+                        "status": status,
+                        "start_time": _to_timestamp(start_time),
+                        "execution_time": _to_timestamp(execution_time),
+                        "close_time": _to_timestamp(close_time),
+                        "history_length": workflow_info.history_length,
+                        "parent_workflow_id": workflow_info.parent_id,
+                        "parent_run_id": workflow_info.parent_run_id,
+                    }
+                except Exception:
+                    temporal_status = await self._get_temporal_workflow_status(
+                        workflow_id=workflow_id, run_id=run_id
+                    )
 
                 status_dict["temporal"] = temporal_status
 
-                # Try to reflect Temporal status into top-level summary
+                # Reflect Temporal status into top-level summary
                 try:
                     ts = (
                         temporal_status.get("status")
