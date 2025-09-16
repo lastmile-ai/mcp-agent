@@ -13,7 +13,8 @@ You can use the URL to access the MCP via e.g. the [MCP Inspector](https://githu
 Add `/sse` to the end of the url, as the MCP is exposed as a server-sent events endpoint.
 Do not forget to add an authorization header with your MCP-agent API key as the bearer token.
 
-The app ID can be used to delete the example again:
+The app ID can be used to delete the example again afterward:
 
 ```bash
 uv run mcp-agent cloud app delete --id=<app-id>
+```
