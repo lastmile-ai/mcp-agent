@@ -338,7 +338,7 @@ def print_servers(servers: List[MCPApp]) -> None:
         )
 
         console.print(f"[bold cyan]{server.name or 'Unnamed'}[/bold cyan] {status}")
-        console.print(f"  Server ID: {server.appId}")
+        console.print(f"  App ID: {server.appId}")
 
         if server.appServerInfo and server.appServerInfo.serverUrl:
             console.print(f"  Server URL: {server.appServerInfo.serverUrl}")
@@ -371,7 +371,7 @@ def print_server_configs(server_configs: List[MCPAppConfiguration]) -> None:
         console.print(f"  Config ID: {config.appConfigurationId}")
 
         if config.app:
-            console.print(f"  Server ID: {config.app.appId}")
+            console.print(f"  App ID: {config.app.appId}")
             if config.app.description:
                 console.print(f"  Description: {config.app.description}")
 

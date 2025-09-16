@@ -368,12 +368,6 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             execution_id = request.path_params.get("execution_id")
             method = body.get("method")
             params = body.get("params") or {}
-            try:
-                logger.info(
-                    f"[notify] incoming execution_id={execution_id} method={method} idempotency_key={params.get('idempotency_key')}"
-                )
-            except Exception:
-                pass
 
             # Optional shared-secret auth
             gw_token = os.environ.get("MCP_GATEWAY_TOKEN")
@@ -419,9 +413,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                             logger=logger_name,
                             related_request_id=related_request_id,
                         )
-                        logger.debug(
-                            f"[notify] delivered via latest session_id={id(latest_session)} (message)"
-                        )
+                        # logger.debug(
+                        #     f"[notify] delivered via latest session_id={id(latest_session)} (message)"
+                        # )
                     elif method == "notifications/progress":
                         progress_token = params.get("progressToken")
                         progress = params.get("progress")
@@ -433,16 +427,16 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                             total=total,
                             message=message,
                         )
-                        logger.debug(
-                            f"[notify] delivered via latest session_id={id(latest_session)} (progress)"
-                        )
+                        # logger.debug(
+                        #     f"[notify] delivered via latest session_id={id(latest_session)} (progress)"
+                        # )
                     else:
                         rpc = getattr(latest_session, "rpc", None)
                         if rpc and hasattr(rpc, "notify"):
                             await rpc.notify(method, params)
-                            logger.debug(
-                                f"[notify] delivered via latest session_id={id(latest_session)} (generic '{method}')"
-                            )
+                            # logger.debug(
+                            #     f"[notify] delivered via latest session_id={id(latest_session)} (generic '{method}')"
+                            # )
                         else:
                             return JSONResponse(
                                 {"ok": False, "error": f"unsupported method: {method}"},
@@ -455,9 +449,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                             execution_id=execution_id,
                             session=latest_session,
                         )
-                        logger.info(
-                            f"[notify] rebound mapping to latest session_id={id(latest_session)} for execution_id={execution_id}"
-                        )
+                        # logger.info(
+                        #     f"[notify] rebound mapping to latest session_id={id(latest_session)} for execution_id={execution_id}"
+                        # )
                     except Exception:
                         pass
                     return JSONResponse({"ok": True})
@@ -488,9 +482,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         logger=logger_name,
                         related_request_id=related_request_id,
                     )
-                    logger.debug(
-                        f"[notify] delivered via mapped session_id={id(mapped_session)} (message)"
-                    )
+                    # logger.debug(
+                    #     f"[notify] delivered via mapped session_id={id(mapped_session)} (message)"
+                    # )
                 elif method == "notifications/progress":
                     progress_token = params.get("progressToken")
                     progress = params.get("progress")
@@ -502,16 +496,16 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         total=total,
                         message=message,
                     )
-                    logger.debug(
-                        f"[notify] delivered via mapped session_id={id(mapped_session)} (progress)"
-                    )
+                    # logger.debug(
+                    #     f"[notify] delivered via mapped session_id={id(mapped_session)} (progress)"
+                    # )
                 else:
                     rpc = getattr(mapped_session, "rpc", None)
                     if rpc and hasattr(rpc, "notify"):
                         await rpc.notify(method, params)
-                        logger.debug(
-                            f"[notify] delivered via mapped session_id={id(mapped_session)} (generic '{method}')"
-                        )
+                        # logger.debug(
+                        #     f"[notify] delivered via mapped session_id={id(mapped_session)} (generic '{method}')"
+                        # )
                     else:
                         return JSONResponse(
                             {"ok": False, "error": f"unsupported method: {method}"},
@@ -521,13 +515,13 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             except Exception as e_mapped:
                 # Best-effort for notifications
                 if isinstance(method, str) and method.startswith("notifications/"):
-                    logger.warning(
-                        f"[notify] dropped notification for execution_id={execution_id}: {e_mapped}"
-                    )
+                    # logger.warning(
+                    #     f"[notify] dropped notification for execution_id={execution_id}: {e_mapped}"
+                    # )
                     return JSONResponse({"ok": True, "dropped": True})
-                logger.error(
-                    f"[notify] error forwarding for execution_id={execution_id}: {e_mapped}"
-                )
+                # logger.error(
+                #     f"[notify] error forwarding for execution_id={execution_id}: {e_mapped}"
+                # )
                 return JSONResponse(
                     {"ok": False, "error": str(e_mapped)}, status_code=500
                 )
@@ -556,12 +550,6 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             execution_id = request.path_params.get("execution_id")
             method = body.get("method")
             params = body.get("params") or {}
-            try:
-                logger.info(
-                    f"[request] incoming execution_id={execution_id} method={method}"
-                )
-            except Exception:
-                pass
 
             # Prefer latest upstream session first
             latest_session = _get_fallback_upstream_session()
@@ -570,16 +558,16 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                     rpc = getattr(latest_session, "rpc", None)
                     if rpc and hasattr(rpc, "request"):
                         result = await rpc.request(method, params)
-                        logger.debug(
-                            f"[request] delivered via latest session_id={id(latest_session)} (generic '{method}')"
-                        )
+                        # logger.debug(
+                        #     f"[request] delivered via latest session_id={id(latest_session)} (generic '{method}')"
+                        # )
                         try:
                             await _register_session(
                                 run_id=execution_id,
                                 execution_id=execution_id,
                                 session=latest_session,
                             )
-                            logger.info(
+                            logger.debug(
                                 f"[request] rebound mapping to latest session_id={id(latest_session)} for execution_id={execution_id}"
                             )
                         except Exception:
@@ -846,12 +834,6 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                     },
                     logger=namespace,
                 )
-                try:
-                    logger.debug(
-                        f"[log] forwarded workflow log to session_id={id(session)} level={level} ns={namespace}"
-                    )
-                except Exception:
-                    pass
                 return JSONResponse({"ok": True})
             except Exception as e:
                 return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
