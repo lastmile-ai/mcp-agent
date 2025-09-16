@@ -12,7 +12,7 @@ import logging
 
 from mcp_agent.executor.temporal import create_temporal_worker_for_app
 
-from basic_agent_server import app
+from examples.mcp_agent_server.temporal.main import app
 
 # Initialize logging
 logging.basicConfig(level=logging.INFO)
