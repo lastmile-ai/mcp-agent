@@ -27,6 +27,7 @@ class MCPApp(BaseModel):
     createdAt: datetime
     updatedAt: datetime
     appServerInfo: Optional[AppServerInfo] = None
+    deploymentMetadata: Optional[Dict[str, Any]] = None
 
 
 # A user-configured MCP App 'instance', created by configuring a deployed MCP App.

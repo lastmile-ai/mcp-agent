@@ -287,6 +287,7 @@ def _server_to_dict(server: MCPApp) -> dict:
         "creator_id": server.creatorId,
         "created_at": server.createdAt.isoformat() if server.createdAt else None,
         "type": "deployed",
+        "deployment_metadata": getattr(server, "deploymentMetadata", None),
     }
 
 
@@ -307,6 +308,9 @@ def _server_config_to_dict(config: MCPAppConfiguration) -> dict:
         "creator_id": config.creatorId,
         "created_at": config.createdAt.isoformat() if config.createdAt else None,
         "type": "configured",
+        "deployment_metadata": getattr(config.app, "deploymentMetadata", None)
+        if getattr(config, "app", None)
+        else None,
     }
 
 
@@ -348,6 +352,11 @@ def print_servers(servers: List[MCPApp]) -> None:
 
         console.print(f"  Created: {server.createdAt.strftime('%Y-%m-%d %H:%M:%S')}")
 
+        meta = getattr(server, "deploymentMetadata", None)
+        summary = _format_deploy_meta(meta)
+        if summary:
+            console.print(f"  Metadata: {summary}")
+
 
 def print_server_configs(server_configs: List[MCPAppConfiguration]) -> None:
     """Print a list of configured servers in a clean, copyable format."""
@@ -383,6 +392,15 @@ def print_server_configs(server_configs: List[MCPAppConfiguration]) -> None:
                 f"  Created: {config.createdAt.strftime('%Y-%m-%d %H:%M:%S')}"
             )
 
+        meta = (
+            getattr(config.app, "deploymentMetadata", None)
+            if getattr(config, "app", None)
+            else None
+        )
+        summary = _format_deploy_meta(meta)
+        if summary:
+            console.print(f"  Metadata: {summary}")
+
 
 def _server_status_text(status: str) -> str:
     """Convert server status code to emoji."""
@@ -392,3 +410,45 @@ def _server_status_text(status: str) -> str:
         return "[red]🔴 Offline[/red]"
     else:
         return "❓ Unknown"
+
+
+def _format_deploy_meta(meta) -> Optional[str]:
+    """Return a one-line deployment summary if metadata is present.
+
+    Accepts either a dict or a JSON string.
+    """
+    try:
+        if meta is None:
+            return None
+        if isinstance(meta, str):
+            import json as _json
+
+            try:
+                meta = _json.loads(meta)
+            except Exception:
+                return None
+        if not isinstance(meta, dict):
+            return None
+
+        source = meta.get("source")
+        if source == "git" or ("commit" in meta or "short" in meta):
+            short = meta.get("short") or (meta.get("commit") or "")[:7]
+            branch = meta.get("branch")
+            dirty = meta.get("dirty")
+            details = []
+            if branch:
+                details.append(branch)
+            if dirty is True:
+                details.append("dirty")
+            elif dirty is False:
+                details.append("clean")
+            base = short or "unknown"
+            return f"{base} ({', '.join(details)})" if details else base
+
+        # workspace fallback
+        fp = meta.get("fingerprint") or meta.get("workspace_fingerprint")
+        if fp:
+            return f"workspace {str(fp)[:12]}"
+        return None
+    except Exception:
+        return None
