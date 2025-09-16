@@ -690,6 +690,18 @@ Keep sensitive configuration in separate secrets files:
       api_key: "${OPENAI_API_KEY}"
     ```
   </Tab>
+  
+  <Tab title="Cloud Secrets">
+    For mcp-agent cloud deployments, only raw secrets (not environment variables) are supported:
+    
+    ```yaml
+    openai:
+      api_key: "sk-..."
+    ```
+
+    During deployment, you will be prompted to specify which secrets should be used for the deployed app and which
+    secrets will be excluded (and require a subsequent 'configure' command to configure with user secrets).
+  </Tab>
 </Tabs>
 
 ### Subagent Configuration

@@ -109,25 +109,25 @@ Configure Claude Desktop to access your agent servers by updating your `~/.claud
 Use MCP Inspector to explore and test your agent servers:
 
 ```bash
-npx @modelcontextprotocol/inspector 
+npx @modelcontextprotocol/inspector
 ```
 
 Make sure to fill out the following settings:
 
-| Setting | Value | 
-|---|---|
-| *Transport Type* | *SSE* |
-| *SSE* | *https://[your-agent-server-id].deployments.mcp-agent.com/sse* |
-| *Header Name* | *Authorization* | 
-| *Bearer Token* | *your-mcp-agent-cloud-api-token* |
+| Setting          | Value                                                          |
+| ---------------- | -------------------------------------------------------------- |
+| _Transport Type_ | _SSE_                                                          |
+| _SSE_            | _https://[your-agent-server-id].deployments.mcp-agent.com/sse_ |
+| _Header Name_    | _Authorization_                                                |
+| _Bearer Token_   | _your-mcp-agent-cloud-api-token_                               |
 
 > [!TIP]
 > In the Configuration, change the request timeout to a longer time period. Since your agents are making LLM calls, it is expected that it should take longer than simple API calls.
 
-
 ##### Trigger Agent Run on Cloud
 
 Once you are connected to the MCP Agent on cloud, you will get a list of tools as follow:
+
 - MCP Agent Cloud Default Tools:
   - workflow-list: list the workflow (you don't need this)
   - workflow-run-list: list the execution runs of your agent
@@ -138,8 +138,8 @@ Once you are connected to the MCP Agent on cloud, you will get a list of tools a
 - Tool's that your agent expose:
   - github_to_slack: default of your tool name, input the parameters to trigger a workflow run
 
-
 Once you run the agent, successful trigger will return a workflow_run metadata object, where you can find your run id to query status:
+
 ```json
 {
   "workflow_id": "github_to_slack-uuid",
@@ -182,4 +182,3 @@ When you agent run successfully finishes, you will see Slack message is posted b
   }
 }
 ```
-

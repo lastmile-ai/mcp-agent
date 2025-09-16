@@ -141,12 +141,12 @@ npx @modelcontextprotocol/inspector
 
 Configure the following settings in MCP Inspector:
 
-| Setting | Value |
-|---|---|
-| **Transport Type** | SSE |
-| **SSE URL** | `https://[your-agent-server-id].deployments.mcp-agent.com/sse` |
-| **Header Name** | Authorization |
-| **Bearer Token** | your-mcp-agent-cloud-api-token |
+| Setting            | Value                                                          |
+| ------------------ | -------------------------------------------------------------- |
+| **Transport Type** | SSE                                                            |
+| **SSE URL**        | `https://[your-agent-server-id].deployments.mcp-agent.com/sse` |
+| **Header Name**    | Authorization                                                  |
+| **Bearer Token**   | your-mcp-agent-cloud-api-token                                 |
 
 > [!TIP]
 > Increase the request timeout in the Configuration settings since LLM calls may take longer than simple API calls.
@@ -156,6 +156,7 @@ Configure the following settings in MCP Inspector:
 Once connected to your deployed agent, you'll have access to:
 
 **MCP Agent Cloud Default Tools:**
+
 - `workflow-list`: List available workflows
 - `workflow-run-list`: List execution runs of your agent
 - `workflow-run`: Create a new workflow run
@@ -164,6 +165,7 @@ Once connected to your deployed agent, you'll have access to:
 - `workflows-cancel`: Cancel a running workflow
 
 **Your Agent's Tool:**
+
 - `cover_letter_writer_tool`: Generate optimized cover letters with parameters:
   - `job_posting`: Job description and requirements
   - `candidate_details`: Candidate background and qualifications
