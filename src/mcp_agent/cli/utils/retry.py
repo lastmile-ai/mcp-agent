@@ -15,7 +15,9 @@ class RetryError(Exception):
     def __init__(self, original_error: Exception, attempts: int):
         self.original_error = original_error
         self.attempts = attempts
-        super().__init__(f"Failed after {attempts} attempts. Last error: {original_error}")
+        super().__init__(
+            f"Failed after {attempts} attempts. Last error: {original_error}"
+        )
 
 
 def is_retryable_error(error: Exception) -> bool:
@@ -44,7 +46,7 @@ def retry_with_exponential_backoff(
     max_delay: float = 60.0,
     retryable_check: Optional[Callable[[Exception], bool]] = None,
     *args,
-    **kwargs
+    **kwargs,
 ) -> Any:
     """Retry a function with exponential backoff.
 
@@ -80,7 +82,9 @@ def retry_with_exponential_backoff(
             if attempt == max_attempts or not retryable_check(e):
                 break
 
-            print_warning(f"Attempt {attempt}/{max_attempts} failed: {e}. Retrying in {delay:.1f}s...")
+            print_warning(
+                f"Attempt {attempt}/{max_attempts} failed: {e}. Retrying in {delay:.1f}s..."
+            )
 
             time.sleep(delay)
             delay = min(delay * backoff_multiplier, max_delay)
@@ -102,7 +106,7 @@ async def retry_async_with_exponential_backoff(
     max_delay: float = 60.0,
     retryable_check: Optional[Callable[[Exception], bool]] = None,
     *args,
-    **kwargs
+    **kwargs,
 ) -> Any:
     """Async version of retry with exponential backoff.
 
@@ -141,7 +145,9 @@ async def retry_async_with_exponential_backoff(
             if attempt == max_attempts or not retryable_check(e):
                 break
 
-            print_warning(f"Attempt {attempt}/{max_attempts} failed: {e}. Retrying in {delay:.1f}s...")
+            print_warning(
+                f"Attempt {attempt}/{max_attempts} failed: {e}. Retrying in {delay:.1f}s..."
+            )
 
             await asyncio.sleep(delay)
             delay = min(delay * backoff_multiplier, max_delay)

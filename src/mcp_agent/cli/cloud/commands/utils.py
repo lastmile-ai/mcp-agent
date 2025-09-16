@@ -29,7 +29,10 @@ def setup_authenticated_client() -> MCPAppClient:
     effective_api_key = settings.API_KEY or load_api_key_credentials()
 
     if not effective_api_key:
-        raise CLIError("Must be authenticated. Set MCP_API_KEY or run 'mcp-agent login'.", retriable=False)
+        raise CLIError(
+            "Must be authenticated. Set MCP_API_KEY or run 'mcp-agent login'.",
+            retriable=False,
+        )
 
     return MCPAppClient(api_url=DEFAULT_API_BASE_URL, api_key=effective_api_key)
 
@@ -47,7 +50,7 @@ def validate_output_format(format: str) -> None:
     if format not in valid_formats:
         raise CLIError(
             f"Invalid format '{format}'. Valid options are: {', '.join(valid_formats)}",
-            retriable=False
+            retriable=False,
         )
 
 
@@ -100,7 +103,7 @@ def handle_server_api_errors(func):
         except UnauthenticatedError as e:
             raise CLIError(
                 "Invalid API key. Run 'mcp-agent login' or set MCP_API_KEY environment variable with new API key.",
-                retriable=False
+                retriable=False,
             ) from e
         except CLIError:
             # Re-raise CLIErrors as-is

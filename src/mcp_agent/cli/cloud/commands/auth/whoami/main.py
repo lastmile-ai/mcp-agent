@@ -29,7 +29,9 @@ def whoami() -> None:
         )
     if not credentials:
         raise CLIError(
-            "Not authenticated. Set MCP_API_KEY or run 'mcp-agent login'.", exit_code=4, retriable=False
+            "Not authenticated. Set MCP_API_KEY or run 'mcp-agent login'.",
+            exit_code=4,
+            retriable=False,
         )
 
     if credentials.is_token_expired:
