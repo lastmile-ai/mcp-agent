@@ -247,7 +247,8 @@ class OpenAIAugmentedLLM(
                         # DEPRECATED: https://platform.openai.com/docs/api-reference/chat/create#chat-create-max_tokens
                         # "max_tokens": params.maxTokens,
                         "max_completion_tokens": params.maxTokens,
-                        "reasoning_effort": self._reasoning_effort,
+                        # Use current OpenAI reasoning API shape
+                        "reasoning": {"effort": self._reasoning_effort},
                     }
                 else:
                     arguments = {**arguments, "max_tokens": params.maxTokens}
@@ -419,13 +420,15 @@ class OpenAIAugmentedLLM(
             final_text: List[str] = []
 
             for response in responses:
-                content = response.content
-                if not content:
-                    continue
-
-                if isinstance(content, str):
-                    final_text.append(content)
-                    continue
+                # Robust extraction of text content
+                try:
+                    text = self.message_str(response, content_only=True)
+                    if text:
+                        final_text.append(text)
+                except Exception:
+                    content = getattr(response, "content", None)
+                    if isinstance(content, str):
+                        final_text.append(content)
 
             res = "\n".join(final_text)
             span.set_attribute("response", res)
@@ -528,7 +531,7 @@ class OpenAIAugmentedLLM(
                 # DEPRECATED: https://platform.openai.com/docs/api-reference/chat/create#chat-create-max_tokens
                 # "max_tokens": params.maxTokens,
                 payload["max_completion_tokens"] = params.maxTokens
-                payload["reasoning_effort"] = self._reasoning_effort
+                payload["reasoning"] = {"effort": self._reasoning_effort}
             else:
                 payload["max_tokens"] = params.maxTokens
             user = params.user or getattr(self.context.config.openai, "user", None)
@@ -553,13 +556,36 @@ class OpenAIAugmentedLLM(
             if not completion.choices or completion.choices[0].message.content is None:
                 raise ValueError("No structured content returned by model")
 
-            content = completion.choices[0].message.content
+            # Extract JSON text from message content (string or list)
+            raw_content = completion.choices[0].message.content
+            json_text: str | None = None
+            if isinstance(raw_content, str):
+                json_text = raw_content
+            else:
+                try:
+                    msg_dict = completion.choices[0].message.model_dump()
+                    parts = msg_dict.get("content", [])
+                    if isinstance(parts, list):
+                        texts = []
+                        for p in parts:
+                            if isinstance(p, dict):
+                                if "text" in p:
+                                    texts.append(p.get("text", ""))
+                                elif "output_text" in p:
+                                    texts.append(p.get("output_text", ""))
+                        if texts:
+                            json_text = "".join(texts)
+                except Exception:
+                    pass
+
+            if not json_text:
+                raise ValueError("Structured output missing textual JSON content")
+
             try:
-                data = json.loads(content)
+                data = json.loads(json_text)
                 return response_model.model_validate(data)
             except Exception:
-                # Fallback to pydantic JSON parsing if already a JSON string-like
-                return response_model.model_validate_json(content)
+                return response_model.model_validate_json(json_text)
 
     async def pre_tool_call(self, tool_call_id: str | None, request: CallToolRequest):
         return request
@@ -643,13 +669,30 @@ class OpenAIAugmentedLLM(
         self, message: ChatCompletionMessage, content_only: bool = False
     ) -> str:
         """Convert an output message to a string representation."""
+        # If simple string content
         content = message.content
-        if content:
+        if isinstance(content, str):
             return content
-        elif content_only:
-            # If content_only is True, return empty string if no content
-            return ""
 
+        # If content is a list of parts, join any available text fields
+        try:
+            msg_dict = message.model_dump()
+            parts = msg_dict.get("content", [])
+            if isinstance(parts, list):
+                texts = []
+                for p in parts:
+                    if isinstance(p, dict):
+                        if "text" in p:
+                            texts.append(p.get("text", ""))
+                        elif "output_text" in p:
+                            texts.append(p.get("output_text", ""))
+                if texts:
+                    return "".join(texts)
+        except Exception:
+            pass
+
+        if content_only:
+            return ""
         return str(message)
 
     def _annotate_span_for_generation_message(
@@ -992,6 +1035,13 @@ class OpenAICompletionTasks:
                 "messages": [{"role": "user", "content": request.response_str}],
                 "response_format": response_format,
             }
+            # Prefer reasoning API shape for reasoning-capable models
+            if request.model and str(request.model).startswith(
+                ("o1", "o3", "o4", "gpt-5")
+            ):
+                payload["reasoning"] = {
+                    "effort": getattr(request.config, "reasoning_effort", "medium")
+                }
             if request.user:
                 payload["user"] = request.user
 
@@ -1000,15 +1050,36 @@ class OpenAICompletionTasks:
             if not completion.choices or completion.choices[0].message.content is None:
                 raise ValueError("No structured content returned by model")
 
-            content = completion.choices[0].message.content
-            # message.content is expected to be JSON string
-            try:
-                data = json.loads(content)
-            except Exception:
-                # Some models may already return a dict-like; fall back to string validation
-                return response_model.model_validate_json(content)
+            # Extract JSON from message content which may be a string or list of parts
+            raw_content = completion.choices[0].message.content
+            json_text: str | None = None
+            if isinstance(raw_content, str):
+                json_text = raw_content
+            else:
+                try:
+                    msg_dict = completion.choices[0].message.model_dump()
+                    parts = msg_dict.get("content", [])
+                    if isinstance(parts, list):
+                        texts = []
+                        for p in parts:
+                            if isinstance(p, dict):
+                                if "text" in p:
+                                    texts.append(p.get("text", ""))
+                                elif "output_text" in p:
+                                    texts.append(p.get("output_text", ""))
+                        if texts:
+                            json_text = "".join(texts)
+                except Exception:
+                    pass
 
-            return response_model.model_validate(data)
+            if not json_text:
+                raise ValueError("No structured JSON content returned by model")
+
+            try:
+                data = json.loads(json_text)
+                return response_model.model_validate(data)
+            except Exception:
+                return response_model.model_validate_json(json_text)
 
 
 class MCPOpenAITypeConverter(
@@ -1168,11 +1239,15 @@ def openai_content_to_mcp_content(
         # TODO: saqadri - this is a best effort conversion, we should handle all possible content types
         for c in content:
             if (
-                c["type"] == "text"
+                c["type"] == "text" or c["type"] == "output_text"
             ):  # isinstance(c, ChatCompletionContentPartTextParam):
                 mcp_content.append(
                     TextContent(
-                        type="text", text=c["text"], **typed_dict_extras(c, ["text"])
+                        type="text",
+                        text=c.get("text") or c.get("output_text") or "",
+                        **typed_dict_extras(c, ["text"])
+                        if "text" in c
+                        else typed_dict_extras(c, ["output_text"]),
                     )
                 )
             elif (
