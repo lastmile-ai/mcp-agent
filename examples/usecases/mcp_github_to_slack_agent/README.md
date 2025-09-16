@@ -75,32 +75,13 @@ uv run main.py --owner <github-owner> --repo <repository-name> --channel <slack-
 uv run mcp-agent login
 ```
 
-#### `b.` Update your `mcp_agent.secrets.yaml` to mark your developer secrets (keys)
-
-```yaml
-$schema: ../../../schema/mcp-agent.config.schema.json
-
-mcp:
-  servers:
-    slack:
-      env:
-        SLACK_MCP_XOXP_TOKEN: !developer_secret SLACK_MCP_XOXP_TOKEN
-
-    github:
-      headers:
-        Authorization: !developer_secret GITHUB_PERSONAL_ACCESS_TOKEN_WITH_BEARER_PREFIX
-
-anthropic:
-  api_key: !developer_secret ANTHROPIC_API_KEY
-```
-
-#### `c.` Deploy your agent with a single command
+#### `b.` Deploy your agent with a single command
 
 ```bash
 uv run mcp-agent deploy my-first-agent
 ```
 
-#### `d.` Connect to your deployed agent as an MCP server through any MCP client
+#### `c.` Connect to your deployed agent as an MCP server through any MCP client
 
 ##### Claude Desktop Integration
 
@@ -126,25 +107,25 @@ Configure Claude Desktop to access your agent servers by updating your `~/.claud
 Use MCP Inspector to explore and test your agent servers:
 
 ```bash
-npx @modelcontextprotocol/inspector 
+npx @modelcontextprotocol/inspector
 ```
 
 Make sure to fill out the following settings:
 
-| Setting | Value | 
-|---|---|
-| *Transport Type* | *SSE* |
-| *SSE* | *https://[your-agent-server-id].deployments.mcp-agent.com/sse* |
-| *Header Name* | *Authorization* | 
-| *Bearer Token* | *your-mcp-agent-cloud-api-token* |
+| Setting          | Value                                                          |
+| ---------------- | -------------------------------------------------------------- |
+| _Transport Type_ | _SSE_                                                          |
+| _SSE_            | _https://[your-agent-server-id].deployments.mcp-agent.com/sse_ |
+| _Header Name_    | _Authorization_                                                |
+| _Bearer Token_   | _your-mcp-agent-cloud-api-token_                               |
 
 > [!TIP]
 > In the Configuration, change the request timeout to a longer time period. Since your agents are making LLM calls, it is expected that it should take longer than simple API calls.
 
-
 ##### Trigger Agent Run on Cloud
 
 Once you are connected to the MCP Agent on cloud, you will get a list of tools as follow:
+
 - MCP Agent Cloud Default Tools:
   - workflow-list: list the workflow (you don't need this)
   - workflow-run-list: list the execution runs of your agent
@@ -155,8 +136,8 @@ Once you are connected to the MCP Agent on cloud, you will get a list of tools a
 - Tool's that your agent expose:
   - github_to_slack: default of your tool name, input the parameters to trigger a workflow run
 
-
 Once you run the agent, successful trigger will return a workflow_run metadata object, where you can find your run id to query status:
+
 ```json
 {
   "workflow_id": "github_to_slack-uuid",
@@ -199,4 +180,3 @@ When you agent run successfully finishes, you will see Slack message is posted b
   }
 }
 ```
-
