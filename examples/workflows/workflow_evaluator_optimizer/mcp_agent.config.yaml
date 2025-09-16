@@ -3,6 +3,12 @@ $schema: ../../../schema/mcp-agent.config.schema.json
 # Execution engine configuration
 execution_engine: asyncio
 
+# [cloud deployment] if you want to change default 60s timeout for each agent task run, uncomment temporal section below
+#temporal:
+#  timeout_seconds: 600      # timeout in seconds
+#  host: placeholder         # placeholder for schema validation
+#  task_queue: placeholder   # placeholder for schema validation
+
 # Logging configuration
 logger:
   type: console          # Log output type (console, file, or http)
@@ -30,7 +36,7 @@ mcp:
 # OpenAI configuration
 openai:
   # API keys are stored in mcp_agent.secrets.yaml (gitignored for security)
-  default_model: gpt-4.1  # Default model for OpenAI API calls
+  default_model: gpt-5  # Default model for OpenAI API calls
 
 # OpenTelemetry (OTEL) configuration for distributed tracing
 otel:

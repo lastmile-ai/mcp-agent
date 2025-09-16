@@ -78,7 +78,7 @@ async def example_usage(
 
         result = await evaluator_optimizer.generate_str(
             message=f"Write a cover letter for the following job posting: {job_posting}\n\nCandidate Details: {candidate_details}\n\nCompany information: {company_information}",
-            request_params=RequestParams(model="gpt-4.1"),
+            request_params=RequestParams(model="gpt-5"),
         )
 
         logger.info(f"Generated cover letter: {result}")
