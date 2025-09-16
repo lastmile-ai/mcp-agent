@@ -75,32 +75,15 @@ uv run main.py --owner <github-owner> --repo <repository-name> --channel <slack-
 uv run mcp-agent login
 ```
 
-#### `b.` Update your `mcp_agent.secrets.yaml` to mark your developer secrets (keys)
+During deployment, you can select how you would like your secrets managed.
 
-```yaml
-$schema: ../../../schema/mcp-agent.config.schema.json
-
-mcp:
-  servers:
-    slack:
-      env:
-        SLACK_MCP_XOXP_TOKEN: !developer_secret SLACK_MCP_XOXP_TOKEN
-
-    github:
-      headers:
-        Authorization: !developer_secret GITHUB_PERSONAL_ACCESS_TOKEN_WITH_BEARER_PREFIX
-
-anthropic:
-  api_key: !developer_secret ANTHROPIC_API_KEY
-```
-
-#### `c.` Deploy your agent with a single command
+#### `b.` Deploy your agent with a single command
 
 ```bash
 uv run mcp-agent deploy my-first-agent
 ```
 
-#### `d.` Connect to your deployed agent as an MCP server through any MCP client
+#### `c.` Connect to your deployed agent as an MCP server through any MCP client
 
 ##### Claude Desktop Integration
 
