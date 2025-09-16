@@ -82,7 +82,7 @@ Configure Claude Desktop to access your agent servers by updating your `~/.claud
   "command": "/path/to/npx",
   "args": [
     "mcp-remote",
-    "https://[your-agent-server-id].deployments.mcp-agent-cloud.lastmileai.dev/sse",
+    "https://[your-agent-server-id].deployments.mcp-agent.com/sse",
     "--header",
     "Authorization: Bearer ${BEARER_TOKEN}"
   ],
@@ -105,7 +105,7 @@ Make sure to fill out the following settings:
 | Setting | Value | 
 |---|---|
 | *Transport Type* | *SSE* |
-| *SSE* | *https://[your-agent-server-id].deployments.mcp-agent-cloud.lastmileai.dev/sse* |
+| *SSE* | *https://[your-agent-server-id].deployments.mcp-agent.com/sse* |
 | *Header Name* | *Authorization* | 
 | *Bearer Token* | *your-mcp-agent-cloud-api-token* |
 
