@@ -37,6 +37,7 @@ from mcp_agent.cli.cloud.commands.workflows import (
 )
 from mcp_agent.cli.utils.typer_utils import HelpfulTyperGroup
 from mcp_agent.cli.utils.ux import print_error
+from mcp_agent.cli.utils.version_check import maybe_warn_newer_version
 
 # Setup file logging
 LOG_DIR = Path.home() / ".mcp-agent" / "logs"
@@ -174,6 +175,11 @@ def callback(
     ),
 ) -> None:
     """MCP Agent Cloud CLI."""
+    # Best-effort version check (5s timeout, non-fatal). Guard to run once.
+    try:
+        maybe_warn_newer_version()
+    except Exception:
+        pass
     if version:
         v = metadata_version("mcp-agent")
         typer.echo(f"MCP Agent Cloud CLI version: {v}")
@@ -183,6 +189,11 @@ def callback(
 def run() -> None:
     """Run the CLI application."""
     try:
+        # Run best-effort version check before Typer may early-exit on --help
+        try:
+            maybe_warn_newer_version()
+        except Exception:
+            pass
         app()
     except Exception as e:
         # Unexpected errors - log full exception and show clean error to user

@@ -37,7 +37,7 @@ def get_app_status(
         None,
         "--id",
         "-i",
-        help="ID or server URL of the app or app configuration to get details for.",
+        help="ID, server URL, or name of the app to get details for.",
     ),
     api_url: Optional[str] = typer.Option(
         settings.API_BASE_URL,
@@ -58,7 +58,7 @@ def get_app_status(
     if not effective_api_key:
         raise CLIError(
             "Must be logged in to get app status. Run 'mcp-agent login', set MCP_API_KEY environment variable or specify --api-key option.",
-            retriable=False
+            retriable=False,
         )
 
     client = MCPAppClient(
@@ -94,7 +94,7 @@ def get_app_status(
     except UnauthenticatedError as e:
         raise CLIError(
             "Invalid API key. Run 'mcp-agent login' or set MCP_API_KEY environment variable with new API key.",
-            retriable=False
+            retriable=False,
         ) from e
     except Exception as e:
         # Re-raise with more context - top-level CLI handler will show clean message

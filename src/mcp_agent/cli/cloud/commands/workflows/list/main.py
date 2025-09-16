@@ -20,30 +20,37 @@ from ...utils import (
 )
 
 
-async def _list_workflows_async(server_id_or_url: str, format: str = "text") -> None:
+async def _list_workflows_async(
+    server_id_or_url_or_name: str, format: str = "text"
+) -> None:
     """List available workflows using MCP tool calls to a deployed server."""
-    if server_id_or_url.startswith(("http://", "https://")):
-        server_url = server_id_or_url
+    if server_id_or_url_or_name.startswith(("http://", "https://")):
+        server_url = server_id_or_url_or_name
     else:
         client = setup_authenticated_client()
-        server = await resolve_server_async(client, server_id_or_url)
+        server = await resolve_server_async(client, server_id_or_url_or_name)
 
         if hasattr(server, "appServerInfo") and server.appServerInfo:
             server_url = server.appServerInfo.serverUrl
         else:
             raise CLIError(
-                f"Server '{server_id_or_url}' is not deployed or has no server URL"
+                f"Server '{server_id_or_url_or_name}' is not deployed or has no server URL"
             )
 
         if not server_url:
-            raise CLIError(f"No server URL found for server '{server_id_or_url}'")
+            raise CLIError(
+                f"No server URL found for server '{server_id_or_url_or_name}'"
+            )
 
     from mcp_agent.cli.config import settings as _settings
 
     effective_api_key = _settings.API_KEY or load_api_key_credentials()
 
     if not effective_api_key:
-        raise CLIError("Must be logged in to access server. Run 'mcp-agent login'.", retriable=False)
+        raise CLIError(
+            "Must be logged in to access server. Run 'mcp-agent login'.",
+            retriable=False,
+        )
 
     try:
         async with mcp_connection_session(
@@ -73,19 +80,19 @@ async def _list_workflows_async(server_id_or_url: str, format: str = "text") -> 
                     print_workflows(workflows)
             except Exception as e:
                 print_error(
-                    f"Error listing workflows for server {server_id_or_url}: {str(e)}"
+                    f"Error listing workflows for server {server_id_or_url_or_name}: {str(e)}"
                 )
 
     except Exception as e:
         raise CLIError(
-            f"Error listing workflows for server {server_id_or_url}: {str(e)}"
+            f"Error listing workflows for server {server_id_or_url_or_name}: {str(e)}"
         ) from e
 
 
 @handle_server_api_errors
 def list_workflows(
-    server_id_or_url: str = typer.Argument(
-        ..., help="Server ID or URL to list workflows for"
+    server_id_or_url_or_name: str = typer.Argument(
+        ..., help="App ID, server URL, or app name to list workflows for"
     ),
     format: Optional[str] = typer.Option(
         "text", "--format", help="Output format (text|json|yaml)"
@@ -103,4 +110,4 @@ def list_workflows(
         mcp-agent cloud workflows list https://server.example.com --format json
     """
     validate_output_format(format)
-    run_async(_list_workflows_async(server_id_or_url, format))
+    run_async(_list_workflows_async(server_id_or_url_or_name, format))
