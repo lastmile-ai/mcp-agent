@@ -178,7 +178,7 @@ Please enter your API key 🔑:
 uv run mcp-agent deploy mcp_agent_server -c /absolute/path/to/your/project
 ```
 
-5. In the terminal, ou will then be prompted to specify your OpenAI and/or Anthropic keys:
+5. In the terminal, you will then be prompted to specify your OpenAI and/or Anthropic keys:
 
 Once the deployment is successful, you should see the following:
 

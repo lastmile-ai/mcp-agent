@@ -37,7 +37,7 @@ The SDK uses a streamlined approach to secrets management:
 
 Two types of secrets are supported:
 
-1. **Deployment Secrets**:
+1. **Developer Secrets**:
 
    - Used for secrets that are provided by developers when deploying an app
    - Values are known at deployment time and will be accessible at runtime on the deployed app

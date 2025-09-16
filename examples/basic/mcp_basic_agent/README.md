@@ -102,6 +102,8 @@ uv run mcp-agent login
 uv run mcp-agent deploy my-first-agent
 ```
 
+During deployment, you can select how you would like your secrets managed.
+
 ### `c.` Connect to your deployed agent as an MCP server through any MCP client
 
 #### Claude Desktop Integration

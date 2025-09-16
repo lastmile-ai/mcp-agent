@@ -71,7 +71,7 @@ Before you begin, make sure you have:
     
     The deployment process will:
     1. Check for existing app with this name or create a new one
-    2. Process your secrets file (transforming secrets to secure handles)
+    2. Process your secrets file
     3. Bundle and upload your code
     4. Deploy to MCP Agent Cloud's managed infrastructure
     
@@ -322,9 +322,9 @@ MCP_API_KEY="your-key" mcp-agent deploy my-agent
 
 ### Secrets Management
 
-MCP Agent Cloud securely handles secrets through the `mcp_agent.secrets.yaml` file. During deployment, you will be prompted to specify 
-which secrets should securely uploaded to MCP Agent Cloud's vault to be used for the deployed app and which secrets will be excluded 
-(and require a subsequent 'configure' command to configure with user secrets).
+MCP Agent Cloud securely handles secrets through the `mcp_agent.secrets.yaml` file:
+1. During `mcp-agent deploy`, you will be prompted through the secrets management flow
+2. Secrets are safely secured in MCP Agent Cloud
 
 ## Testing with MCP Inspector
 

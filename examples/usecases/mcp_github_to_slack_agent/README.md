@@ -75,6 +75,8 @@ uv run main.py --owner <github-owner> --repo <repository-name> --channel <slack-
 uv run mcp-agent login
 ```
 
+During deployment, you can select how you would like your secrets managed.
+
 #### `b.` Deploy your agent with a single command
 
 ```bash

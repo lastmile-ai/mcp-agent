@@ -104,6 +104,8 @@ uv run mcp-agent login
 uv run mcp-agent deploy cover-letter-writer
 ```
 
+During deployment, you can select how you would like your secrets managed.
+
 #### `c.` Connect to your deployed agent as an MCP server
 
 Once deployed, you can connect to your agent through various MCP clients:
