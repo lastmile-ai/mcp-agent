@@ -1,11 +1,11 @@
 ---
-title: MCP Agent Cloud
-description: "Deploy and manage AI agents as MCP servers"
+title: mcp-agent cloud
+description: "[In beta] Deploy and manage AI agents as MCP servers"
 ---
 
 ## Overview
 
-MCP Agent Cloud deploys your agents as MCP servers, where agent workflows become long-running MCP tools executed in a durable workflow orchestration engine (Temporal). This architecture enables:
+**mcp-agent cloud** deploys your agents as MCP servers, where agent workflows become long-running MCP tools executed in a durable workflow orchestration engine (Temporal). This architecture enables:
 
 - **Agents as MCP Servers**: Your agents are exposed as standard MCP servers that any MCP client can connect to
 - **Workflows as Durable Tools**: Agent workflows are exposed as MCP tools that run durably via Temporal
@@ -16,143 +16,94 @@ MCP Agent Cloud deploys your agents as MCP servers, where agent workflows become
 - **Agent Deployment**: Deploy agents as MCP servers accessible via HTTP/WebSocket
 - **Temporal Integration**: Durable workflow execution with automatic retries
 - **Secrets Management**: Secure storage and injection of API keys
-- **Multi-Region Support**: Deploy to different regions for lower latency
 - **Monitoring**: Real-time logs, metrics, and workflow tracking
 
-## Deployment Process
+## Preparing your mcp-agent app as a server
 
-1. Write your agent using mcp-agent framework
-2. Configure deployment settings
-3. Deploy with `mcp-agent deploy`
-4. Access your agent via MCP protocol
+1. Double check that your entrypoint python file is named `main.py`
 
-## Architecture
+<Note>When packaging your mcp-agent app for the cloud, our CLI will be searching for `main.py`. The entire directory will be deployed, so you can reference other files and upload other assets.</Note>
 
-### Core Concept: Agents as MCP Servers
+2. Make sure you have either a `pyproject.toml` or a `requirements.txt` file in your app directory.
 
-When you deploy an agent to MCP Agent Cloud:
+3. Mark your functions that you'd like to be tool calls with the `@app.tool` decorators
 
-1. **Your agent becomes an MCP server** - Accessible via standard MCP protocol
-2. **Workflows become MCP tools** - Each workflow is exposed as a tool that MCP clients can invoke
-3. **Execution is durable** - Workflows run on Temporal, surviving failures and restarts
-4. **Tools are long-running** - Unlike traditional tools, agent workflows can run for hours/days/weeks
-
-### How It Works
-
-```yaml
+```python main.py
 # Your agent definition
-@app.workflow
-class ResearchWorkflow:
-    async def run(self, topic: str):
-        # Long-running research task
-        return results
+@app.tool
+async def research(query) -> str:
+  # this is where your agent logic exists (functions and calls)
+  return results
 
 # Becomes an MCP tool when deployed:
-# Tool: "workflows-ResearchWorkflow-run"
-# Returns: workflow_id and run_id for tracking
-# Status: Check via "workflows-get_status" 
-# Cancel: Use "workflows-cancel"
+# Tool: "research"
 ```
 
-### Components
+4. Mark your secrets that you'd like to safely secure for deployment
 
-- **API Gateway**: Exposes agents as MCP servers (SSE/HTTP endpoints)
-- **Agent Runtime**: Containerized execution environment for your agent code
-- **Temporal Cluster**: Durable workflow orchestration engine
-  - Workflows survive crashes and restarts
-  - Automatic retries with exponential backoff
-  - Pause/resume capabilities for human-in-the-loop
-  - Complete execution history and replay debugging
-- **Vault**: Secure secrets management
-- **Monitoring Stack**: OpenTelemetry-based observability
+```yaml mcp_agent.secrets.yaml
+openai:
+  api_key: !developer_secret
+```
 
-### Why Temporal for Agent Workflows?
+## Deploying your mcp-agent app
 
-Agent workflows are fundamentally different from simple tool calls:
-- They can run for extended periods (hours/days)
-- They need to survive infrastructure failures
-- They require pause/resume for human approval
-- They benefit from automatic retries and error handling
-
-Temporal provides all these capabilities out-of-the-box, making your agents production-ready.
-
-## Platform Capabilities
-
-### Deployment
-- One-command deployment via CLI
-- Automatic versioning
-- Blue-green deployments
-- Regional deployment options
-- Custom domains
-
-### Workflow Management
-- Start, pause, resume, cancel operations
-- Cron-based scheduling
-- Batch operations
-- Priority queues
-- Rate limiting
-
-### Observability
-- Real-time workflow monitoring
-- Structured logging
-- OpenTelemetry tracing
-- Custom metrics
-- Workflow health checks
-
-### Security
-- HashiCorp Vault integration
-- End-to-end encryption
-- Role-based access control
-- Audit logging
-
-### Integrations
-- MCP client compatibility (Claude Desktop, VS Code)
-- Webhook notifications
-- GitHub Actions
-- Custom MCP servers
-- Monitoring exports (Datadog, Grafana)
-
-## Use Cases
-
-- **Customer Support**: Deploy agents for handling support tickets
-- **Data Analysis**: Process and analyze business data
-- **Documentation**: Generate and maintain documentation
-- **Code Review**: Automate code review processes
-- **Multi-Agent Systems**: Coordinate multiple specialized agents
-- **RAG Applications**: Retrieval-augmented generation workflows
-- **Automation**: Business process automation
-- **Integration**: Connect AI to existing systems
-
-## Technical Specifications
-
-- **Protocol**: Native MCP (Model Context Protocol)
-- **Orchestration**: Temporal workflow engine
-- **Secrets**: HashiCorp Vault
-- **Deployment**: Containerized with Kubernetes
-- **Monitoring**: OpenTelemetry-based
-- **Languages**: Python (primary), JavaScript/TypeScript support planned
-- **Regions**: US East, US West, EU West (more coming)
-
-## Getting Started
-
-### Prerequisites
-
-1. mcp-agent installed (`uv tool install mcp-agent`)
-2. MCP Agent Cloud account
-3. API keys configured
-
-### Quick Start
+1. Login into mcp-agent cloud to get your `api key`
 
 ```bash
-# Install CLI
-uv tool install mcp-agent
-
-# Configure credentials
-mcp-agent configure
-
-# Deploy your agent
-mcp-agent deploy --app my_agent:app
+uv run mcp-agent login
 ```
+
+2. Deploy your app
+
+```bash
+uv run mcp-agent deploy my-first-agent
+```
+
+## Connect to your deployed mcp-agent server
+
+### Claude Desktop integration
+
+Configure Claude Desktop to access your agent server
+
+```json .claude-desktop/config.json
+"my-agent-server": {
+  "command": "/path/to/npx",
+  "args": [
+    "mcp-remote",
+    "https://[your-agent-server-id].deployments.mcp-agent-cloud.lastmileai.dev/sse",
+    "--header",
+    "Authorization: Bearer ${BEARER_TOKEN}"
+  ],
+  "env": {
+        "BEARER_TOKEN": "your-mcp-agent-cloud-api-token"
+      }
+}
+```
+
+### MCP Inspector
+
+Run your local MCP Inspector
+```bash
+npx @modelcontextprotocol/inspector 
+```
+
+Connect with the following settings
+| Setting | Value | 
+|---|---|
+| *Transport Type* | *SSE* |
+| *SSE* | *https://[your-agent-server-id].deployments.mcp-agent-cloud.lastmileai.dev/sse* |
+| *Header Name* | *Authorization* | 
+| *Bearer Token* | *your-mcp-agent-cloud-api-token* |
+
+
+## Example Use Cases
+
+Explore use cases in the [examples directory](https://github.com/lastmile-ai/mcp-agent/tree/main/examples):
+- [**Github to Slack agent**](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/usecases/mcp_github_to_slack_agent): Deploy an agent that will give you and your team a daily report of high-pri PRs and issues from github.
+- [**Research agent**](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/usecases/mcp_researcher): Deploy a research agent server to do a LLM-based research across the internet.
+- [**Financial analyzer agent**](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/usecases/mcp_financial_analyzer): Deploy a financial analyzer agent to research information about a specific company
+
 
 ## Next Steps
 

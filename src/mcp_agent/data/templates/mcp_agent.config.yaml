@@ -7,7 +7,7 @@ execution_engine: asyncio
 
 # Logger configuration
 logger:
-  transports: [console]  # Options: console, file
+  transports: [file]  # Options: console, file
   level: info  # Options: debug, info, warning, error
   progress_display: true  # Show progress bars for token usage
   path_settings:

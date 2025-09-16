@@ -149,6 +149,37 @@ To run this example, you'll need to:
    uv run client.py
    ```
 
+### Testing Specific Features
+
+The Temporal client supports feature flags to exercise subsets of functionality. Available flags: `workflows`, `tools`, `sampling`, `elicitation`, `notifications`, or `all`.
+
+Examples:
+
+```bash
+# Default (all features)
+uv run client.py
+
+# Only workflows
+uv run client.py --features workflows
+
+# Only tools
+uv run client.py --features tools
+
+# Sampling + elicitation workflows
+uv run client.py --features sampling elicitation
+
+# Only notifications-related workflow
+uv run client.py --features notifications
+
+# Increase server logging verbosity seen by the client
+uv run client.py --server-log-level debug
+```
+
+Console output:
+
+- Server logs appear as lines prefixed with `[SERVER LOG] ...`.
+- Other server-originated notifications (e.g., `notifications/progress`, `notifications/resources/list_changed`) appear as `[SERVER NOTIFY] <method>: ...`.
+
 ## Advanced Features with Temporal
 
 ### Workflow Signals

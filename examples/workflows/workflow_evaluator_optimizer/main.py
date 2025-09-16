@@ -18,7 +18,22 @@ from rich import print
 app = MCPApp(name="cover_letter_writer")
 
 
-async def example_usage():
+@app.async_tool(
+    name="cover_letter_writer_tool",
+    description="This tool implements an evaluator-optimizer workflow for generating "
+    "high-quality cover letters. It takes job postings, candidate details, "
+    "and company information as input, then iteratively generates and refines "
+    "cover letters until they meet excellent quality standards through "
+    "automated evaluation and feedback.",
+)
+async def example_usage(
+    job_posting: str = "Software Engineer at LastMile AI. Responsibilities include developing AI systems, "
+    "collaborating with cross-functional teams, and enhancing scalability. Skills required: "
+    "Python, distributed systems, and machine learning.",
+    candidate_details: str = "Alex Johnson, 3 years in machine learning, contributor to open-source AI projects, "
+    "proficient in Python and TensorFlow. Motivated by building scalable AI systems to solve real-world problems.",
+    company_information: str = "Look up from the LastMile AI About page: https://lastmileai.dev/about",
+):
     async with app.run() as cover_letter_app:
         context = cover_letter_app.context
         logger = cover_letter_app.logger
@@ -61,27 +76,13 @@ async def example_usage():
             min_rating=QualityRating.EXCELLENT,
         )
 
-        job_posting = (
-            "Software Engineer at LastMile AI. Responsibilities include developing AI systems, "
-            "collaborating with cross-functional teams, and enhancing scalability. Skills required: "
-            "Python, distributed systems, and machine learning."
-        )
-        candidate_details = (
-            "Alex Johnson, 3 years in machine learning, contributor to open-source AI projects, "
-            "proficient in Python and TensorFlow. Motivated by building scalable AI systems to solve real-world problems."
-        )
-
-        # This should trigger a 'fetch' call to get the company information
-        company_information = (
-            "Look up from the LastMile AI About page: https://lastmileai.dev/about"
-        )
-
         result = await evaluator_optimizer.generate_str(
             message=f"Write a cover letter for the following job posting: {job_posting}\n\nCandidate Details: {candidate_details}\n\nCompany information: {company_information}",
-            request_params=RequestParams(model="gpt-4o"),
+            request_params=RequestParams(model="gpt-4.1"),
         )
 
-        logger.info(f"{result}")
+        logger.info(f"Generated cover letter: {result}")
+        return result
 
 
 if __name__ == "__main__":

@@ -1,9 +1,13 @@
 import asyncio
+from datetime import timedelta
+
+from pydantic import BaseModel
 
 from abc import ABC, abstractmethod
 from typing import (
     Any,
     Dict,
+    Mapping,
     Optional,
     List,
     TYPE_CHECKING,
@@ -15,6 +19,11 @@ if TYPE_CHECKING:
     from mcp_agent.executor.workflow import Workflow
 
 logger = get_logger(__name__)
+
+
+class WorkflowRunsPage(BaseModel):
+    runs: List[Dict[str, Any]]
+    next_page_token: str | None
 
 
 class WorkflowRegistry(ABC):
@@ -127,12 +136,34 @@ class WorkflowRegistry(ABC):
         pass
 
     @abstractmethod
-    async def list_workflow_statuses(self) -> List[Dict[str, Any]]:
+    async def list_workflow_statuses(
+        self,
+        *,
+        query: str | None = None,
+        limit: int | None = None,
+        page_size: int | None = None,
+        next_page_token: bytes | None = None,
+        rpc_metadata: Mapping[str, str] | None = None,
+        rpc_timeout: timedelta | None = None,
+    ) -> List[Dict[str, Any]] | WorkflowRunsPage:
         """
-        List all registered workflow instances with their status.
+        List workflow runs with their status.
+
+        Implementations may query an external backend (e.g., Temporal) or use local state.
+        The server tool defaults limit to 100 if not provided here.
+
+        Args:
+            query: Optional backend-specific visibility filter (advanced).
+            limit: Maximum number of results to return.
+            page_size: Page size for backends that support paging.
+            next_page_token: Opaque pagination token from a prior call.
+            rpc_metadata: Optional per-RPC headers for backends.
+            rpc_timeout: Optional per-RPC timeout for backends.
 
         Returns:
-            A list of dictionaries with workflow information
+            A list of dictionaries with workflow information.
+            Implementations should only return the WorkflowRunsPage when a next_page_token exists. The token
+            should be base64-encoded for JSON transport.
         """
         pass
 
@@ -267,12 +298,33 @@ class InMemoryWorkflowRegistry(WorkflowRegistry):
 
         return await workflow.get_status()
 
-    async def list_workflow_statuses(self) -> List[Dict[str, Any]]:
-        result = []
-        for workflow in self._workflows.values():
-            # Get the workflow status directly to have consistent behavior
-            status = await workflow.get_status()
+    async def list_workflow_statuses(
+        self,
+        *,
+        query: str | None = None,
+        limit: int | None = None,
+        page_size: int | None = None,
+        next_page_token: bytes | None = None,
+        rpc_metadata: Mapping[str, str] | None = None,
+        rpc_timeout: timedelta | None = None,
+    ) -> List[Dict[str, Any]] | WorkflowRunsPage:
+        # For in-memory engine, ignore query/paging tokens; apply simple limit and recency sort
+        workflows = list(self._workflows.values()) if self._workflows else []
+        try:
+            workflows.sort(
+                key=lambda wf: (wf.state.updated_at if wf.state else None) or 0,
+                reverse=True,
+            )
+        except Exception:
+            pass
+
+        result: List[Dict[str, Any]] = []
+        max_count = limit if isinstance(limit, int) and limit > 0 else None
+        for wf in workflows:
+            status = await wf.get_status()
             result.append(status)
+            if max_count is not None and len(result) >= max_count:
+                break
 
         return result
 

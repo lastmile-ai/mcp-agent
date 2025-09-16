@@ -28,6 +28,7 @@ from mcp_agent.cli.mcp_app.api_client import MCPAppClient
 from mcp_agent.cli.secrets.processor import (
     process_config_secrets,
 )
+from mcp_agent.cli.utils.retry import retry_async_with_exponential_backoff, RetryError
 from mcp_agent.cli.utils.ux import (
     console,
     print_deployment_header,
@@ -92,11 +93,12 @@ def deploy_config(
         help="Create a local git tag for this deploy (if in a git repo)",
         envvar="MCP_DEPLOY_GIT_TAG",
     ),
-    send_metadata: bool = typer.Option(
-        False,
-        "--send-metadata/--no-send-metadata",
-        help="Send deployment metadata (e.g., commit info) to the API if supported",
-        envvar="MCP_DEPLOY_SEND_METADATA",
+    retry_count: int = typer.Option(
+        3,
+        "--retry-count",
+        help="Number of retries on deployment failure.",
+        min=1,
+        max=10,
     ),
 ) -> str:
     """Deploy an MCP agent using the specified configuration.
@@ -115,6 +117,7 @@ def deploy_config(
         non_interactive: Never prompt for reusing or updating secrets or existing apps; reuse existing where possible
         api_url: API base URL
         api_key: API key for authentication
+        retry_count: Number of retries on deployment failure
 
     Returns:
         Newly-deployed MCP App ID
@@ -133,11 +136,13 @@ def deploy_config(
 
         if not effective_api_url:
             raise CLIError(
-                "MCP_API_BASE_URL environment variable or --api-url option must be set."
+                "MCP_API_BASE_URL environment variable or --api-url option must be set.",
+                retriable=False,
             )
         if not effective_api_key:
             raise CLIError(
-                "Must be logged in to deploy. Run 'mcp-agent login', set MCP_API_KEY environment variable or specify --api-key option."
+                "Must be logged in to deploy. Run 'mcp-agent login', set MCP_API_KEY environment variable or specify --api-key option.",
+                retriable=False,
             )
         print_info(f"Using API at {effective_api_url}")
 
@@ -180,7 +185,8 @@ def deploy_config(
                     )
         except UnauthenticatedError as e:
             raise CLIError(
-                "Invalid API key for deployment. Run 'mcp-agent login' or set MCP_API_KEY environment variable with new API key."
+                "Invalid API key for deployment. Run 'mcp-agent login' or set MCP_API_KEY environment variable with new API key.",
+                retriable=False,
             ) from e
         except Exception as e:
             raise CLIError(f"Error checking or creating app: {str(e)}") from e
@@ -274,55 +280,26 @@ def deploy_config(
             else:
                 print_info("Skipping git tag (not a git repository)")
 
-        wrangler_deploy(
-            app_id=app_id,
-            api_key=effective_api_key,
-            project_dir=config_dir,
+        app = run_async(
+            _deploy_with_retry(
+                app_id=app_id,
+                api_key=effective_api_key,
+                project_dir=config_dir,
+                mcp_app_client=mcp_app_client,
+                retry_count=retry_count,
+            )
         )
 
-        with Progress(
-            SpinnerColumn(spinner_name="arrow3"),
-            TextColumn("[progress.description]{task.description}"),
-        ) as progress:
-            task = progress.add_task("Deploying MCP App bundle...", total=None)
-
-            try:
-                assert isinstance(mcp_app_client, MCPAppClient)
-                # Optionally include minimal metadata (git only to avoid heavy scans)
-                metadata = None
-                if send_metadata:
-                    gm = get_git_metadata(config_dir)
-                    if gm:
-                        metadata = {
-                            "source": "git",
-                            "commit": gm.commit_sha,
-                            "short": gm.short_sha,
-                            "branch": gm.branch,
-                            "dirty": gm.dirty,
-                            "tag": gm.tag,
-                            "message": gm.commit_message,
-                        }
-                app = run_async(
-                    mcp_app_client.deploy_app(
-                        app_id=app_id, deployment_metadata=metadata
-                    )
-                )
-                progress.update(task, description="✅ MCP App deployed successfully!")
-                print_info(f"App ID: {app_id}")
-
-                if app.appServerInfo:
-                    status = (
-                        "ONLINE"
-                        if app.appServerInfo.status == "APP_SERVER_STATUS_ONLINE"
-                        else "OFFLINE"
-                    )
-                    print_info(f"App URL: {app.appServerInfo.serverUrl}")
-                    print_info(f"App Status: {status}")
-                return app_id
-
-            except Exception as e:
-                progress.update(task, description="❌ Deployment failed")
-                raise e
+        print_info(f"App ID: {app_id}")
+        if app.appServerInfo:
+            status = (
+                "ONLINE"
+                if app.appServerInfo.status == "APP_SERVER_STATUS_ONLINE"
+                else "OFFLINE"
+            )
+            print_info(f"App URL: {app.appServerInfo.serverUrl}")
+            print_info(f"App Status: {status}")
+        return app_id
 
     except Exception as e:
         if settings.VERBOSE:
@@ -330,6 +307,98 @@ def deploy_config(
 
             typer.echo(traceback.format_exc())
         raise CLIError(f"Deployment failed: {str(e)}") from e
+
+
+async def _deploy_with_retry(
+    app_id: str,
+    api_key: str,
+    project_dir: Path,
+    mcp_app_client: MCPAppClient,
+    retry_count: int,
+):
+    """Execute the deployment operations with retry logic.
+
+    Args:
+        app_id: The application ID
+        api_key: API key for authentication
+        project_dir: Directory containing the project files
+        mcp_app_client: MCP App client for API calls
+        retry_count: Number of retry attempts for deployment
+
+    Returns:
+        Deployed app information
+    """
+    # Step 1: Bundle once (no retry - if this fails, fail immediately)
+    try:
+        wrangler_deploy(
+            app_id=app_id,
+            api_key=api_key,
+            project_dir=project_dir,
+        )
+    except Exception as e:
+        raise CLIError(f"Bundling failed: {str(e)}") from e
+
+    # Step 2: Deployment API call with retries if needed
+    attempt = 0
+
+    async def _perform_api_deployment():
+        nonlocal attempt
+        attempt += 1
+
+        attempt_suffix = f" (attempt {attempt}/{retry_count})" if attempt > 1 else ""
+
+        with Progress(
+            SpinnerColumn(spinner_name="arrow3"),
+            TextColumn("[progress.description]{task.description}"),
+        ) as progress:
+            deploy_task = progress.add_task(
+                f"Deploying MCP App bundle{attempt_suffix}...", total=None
+            )
+            try:
+                # Optionally include minimal metadata (git only to avoid heavy scans)
+                metadata = None
+                gm = get_git_metadata(project_dir)
+                if gm:
+                    metadata = {
+                        "source": "git",
+                        "commit": gm.commit_sha,
+                        "short": gm.short_sha,
+                        "branch": gm.branch,
+                        "dirty": gm.dirty,
+                        "tag": gm.tag,
+                        "message": gm.commit_message,
+                    }
+                app = await mcp_app_client.deploy_app(
+                    app_id=app_id, deployment_metadata=metadata
+                )
+                progress.update(
+                    deploy_task,
+                    description=f"✅ MCP App deployed successfully{attempt_suffix}!",
+                )
+                return app
+            except Exception:
+                progress.update(
+                    deploy_task, description=f"❌ Deployment failed{attempt_suffix}"
+                )
+                raise
+
+    if retry_count > 1:
+        print_info(f"Deployment API configured with up to {retry_count} attempts")
+
+    try:
+        return await retry_async_with_exponential_backoff(
+            _perform_api_deployment,
+            max_attempts=retry_count,
+            initial_delay=1.0,
+            backoff_multiplier=2.0,
+            max_delay=30.0,
+        )
+    except RetryError as e:
+        attempts_text = "attempts" if retry_count > 1 else "attempt"
+        print_error(f"Deployment failed after {retry_count} {attempts_text}")
+        raise CLIError(
+            f"Deployment failed after {retry_count} {attempts_text}. Last error: {e.original_error}"
+        ) from e.original_error
 
 
 def get_config_files(config_dir: Path) -> tuple[Path, Optional[Path], Optional[Path]]:
@@ -345,7 +414,8 @@ def get_config_files(config_dir: Path) -> tuple[Path, Optional[Path], Optional[P
     config_file = config_dir / MCP_CONFIG_FILENAME
     if not config_file.exists():
         raise CLIError(
-            f"Configuration file '{MCP_CONFIG_FILENAME}' not found in {config_dir}"
+            f"Configuration file '{MCP_CONFIG_FILENAME}' not found in {config_dir}",
+            retriable=False,
         )
 
     secrets_file: Optional[Path] = None

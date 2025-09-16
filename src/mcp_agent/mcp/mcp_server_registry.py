@@ -9,7 +9,7 @@ server initialization.
 
 from contextlib import asynccontextmanager
 from datetime import timedelta
-from typing import Callable, Dict, AsyncGenerator
+from typing import Callable, Dict, AsyncGenerator, Optional, TYPE_CHECKING
 
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from mcp import ClientSession
@@ -32,6 +32,9 @@ from mcp_agent.config import (
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
 from mcp_agent.mcp.mcp_connection_manager import MCPConnectionManager
+
+if TYPE_CHECKING:
+    from mcp_agent.core.context import Context
 
 logger = get_logger(__name__)
 
@@ -106,10 +109,16 @@ class ServerRegistry:
         self,
         server_name: str,
         client_session_factory: Callable[
-            [MemoryObjectReceiveStream, MemoryObjectSendStream, timedelta | None],
+            [
+                MemoryObjectReceiveStream,
+                MemoryObjectSendStream,
+                timedelta | None,
+                Optional["Context"],
+            ],
             ClientSession,
         ] = ClientSession,
         session_id: str | None = None,
+        context: Optional["Context"] = None,
     ) -> AsyncGenerator[ClientSession, None]:
         """
         Starts the server process based on its configuration. To initialize, call initialize_server
@@ -147,11 +156,20 @@ class ServerRegistry:
             )
 
             async with stdio_client(server_params) as (read_stream, write_stream):
-                session = client_session_factory(
-                    read_stream,
-                    write_stream,
-                    read_timeout_seconds,
-                )
+                # Construct session; tolerate factories that don't accept 'context'
+                try:
+                    session = client_session_factory(
+                        read_stream,
+                        write_stream,
+                        read_timeout_seconds,
+                        context=context,
+                    )
+                except TypeError:
+                    session = client_session_factory(
+                        read_stream,
+                        write_stream,
+                        read_timeout_seconds,
+                    )
                 async with session:
                     logger.info(
                         f"{server_name}: Connected to server using stdio transport."
@@ -200,11 +218,19 @@ class ServerRegistry:
             async with streamablehttp_client(
                 **kwargs,
             ) as (read_stream, write_stream, session_id_callback):
-                session = client_session_factory(
-                    read_stream,
-                    write_stream,
-                    read_timeout_seconds,
-                )
+                try:
+                    session = client_session_factory(
+                        read_stream,
+                        write_stream,
+                        read_timeout_seconds,
+                        context=context,
+                    )
+                except TypeError:
+                    session = client_session_factory(
+                        read_stream,
+                        write_stream,
+                        read_timeout_seconds,
+                    )
 
                 if session_id_callback and isinstance(session, MCPAgentClientSession):
                     session.set_session_id_callback(session_id_callback)
@@ -239,11 +265,19 @@ class ServerRegistry:
                 read_stream,
                 write_stream,
             ):
-                session = client_session_factory(
-                    read_stream,
-                    write_stream,
-                    read_timeout_seconds,
-                )
+                try:
+                    session = client_session_factory(
+                        read_stream,
+                        write_stream,
+                        read_timeout_seconds,
+                        context=context,
+                    )
+                except TypeError:
+                    session = client_session_factory(
+                        read_stream,
+                        write_stream,
+                        read_timeout_seconds,
+                    )
                 async with session:
                     logger.info(
                         f"{server_name}: Connected to server using SSE transport."
@@ -263,11 +297,19 @@ class ServerRegistry:
                 read_stream,
                 write_stream,
             ):
-                session = client_session_factory(
-                    read_stream,
-                    write_stream,
-                    read_timeout_seconds,
-                )
+                try:
+                    session = client_session_factory(
+                        read_stream,
+                        write_stream,
+                        read_timeout_seconds,
+                        context=context,
+                    )
+                except TypeError:
+                    session = client_session_factory(
+                        read_stream,
+                        write_stream,
+                        read_timeout_seconds,
+                    )
                 async with session:
                     logger.info(
                         f"{server_name}: Connected to server using websocket transport."
@@ -285,11 +327,17 @@ class ServerRegistry:
         self,
         server_name: str,
         client_session_factory: Callable[
-            [MemoryObjectReceiveStream, MemoryObjectSendStream, timedelta | None],
+            [
+                MemoryObjectReceiveStream,
+                MemoryObjectSendStream,
+                timedelta | None,
+                Optional["Context"],
+            ],
             ClientSession,
         ] = ClientSession,
         init_hook: InitHookCallable = None,
         session_id: str | None = None,
+        context: Optional["Context"] = None,
     ) -> AsyncGenerator[ClientSession, None]:
         """
         Initialize a server based on its configuration.
@@ -315,6 +363,7 @@ class ServerRegistry:
             server_name,
             client_session_factory=client_session_factory,
             session_id=session_id,
+            context=context,
         ) as session:
             try:
                 logger.info(f"{server_name}: Initializing server...")

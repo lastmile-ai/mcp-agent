@@ -22,8 +22,9 @@ from mcp_agent.agents.agent import Agent
 from mcp_agent.core.context_dependent import ContextDependent
 from mcp_agent.executor.workflow import Workflow
 from mcp_agent.executor.workflow_registry import (
-    WorkflowRegistry,
     InMemoryWorkflowRegistry,
+    WorkflowRegistry,
+    WorkflowRunsPage,
 )
 
 from mcp_agent.logging.logger import get_logger
@@ -527,7 +528,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                 logger.error(
                     f"[notify] error forwarding for execution_id={execution_id}: {e_mapped}"
                 )
-                return JSONResponse({"ok": False, "error": str(e_mapped)}, status_code=500)
+                return JSONResponse(
+                    {"ok": False, "error": str(e_mapped)}, status_code=500
+                )
 
         @mcp_server.custom_route(
             "/internal/session/by-run/{execution_id}/request",
@@ -603,7 +606,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         except Exception:
                             pass
                         return JSONResponse(
-                            result.model_dump(by_alias=True, mode="json", exclude_none=True)
+                            result.model_dump(
+                                by_alias=True, mode="json", exclude_none=True
+                            )
                         )
                     elif method == "elicitation/create":
                         req = ServerRequest(
@@ -625,7 +630,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         except Exception:
                             pass
                         return JSONResponse(
-                            result.model_dump(by_alias=True, mode="json", exclude_none=True)
+                            result.model_dump(
+                                by_alias=True, mode="json", exclude_none=True
+                            )
                         )
                     elif method == "roots/list":
                         req = ServerRequest(ListRootsRequest(method="roots/list"))
@@ -642,7 +649,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         except Exception:
                             pass
                         return JSONResponse(
-                            result.model_dump(by_alias=True, mode="json", exclude_none=True)
+                            result.model_dump(
+                                by_alias=True, mode="json", exclude_none=True
+                            )
                         )
                     elif method == "ping":
                         req = ServerRequest(PingRequest(method="ping"))
@@ -659,7 +668,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         except Exception:
                             pass
                         return JSONResponse(
-                            result.model_dump(by_alias=True, mode="json", exclude_none=True)
+                            result.model_dump(
+                                by_alias=True, mode="json", exclude_none=True
+                            )
                         )
                 except Exception as e_latest:
                     logger.warning(
@@ -672,9 +683,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                 logger.warning(
                     f"[request] session_not_available for execution_id={execution_id}"
                 )
-                return JSONResponse(
-                    {"error": "session_not_available"}, status_code=503
-                )
+                return JSONResponse({"error": "session_not_available"}, status_code=503)
 
             try:
                 # Prefer generic request passthrough if available
@@ -857,7 +866,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             metadata = body.get("metadata") or {}
             try:
                 logger.info(
-                    f"[human] incoming execution_id={execution_id} signal_name={metadata.get('signal_name','human_input')}"
+                    f"[human] incoming execution_id={execution_id} signal_name={metadata.get('signal_name', 'human_input')}"
                 )
             except Exception:
                 pass
@@ -926,7 +935,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                 # Fallback to mapped session
                 session = await _get_session(execution_id)
                 if not session:
-                    return JSONResponse({"error": "session_not_available"}, status_code=503)
+                    return JSONResponse(
+                        {"error": "session_not_available"}, status_code=503
+                    )
                 await session.send_log_message(
                     level="info",  # type: ignore[arg-type]
                     data=payload,
@@ -1043,7 +1054,12 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         return result
 
     @mcp.tool(name="workflows-runs-list")
-    async def list_workflow_runs(ctx: MCPContext) -> List[Dict[str, Any]]:
+    async def list_workflow_runs(
+        ctx: MCPContext,
+        limit: int = 100,
+        page_size: int | None = 100,
+        next_page_token: str | None = None,
+    ) -> List[Dict[str, Any]] | WorkflowRunsPage:
         """
         List all workflow instances (runs) with their detailed status information.
 
@@ -1051,8 +1067,14 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         For each running workflow, returns its ID, name, current state, and available operations.
         This helps in identifying and managing active workflow instances.
 
+
+        Args:
+            limit: Maximum number of runs to return. Default: 100.
+            page_size: Page size for paginated backends. Default: 100.
+            next_page_token: Optional Base64-encoded token for pagination resume. Only provide if you received a next_page_token from a previous call.
+
         Returns:
-            A dictionary mapping workflow instance IDs to their detailed status information.
+            A list of workflow run status dictionaries with detailed workflow information.
         """
         # Ensure upstream session is set for any logs emitted during this call
         try:
@@ -1066,10 +1088,26 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         if server_context is None or not hasattr(server_context, "workflow_registry"):
             raise ToolError("Server context not available for MCPApp Server.")
 
-        # Get all workflow statuses from the registry
+        # Decode next_page_token if provided (base64-encoded string -> bytes)
+        token_bytes = None
+        if next_page_token:
+            try:
+                import base64 as _b64
+
+                token_bytes = _b64.b64decode(next_page_token)
+            except Exception:
+                token_bytes = None
+
+        # Get workflow statuses from the registry with pagination/query hints
         workflow_statuses = (
-            await server_context.workflow_registry.list_workflow_statuses()
+            await server_context.workflow_registry.list_workflow_statuses(
+                query=None,
+                limit=limit,
+                page_size=page_size,
+                next_page_token=token_bytes,
+            )
         )
+
         return workflow_statuses
 
     @mcp.tool(name="workflows-run")
@@ -1803,6 +1841,27 @@ async def _workflow_run(
                                 gateway_url = base_url
                     except Exception:
                         gateway_url = None
+
+            # Normalize gateway URL if it points to a non-routable bind address
+            def _normalize_gateway_url(url: str | None) -> str | None:
+                if not url:
+                    return url
+                try:
+                    from urllib.parse import urlparse, urlunparse
+
+                    parsed = urlparse(url)
+                    host = parsed.hostname or ""
+                    # Replace wildcard binds with a loopback address that's actually connectable
+                    if host in ("0.0.0.0", "::", "[::]"):
+                        new_host = "127.0.0.1" if host == "0.0.0.0" else "localhost"
+                        netloc = parsed.netloc.replace(host, new_host)
+                        parsed = parsed._replace(netloc=netloc)
+                        return urlunparse(parsed)
+                except Exception:
+                    pass
+                return url
+
+            gateway_url = _normalize_gateway_url(gateway_url)
 
             # Final fallback: environment variables (useful if proxies don't set headers)
             try:
