@@ -24,7 +24,7 @@ from mcp_agent.config import get_settings
 
 
 app = typer.Typer(help="Serve app as an MCP server")
-console = Console()
+console = Console(stderr=True)
 
 
 class ServerMonitor:
@@ -151,8 +151,24 @@ def serve(
         console.print("\n[bold cyan]🚀 MCP-Agent Server[/bold cyan]")
         console.print(f"Script: [green]{script_path}[/green]")
 
+        # Load settings from config if provided
+        settings_override = None
+        if config:
+            try:
+                from mcp_agent.config import get_settings as _get_settings
+
+                settings_override = _get_settings(config_path=str(config))
+                console.print(f"Config: [green]{config}[/green]")
+            except Exception as _e:
+                console.print(f"[red]Failed to load config: {_e}[/red]")
+                if debug:
+                    import traceback
+
+                    console.print(f"[dim]{traceback.format_exc()}[/dim]")
+                raise typer.Exit(1)
+
         try:
-            app_obj = load_user_app(script_path)
+            app_obj = load_user_app(script_path, settings_override=settings_override)
         except Exception as e:
             console.print(f"[red]Failed to load app: {e}[/red]")
             if debug:
@@ -160,18 +176,6 @@ def serve(
 
                 console.print(f"[dim]{traceback.format_exc()}[/dim]")
             raise typer.Exit(1)
-
-        # Override app settings if a config path is provided
-        if config:
-            try:
-                from mcp_agent.config import get_settings as _get_settings
-
-                app_obj._config = _get_settings(config_path=str(config))  # type: ignore[attr-defined]
-            except Exception as _e:
-                if debug:
-                    console.print(
-                        f"[yellow]Warning: failed to apply config override: {_e}[/yellow]"
-                    )
         # Initialize the app
         await app_obj.initialize()
 
