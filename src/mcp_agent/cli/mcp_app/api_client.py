@@ -328,10 +328,9 @@ class MCPAppClient(APIClient):
             raise ValueError(f"Invalid app ID format: {app_id}")
 
         payload: Dict[str, Any] = {"appId": app_id}
-        # TODO: saqadri - UNCOMMENT after server-side deployment metadata is implemented
-        # if deployment_metadata:
-        #     # Tentative field; include only when requested
-        #     payload["deploymentMetadata"] = deployment_metadata
+        if deployment_metadata:
+            # Tentative field; include only when requested
+            payload["deploymentMetadata"] = deployment_metadata
 
         # Use a longer timeout for deployments
         deploy_timeout = 300.0
