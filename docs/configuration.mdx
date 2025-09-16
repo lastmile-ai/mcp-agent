@@ -692,13 +692,14 @@ Keep sensitive configuration in separate secrets files:
   </Tab>
   
   <Tab title="Cloud Secrets">
-    For cloud deployments, use secret management services:
+    For mcp-agent cloud deployments, use mcp-agent cloud's secret management:
     
     ```yaml
-    # Reference secrets from cloud providers
     openai:
-      api_key: "${OPENAI_API_KEY}"  # From AWS Secrets Manager, etc.
+      api_key: !developer_secret
     ```
+
+    Mark which secrets you, as the developer, want to keep safe and secure.s
   </Tab>
 </Tabs>
 

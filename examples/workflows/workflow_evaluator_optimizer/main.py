@@ -17,19 +17,22 @@ from rich import print
 # The cycle continues until the letter meets a predefined quality standard.
 app = MCPApp(name="cover_letter_writer")
 
-@app.async_tool(name="cover_letter_writer_tool",
-          description="This tool implements an evaluator-optimizer workflow for generating "
-                     "high-quality cover letters. It takes job postings, candidate details, "
-                     "and company information as input, then iteratively generates and refines "
-                     "cover letters until they meet excellent quality standards through "
-                     "automated evaluation and feedback.")
+
+@app.async_tool(
+    name="cover_letter_writer_tool",
+    description="This tool implements an evaluator-optimizer workflow for generating "
+    "high-quality cover letters. It takes job postings, candidate details, "
+    "and company information as input, then iteratively generates and refines "
+    "cover letters until they meet excellent quality standards through "
+    "automated evaluation and feedback.",
+)
 async def example_usage(
     job_posting: str = "Software Engineer at LastMile AI. Responsibilities include developing AI systems, "
-                       "collaborating with cross-functional teams, and enhancing scalability. Skills required: "
-                       "Python, distributed systems, and machine learning.",
+    "collaborating with cross-functional teams, and enhancing scalability. Skills required: "
+    "Python, distributed systems, and machine learning.",
     candidate_details: str = "Alex Johnson, 3 years in machine learning, contributor to open-source AI projects, "
-                            "proficient in Python and TensorFlow. Motivated by building scalable AI systems to solve real-world problems.",
-    company_information: str = "Look up from the LastMile AI About page: https://lastmileai.dev/about"
+    "proficient in Python and TensorFlow. Motivated by building scalable AI systems to solve real-world problems.",
+    company_information: str = "Look up from the LastMile AI About page: https://lastmileai.dev/about",
 ):
     async with app.run() as cover_letter_app:
         context = cover_letter_app.context
@@ -75,7 +78,7 @@ async def example_usage(
 
         result = await evaluator_optimizer.generate_str(
             message=f"Write a cover letter for the following job posting: {job_posting}\n\nCandidate Details: {candidate_details}\n\nCompany information: {company_information}",
-            request_params=RequestParams(model="gpt-4.1"),
+            request_params=RequestParams(model="gpt-5"),
         )
 
         logger.info(f"Generated cover letter: {result}")

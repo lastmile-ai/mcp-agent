@@ -21,7 +21,6 @@ from mcp_agent.cli.cloud.commands.app import (
     get_app_status,
     list_app_workflows,
 )
-from mcp_agent.cli.cloud.commands.apps import list_apps
 from mcp_agent.cli.cloud.commands.logger import tail_logs
 from mcp_agent.cli.cloud.commands.servers import (
     delete_server,
@@ -38,6 +37,7 @@ from mcp_agent.cli.cloud.commands.workflows import (
 )
 from mcp_agent.cli.utils.typer_utils import HelpfulTyperGroup
 from mcp_agent.cli.utils.ux import print_error
+from mcp_agent.cli.utils.version_check import maybe_warn_newer_version
 
 # Setup file logging
 LOG_DIR = Path.home() / ".mcp-agent" / "logs"
@@ -78,16 +78,6 @@ app.command(name="deploy", help="Deploy an MCP agent (alias for 'cloud deploy')"
     deploy_config
 )
 
-
-# Sub-typer for `mcp-agent apps` commands
-app_cmd_apps = typer.Typer(
-    help="Management commands for multiple MCP Apps",
-    no_args_is_help=True,
-    cls=HelpfulTyperGroup,
-)
-app_cmd_apps.command(name="list")(list_apps)
-app.add_typer(app_cmd_apps, name="apps", help="Manage MCP Apps")
-
 # Sub-typer for `mcp-agent app` commands
 app_cmd_app = typer.Typer(
     help="Management commands for an MCP App",
@@ -98,7 +88,7 @@ app_cmd_app.command(name="list")(list_servers)
 app_cmd_app.command(name="delete")(delete_app)
 app_cmd_app.command(name="status")(get_app_status)
 app_cmd_app.command(name="workflows")(list_app_workflows)
-app.add_typer(app_cmd_app, name="app", help="Manage an MCP App")
+app.add_typer(app_cmd_app, name="apps", help="Manage an MCP App")
 
 # Sub-typer for `mcp-agent workflows` commands
 app_cmd_workflows = typer.Typer(
@@ -185,6 +175,11 @@ def callback(
     ),
 ) -> None:
     """MCP Agent Cloud CLI."""
+    # Best-effort version check (5s timeout, non-fatal). Guard to run once.
+    try:
+        maybe_warn_newer_version()
+    except Exception:
+        pass
     if version:
         v = metadata_version("mcp-agent")
         typer.echo(f"MCP Agent Cloud CLI version: {v}")
@@ -194,6 +189,11 @@ def callback(
 def run() -> None:
     """Run the CLI application."""
     try:
+        # Run best-effort version check before Typer may early-exit on --help
+        try:
+            maybe_warn_newer_version()
+        except Exception:
+            pass
         app()
     except Exception as e:
         # Unexpected errors - log full exception and show clean error to user

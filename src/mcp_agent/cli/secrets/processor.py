@@ -93,7 +93,8 @@ async def process_config_secrets(
 
         if not effective_api_key:
             raise CLIError(
-                "Must have API key to process secrets. Login via 'mcp-agent login'."
+                "Must have API key to process secrets. Login via 'mcp-agent login'.",
+                retriable=False,
             )
 
         # Create a new client
@@ -191,7 +192,7 @@ async def process_secrets_in_config_str(
     try:
         input_config = yaml.safe_load(input_secrets_content)
     except Exception as e:
-        raise CLIError(f"Failed to parse input YAML: {str(e)}") from e
+        raise CLIError(f"Failed to parse input YAML: {str(e)}", retriable=False) from e
 
     # Parse the existing secrets YAML if provided
     existing_config = None
@@ -200,7 +201,9 @@ async def process_secrets_in_config_str(
             existing_config = load_yaml_with_secrets(existing_secrets_content)
             print_info("Loaded existing secrets configuration for reuse")
         except Exception as e:
-            raise CLIError(f"Failed to parse existing secrets YAML: {str(e)}") from e
+            raise CLIError(
+                f"Failed to parse existing secrets YAML: {str(e)}", retriable=False
+            ) from e
 
     # Make sure the existing config secrets are actually valid for the user
     if existing_config:

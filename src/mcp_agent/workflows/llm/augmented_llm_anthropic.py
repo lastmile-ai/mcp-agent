@@ -180,7 +180,9 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                 AnthropicConverter.convert_mixed_messages_to_anthropic(message)
             )
 
-            list_tools_result = await self.agent.list_tools()
+            list_tools_result = await self.agent.list_tools(
+                tool_filter=params.tool_filter
+            )
             available_tools: List[ToolParam] = [
                 {
                     "name": tool.name,

@@ -196,6 +196,7 @@ server:
                 api_url="http://test.api/",
                 api_key="test-token",
                 non_interactive=True,  # Set to True to avoid prompting
+                retry_count=3,  # Add the missing retry_count parameter
             )
 
             # Verify deploy was successful

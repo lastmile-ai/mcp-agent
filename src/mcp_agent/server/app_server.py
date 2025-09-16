@@ -22,8 +22,9 @@ from mcp_agent.agents.agent import Agent
 from mcp_agent.core.context_dependent import ContextDependent
 from mcp_agent.executor.workflow import Workflow
 from mcp_agent.executor.workflow_registry import (
-    WorkflowRegistry,
     InMemoryWorkflowRegistry,
+    WorkflowRegistry,
+    WorkflowRunsPage,
 )
 
 from mcp_agent.logging.logger import get_logger
@@ -367,12 +368,6 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             execution_id = request.path_params.get("execution_id")
             method = body.get("method")
             params = body.get("params") or {}
-            try:
-                logger.info(
-                    f"[notify] incoming execution_id={execution_id} method={method} idempotency_key={params.get('idempotency_key')}"
-                )
-            except Exception:
-                pass
 
             # Optional shared-secret auth
             gw_token = os.environ.get("MCP_GATEWAY_TOKEN")
@@ -418,9 +413,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                             logger=logger_name,
                             related_request_id=related_request_id,
                         )
-                        logger.debug(
-                            f"[notify] delivered via latest session_id={id(latest_session)} (message)"
-                        )
+                        # logger.debug(
+                        #     f"[notify] delivered via latest session_id={id(latest_session)} (message)"
+                        # )
                     elif method == "notifications/progress":
                         progress_token = params.get("progressToken")
                         progress = params.get("progress")
@@ -432,16 +427,16 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                             total=total,
                             message=message,
                         )
-                        logger.debug(
-                            f"[notify] delivered via latest session_id={id(latest_session)} (progress)"
-                        )
+                        # logger.debug(
+                        #     f"[notify] delivered via latest session_id={id(latest_session)} (progress)"
+                        # )
                     else:
                         rpc = getattr(latest_session, "rpc", None)
                         if rpc and hasattr(rpc, "notify"):
                             await rpc.notify(method, params)
-                            logger.debug(
-                                f"[notify] delivered via latest session_id={id(latest_session)} (generic '{method}')"
-                            )
+                            # logger.debug(
+                            #     f"[notify] delivered via latest session_id={id(latest_session)} (generic '{method}')"
+                            # )
                         else:
                             return JSONResponse(
                                 {"ok": False, "error": f"unsupported method: {method}"},
@@ -454,9 +449,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                             execution_id=execution_id,
                             session=latest_session,
                         )
-                        logger.info(
-                            f"[notify] rebound mapping to latest session_id={id(latest_session)} for execution_id={execution_id}"
-                        )
+                        # logger.info(
+                        #     f"[notify] rebound mapping to latest session_id={id(latest_session)} for execution_id={execution_id}"
+                        # )
                     except Exception:
                         pass
                     return JSONResponse({"ok": True})
@@ -487,9 +482,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         logger=logger_name,
                         related_request_id=related_request_id,
                     )
-                    logger.debug(
-                        f"[notify] delivered via mapped session_id={id(mapped_session)} (message)"
-                    )
+                    # logger.debug(
+                    #     f"[notify] delivered via mapped session_id={id(mapped_session)} (message)"
+                    # )
                 elif method == "notifications/progress":
                     progress_token = params.get("progressToken")
                     progress = params.get("progress")
@@ -501,16 +496,16 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         total=total,
                         message=message,
                     )
-                    logger.debug(
-                        f"[notify] delivered via mapped session_id={id(mapped_session)} (progress)"
-                    )
+                    # logger.debug(
+                    #     f"[notify] delivered via mapped session_id={id(mapped_session)} (progress)"
+                    # )
                 else:
                     rpc = getattr(mapped_session, "rpc", None)
                     if rpc and hasattr(rpc, "notify"):
                         await rpc.notify(method, params)
-                        logger.debug(
-                            f"[notify] delivered via mapped session_id={id(mapped_session)} (generic '{method}')"
-                        )
+                        # logger.debug(
+                        #     f"[notify] delivered via mapped session_id={id(mapped_session)} (generic '{method}')"
+                        # )
                     else:
                         return JSONResponse(
                             {"ok": False, "error": f"unsupported method: {method}"},
@@ -520,13 +515,13 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             except Exception as e_mapped:
                 # Best-effort for notifications
                 if isinstance(method, str) and method.startswith("notifications/"):
-                    logger.warning(
-                        f"[notify] dropped notification for execution_id={execution_id}: {e_mapped}"
-                    )
+                    # logger.warning(
+                    #     f"[notify] dropped notification for execution_id={execution_id}: {e_mapped}"
+                    # )
                     return JSONResponse({"ok": True, "dropped": True})
-                logger.error(
-                    f"[notify] error forwarding for execution_id={execution_id}: {e_mapped}"
-                )
+                # logger.error(
+                #     f"[notify] error forwarding for execution_id={execution_id}: {e_mapped}"
+                # )
                 return JSONResponse(
                     {"ok": False, "error": str(e_mapped)}, status_code=500
                 )
@@ -555,12 +550,6 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             execution_id = request.path_params.get("execution_id")
             method = body.get("method")
             params = body.get("params") or {}
-            try:
-                logger.info(
-                    f"[request] incoming execution_id={execution_id} method={method}"
-                )
-            except Exception:
-                pass
 
             # Prefer latest upstream session first
             latest_session = _get_fallback_upstream_session()
@@ -569,16 +558,16 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                     rpc = getattr(latest_session, "rpc", None)
                     if rpc and hasattr(rpc, "request"):
                         result = await rpc.request(method, params)
-                        logger.debug(
-                            f"[request] delivered via latest session_id={id(latest_session)} (generic '{method}')"
-                        )
+                        # logger.debug(
+                        #     f"[request] delivered via latest session_id={id(latest_session)} (generic '{method}')"
+                        # )
                         try:
                             await _register_session(
                                 run_id=execution_id,
                                 execution_id=execution_id,
                                 session=latest_session,
                             )
-                            logger.info(
+                            logger.debug(
                                 f"[request] rebound mapping to latest session_id={id(latest_session)} for execution_id={execution_id}"
                             )
                         except Exception:
@@ -845,12 +834,6 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                     },
                     logger=namespace,
                 )
-                try:
-                    logger.debug(
-                        f"[log] forwarded workflow log to session_id={id(session)} level={level} ns={namespace}"
-                    )
-                except Exception:
-                    pass
                 return JSONResponse({"ok": True})
             except Exception as e:
                 return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
@@ -1053,7 +1036,12 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         return result
 
     @mcp.tool(name="workflows-runs-list")
-    async def list_workflow_runs(ctx: MCPContext) -> List[Dict[str, Any]]:
+    async def list_workflow_runs(
+        ctx: MCPContext,
+        limit: int = 100,
+        page_size: int | None = 100,
+        next_page_token: str | None = None,
+    ) -> List[Dict[str, Any]] | WorkflowRunsPage:
         """
         List all workflow instances (runs) with their detailed status information.
 
@@ -1061,8 +1049,14 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         For each running workflow, returns its ID, name, current state, and available operations.
         This helps in identifying and managing active workflow instances.
 
+
+        Args:
+            limit: Maximum number of runs to return. Default: 100.
+            page_size: Page size for paginated backends. Default: 100.
+            next_page_token: Optional Base64-encoded token for pagination resume. Only provide if you received a next_page_token from a previous call.
+
         Returns:
-            A dictionary mapping workflow instance IDs to their detailed status information.
+            A list of workflow run status dictionaries with detailed workflow information.
         """
         # Ensure upstream session is set for any logs emitted during this call
         try:
@@ -1076,10 +1070,26 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         if server_context is None or not hasattr(server_context, "workflow_registry"):
             raise ToolError("Server context not available for MCPApp Server.")
 
-        # Get all workflow statuses from the registry
+        # Decode next_page_token if provided (base64-encoded string -> bytes)
+        token_bytes = None
+        if next_page_token:
+            try:
+                import base64 as _b64
+
+                token_bytes = _b64.b64decode(next_page_token)
+            except Exception:
+                token_bytes = None
+
+        # Get workflow statuses from the registry with pagination/query hints
         workflow_statuses = (
-            await server_context.workflow_registry.list_workflow_statuses()
+            await server_context.workflow_registry.list_workflow_statuses(
+                query=None,
+                limit=limit,
+                page_size=page_size,
+                next_page_token=token_bytes,
+            )
         )
+
         return workflow_statuses
 
     @mcp.tool(name="workflows-run")
