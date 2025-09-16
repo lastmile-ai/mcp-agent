@@ -155,25 +155,14 @@ uv run client.py --custom-fastmcp-settings
 ### [Beta] Deploying to mcp-agent cloud
 
 You can deploy your MCP-Agent app as a hosted mcp-agent app in the Cloud.
-
-1. Update the *mcp_agent.secrets.yaml* file specifying deployed secrets:
-
-```
-openai:
-  api_key: !developer_secret
-
-anthropic:
-  api_key: !developer_secret
-```
-
-2. In your terminal, authenticate into mcp-agent cloud by running:
+1. In your terminal, authenticate into mcp-agent cloud by running:
 ```
 uv run mcp-agent login
 ```
 
-3. You will be redirected to the login page, create an mcp-agent cloud account through Google or Github
+2. You will be redirected to the login page, create an mcp-agent cloud account through Google or Github
 
-4. Set up your mcp-agent cloud API Key and copy & paste it into your terminal
+3. Set up your mcp-agent cloud API Key and copy & paste it into your terminal
 
 ```
 andrew_lm@Mac sdk-cloud % uv run mcp-agent login
@@ -181,12 +170,12 @@ INFO: Directing to MCP Agent Cloud API login...
 Please enter your API key 🔑: 
 ```
 
-5. In your terminal, deploy the MCP app:
+4. In your terminal, deploy the MCP app:
 ```
 uv run mcp-agent deploy mcp_agent_server -c /absolute/path/to/your/project
 ```
 
-6. In the terminal, ou will then be prompted to specify your OpenAI and/or Anthropic keys:
+5. In the terminal, ou will then be prompted to specify your OpenAI and/or Anthropic keys:
 
 Once the deployment is successful, you should see the following:
 ```
