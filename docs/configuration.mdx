@@ -690,17 +690,6 @@ Keep sensitive configuration in separate secrets files:
       api_key: "${OPENAI_API_KEY}"
     ```
   </Tab>
-  
-  <Tab title="Cloud Secrets">
-    For mcp-agent cloud deployments, use mcp-agent cloud's secret management:
-    
-    ```yaml
-    openai:
-      api_key: !developer_secret
-    ```
-
-    Mark which secrets you, as the developer, want to keep safe and secure.s
-  </Tab>
 </Tabs>
 
 ### Subagent Configuration
