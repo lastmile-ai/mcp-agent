@@ -72,22 +72,14 @@ uv run interactive.py
 uv run mcp-agent login
 ```
 
-### `b.` Update your `mcp_agent.secrets.yaml` to mark your developer secrets (keys)
-
-```yaml
-openai:
-  api_key: !developer_secret
-anthropic:
-  api_key: !developer_secret
-# Other secrets as needed
-```
-
-### `c.` Deploy your agent with a single command
+### `b.` Deploy your agent with a single command
 ```bash
 uv run mcp-agent deploy model-selector-server
 ```
 
-### `d.` Connect to your deployed agent as an MCP server through any MCP client
+During deployment, you can select how you would like your secrets managed.
+
+### `c.` Connect to your deployed agent as an MCP server through any MCP client
 
 #### Claude Desktop Integration
 

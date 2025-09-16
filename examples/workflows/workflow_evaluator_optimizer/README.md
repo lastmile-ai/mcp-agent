@@ -98,27 +98,15 @@ Deploy your cover letter writer agent to MCP Agent Cloud for remote access and i
 uv run mcp-agent login
 ```
 
-#### `b.` Update your `mcp_agent.secrets.yaml` to mark your developer secrets
-
-Configure your secrets file to mark sensitive keys as developer secrets for secure cloud deployment:
-
-```yaml
-$schema: ../../../schema/mcp-agent.config.schema.json
-
-openai:
-  api_key: !developer_secret OPENAI_API_KEY
-
-anthropic:
-  api_key: !developer_secret ANTHROPIC_API_KEY
-```
-
-#### `c.` Deploy your agent with a single command
+#### `b.` Deploy your agent with a single command
 
 ```bash
 uv run mcp-agent deploy cover-letter-writer
 ```
 
-#### `d.` Connect to your deployed agent as an MCP server
+During deployment, you can select how you would like your secrets managed.
+
+#### `c.` Connect to your deployed agent as an MCP server
 
 Once deployed, you can connect to your agent through various MCP clients:
 

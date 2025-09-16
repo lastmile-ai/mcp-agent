@@ -38,7 +38,7 @@ The SDK uses a streamlined approach to secrets management:
 
 Two types of secrets are supported:
 
-1. **Developer Secrets** (`!developer_secret`):
+1. **Developer Secrets**:
 
    - Used for secrets that are provided by developers
    - Values are known at deployment time
