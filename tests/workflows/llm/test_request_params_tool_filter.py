@@ -16,7 +16,7 @@ class TestRequestParamsToolFilter:
         """Test that RequestParams has tool_filter defaulting to None for backward compatibility."""
         # Create RequestParams without specifying tool_filter
         params = RequestParams()
-        
+
         # Should default to None
         assert params.tool_filter is None
 
@@ -56,9 +56,9 @@ class TestRequestParamsToolFilter:
             parallel_tool_calls=True,
             temperature=0.5,
             user="test-user",
-            strict=True
+            strict=True,
         )
-        
+
         # All existing fields should work
         assert params.maxTokens == 1000
         assert params.model == "test-model"
@@ -74,11 +74,7 @@ class TestRequestParamsToolFilter:
     def test_request_params_with_mixed_parameters(self):
         """Test RequestParams with both old and new parameters."""
         tool_filter = {"server1": {"tool1"}}
-        params = RequestParams(
-            maxTokens=2048,
-            tool_filter=tool_filter,
-            temperature=0.8
-        )
+        params = RequestParams(maxTokens=2048, tool_filter=tool_filter, temperature=0.8)
 
         assert params.maxTokens == 2048
         assert params.tool_filter == tool_filter
@@ -100,7 +96,7 @@ class TestRequestParamsToolFilter:
         dumped1 = params1.model_dump(exclude_unset=True)
         # tool_filter should not be in dumped output if not set
         assert "tool_filter" not in dumped1 or dumped1.get("tool_filter") is None
-        
+
         # When tool_filter is explicitly set
         params2 = RequestParams(maxTokens=1000, tool_filter={"server1": {"tool1"}})
         dumped2 = params2.model_dump(exclude_unset=True)
@@ -125,29 +121,29 @@ class TestAgentToolFilteringWithServer:
                 NamespacedTool(
                     tool=Tool(name="tool1", description="Tool 1", inputSchema={}),
                     server_name="server1",
-                    namespaced_tool_name="server1:tool1"
+                    namespaced_tool_name="server1:tool1",
                 ),
                 NamespacedTool(
                     tool=Tool(name="tool2", description="Tool 2", inputSchema={}),
                     server_name="server1",
-                    namespaced_tool_name="server1:tool2"
+                    namespaced_tool_name="server1:tool2",
                 ),
                 NamespacedTool(
                     tool=Tool(name="tool3", description="Tool 3", inputSchema={}),
                     server_name="server1",
-                    namespaced_tool_name="server1:tool3"
+                    namespaced_tool_name="server1:tool3",
                 ),
             ],
             "server2": [
                 NamespacedTool(
                     tool=Tool(name="tool1", description="Tool 1", inputSchema={}),
                     server_name="server2",
-                    namespaced_tool_name="server2:tool1"
+                    namespaced_tool_name="server2:tool1",
                 ),
                 NamespacedTool(
                     tool=Tool(name="tool4", description="Tool 4", inputSchema={}),
                     server_name="server2",
-                    namespaced_tool_name="server2:tool4"
+                    namespaced_tool_name="server2:tool4",
                 ),
             ],
         }
@@ -162,9 +158,7 @@ class TestAgentToolFilteringWithServer:
     async def test_no_filter_includes_all_tools(self, mock_agent_with_tools):
         """Test: tool_filter is None → No filtering, include all tools."""
         result = await self._apply_list_tools_logic(
-            mock_agent_with_tools,
-            server_name="server1",
-            tool_filter=None
+            mock_agent_with_tools, server_name="server1", tool_filter=None
         )
 
         assert len(result.tools) == 3
@@ -177,7 +171,7 @@ class TestAgentToolFilteringWithServer:
         result = await self._apply_list_tools_logic(
             mock_agent_with_tools,
             server_name="server2",
-            tool_filter={"server1": {"tool1"}}  # server2 not in filter
+            tool_filter={"server1": {"tool1"}},  # server2 not in filter
         )
 
         assert len(result.tools) == 2
@@ -188,9 +182,7 @@ class TestAgentToolFilteringWithServer:
     async def test_empty_set_filters_all_tools(self, mock_agent_with_tools):
         """Test: tool_filter[server_name] = set() → Filter all tools out."""
         result = await self._apply_list_tools_logic(
-            mock_agent_with_tools,
-            server_name="server1",
-            tool_filter={"server1": set()}
+            mock_agent_with_tools, server_name="server1", tool_filter={"server1": set()}
         )
 
         assert len(result.tools) == 0
@@ -201,7 +193,7 @@ class TestAgentToolFilteringWithServer:
         result = await self._apply_list_tools_logic(
             mock_agent_with_tools,
             server_name="server1",
-            tool_filter={"server1": {"tool1", "tool3"}}
+            tool_filter={"server1": {"tool1", "tool3"}},
         )
 
         assert len(result.tools) == 2
@@ -227,7 +219,10 @@ class TestAgentToolFilteringWithServer:
                         )
                     else:
                         filtered_out_tools.append(
-                            (namespaced_tool.namespaced_tool_name, f"Not in tool_filter[{server_name}]")
+                            (
+                                namespaced_tool.namespaced_tool_name,
+                                f"Not in tool_filter[{server_name}]",
+                            )
                         )
                 result = ListToolsResult(tools=result_tools)
             else:
@@ -259,27 +254,27 @@ class TestAgentToolFilteringAllServers:
             "server1:tool1": NamespacedTool(
                 tool=Tool(name="tool1", description="Tool 1", inputSchema={}),
                 server_name="server1",
-                namespaced_tool_name="server1:tool1"
+                namespaced_tool_name="server1:tool1",
             ),
             "server1:tool2": NamespacedTool(
                 tool=Tool(name="tool2", description="Tool 2", inputSchema={}),
                 server_name="server1",
-                namespaced_tool_name="server1:tool2"
+                namespaced_tool_name="server1:tool2",
             ),
             "server2:tool1": NamespacedTool(
                 tool=Tool(name="tool1", description="Tool 1", inputSchema={}),
                 server_name="server2",
-                namespaced_tool_name="server2:tool1"
+                namespaced_tool_name="server2:tool1",
             ),
             "server2:tool3": NamespacedTool(
                 tool=Tool(name="tool3", description="Tool 3", inputSchema={}),
                 server_name="server2",
-                namespaced_tool_name="server2:tool3"
+                namespaced_tool_name="server2:tool3",
             ),
             "server3:tool4": NamespacedTool(
                 tool=Tool(name="tool4", description="Tool 4", inputSchema={}),
                 server_name="server3",
-                namespaced_tool_name="server3:tool4"
+                namespaced_tool_name="server3:tool4",
             ),
         }
 
@@ -293,7 +288,7 @@ class TestAgentToolFilteringAllServers:
         """Test: X in tool_filter → Apply filter for server X."""
         result = await self._apply_list_tools_logic_all_servers(
             mock_agent_all_servers,
-            tool_filter={"server1": {"tool1"}, "server2": {"tool3"}}
+            tool_filter={"server1": {"tool1"}, "server2": {"tool3"}},
         )
 
         # server1: only tool1, server2: only tool3, server3: all tools (no filter)
@@ -308,8 +303,8 @@ class TestAgentToolFilteringAllServers:
             mock_agent_all_servers,
             tool_filter={
                 "server1": {"tool1"},  # Explicit filter for server1
-                "*": {"tool3", "tool4"}  # Wildcard for others
-            }
+                "*": {"tool3", "tool4"},  # Wildcard for others
+            },
         )
 
         # server1: only tool1 (explicit filter)
@@ -324,7 +319,7 @@ class TestAgentToolFilteringAllServers:
         """Test: X not in tool_filter and '*' not in tool_filter → Include tool (no filter)."""
         result = await self._apply_list_tools_logic_all_servers(
             mock_agent_all_servers,
-            tool_filter={"server1": {"tool1"}}  # Only server1 has filter
+            tool_filter={"server1": {"tool1"}},  # Only server1 has filter
         )
 
         # server1: only tool1 (explicit filter)
@@ -332,14 +327,18 @@ class TestAgentToolFilteringAllServers:
         # server3: all tools (no filter)
         assert len(result.tools) == 4
         tool_names = {tool.name for tool in result.tools}
-        assert tool_names == {"server1:tool1", "server2:tool1", "server2:tool3", "server3:tool4"}
+        assert tool_names == {
+            "server1:tool1",
+            "server2:tool1",
+            "server2:tool3",
+            "server3:tool4",
+        }
 
     @pytest.mark.asyncio
     async def test_empty_filter_dict_includes_all(self, mock_agent_all_servers):
         """Test: tool_filter = {} → All tools included (no explicit filters defined)."""
         result = await self._apply_list_tools_logic_all_servers(
-            mock_agent_all_servers,
-            tool_filter={}
+            mock_agent_all_servers, tool_filter={}
         )
 
         # Empty dict means no explicit filters are defined
@@ -351,8 +350,7 @@ class TestAgentToolFilteringAllServers:
     async def test_wildcard_only_filter(self, mock_agent_all_servers):
         """Test: Only wildcard filter applies to all servers."""
         result = await self._apply_list_tools_logic_all_servers(
-            mock_agent_all_servers,
-            tool_filter={"*": {"tool1"}}
+            mock_agent_all_servers, tool_filter={"*": {"tool1"}}
         )
 
         # All servers should only include tool1
@@ -361,11 +359,12 @@ class TestAgentToolFilteringAllServers:
         assert tool_names == {"server1:tool1", "server2:tool1"}
 
     @pytest.mark.asyncio
-    async def test_block_all_tools_with_wildcard_empty_set(self, mock_agent_all_servers):
+    async def test_block_all_tools_with_wildcard_empty_set(
+        self, mock_agent_all_servers
+    ):
         """Test: Use wildcard with empty set to block all tools."""
         result = await self._apply_list_tools_logic_all_servers(
-            mock_agent_all_servers,
-            tool_filter={"*": set()}
+            mock_agent_all_servers, tool_filter={"*": set()}
         )
 
         # Wildcard with empty set blocks all tools from all servers
@@ -377,15 +376,24 @@ class TestAgentToolFilteringAllServers:
 
         if tool_filter is not None:
             filtered_tools = []
-            for namespaced_tool_name, namespaced_tool in agent._namespaced_tool_map.items():
+            for (
+                namespaced_tool_name,
+                namespaced_tool,
+            ) in agent._namespaced_tool_map.items():
                 should_include = False
 
                 if namespaced_tool.server_name in tool_filter:
-                    if namespaced_tool.tool.name in tool_filter[namespaced_tool.server_name]:
+                    if (
+                        namespaced_tool.tool.name
+                        in tool_filter[namespaced_tool.server_name]
+                    ):
                         should_include = True
                     else:
                         filtered_out_tools.append(
-                            (namespaced_tool_name, f"Not in tool_filter[{namespaced_tool.server_name}]")
+                            (
+                                namespaced_tool_name,
+                                f"Not in tool_filter[{namespaced_tool.server_name}]",
+                            )
                         )
                 elif "*" in tool_filter:
                     if namespaced_tool.tool.name in tool_filter["*"]:
@@ -425,7 +433,9 @@ class TestNonNamespacedToolFiltering:
         from mcp_agent.agents.agent import Agent
 
         agent = MagicMock(spec=Agent)
-        agent._should_include_non_namespaced_tool = Agent._should_include_non_namespaced_tool.__get__(agent)
+        agent._should_include_non_namespaced_tool = (
+            Agent._should_include_non_namespaced_tool.__get__(agent)
+        )
 
         # Test inclusion with non_namespaced_tools key
         should_include, reason = agent._should_include_non_namespaced_tool(
@@ -446,7 +456,9 @@ class TestNonNamespacedToolFiltering:
         from mcp_agent.agents.agent import Agent
 
         agent = MagicMock(spec=Agent)
-        agent._should_include_non_namespaced_tool = Agent._should_include_non_namespaced_tool.__get__(agent)
+        agent._should_include_non_namespaced_tool = (
+            Agent._should_include_non_namespaced_tool.__get__(agent)
+        )
 
         should_include, reason = agent._should_include_non_namespaced_tool(
             "func1", {"*": {"func1", "human_input"}}
@@ -464,10 +476,13 @@ class TestNonNamespacedToolFiltering:
         from mcp_agent.agents.agent import Agent
 
         agent = MagicMock(spec=Agent)
-        agent._should_include_non_namespaced_tool = Agent._should_include_non_namespaced_tool.__get__(agent)
+        agent._should_include_non_namespaced_tool = (
+            Agent._should_include_non_namespaced_tool.__get__(agent)
+        )
 
         should_include, reason = agent._should_include_non_namespaced_tool(
-            "func1", {"server1": {"tool1"}}  # No non_namespaced_tools key or wildcard
+            "func1",
+            {"server1": {"tool1"}},  # No non_namespaced_tools key or wildcard
         )
         assert should_include is True
         assert reason is None
@@ -487,14 +502,18 @@ class TestBackwardCompatibilityIntegration:
         context.tracing_enabled = False
         return context
 
-    @pytest.fixture 
+    @pytest.fixture
     def mock_agent(self):
         """Create a mock agent for testing."""
         agent = MagicMock()
-        agent.list_tools = AsyncMock(return_value=ListToolsResult(tools=[
-            Tool(name="tool1", description="Tool 1", inputSchema={}),
-            Tool(name="tool2", description="Tool 2", inputSchema={})
-        ]))
+        agent.list_tools = AsyncMock(
+            return_value=ListToolsResult(
+                tools=[
+                    Tool(name="tool1", description="Tool 1", inputSchema={}),
+                    Tool(name="tool2", description="Tool 2", inputSchema={}),
+                ]
+            )
+        )
         return agent
 
     @pytest.mark.asyncio
@@ -502,11 +521,11 @@ class TestBackwardCompatibilityIntegration:
         """Test that existing code calling agent.list_tools() without parameters still works."""
         # This simulates existing code that doesn't use tool_filter
         result = await mock_agent.list_tools()
-        
+
         assert len(result.tools) == 2
         assert result.tools[0].name == "tool1"
         assert result.tools[1].name == "tool2"
-        
+
         # Verify the call was made without tool_filter parameter
         mock_agent.list_tools.assert_called_with()
 
@@ -515,21 +534,21 @@ class TestBackwardCompatibilityIntegration:
         """Test that existing code calling agent.list_tools(server_name) still works."""
         # This simulates existing code that uses server_name parameter
         result = await mock_agent.list_tools(server_name="test_server")
-        
+
         assert len(result.tools) == 2
-        
+
         # Verify the call was made with server_name but without tool_filter
         mock_agent.list_tools.assert_called_with(server_name="test_server")
 
     def test_augmented_llm_get_request_params_backward_compatible(self, mock_context):
         """Test that AugmentedLLM.get_request_params handles tool_filter correctly."""
         from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
-        
+
         # Create a mock AugmentedLLM instance
         llm = MagicMock(spec=AugmentedLLM)
         llm.context = mock_context
         llm.default_request_params = RequestParams(maxTokens=1000)
-        
+
         # Simulate the get_request_params method behavior
         def mock_get_request_params(request_params=None, default=None):
             default_params = default or llm.default_request_params
@@ -537,14 +556,14 @@ class TestBackwardCompatibilityIntegration:
             if request_params:
                 params.update(request_params.model_dump(exclude_unset=True))
             return RequestParams(**params)
-        
+
         llm.get_request_params = mock_get_request_params
-        
+
         # Test 1: No overrides (existing behavior)
         result1 = llm.get_request_params()
         assert result1.maxTokens == 1000
         assert result1.tool_filter is None
-        
+
         # Test 2: Override with new tool_filter
         override_params = RequestParams(tool_filter={"server1": {"tool1"}})
         result2 = llm.get_request_params(request_params=override_params)
@@ -552,10 +571,12 @@ class TestBackwardCompatibilityIntegration:
         assert result2.tool_filter == {"server1": {"tool1"}}  # From override
 
         # Test 3: Override with non_namespaced_tools key
-        override_params3 = RequestParams(tool_filter={"non_namespaced_tools": {"human_input"}})
+        override_params3 = RequestParams(
+            tool_filter={"non_namespaced_tools": {"human_input"}}
+        )
         result3 = llm.get_request_params(request_params=override_params3)
         assert result3.tool_filter == {"non_namespaced_tools": {"human_input"}}
-        
+
         # Test 3: Override with existing params only
         override_params2 = RequestParams(temperature=0.9)
         result4 = llm.get_request_params(request_params=override_params2)
@@ -568,20 +589,20 @@ class TestBackwardCompatibilityIntegration:
         """Test that AugmentedLLM.list_tools method signature is backward compatible."""
         from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
         import inspect
-        
+
         # Get the method signature
         sig = inspect.signature(AugmentedLLM.list_tools)
         params = list(sig.parameters.keys())
-        
+
         # Should have both old and new parameters
         assert "self" in params
         assert "server_name" in params  # Existing parameter
         assert "tool_filter" in params  # New parameter
-        
+
         # Both should be optional (have defaults)
         server_name_param = sig.parameters["server_name"]
         tool_filter_param = sig.parameters["tool_filter"]
-        
+
         assert server_name_param.default is None
         assert tool_filter_param.default is None
 
@@ -594,14 +615,18 @@ class TestEdgeCases:
         agent = MagicMock(spec=Agent)
         agent._namespaced_tool_map = {
             "server1:tool1": NamespacedTool(
-                tool=Tool(name="tool1", description="Tool 1 from server1", inputSchema={}),
+                tool=Tool(
+                    name="tool1", description="Tool 1 from server1", inputSchema={}
+                ),
                 server_name="server1",
-                namespaced_tool_name="server1:tool1"
+                namespaced_tool_name="server1:tool1",
             ),
             "server2:tool1": NamespacedTool(
-                tool=Tool(name="tool1", description="Tool 1 from server2", inputSchema={}),
+                tool=Tool(
+                    name="tool1", description="Tool 1 from server2", inputSchema={}
+                ),
                 server_name="server2",
-                namespaced_tool_name="server2:tool1"
+                namespaced_tool_name="server2:tool1",
             ),
         }
 
@@ -635,7 +660,9 @@ class TestEdgeCases:
 
         # Test with dict having non-set values (should convert or error)
         try:
-            params_with_list = RequestParams(tool_filter={"server1": ["tool1", "tool2"]})
+            params_with_list = RequestParams(
+                tool_filter={"server1": ["tool1", "tool2"]}
+            )
             # Pydantic should convert list to set
             if params_with_list.tool_filter:
                 assert isinstance(params_with_list.tool_filter["server1"], set)

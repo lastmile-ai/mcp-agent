@@ -560,9 +560,15 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
                     ],
                 )
 
-    async def list_tools(self, server_name: str | None = None, tool_filter: Dict[str, Set[str]] | None = None) -> ListToolsResult:
+    async def list_tools(
+        self,
+        server_name: str | None = None,
+        tool_filter: Dict[str, Set[str]] | None = None,
+    ) -> ListToolsResult:
         """Call the underlying agent's list_tools method for a given server."""
-        return await self.agent.list_tools(server_name=server_name, tool_filter=tool_filter)
+        return await self.agent.list_tools(
+            server_name=server_name, tool_filter=tool_filter
+        )
 
     async def list_resources(
         self, server_name: str | None = None

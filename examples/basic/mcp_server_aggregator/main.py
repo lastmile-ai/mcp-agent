@@ -8,16 +8,17 @@ from rich import print
 
 app = MCPApp(name="mcp_server_aggregator")
 
+
 @app.tool
-async def example_usage_persistent()->str:
-    '''
+async def example_usage_persistent() -> str:
+    """
     this example function/tool call will use an MCP aggregator
-    to connect to both the file and filesystem servers and 
+    to connect to both the file and filesystem servers and
     aggregate them together, so you can list all tool calls from
     both servers at once. The connections to the servers will
     be persistent.
-    '''
-    result=""
+    """
+    result = ""
     context = app.context
 
     logger = get_logger("mcp_server_aggregator.example_usage_persistent")
@@ -36,7 +37,7 @@ async def example_usage_persistent()->str:
         logger.info("Aggregator: Calling list_tools...")
         output = await aggregator.list_tools()
         logger.info("Tools available:", data=output)
-        result+="Tools available:"+str(output)
+        result += "Tools available:" + str(output)
 
         # Call read_file on the aggregator, which will search all servers for the tool
         output = await aggregator.call_tool(
@@ -44,7 +45,7 @@ async def example_usage_persistent()->str:
             arguments={"path": str(Path.cwd() / "README.md")},
         )
         logger.info("read_text_file result:", data=output)
-        result+="\n\nread_text_file result:" + str(output)
+        result += "\n\nread_text_file result:" + str(output)
 
         # Call fetch.fetch on the aggregator
         # (i.e. server-namespacing -- fetch is the servername, which exposes fetch tool)
@@ -53,7 +54,7 @@ async def example_usage_persistent()->str:
             arguments={"url": "https://jsonplaceholder.typicode.com/todos/1"},
         )
         logger.info("fetch result:", data=output)
-        result+=f"\n\nfetch result: {str(output)}"
+        result += f"\n\nfetch result: {str(output)}"
     except Exception as e:
         logger.error("Error in example_usage_persistent:", data=e)
     finally:
@@ -62,15 +63,16 @@ async def example_usage_persistent()->str:
 
     return result
 
+
 @app.tool
-async def example_usage()->str:
-    '''
+async def example_usage() -> str:
+    """
     this example function/tool call will use an MCP aggregator
-    to connect to both the file and filesystem servers and 
+    to connect to both the file and filesystem servers and
     aggregate them together, so you can list all tool calls from
     both servers at once.
-    '''
-    result=""
+    """
+    result = ""
     logger = get_logger("mcp_server_aggregator.example_usage")
 
     context = app.context
@@ -89,7 +91,7 @@ async def example_usage()->str:
         logger.info("Aggregator: Calling list_tools...")
         output = await aggregator.list_tools()
         logger.info("Tools available:", data=output)
-        result+="Tools available:"+str(output)
+        result += "Tools available:" + str(output)
 
         # Call read_file on the aggregator, which will search all servers for the tool
         output = await aggregator.call_tool(
@@ -97,7 +99,7 @@ async def example_usage()->str:
             arguments={"path": str(Path.cwd() / "README.md")},
         )
         logger.info("read_text_file result:", data=output)
-        result+="\n\nread_text_file result:" + str(output)
+        result += "\n\nread_text_file result:" + str(output)
 
         # Call fetch.fetch on the aggregator
         # (i.e. server-namespacing -- fetch is the servername, which exposes fetch tool)
@@ -106,7 +108,7 @@ async def example_usage()->str:
             arguments={"url": "https://jsonplaceholder.typicode.com/todos/1"},
         )
         logger.info(f"fetch result: {str(output)}")
-        result+=f"\n\nfetch result: {str(output)}"
+        result += f"\n\nfetch result: {str(output)}"
     except Exception as e:
         logger.error("Error in example_usage:", data=e)
     finally:
@@ -116,6 +118,7 @@ async def example_usage()->str:
     print(result)
 
     return result
+
 
 if __name__ == "__main__":
     import time
