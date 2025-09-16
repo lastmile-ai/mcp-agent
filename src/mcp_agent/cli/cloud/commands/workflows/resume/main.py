@@ -18,27 +18,29 @@ from ...utils import (
 
 
 async def _signal_workflow_async(
-    server_id_or_url: str,
+    server_id_or_url_or_name: str,
     run_id: str,
     signal_name: str = "resume",
     payload: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Send a signal to a workflow using MCP tool calls to a deployed server."""
-    if server_id_or_url.startswith(("http://", "https://")):
-        server_url = server_id_or_url
+    if server_id_or_url_or_name.startswith(("http://", "https://")):
+        server_url = server_id_or_url_or_name
     else:
         client = setup_authenticated_client()
-        server = await resolve_server_async(client, server_id_or_url)
+        server = await resolve_server_async(client, server_id_or_url_or_name)
 
         if hasattr(server, "appServerInfo") and server.appServerInfo:
             server_url = server.appServerInfo.serverUrl
         else:
             raise CLIError(
-                f"Server '{server_id_or_url}' is not deployed or has no server URL"
+                f"Server '{server_id_or_url_or_name}' is not deployed or has no server URL"
             )
 
         if not server_url:
-            raise CLIError(f"No server URL found for server '{server_id_or_url}'")
+            raise CLIError(
+                f"No server URL found for server '{server_id_or_url_or_name}'"
+            )
 
     from mcp_agent.cli.config import settings as _settings
 
@@ -115,8 +117,8 @@ async def _signal_workflow_async(
 
 @handle_server_api_errors
 def resume_workflow(
-    server_id_or_url: str = typer.Argument(
-        ..., help="Server ID or URL hosting the workflow"
+    server_id_or_url_or_name: str = typer.Argument(
+        ..., help="App ID, server URL, or app name hosting the workflow"
     ),
     run_id: str = typer.Argument(..., help="Run ID of the workflow to resume"),
     signal_name: Optional[str] = "resume",
@@ -147,15 +149,15 @@ def resume_workflow(
 
     run_async(
         _signal_workflow_async(
-            server_id_or_url, run_id, signal_name or "resume", payload
+            server_id_or_url_or_name, run_id, signal_name or "resume", payload
         )
     )
 
 
 @handle_server_api_errors
 def suspend_workflow(
-    server_id_or_url: str = typer.Argument(
-        ..., help="Server ID or URL hosting the workflow"
+    server_id_or_url_or_name: str = typer.Argument(
+        ..., help="App ID, server URL, or app name hosting the workflow"
     ),
     run_id: str = typer.Argument(..., help="Run ID of the workflow to suspend"),
     payload: Optional[str] = typer.Option(
@@ -177,4 +179,6 @@ def suspend_workflow(
         except json.JSONDecodeError as e:
             raise typer.BadParameter(f"Invalid JSON payload: {str(e)}") from e
 
-    run_async(_signal_workflow_async(server_id_or_url, run_id, "suspend", payload))
+    run_async(
+        _signal_workflow_async(server_id_or_url_or_name, run_id, "suspend", payload)
+    )

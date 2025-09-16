@@ -36,7 +36,11 @@ from mcp_agent.cli.utils.ux import (
     print_info,
     print_success,
 )
-from mcp_agent.cli.utils.git_utils import get_git_metadata, create_git_tag
+from mcp_agent.cli.utils.git_utils import (
+    get_git_metadata,
+    create_git_tag,
+    sanitize_git_ref_component,
+)
 
 from .wrangler_wrapper import wrangler_deploy
 
@@ -261,10 +265,8 @@ def deploy_config(
         if git_tag:
             git_meta = get_git_metadata(config_dir)
             if git_meta:
-                # Sanitize app name for tag safety
-                safe_name = "".join(
-                    c if c.isalnum() or c in "-_" else "-" for c in app_name
-                )
+                # Sanitize app name for git tag safety
+                safe_name = sanitize_git_ref_component(app_name)
                 ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
                 tag_name = f"mcp-deploy/{safe_name}/{ts}-{git_meta.short_sha}"
                 msg = (
@@ -368,9 +370,19 @@ async def _deploy_with_retry(
                         "tag": gm.tag,
                         "message": gm.commit_message,
                     }
-                app = await mcp_app_client.deploy_app(
-                    app_id=app_id, deployment_metadata=metadata
-                )
+
+                try:
+                    app = await mcp_app_client.deploy_app(
+                        app_id=app_id, deployment_metadata=metadata
+                    )
+                except Exception as e:
+                    # Fallback: if API rejects deploymentMetadata, retry once without it
+                    try:
+                        app = await mcp_app_client.deploy_app(
+                            app_id=app_id, deployment_metadata=None
+                        )
+                    except Exception:
+                        raise e
                 progress.update(
                     deploy_task,
                     description=f"✅ MCP App deployed successfully{attempt_suffix}!",

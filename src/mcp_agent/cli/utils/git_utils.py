@@ -7,6 +7,7 @@ All functions are safe to call outside a git repo (they return None/fallbacks).
 from __future__ import annotations
 
 import hashlib
+import re
 import os
 import subprocess
 from dataclasses import dataclass
@@ -28,9 +29,22 @@ class GitMetadata:
 
 
 def _run_git(args: list[str], cwd: Path) -> Optional[str]:
+    """Run a git command and return stdout, suppressing all stderr noise.
+
+    Returns None on any error or non-zero exit to avoid leaking git messages
+    like "fatal: no tag exactly matches" to the console.
+    """
     try:
-        out = subprocess.check_output(["git", *args], cwd=str(cwd))
-        return out.decode("utf-8", errors="replace").strip()
+        proc = subprocess.run(
+            ["git", *args],
+            cwd=str(cwd),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        if proc.returncode != 0:
+            return None
+        return proc.stdout.decode("utf-8", errors="replace").strip()
     except Exception:
         return None
 
@@ -168,3 +182,38 @@ def create_git_tag(project_dir: Path, tag_name: str, message: str) -> bool:
         return True
     except Exception:
         return False
+
+
+_INVALID_REF_CHARS = re.compile(r"[~^:?*\[\\\s]")
+
+
+def sanitize_git_ref_component(name: str) -> str:
+    """Sanitize a string to be safe as a single refname component.
+
+    Rules (aligned with `git check-ref-format` constraints and our usage):
+    - Disallow spaces and special characters: ~ ^ : ? * [ \ (replace with '-')
+    - Replace '/' to avoid creating nested namespaces from user input
+    - Collapse consecutive dots '..' into '-'
+    - Remove leading dots '.' (cannot start with '.')
+    - Remove trailing '.lock' and trailing dots
+    - Disallow '@{' sequence
+    - Ensure non-empty; fallback to 'unnamed'
+    """
+    s = name.strip()
+    # Replace disallowed characters and whitespace
+    s = _INVALID_REF_CHARS.sub("-", s)
+    # Replace slashes to avoid extra path segments
+    s = s.replace("/", "-")
+    # Collapse consecutive dots
+    s = re.sub(r"\.{2,}", "-", s)
+    # Remove '@{'
+    s = s.replace("@{", "-{")
+    # Remove leading dots and hyphens (avoid CLI option-like names)
+    s = re.sub(r"^[\.-]+", "", s)
+    # Remove trailing .lock
+    s = re.sub(r"\.lock$", "", s, flags=re.IGNORECASE)
+    # Remove trailing dots
+    s = re.sub(r"\.+$", "", s)
+    if not s:
+        s = "unnamed"
+    return s

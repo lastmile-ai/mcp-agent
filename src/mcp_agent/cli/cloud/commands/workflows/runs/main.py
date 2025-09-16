@@ -91,7 +91,7 @@ async def _list_workflow_runs_async(
 
 def list_workflow_runs(
     server_id_or_url: str = typer.Argument(
-        ..., help="Server ID, app config ID, or server URL to list workflow runs for"
+        ..., help="App ID, server URL, or app name to list workflow runs for"
     ),
     limit: Optional[int] = typer.Option(
         None, "--limit", help="Maximum number of results to return"

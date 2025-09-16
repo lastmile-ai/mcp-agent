@@ -37,7 +37,7 @@ def get_app_status(
         None,
         "--id",
         "-i",
-        help="ID or server URL of the app or app configuration to get details for.",
+        help="ID, server URL, or name of the app to get details for.",
     ),
     api_url: Optional[str] = typer.Option(
         settings.API_BASE_URL,

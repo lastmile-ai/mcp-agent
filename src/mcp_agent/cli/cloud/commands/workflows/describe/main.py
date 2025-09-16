@@ -22,24 +22,26 @@ from ...utils import (
 
 
 async def _describe_workflow_async(
-    server_id_or_url: str, run_id: str, format: str = "text"
+    server_id_or_url_or_name: str, run_id: str, format: str = "text"
 ) -> None:
     """Describe a workflow using MCP tool calls to a deployed server."""
-    if server_id_or_url.startswith(("http://", "https://")):
-        server_url = server_id_or_url
+    if server_id_or_url_or_name.startswith(("http://", "https://")):
+        server_url = server_id_or_url_or_name
     else:
         client = setup_authenticated_client()
-        server = await resolve_server_async(client, server_id_or_url)
+        server = await resolve_server_async(client, server_id_or_url_or_name)
 
         if hasattr(server, "appServerInfo") and server.appServerInfo:
             server_url = server.appServerInfo.serverUrl
         else:
             raise CLIError(
-                f"Server '{server_id_or_url}' is not deployed or has no server URL"
+                f"Server '{server_id_or_url_or_name}' is not deployed or has no server URL"
             )
 
         if not server_url:
-            raise CLIError(f"No server URL found for server '{server_id_or_url}'")
+            raise CLIError(
+                f"No server URL found for server '{server_id_or_url_or_name}'"
+            )
 
     from mcp_agent.cli.config import settings as _settings
 
@@ -73,8 +75,8 @@ async def _describe_workflow_async(
 
 @handle_server_api_errors
 def describe_workflow(
-    server_id_or_url: str = typer.Argument(
-        ..., help="Server ID or URL hosting the workflow"
+    server_id_or_url_or_name: str = typer.Argument(
+        ..., help="App ID, server URL, or app name hosting the workflow"
     ),
     run_id: str = typer.Argument(..., help="Run ID of the workflow to describe"),
     format: Optional[str] = typer.Option(
@@ -96,7 +98,7 @@ def describe_workflow(
         console.print("[red]Error: --format must be 'text', 'json', or 'yaml'[/red]")
         raise typer.Exit(6)
 
-    run_async(_describe_workflow_async(server_id_or_url, run_id, format))
+    run_async(_describe_workflow_async(server_id_or_url_or_name, run_id, format))
 
 
 def print_workflow_status(workflow_status: WorkflowRun, format: str = "text") -> None:
