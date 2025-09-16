@@ -3,7 +3,10 @@ title: Introduction
 description: "Framework for building AI agents using Model Context Protocol"
 ---
 
-<img width="2398" alt="Agent execution example" src="https://github.com/user-attachments/assets/eaa60fdf-bcc6-460b-926e-6fa8534e9089" />
+<video controls width="100%">
+  <source src="https://github.com/user-attachments/assets/f651af86-222d-4df0-8241-616414df66e4" type="video/mp4" />
+  Your browser does not support the video tag.
+</video>
 
 ## Overview
 
@@ -22,6 +25,7 @@ The framework handles:
 - Connect to any MCP server via stdio, SSE, WebSocket, or HTTP
 - Access tools, resources, prompts, and file system roots
 - Automatic tool discovery and integration
+- Sampling, elicitation, and notifications
 
 ### Agent Patterns
 Implementation of all patterns from Anthropic's research:
@@ -48,7 +52,7 @@ Works with:
 
 ## Quick Example
 
-```python
+```python main.py
 import asyncio
 from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
@@ -56,8 +60,14 @@ from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 
 app = MCPApp(name="example_agent")
 
-async def main():
+@app.tool
+async def research()->str:
+    '''
+    Research quatum computing function / tool call
+    '''
+    result=""
     async with app.run() as mcp_agent_app:
+
         # Create agent with MCP server access
         agent = Agent(
             name="researcher",
@@ -76,28 +86,13 @@ async def main():
             # Agent can now use MCP server tools
             result = await llm.generate_str("Research quantum computing")
             print(result)
+    return result
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(research())
 ```
 
 ## Example Applications
-
-### Agent as MCP Server Demo
-<video controls width="100%">
-  <source src="https://github.com/user-attachments/assets/f651af86-222d-4df0-8241-616414df66e4" type="video/mp4" />
-  Your browser does not support the video tag.
-</video>
-
-### Workflow Orchestration
-<img width="100%" alt="Orchestrator workflow visualization" src="https://github.com/user-attachments/assets/12263f81-f2f8-41e2-a758-13d764f782a1" />
-
-### Swarm Intelligence Pattern
-<video controls width="100%">
-  <source src="https://github.com/user-attachments/assets/b314d75d-7945-4de6-965b-7f21eb14a8bd" type="video/mp4" />
-  Your browser does not support the video tag.
-</video>
-
 Explore working examples in the [examples directory](https://github.com/lastmile-ai/mcp-agent/tree/main/examples):
 
 - **Agent as MCP Server**: Deploy agents as MCP servers for Claude Desktop integration ([examples/mcp_agent_server](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp_agent_server))
@@ -135,7 +130,7 @@ uv add "mcp-agent[openai,anthropic,azure,bedrock,google]"
 mcp-agent uses two configuration files:
 
 **mcp_agent.config.yaml** - Application configuration:
-```yaml
+```yaml mcp_agent.config.yaml
 execution_engine: asyncio  # or temporal
 logger:
   transports: [console]
@@ -155,7 +150,7 @@ openai:
 ```
 
 **mcp_agent.secrets.yaml** - API keys and secrets:
-```yaml
+```yaml mcp_agent.secrets.yaml
 openai:
   api_key: "sk-..."
 ```
@@ -175,14 +170,14 @@ your-project/
 ### Local Development
 Run agents locally with asyncio execution engine for rapid development.
 
-### Production with Temporal
+### [Production with Temporal](advanced/temporal)
 Use Temporal for durable execution, automatic retries, and workflow management.
 
-### As MCP Server
+### [As a MCP Server](cloud/agent-server)
 Expose your agents as MCP servers that can be used by Claude Desktop, VS Code, or other MCP clients.
 
-### MCP Agent Cloud
-Deploy agents to managed cloud infrastructure with one command (coming soon).
+### [mcp-agent cloud](cloud/overview)
+Deploy agents to managed cloud infrastructure with one command.
 
 ## Examples
 
