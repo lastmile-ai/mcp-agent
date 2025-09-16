@@ -96,3 +96,97 @@ Run your MCP Agent app:
 ```bash
 uv run main.py
 ```
+## `4` [Beta] Deploy to MCP Agent Cloud
+
+### Prerequisites
+Make sure your agent is cloud-compatible with the `@app.tool` decorator (already included in this example).
+
+### Step 1: Login to MCP Agent Cloud
+
+```bash
+uv run mcp-agent login
+```
+
+
+### Step 2: Deploy your agent
+
+```bash
+uv run mcp-agent deploy basic-slack-agent
+```
+
+During deployment, you'll be prompted to configure secrets. You'll see two options for each secret:
+
+#### For OpenAI API Key:
+```
+Select secret type for 'openai.api_key'
+1: Deployment Secret: The secret value will be stored securely and accessible to the deployed application runtime.
+2: User Secret: No secret value will be stored. The 'configure' command must be used to create a configured application with this secret.
+
+```
+Recommendation:
+- Choose Option 1 if you're deploying for personal use and want immediate functionality
+- Choose Option 2 if you're sharing this agent publicly and want users to provide their own OpenAI API keys
+
+#### For Slack Bot Token:
+```
+Select secret type for 'mcp.servers.slack.env.SLACK_BOT_TOKEN'
+1: Deployment Secret: The secret value will be stored securely and accessible to the deployed application runtime.
+2: User Secret: No secret value will be stored. The 'configure' command must be used to create a configured application with this secret.
+
+```
+Recommendation:
+- Choose Option 1 if you're deploying for your own Slack workspace and want the agent to work immediately
+- Choose Option 2 if you're sharing this agent publicly and want each user to connect their own Slack workspace
+
+### Step 3: Connect to your deployed agent
+
+Once deployed, you'll receive a deployment URL like: `https://[your-agent-server-id].deployments.mcp-agent.com`
+
+#### Claude Desktop Integration
+
+Configure Claude Desktop to access your agent by updating your `~/.claude-desktop/config.json`:
+
+```json
+{
+  "mcpServers": {
+    "basic-slack-agent": {
+      "command": "/path/to/npx",
+      "args": [
+        "mcp-remote",
+        "https://[your-agent-server-id].deployments.mcp-agent.com/sse",
+        "--header",
+        "Authorization: Bearer ${BEARER_TOKEN}"
+      ],
+      "env": {
+        "BEARER_TOKEN": "your-mcp-agent-cloud-api-token"
+      }
+    }
+  }
+}
+```
+
+#### MCP Inspector
+
+Test your deployed agent using MCP Inspector:
+
+```bash
+npx @modelcontextprotocol/inspector
+```
+
+Configure the inspector with these settings:
+
+| Setting | Value |
+|---------|-------|
+| Transport Type | SSE |
+| SSE URL | `https://[your-agent-server-id].deployments.mcp-agent.com/sse` |
+| Header Name | Authorization |
+| Bearer Token | your-mcp-agent-cloud-api-token |
+
+**Tip:** Increase the request timeout in the Configuration since LLM calls take longer than simple API calls.
+
+### Available Tools
+
+Once deployed, your agent will expose the `fetch_latest_slack_message` tool, which:
+- Fetches the latest message from the bot-commits channel
+- Provides an AI-generated summary of the message content
+- Returns both the original message and summary
