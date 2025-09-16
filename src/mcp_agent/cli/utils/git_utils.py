@@ -40,32 +40,35 @@ def get_git_metadata(project_dir: Path) -> Optional[GitMetadata]:
 
     Returns None if git is unavailable or project_dir is not inside a repo.
     """
-    # Fast probe: are we inside a work-tree?
-    inside = _run_git(["rev-parse", "--is-inside-work-tree"], project_dir)
-    if inside is None or inside != "true":
+    try:
+        # Fast probe: are we inside a work-tree?
+        inside = _run_git(["rev-parse", "--is-inside-work-tree"], project_dir)
+        if inside is None or inside != "true":
+            return None
+
+        commit_sha = _run_git(["rev-parse", "HEAD"], project_dir)
+        if not commit_sha:
+            return None
+
+        short_sha = (
+            _run_git(["rev-parse", "--short", "HEAD"], project_dir) or commit_sha[:7]
+        )
+        branch = _run_git(["rev-parse", "--abbrev-ref", "HEAD"], project_dir)
+        status = _run_git(["status", "--porcelain"], project_dir)
+        dirty = bool(status)
+        tag = _run_git(["describe", "--tags", "--exact-match"], project_dir)
+        commit_message = _run_git(["log", "-1", "--pretty=%s"], project_dir)
+
+        return GitMetadata(
+            commit_sha=commit_sha,
+            short_sha=short_sha,
+            branch=branch,
+            dirty=dirty,
+            tag=tag,
+            commit_message=commit_message,
+        )
+    except Exception:
         return None
-
-    commit_sha = _run_git(["rev-parse", "HEAD"], project_dir)
-    if not commit_sha:
-        return None
-
-    short_sha = (
-        _run_git(["rev-parse", "--short", "HEAD"], project_dir) or commit_sha[:7]
-    )
-    branch = _run_git(["rev-parse", "--abbrev-ref", "HEAD"], project_dir)
-    status = _run_git(["status", "--porcelain"], project_dir)
-    dirty = bool(status)
-    tag = _run_git(["describe", "--tags", "--exact-match"], project_dir)
-    commit_message = _run_git(["log", "-1", "--pretty=%s"], project_dir)
-
-    return GitMetadata(
-        commit_sha=commit_sha,
-        short_sha=short_sha,
-        branch=branch,
-        dirty=dirty,
-        tag=tag,
-        commit_message=commit_message,
-    )
 
 
 def utc_iso_now() -> str:
