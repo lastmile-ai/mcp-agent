@@ -24,7 +24,7 @@ from mcp_agent.config import get_settings
 
 
 app = typer.Typer(help="Serve app as an MCP server")
-console = Console()
+console = Console(stderr=True)
 
 
 class ServerMonitor:
