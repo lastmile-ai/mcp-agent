@@ -222,7 +222,7 @@ INFO: Transformed secrets file written to /Users/andrew_lm/Documents/GitHub/mcp-
 WARNING: Found a __main__ entrypoint in main.py. This will be ignored in the deployment.
 ▰▰▰▰▰▰▱ ✅ Bundled successfully
 ▹▹▹▹▹ Deploying MCP App bundle...INFO: App ID: app_ddde033d-21as-fe3s-b82c-aaae4243c52f
-INFO: App URL: https://770xdsp22y321prwv9rasdfasd9l5zj5.deployments.mcp-agent-cloud.lastmileai.dev
+INFO: App URL: https://770xdsp22y321prwv9rasdfasd9l5zj5.deployments.mcp-agent.com
 INFO: App Status: OFFLINE
 ▹▹▹▹▹ ✅ MCP App deployed successfully!
 ```
