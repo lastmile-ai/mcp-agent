@@ -8,7 +8,6 @@ from pydantic import BaseModel, Field
 from mcp_agent.app import MCPApp
 from mcp_agent.server.app_server import create_mcp_server_for_app
 from mcp_agent.executor.workflow import Workflow, WorkflowResult
-from temporalio import workflow
 
 # Initialize logging
 logging.basicConfig(level=logging.INFO)

@@ -728,8 +728,6 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
 
                     # Signal the workflow with the result using method-specific signal
                     try:
-                        from temporalio.client import Client
-                        from temporalio import workflow
 
                         # Try to get Temporal client from the app context
                         app = _get_attached_app(mcp_server)

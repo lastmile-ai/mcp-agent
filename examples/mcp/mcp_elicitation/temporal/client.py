@@ -1,7 +1,6 @@
 import asyncio
 import json
 import time
-import argparse
 from mcp_agent.app import MCPApp
 from mcp_agent.config import Settings, LoggerSettings, MCPSettings
 import yaml
