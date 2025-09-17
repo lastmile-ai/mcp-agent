@@ -156,39 +156,32 @@ uv run client.py --custom-fastmcp-settings
 
 You can deploy your MCP-Agent app as a hosted mcp-agent app in the Cloud.
 
-1. Update the *mcp_agent.secrets.yaml* file specifying deployed secrets:
+1. In your terminal, authenticate into mcp-agent cloud by running:
 
-```
-openai:
-  api_key: !developer_secret
-
-anthropic:
-  api_key: !developer_secret
-```
-
-2. In your terminal, authenticate into mcp-agent cloud by running:
 ```
 uv run mcp-agent login
 ```
 
-3. You will be redirected to the login page, create an mcp-agent cloud account through Google or Github
+2. You will be redirected to the login page, create an mcp-agent cloud account through Google or Github
 
-4. Set up your mcp-agent cloud API Key and copy & paste it into your terminal
+3. Set up your mcp-agent cloud API Key and copy & paste it into your terminal
 
 ```
 andrew_lm@Mac sdk-cloud % uv run mcp-agent login
 INFO: Directing to MCP Agent Cloud API login...
-Please enter your API key 🔑: 
+Please enter your API key 🔑:
 ```
 
-5. In your terminal, deploy the MCP app:
+4. In your terminal, deploy the MCP app:
+
 ```
 uv run mcp-agent deploy mcp_agent_server -c /absolute/path/to/your/project
 ```
 
-6. In the terminal, ou will then be prompted to specify your OpenAI and/or Anthropic keys:
+5. In the terminal, you will then be prompted to specify your OpenAI and/or Anthropic keys:
 
 Once the deployment is successful, you should see the following:
+
 ```
 andrew_lm@Mac sdk-cloud % uv run mcp-agent deploy basic_agent_server -c /Users/andrew_lm/Documents/GitHub/mcp-agent/examples/mcp_agent_server/asyncio/
 ╭─────────────────────────────────────────────────── MCP Agent Deployment ────────────────────────────────────────────────────╮
@@ -200,13 +193,13 @@ INFO: Using API at https://mcp-agent.com/api
 INFO: Checking for existing app ID for 'basic_agent_server'...
 SUCCESS: Found existing app with ID: app_dd3a033d-4f4b-4e33-b82c-aad9ec43c52f for name 'basic_agent_server'
 INFO: Processing secrets file...
-INFO: Found existing transformed secrets to use where applicable: 
+INFO: Found existing transformed secrets to use where applicable:
 /Users/andrew_lm/Documents/GitHub/mcp-agent/examples/mcp_agent_server/asyncio/mcp_agent.deployed.secrets.yaml
 INFO: Loaded existing secrets configuration for reuse
 INFO: Reusing existing developer secret handle at 'openai.api_key': mcpac_sc_83d412fd-083e-4174-89b4-ecebb1e4cae9
 INFO: Transformed config written to /Users/andrew_lm/Documents/GitHub/mcp-agent/examples/mcp_agent_server/asyncio/mcp_agent.deployed.secrets.yaml
 
-                  Secrets Processing Summary                   
+                  Secrets Processing Summary
 ┏━━━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━┓
 ┃   Type    ┃ Path           ┃ Handle/Status       ┃  Source  ┃
 ┡━━━━━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━┩

@@ -98,27 +98,15 @@ Deploy your cover letter writer agent to MCP Agent Cloud for remote access and i
 uv run mcp-agent login
 ```
 
-#### `b.` Update your `mcp_agent.secrets.yaml` to mark your developer secrets
-
-Configure your secrets file to mark sensitive keys as developer secrets for secure cloud deployment:
-
-```yaml
-$schema: ../../../schema/mcp-agent.config.schema.json
-
-openai:
-  api_key: !developer_secret OPENAI_API_KEY
-
-anthropic:
-  api_key: !developer_secret ANTHROPIC_API_KEY
-```
-
-#### `c.` Deploy your agent with a single command
+#### `b.` Deploy your agent with a single command
 
 ```bash
 uv run mcp-agent deploy cover-letter-writer
 ```
 
-#### `d.` Connect to your deployed agent as an MCP server
+During deployment, you can select how you would like your secrets managed.
+
+#### `c.` Connect to your deployed agent as an MCP server
 
 Once deployed, you can connect to your agent through various MCP clients:
 
@@ -153,12 +141,12 @@ npx @modelcontextprotocol/inspector
 
 Configure the following settings in MCP Inspector:
 
-| Setting | Value |
-|---|---|
-| **Transport Type** | SSE |
-| **SSE URL** | `https://[your-agent-server-id].deployments.mcp-agent.com/sse` |
-| **Header Name** | Authorization |
-| **Bearer Token** | your-mcp-agent-cloud-api-token |
+| Setting            | Value                                                          |
+| ------------------ | -------------------------------------------------------------- |
+| **Transport Type** | SSE                                                            |
+| **SSE URL**        | `https://[your-agent-server-id].deployments.mcp-agent.com/sse` |
+| **Header Name**    | Authorization                                                  |
+| **Bearer Token**   | your-mcp-agent-cloud-api-token                                 |
 
 > [!TIP]
 > Increase the request timeout in the Configuration settings since LLM calls may take longer than simple API calls.
@@ -168,6 +156,7 @@ Configure the following settings in MCP Inspector:
 Once connected to your deployed agent, you'll have access to:
 
 **MCP Agent Cloud Default Tools:**
+
 - `workflow-list`: List available workflows
 - `workflow-run-list`: List execution runs of your agent
 - `workflow-run`: Create a new workflow run
@@ -176,6 +165,7 @@ Once connected to your deployed agent, you'll have access to:
 - `workflows-cancel`: Cancel a running workflow
 
 **Your Agent's Tool:**
+
 - `cover_letter_writer_tool`: Generate optimized cover letters with parameters:
   - `job_posting`: Job description and requirements
   - `candidate_details`: Candidate background and qualifications

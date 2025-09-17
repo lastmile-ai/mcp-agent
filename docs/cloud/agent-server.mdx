@@ -147,11 +147,6 @@ uv run mcp-agent serve --app my_agent:app --transport sse
 ```
 
 #### Deploying to **mcp-agent cloud**
-Update your secrets
-```yaml mcp_agent.secrets.yaml
-openai:
-  api_key: !developer_secret
-```
 
 ```bash
 uv run mcp-agent login
