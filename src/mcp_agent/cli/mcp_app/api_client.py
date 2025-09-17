@@ -27,6 +27,7 @@ class MCPApp(BaseModel):
     createdAt: datetime
     updatedAt: datetime
     appServerInfo: Optional[AppServerInfo] = None
+    deploymentMetadata: Optional[Dict[str, Any]] = None
 
 
 # A user-configured MCP App 'instance', created by configuring a deployed MCP App.
@@ -309,6 +310,7 @@ class MCPAppClient(APIClient):
     async def deploy_app(
         self,
         app_id: str,
+        deployment_metadata: Optional[Dict[str, Any]] = None,
     ) -> MCPApp:
         """Deploy an MCP App via the API.
 
@@ -326,9 +328,10 @@ class MCPAppClient(APIClient):
         if not app_id or not is_valid_app_id_format(app_id):
             raise ValueError(f"Invalid app ID format: {app_id}")
 
-        payload = {
-            "appId": app_id,
-        }
+        payload: Dict[str, Any] = {"appId": app_id}
+        if deployment_metadata:
+            # Tentative field; include only when requested
+            payload["deploymentMetadata"] = deployment_metadata
 
         # Use a longer timeout for deployments
         deploy_timeout = 300.0

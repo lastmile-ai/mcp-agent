@@ -692,13 +692,15 @@ Keep sensitive configuration in separate secrets files:
   </Tab>
   
   <Tab title="Cloud Secrets">
-    For cloud deployments, use secret management services:
+    For mcp-agent cloud deployments, only raw secrets (not environment variables) are supported:
     
     ```yaml
-    # Reference secrets from cloud providers
     openai:
-      api_key: "${OPENAI_API_KEY}"  # From AWS Secrets Manager, etc.
+      api_key: "sk-..."
     ```
+
+    During deployment, you will be prompted to specify which secrets should be used for the deployed app and which
+    secrets will be excluded (and require a subsequent 'configure' command to configure with user secrets).
   </Tab>
 </Tabs>
 

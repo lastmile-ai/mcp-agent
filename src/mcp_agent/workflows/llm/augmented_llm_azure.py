@@ -160,7 +160,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
 
             messages.extend(AzureConverter.convert_mixed_messages_to_azure(message))
 
-            response = await self.agent.list_tools()
+            response = await self.agent.list_tools(tool_filter=params.tool_filter)
 
             tools: list[ChatCompletionsToolDefinition] = [
                 ChatCompletionsToolDefinition(

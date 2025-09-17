@@ -68,7 +68,7 @@
             ]
           },
           {
-            "group": "MCP Agent Cloud",
+            "group": "mcp-agent cloud",
             "pages": [
               "cloud/overview",
               "cloud/getting-started",

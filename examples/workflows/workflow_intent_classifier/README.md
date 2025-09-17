@@ -60,20 +60,15 @@ uv run main.py
 uv run mcp-agent login
 ```
 
-### `b.` Update your `mcp_agent.secrets.yaml` to mark your developer secrets (keys)
+### `b.` Deploy your agent with a single command
 
-```yaml
-openai:
-  api_key: !developer_secret
-# Other secrets as needed
-```
-
-### `c.` Deploy your agent with a single command
 ```bash
 uv run mcp-agent deploy workflow-intent-classifier
 ```
 
-### `d.` Connect to your deployed agent as an MCP server through any MCP client
+During deployment, you can select how you would like your secrets managed.
+
+### `c.` Connect to your deployed agent as an MCP server through any MCP client
 
 #### Claude Desktop Integration
 
@@ -84,7 +79,7 @@ Configure Claude Desktop to access your agent servers by updating your `~/.claud
   "command": "/path/to/npx",
   "args": [
     "mcp-remote",
-    "https://[your-agent-server-id].deployments.mcp-agent-cloud.lastmileai.dev/sse",
+    "https://[your-agent-server-id].deployments.mcp-agent.com/sse",
     "--header",
     "Authorization: Bearer ${BEARER_TOKEN}"
   ],
@@ -99,17 +94,17 @@ Configure Claude Desktop to access your agent servers by updating your `~/.claud
 Use MCP Inspector to explore and test your agent servers:
 
 ```bash
-npx @modelcontextprotocol/inspector 
+npx @modelcontextprotocol/inspector
 ```
 
 Make sure to fill out the following settings:
 
-| Setting | Value | 
-|---|---|
-| *Transport Type* | *SSE* |
-| *SSE* | *https://[your-agent-server-id].deployments.mcp-agent-cloud.lastmileai.dev/sse* |
-| *Header Name* | *Authorization* | 
-| *Bearer Token* | *your-mcp-agent-cloud-api-token* |
+| Setting          | Value                                                          |
+| ---------------- | -------------------------------------------------------------- |
+| _Transport Type_ | _SSE_                                                          |
+| _SSE_            | _https://[your-agent-server-id].deployments.mcp-agent.com/sse_ |
+| _Header Name_    | _Authorization_                                                |
+| _Bearer Token_   | _your-mcp-agent-cloud-api-token_                               |
 
 > [!TIP]
 > In the Configuration, change the request timeout to a longer time period. Since your agents are making LLM calls, it is expected that it should take longer than simple API calls.

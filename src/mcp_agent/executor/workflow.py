@@ -607,6 +607,8 @@ class Workflow(ABC, Generic[T], ContextDependent):
         """
         status = {
             "id": self._run_id,
+            "workflow_id": self.id,
+            "run_id": self._run_id,
             "name": self.name,
             "status": self.state.status,
             "running": self._run_task is not None and not self._run_task.done()

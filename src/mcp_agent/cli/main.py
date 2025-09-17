@@ -16,6 +16,7 @@ import typer
 from rich.console import Console
 
 from mcp_agent.cli.utils.ux import print_error
+from mcp_agent.cli.utils.version_check import maybe_warn_newer_version
 
 # Mount existing cloud CLI
 try:
@@ -142,6 +143,12 @@ def main(
         console.print("mcp-agent - Model Context Protocol agent CLI\n")
         console.print("Run 'mcp-agent --help' to see all commands.")
 
+    # Best-effort version check (5s timeout, non-fatal)
+    try:
+        maybe_warn_newer_version()
+    except Exception:
+        pass
+
 
 # Mount non-cloud command groups (top-level, curated)
 app.add_typer(init_cmd.app, name="init", help="Scaffold a new mcp-agent project")
@@ -189,6 +196,11 @@ app.command(
 def run() -> None:
     """Run the CLI application."""
     try:
+        # Run best-effort version check before Typer may early-exit on --help
+        try:
+            maybe_warn_newer_version()
+        except Exception:
+            pass
         app()
     except Exception as e:
         # Unexpected errors - log full exception and show clean error to user

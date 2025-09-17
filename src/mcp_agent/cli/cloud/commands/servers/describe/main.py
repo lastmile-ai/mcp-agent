@@ -20,7 +20,7 @@ from mcp_agent.cli.utils.ux import console
 @handle_server_api_errors
 def describe_server(
     id_or_url: str = typer.Argument(
-        ..., help="Server ID or app configuration ID to describe"
+        ..., help="App ID, server URL, or app name to describe"
     ),
     format: Optional[str] = typer.Option(
         "text", "--format", help="Output format (text|json|yaml)"

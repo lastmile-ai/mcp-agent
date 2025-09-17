@@ -650,6 +650,7 @@ class MCPApp:
             return res
 
         async def _run(self, *args, **kwargs):  # type: ignore[no-redef]
+            # ensure initialization
             await self.initialize()
             return await _invoke_target(self, *args, **kwargs)
 

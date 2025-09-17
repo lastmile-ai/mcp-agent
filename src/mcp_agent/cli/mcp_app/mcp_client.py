@@ -16,6 +16,7 @@ from mcp_agent.cli.utils.ux import (
     console,
     print_success,
 )
+from mcp_agent.executor.workflow_registry import WorkflowRunsPage
 
 DEFAULT_CLIENT_INFO = types.Implementation(name="mcp", version="0.1.0")
 
@@ -142,6 +143,7 @@ class ListWorkflowRunsResult(BaseModel):
     """Processed server response to a workflows-runs-list request from the client."""
 
     workflow_runs: list[WorkflowRun]
+    next_page_token: Optional[str] = None
 
 
 class MCPClientSession(ClientSession):
@@ -176,9 +178,26 @@ class MCPClientSession(ClientSession):
 
         return ListWorkflowsResult(workflows=workflows)
 
-    async def list_workflow_runs(self) -> ListWorkflowRunsResult:
-        """Send a workflows-runs-list request."""
-        runs_response = await self.call_tool("workflows-runs-list", {})
+    async def list_workflow_runs(
+        self,
+        *,
+        limit: Optional[int] = None,
+        page_size: Optional[int] = None,
+        next_page_token: Optional[str] = None,
+    ) -> ListWorkflowRunsResult:
+        """Send a workflows-runs-list request.
+
+        Parses either a paginated WorkflowRunsPage shape or a legacy list/single-run shape.
+        """
+        params: dict[str, Any] = {}
+        if limit is not None:
+            params["limit"] = limit
+        if page_size is not None:
+            params["page_size"] = page_size
+        if next_page_token:
+            params["next_page_token"] = next_page_token
+
+        runs_response = await self.call_tool("workflows-runs-list", params)
         if runs_response.isError:
             error_message = (
                 runs_response.content[0].text
@@ -188,17 +207,67 @@ class MCPClientSession(ClientSession):
             )
             raise Exception(error_message)
 
-        runs = []
-        for item in runs_response.content:
-            if isinstance(item, types.TextContent):
-                # Assuming the content is a JSON string representing a WorkflowRun item dict
-                try:
-                    workflow_run = MCPClientSession.deserialize_workflow_run(item.text)
-                    runs.append(workflow_run)
-                except (json.JSONDecodeError, ValueError) as e:
-                    raise ValueError(f"Invalid workflow run data: {e}") from e
+        runs: list[WorkflowRun] = []
+        next_token: Optional[str] = None
 
-        return ListWorkflowRunsResult(workflow_runs=runs)
+        text_items = [
+            c for c in runs_response.content if isinstance(c, types.TextContent)
+        ]
+        if not text_items:
+            return ListWorkflowRunsResult(workflow_runs=runs, next_page_token=None)
+
+        for item in runs_response.content:
+            if not isinstance(item, types.TextContent):
+                continue
+
+            text = item.text
+            # Try JSON first
+            try:
+                data = json.loads(text)
+            except json.JSONDecodeError:
+                # Not JSON; ignore this content item
+                continue
+
+            # Prefer paginated page shape when present
+            if isinstance(data, dict) and ("runs" in data or "next_page_token" in data):
+                try:
+                    page = WorkflowRunsPage.model_validate(data)
+                    for r in page.runs or []:
+                        try:
+                            runs.append(
+                                MCPClientSession.deserialize_workflow_run(json.dumps(r))
+                            )
+                        except Exception:
+                            pass
+                    if page.next_page_token:
+                        next_token = page.next_page_token
+                    continue
+                except Exception:
+                    # Fall through to normal handling if not a valid page
+                    pass
+
+            # Plain list or dict of runs
+            if isinstance(data, list):  # List[Dict[str, Any]]
+                for r in data:
+                    try:
+                        runs.append(
+                            MCPClientSession.deserialize_workflow_run(json.dumps(r))
+                        )
+                    except Exception:
+                        pass
+            else:  # Dict[str, Any]
+                try:
+                    runs.append(
+                        MCPClientSession.deserialize_workflow_run(json.dumps(data))
+                    )
+                except Exception:
+                    # Last-ditch: attempt full deserialize of the original text
+                    try:
+                        runs.append(MCPClientSession.deserialize_workflow_run(text))
+                    except (json.JSONDecodeError, ValueError) as e:
+                        raise ValueError(f"Invalid workflow run data: {e}") from e
+
+        return ListWorkflowRunsResult(workflow_runs=runs, next_page_token=next_token)
 
     @staticmethod
     def deserialize_workflow_run(text: str) -> WorkflowRun:

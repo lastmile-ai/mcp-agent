@@ -4,6 +4,7 @@ from functools import wraps
 from typing import Union
 
 from mcp_agent.cli.auth import load_api_key_credentials
+from mcp_agent.cli.config import settings
 from mcp_agent.cli.core.api_client import UnauthenticatedError
 from mcp_agent.cli.core.constants import DEFAULT_API_BASE_URL
 from mcp_agent.cli.core.utils import run_async
@@ -24,10 +25,14 @@ def setup_authenticated_client() -> MCPAppClient:
     Raises:
         CLIError: If authentication fails
     """
-    effective_api_key = load_api_key_credentials()
+    # Prefer environment-provided key, then fall back to stored credentials
+    effective_api_key = settings.API_KEY or load_api_key_credentials()
 
     if not effective_api_key:
-        raise CLIError("Must be logged in to access servers. Run 'mcp-agent login'.")
+        raise CLIError(
+            "Must be authenticated. Set MCP_API_KEY or run 'mcp-agent login'.",
+            retriable=False,
+        )
 
     return MCPAppClient(api_url=DEFAULT_API_BASE_URL, api_key=effective_api_key)
 
@@ -44,18 +49,24 @@ def validate_output_format(format: str) -> None:
     valid_formats = ["text", "json", "yaml"]
     if format not in valid_formats:
         raise CLIError(
-            f"Invalid format '{format}'. Valid options are: {', '.join(valid_formats)}"
+            f"Invalid format '{format}'. Valid options are: {', '.join(valid_formats)}",
+            retriable=False,
         )
 
 
-def resolve_server(
-    client: MCPAppClient, id_or_url: str
+async def resolve_server_async(
+    client: MCPAppClient, id_or_url_or_name: str
 ) -> Union[MCPApp, MCPAppConfiguration]:
-    """Resolve server from ID or URL.
+    """Resolve server from ID, server URL, app configuration ID, or app name (async).
+
+    Resolution order:
+    1) Treat as ID or server URL via get_app_or_config
+    2) Treat as app name -> lookup app ID -> get_app
 
     Args:
         client: Authenticated MCP App client
-        id_or_url: Server identifier (app ID, app config ID, or server URL)
+        id_or_url_or_name: Identifier that may be an app ID, app config ID,
+            server URL, or app name
 
     Returns:
         Server object (MCPApp or MCPAppConfiguration)
@@ -63,11 +74,30 @@ def resolve_server(
     Raises:
         CLIError: If server resolution fails
     """
+    # First try as ID or server URL
     try:
-        return run_async(client.get_app_or_config(id_or_url))
+        return await client.get_app_or_config(id_or_url_or_name)
+    except Exception:
+        pass
 
-    except Exception as e:
-        raise CLIError(f"Failed to resolve server '{id_or_url}': {str(e)}") from e
+    # Fallback: try as app name -> map to app ID
+    try:
+        app_id = await client.get_app_id_by_name(id_or_url_or_name)
+        if app_id:
+            return await client.get_app(app_id=app_id)
+    except Exception:
+        pass
+
+    raise CLIError(
+        f"Failed to resolve server '{id_or_url_or_name}' as an ID, server URL, or app name"
+    )
+
+
+def resolve_server(
+    client: MCPAppClient, id_or_url_or_name: str
+) -> Union[MCPApp, MCPAppConfiguration]:
+    """Resolve server from ID, server URL, app config ID, or app name (sync wrapper)."""
+    return run_async(resolve_server_async(client, id_or_url_or_name))
 
 
 def handle_server_api_errors(func):
@@ -86,7 +116,8 @@ def handle_server_api_errors(func):
             return func(*args, **kwargs)
         except UnauthenticatedError as e:
             raise CLIError(
-                "Invalid API key. Run 'mcp-agent login' or set MCP_API_KEY environment variable with new API key."
+                "Invalid API key. Run 'mcp-agent login' or set MCP_API_KEY environment variable with new API key.",
+                retriable=False,
             ) from e
         except CLIError:
             # Re-raise CLIErrors as-is
