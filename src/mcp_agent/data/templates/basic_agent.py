@@ -1,54 +1,55 @@
 """
-Welcome to mcp-agent!
-This
-Canonical MCP-Agent example for new projects.
+Welcome to mcp-agent! We believe MCP is all you need to build and deploy agents.
+This is a canonical getting-started example that covers everything you need to know to get started.
 
-This script showcases:
-  - Setting up a basic Agent that uses the fetch and filesystem MCP servers
-  - @app.tool and @app.async_tool decorators to define long-running tools
+We will cover:
+  - Hello world agent: Setting up a basic Agent that uses the fetch and filesystem MCP servers to do cool stuff.
+  - @app.tool and @app.async_tool decorators to expose your agents as long-running tools on an MCP server.
   - Advanced MCP features: Notifications, sampling, and elicitation
+
+You can run this example locally using "uv run main.py", and also deploy it as an MCP server using "mcp-agent deploy".
+
+Let's get started!
 """
 
 from __future__ import annotations
 
-from typing import Optional, Literal
-import os
-
-from mcp.server.fastmcp import Context as MCPContext
-from mcp.types import ElicitRequestedSchema, TextContent, CreateMessageResult
+import asyncio
+from typing import Optional
 
 from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
 from mcp_agent.agents.agent_spec import AgentSpec
 from mcp_agent.core.context import Context as AppContext
-from mcp_agent.workflows.factory import create_llm
-from mcp_agent.workflows.llm.augmented_llm import RequestParams as LLMRequestParams
-from mcp_agent.workflows.llm.llm_selector import ModelPreferences
-
-# If you want to use a different LLM provider, you can import the appropriate AugmentedLLM
-#
+from mcp_agent.server.app_server import create_mcp_server_for_app
+from mcp_agent.workflows.factory import create_agent
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 
-# Create the MCP App. Configuration is read from mcp_agent.config.yaml/secrets.yaml.
-app = MCPApp(name="hello_world", description="Hello world mcp-agent application")
+# Create the MCPApp, the root of mcp-agent.
+app = MCPApp(
+    name="hello_world",
+    description="Hello world mcp-agent application",
+    # settings= <specify programmatically if needed; by default, configuration is read from mcp_agent.config.yaml/mcp_agent.secrets.yaml>
+)
 
 
-# 1) Agent behavior (first): demonstrate an Agent using MCP servers + LLM
-@app.tool(name="finder_tool")
-async def finder_tool(request: str, app_ctx: Optional[AppContext] = None) -> str:
+# Hello world agent: an Agent using MCP servers + LLM
+@app.tool()
+async def finder_agent(request: str, app_ctx: Optional[AppContext] = None) -> str:
     """
-    Create an Agent with access to MCP servers (fetch + filesystem), attach an LLM,
-    and handle the user's request.
-    """
-    _app = app_ctx.app if app_ctx else app
-    ctx = _app.context
+    Run an Agent with access to MCP servers (fetch + filesystem) to handle the input request.
 
-    # Ensure filesystem server can read current working directory (dev-friendly)
-    try:
-        if "filesystem" in ctx.config.mcp.servers:
-            ctx.config.mcp.servers["filesystem"].args.extend([os.getcwd()])
-    except Exception:
-        pass
+    Notes:
+    - @app.tool:
+      - runs the function as a long-running workflow tool when deployed as an MCP server
+      - no-op when running this locally as a script
+    - app_ctx:
+      - MCPApp Context (configuration, logger, upstream session, etc.)
+    """
+
+    logger = app_ctx.app.logger
+    # Logger requests are forwarded as notifications/message to the client over MCP.
+    logger.info(f"finder_tool called with request: {request}")
 
     agent = Agent(
         name="finder",
@@ -57,6 +58,7 @@ async def finder_tool(request: str, app_ctx: Optional[AppContext] = None) -> str
             " then answer the request concisely."
         ),
         server_names=["fetch", "filesystem"],
+        context=app_ctx,
     )
 
     async with agent:
@@ -65,201 +67,95 @@ async def finder_tool(request: str, app_ctx: Optional[AppContext] = None) -> str
         return result
 
 
-# 2) Agent catalog: list agents defined in config (agents.definitions)
-@app.tool(name="agent_catalog")
-def agent_catalog(app_ctx: Optional[AppContext] = None) -> str:
-    """List agent names defined under config.agents.definitions."""
-    _app = app_ctx.app if app_ctx else app
-    defs: list[AgentSpec] = (
-        getattr(getattr(_app.context.config, "agents", None), "definitions", []) or []
-    )
-    names = [getattr(d, "name", "") for d in defs if getattr(d, "name", None)]
-    return ", ".join(names) if names else "(no agents defined in config)"
-
-
-# 3) Run a configured agent by name (from config.agents.definitions)
-@app.tool(name="run_agent")
+# Run a configured agent by name (defined in mcp_agent.config.yaml)
+@app.async_tool(name="run_agent_async")
 async def run_agent(
-    agent_name: str,
-    prompt: str,
+    agent_name: str = "web_helper",
+    prompt: str = "Please summarize the first paragraph of https://modelcontextprotocol.io/docs/getting-started/intro",
     app_ctx: Optional[AppContext] = None,
 ) -> str:
     """
-    Instantiate an Agent from config.agents.definitions by name and run an LLM call.
+    Load an agent defined in mcp_agent.config.yaml by name and run it.
+
+    Notes:
+    - @app.async_tool:
+      - async version of @app.tool -- returns a workflow ID back (can be used with workflows-get_status tool)
+      - runs the function as a long-running workflow tool when deployed as an MCP server
+      - no-op when running this locally as a script
     """
-    _app = app_ctx.app if app_ctx else app
-    defs: list[AgentSpec] = (
-        getattr(getattr(_app.context.config, "agents", None), "definitions", []) or []
+
+    logger = app_ctx.app.logger
+
+    agent_definitions = (
+        app.config.agents.definitions
+        if app is not None
+        and app.config is not None
+        and app.config.agents is not None
+        and app.config.agents.definitions is not None
+        else []
     )
-    spec = next((d for d in defs if getattr(d, "name", None) == agent_name), None)
-    if spec is None:
+
+    agent_spec: AgentSpec | None = None
+    for agent_def in agent_definitions:
+        if agent_def.name == agent_name:
+            agent_spec = agent_def
+            break
+
+    if agent_spec is None:
+        logger.error("Agent not found", data={"name": agent_name})
         return f"agent '{agent_name}' not found"
 
-    agent = Agent(
-        name=spec.name,
-        instruction=spec.instruction,
-        server_names=spec.server_names or [],
-        functions=getattr(spec, "functions", []),
-        context=_app.context,
+    logger.info(
+        "Agent found in spec",
+        data={"name": agent_name, "instruction": agent_spec.instruction},
     )
+
+    agent = create_agent(agent_spec, context=app_ctx)
+
     async with agent:
         llm = await agent.attach_llm(OpenAIAugmentedLLM)
         return await llm.generate_str(message=prompt)
 
 
-# 4) Minimal tool: synchronous, simple types
-@app.tool(name="greet")
-def greet(name: str, app_ctx: Optional[AppContext] = None) -> str:
-    """Return a friendly greeting and log it upstream."""
-    _app = app_ctx.app if app_ctx else app
-    _app.logger.info("greet called", data={"name": name})
-    return f"Hello, {name}!"
-
-
-# 5) Notify: demonstrate server-side logging notifications
-@app.tool(name="notify")
-def notify(
-    message: str,
-    level: Literal["debug", "info", "warning", "error"] = "info",
-    app_ctx: Optional[AppContext] = None,
-    mcp_ctx: Optional[MCPContext] = None,
-) -> str:
-    """
-    Send a non-logging notification via the app logger (forwarded upstream).
-    Tools get access to both the MCPApp Context (app_ctx) and FastMCP Context (mcp_ctx).
-    """
-    _app = app_ctx.app if app_ctx else app
-    logger = _app.logger
-    if level == "debug":
-        logger.debug(message)
-    elif level == "warning":
-        logger.warning(message)
-    elif level == "error":
-        logger.error(message)
-    else:
-        logger.info(message)
-    return "ok"
-
-
-# 6) Elicit: prompt the user for confirmation (demonstrates elicitation)
-@app.tool(name="confirm_action")
-async def confirm_action(
-    action: str,
-    app_ctx: Optional[AppContext] = None,
-    ctx: Optional[MCPContext] = None,
-) -> str:
-    """
-    Ask the user to confirm an action. When invoked from an MCP client UI, a prompt is shown.
-    Falls back to the app's elicitation handler if no upstream client is attached.
-    """
-    _app = app_ctx.app if app_ctx else app
-    upstream = getattr(_app.context, "upstream_session", None)
-    schema: ElicitRequestedSchema = {
-        "type": "object",
-        "title": "Confirmation",
-        "properties": {"confirm": {"type": "boolean", "title": "Confirm"}},
-        "required": ["confirm"],
-    }
-    # Prefer upstream elicitation when available
-    if upstream is not None:
-        result = await upstream.elicit(
-            message=f"Do you want to {action}?", requestedSchema=schema
+async def main():
+    async with app.run() as agent_app:
+        # Run the agent
+        readme_summary = await finder_agent(
+            request="Please summarize the README.md file in this directory.",
+            app_ctx=agent_app.context,
         )
-        accepted = getattr(result, "action", "") in ("accept", "accepted")
-        return f"Action '{action}' {'confirmed' if accepted else 'declined'} by user"
+        print("README.md file summary:")
+        print(readme_summary)
 
-    # Fallback: no upstream client. If an elicitation handler is configured, use it.
-    if _app.context.elicitation_handler:
-        resp = await _app.context.elicitation_handler(
-            {"message": f"Do you want to {action}?", "requestedSchema": schema}
+        webpage_summary = await run_agent(
+            agent_name="web_helper",
+            prompt="Please summarize the first few paragraphs of https://modelcontextprotocol.io/docs/getting-started/intro.",
+            app_ctx=agent_app.context,
         )
-        accepted = getattr(resp, "action", "") in ("accept", "accepted")
-        return f"Action '{action}' {'confirmed' if accepted else 'declined'}"
+        print("Webpage summary:")
+        print(webpage_summary)
 
-    # Last resort: assume accepted
-    return f"Action '{action}' confirmed by default"
+        # UNCOMMENT to run this MCPApp as an MCP server
+        #########################################################
+        # Create the MCP server that exposes both workflows and agent configurations,
+        # optionally using custom FastMCP settings
+        # mcp_server = create_mcp_server_for_app(agent_app)
 
-
-# 7) Sampling: call an LLM to generate a short text
-@app.tool(name="sample_haiku")
-async def sample_haiku(topic: str, app_ctx: Optional[AppContext] = None) -> str:
-    """
-    Generate a tiny poem using the configured LLM. Model and keys come from config/secrets.
-    """
-    _app = app_ctx.app if app_ctx else app
-    # Create a simple LLM using current app context (settings and servers)
-    llm = create_llm(
-        agent_name="sampling_demo",
-        server_names=[],
-        instruction="You are a concise poet.",
-        context=_app.context,
-    )
-    req = LLMRequestParams(
-        maxTokens=80,
-        modelPreferences=ModelPreferences(hints=[]),
-        systemPrompt="Write a 3-line haiku.",
-        temperature=0.7,
-        use_history=False,
-        max_iterations=1,
-    )
-    text = await llm.generate_str(message=f"Haiku about {topic}", request_params=req)
-    return text
-
-
-# 8) Async tool: demonstrates @app.async_tool (runs asynchronously)
-@app.async_tool(name="reverse_async")
-async def reverse_async(text: str) -> str:
-    """Reverse a string asynchronously (example async tool)."""
-    return text[::-1]
-
-
-# 6) Router demo (agent factory): route query to specialized agents defined in agents.yaml
-@app.tool(name="route_demo")
-async def route_demo(query: str, app_ctx: Optional[AppContext] = None) -> str:
-    """
-    Use the agent factory to load agent specs from agents.yaml and route the query
-    to the best agent using an LLM router.
-    """
-    from pathlib import Path
-    from mcp_agent.workflows.factory import (
-        load_agent_specs_from_file,
-        create_router_llm,
-    )
-
-    _app = app_ctx.app if app_ctx else app
-    ctx = _app.context
-    specs = load_agent_specs_from_file(str(Path("agents.yaml").resolve()), context=ctx)
-    router = await create_router_llm(
-        server_names=["filesystem", "fetch"],
-        agents=specs,
-        provider="openai",
-        context=ctx,
-    )
-    res = await router.generate_str(query)
-    return res
+        # # Run the server
+        # await mcp_server.run_sse_async()
 
 
 if __name__ == "__main__":
-    # Optional: run a quick sanity check when executed directly
-    import asyncio
+    asyncio.run(main())
 
-    async def _smoke():
-        async with app.run() as running:
-            running.logger.info("Example app started")
-            print(
-                await finder_tool(
-                    "List files in the current directory", app_ctx=running.context
-                )
-            )
-            print("Agents:", await agent_catalog(app_ctx=running.context))
-            print(
-                await run_agent(
-                    "filesystem_helper",
-                    "Summarize README if present",
-                    app_ctx=running.context,
-                )
-            )
-            print(await greet("World", app_ctx=running.context))
-            print(await sample_haiku("flowers", app_ctx=running.context))
-
-    asyncio.run(_smoke())
+# When you're ready to deploy this MCPApp as a remote SSE server, run:
+# > mcp-agent deploy "hello_world"
+#
+# Congrats! You made it to the end of the getting-started example!
+# There is a lot more that mcp-agent can do, and we hope you'll explore the rest of the documentation.
+# Check out other examples in the mcp-agent repo:
+# https://github.com/lastmile-ai/mcp-agent/tree/main/examples
+# and read the docs (or ask an mcp-agent to do it for you):
+# https://docs.mcp-agent.com/
+#
+# Happy mcp-agenting!

@@ -18,6 +18,7 @@ from mcp_agent.server.app_server import create_mcp_server_for_app
 from mcp_agent.human_input.handler import console_input_callback
 from mcp_agent.elicitation.handler import console_elicitation_callback
 from mcp.types import ElicitRequestedSchema
+from pydantic import BaseModel, Field
 
 
 app = MCPApp(
@@ -33,25 +34,40 @@ async def confirm_action(action: str, app_ctx: Optional[AppContext] = None) -> s
     """Ask the user to confirm an action."""
     _app = app_ctx.app if app_ctx else app
     upstream = getattr(_app.context, "upstream_session", None)
-    schema: ElicitRequestedSchema = {
-        "type": "object",
-        "title": "Confirmation",
-        "properties": {"confirm": {"type": "boolean", "title": "Confirm"}},
-        "required": ["confirm"],
-    }
+    class ConfirmBooking(BaseModel):
+        confirm: bool = Field(description="Confirm action?")
+        notes: str = Field(default="", description="Optional notes")
+
+    schema: ElicitRequestedSchema = ConfirmBooking.model_json_schema()
     if upstream is not None:
         result = await upstream.elicit(
             message=f"Do you want to {action}?", requestedSchema=schema
         )
-        accepted = getattr(result, "action", "") in ("accept", "accepted")
-        return f"Action '{action}' {'confirmed' if accepted else 'declined'} by user"
+        if getattr(result, "action", "") in ("accept", "accepted"):
+            data = ConfirmBooking.model_validate(getattr(result, "content", {}))
+            return (
+                f"Action '{action}' confirmed. Notes: {data.notes or 'None'}"
+                if data.confirm
+                else f"Action '{action}' cancelled"
+            )
+        if getattr(result, "action", "") == "decline":
+            return "Action declined"
+        return "Action cancelled"
     # Fallback to console handler
     if _app.context.elicitation_handler:
         resp = await _app.context.elicitation_handler(
             {"message": f"Do you want to {action}?", "requestedSchema": schema}
         )
-        accepted = getattr(resp, "action", "") in ("accept", "accepted")
-        return f"Action '{action}' {'confirmed' if accepted else 'declined'}"
+        if getattr(resp, "action", "") in ("accept", "accepted"):
+            data = ConfirmBooking.model_validate(getattr(resp, "content", {}))
+            return (
+                f"Action '{action}' confirmed. Notes: {data.notes or 'None'}"
+                if data.confirm
+                else f"Action '{action}' cancelled"
+            )
+        if getattr(resp, "action", "") == "decline":
+            return "Action declined"
+        return "Action cancelled"
     return f"Action '{action}' confirmed by default"
 
 
@@ -63,4 +79,3 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
-

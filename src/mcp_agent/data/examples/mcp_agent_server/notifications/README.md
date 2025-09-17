@@ -21,3 +21,14 @@ Tools:
 
 These are best-effort and non-blocking for the server.
 
+## Deploy to Cloud (optional)
+
+1. Set API keys in `mcp_agent.secrets.yaml` as needed.
+
+2. Deploy from this directory:
+
+```bash
+uv run mcp-agent deploy notifications-demo
+```
+
+Use the returned URL with `/sse` in an MCP client. Set the Bearer token in the header to your mcp-agent API key.

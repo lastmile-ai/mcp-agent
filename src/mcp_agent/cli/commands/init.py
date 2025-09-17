@@ -66,7 +66,9 @@ def _write_readme(dir_path: Path, content: str, force: bool) -> str | None:
             if ok:
                 return name
     # Fallback: print content to console if we couldn't write any variant
-    console.print("\n[yellow]A README already exists and could not be overwritten.[/yellow]")
+    console.print(
+        "\n[yellow]A README already exists and could not be overwritten.[/yellow]"
+    )
     console.print("[bold]Suggested README contents:[/bold]\n")
     console.print(content)
     return None
@@ -163,7 +165,7 @@ def init(
                 else:
                     # Ask for an alternate filename and ensure it ends with .py
                     alt_name = Prompt.ask(
-                        "Enter a filename to save the agent", default="agent.py"
+                        "Enter a filename to save the agent", default="main.py"
                     )
                     if not alt_name.endswith(".py"):
                         alt_name += ".py"
@@ -263,16 +265,6 @@ def init(
         if template == "basic":
             run_file = entry_script_name or "main.py"
             console.print(f"3. Run your agent: [cyan]uv run {run_file}[/cyan]")
-            console.print(
-                f"   Or use: [cyan]mcp-agent dev start --script {run_file}[/cyan]"
-            )
-            console.print(
-                f"   Or serve: [cyan]mcp-agent dev serve --script {run_file}[/cyan]"
-            )
-            console.print("   Or chat: [cyan]mcp-agent dev chat[/cyan]")
-            console.print(
-                "4. Edit config: [cyan]mcp-agent config edit[/cyan] (then rerun)"
-            )
         elif template == "server":
             console.print("3. Run the server: [cyan]uv run server.py[/cyan]")
             console.print(

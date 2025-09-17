@@ -48,3 +48,14 @@ Put your API keys in `mcp_agent.secrets.yaml` or environment variables
 (`OPENAI_API_KEY`, etc.). The server uses the MCP app configuration
 (`mcp_agent.config.yaml`) for MCP servers and provider defaults.
 
+## Deploy to Cloud (optional)
+
+1. Set API keys in `mcp_agent.secrets.yaml`.
+
+2. From this directory:
+
+```bash
+uv run mcp-agent deploy reference-server
+```
+
+Use the URL (append `/sse`) in an MCP client and include your mcp-agent API key as a bearer token if required.

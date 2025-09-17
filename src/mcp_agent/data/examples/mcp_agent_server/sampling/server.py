@@ -28,7 +28,11 @@ app = MCPApp(
 
 
 @app.tool(name="sample_haiku")
-async def sample_haiku(topic: str, app_ctx: Optional[AppContext] = None) -> str:
+async def sample_haiku(
+    topic: str,
+    temperature: float | None = 0.7,
+    app_ctx: Optional[AppContext] = None,
+) -> str:
     """Generate a short poem using configured LLM settings."""
     _app = app_ctx.app if app_ctx else app
     llm = create_llm(
@@ -41,7 +45,7 @@ async def sample_haiku(topic: str, app_ctx: Optional[AppContext] = None) -> str:
         maxTokens=80,
         modelPreferences=ModelPreferences(hints=[]),
         systemPrompt="Write a 3-line haiku.",
-        temperature=0.7,
+        temperature=temperature,
         use_history=False,
         max_iterations=1,
     )
@@ -56,4 +60,3 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
-
