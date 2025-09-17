@@ -248,7 +248,7 @@ class OpenAIAugmentedLLM(
                         # "max_tokens": params.maxTokens,
                         "max_completion_tokens": params.maxTokens,
                         # Use current OpenAI reasoning API shape
-                        "reasoning": {"effort": self._reasoning_effort},
+                        "reasoning_effort": self._reasoning_effort,
                     }
                 else:
                     arguments = {**arguments, "max_tokens": params.maxTokens}
@@ -531,7 +531,7 @@ class OpenAIAugmentedLLM(
                 # DEPRECATED: https://platform.openai.com/docs/api-reference/chat/create#chat-create-max_tokens
                 # "max_tokens": params.maxTokens,
                 payload["max_completion_tokens"] = params.maxTokens
-                payload["reasoning"] = {"effort": self._reasoning_effort}
+                payload["reasoning_effort"] = self._reasoning_effort
             else:
                 payload["max_tokens"] = params.maxTokens
             user = params.user or getattr(self.context.config.openai, "user", None)
@@ -1039,9 +1039,7 @@ class OpenAICompletionTasks:
             if request.model and str(request.model).startswith(
                 ("o1", "o3", "o4", "gpt-5")
             ):
-                payload["reasoning"] = {
-                    "effort": getattr(request.config, "reasoning_effort", "medium")
-                }
+                payload["reasoning_effort"] = "medium"
             if request.user:
                 payload["user"] = request.user
 
