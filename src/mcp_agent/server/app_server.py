@@ -685,7 +685,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                 pass
 
             if method != "sampling/createMessage" and method != "elicitation/create":
-                logger.error(f"async not supported for method {method} ({type(method)})")
+                logger.error(f"async not supported for method {method}")
                 return JSONResponse({"error": f"async not supported for method {method}"},
                                     status_code=405)
 
