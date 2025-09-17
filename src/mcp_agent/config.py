@@ -724,8 +724,17 @@ def _clear_global_settings():
     _settings = None
 
 
-def get_settings(config_path: str | None = None) -> Settings:
-    """Get settings instance, automatically loading from config file if available."""
+def get_settings(config_path: str | None = None, set_global: bool = True) -> Settings:
+    """Get settings instance, automatically loading from config file if available.
+
+    Args:
+        config_path: Optional path to config file. If None, searches for config automatically.
+        set_global: Whether to set the loaded settings as the global singleton. Default is True for backward
+                    compatibility. Set to False for multi-threaded environments to avoid global state modification.
+
+    Returns:
+        Settings instance with loaded configuration.
+    """
 
     def deep_merge(base: dict, update: dict) -> dict:
         """Recursively merge two dictionaries, preserving nested structures."""
@@ -741,9 +750,11 @@ def get_settings(config_path: str | None = None) -> Settings:
                 merged[key] = value
         return merged
 
-    global _settings
-    if _settings:
-        return _settings
+    # Only return cached global settings if we're in set_global mode
+    if set_global:
+        global _settings
+        if _settings:
+            return _settings
 
     import yaml  # pylint: disable=C0415
 
@@ -760,7 +771,10 @@ def get_settings(config_path: str | None = None) -> Settings:
             yaml_settings = yaml.safe_load(buf) or {}
 
             # Preload is authoritative: construct from YAML directly (no env overlay)
-            return Settings(**yaml_settings)
+            settings = Settings(**yaml_settings)
+            if set_global:
+                _settings = settings
+            return settings
         except Exception as e:
             if preload_settings.preload_strict:
                 raise ValueError(
@@ -806,21 +820,26 @@ def get_settings(config_path: str | None = None) -> Settings:
                     yaml_secrets = yaml.safe_load(f) or {}
                     merged_settings = deep_merge(merged_settings, yaml_secrets)
 
-        _settings = Settings(**merged_settings)
-        return _settings
+        settings = Settings(**merged_settings)
+        if set_global:
+            _settings = settings
+        return settings
 
     # No valid config found anywhere
-    _settings = Settings()
+    settings = Settings()
+    if set_global:
+        _settings = settings
 
-    # Thread-safety advisory: warn when using global singleton from non-main thread
+    # Thread-safety advisory: warn when setting global singleton from non-main thread
     if (
-        threading.current_thread() is not threading.main_thread()
+        set_global
+        and threading.current_thread() is not threading.main_thread()
         and config_path is None
     ):
         warnings.warn(
-            "get_settings() returned the global Settings singleton on a non-main thread. "
-            "In multithreaded environments, prefer passing a Settings instance explicitly to MCPApp("
-            "settings=...) or provide a per-thread config_path to avoid cross-thread coupling.",
+            "get_settings() is setting the global Settings singleton from a non-main thread. "
+            "In multithreaded environments, use get_settings(set_global=False) to avoid "
+            "global state modification, or pass the Settings instance explicitly to MCPApp(settings=...).",
             stacklevel=2,
         )
-    return _settings
+    return settings
