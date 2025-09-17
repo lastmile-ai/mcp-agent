@@ -127,7 +127,7 @@ class OpenAIAugmentedLLM(
         self.default_request_params = self.default_request_params or RequestParams(
             model=default_model,
             modelPreferences=self.model_preferences,
-            maxTokens=4096,
+            maxTokens=16384,  # Use gpt-4o max output token value
             systemPrompt=self.instruction,
             parallel_tool_calls=False,
             max_iterations=10,
