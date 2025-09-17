@@ -60,18 +60,6 @@ Before you begin, make sure you have:
     openai:
       default_model: gpt-4o
     ```
-
-    <Note>
-    Swap your api_key with !developer_secret to mark what keys will be saved as secrets within mcp-agent cloud.
-    </Note>
-
-    ```yaml mcp_agent.secrets.yaml
-    openai:
-      api_key: !developer_secret
-    anthropic:
-      api_key: !developer_secret
-    # Other secrets as needed
-    ```
   </Step>
   
   <Step title="Deploy">
@@ -83,7 +71,7 @@ Before you begin, make sure you have:
     
     The deployment process will:
     1. Check for existing app with this name or create a new one
-    2. Process your secrets file (transforming `!developer_secret` tags to secure handles)
+    2. Process your secrets file
     3. Bundle and upload your code
     4. Deploy to MCP Agent Cloud's managed infrastructure
     
@@ -194,7 +182,7 @@ openai:
 
 ```yaml mcp_agent.secrets.yaml
 openai:
-  api_key: !developer_secret
+  api_key: "sk-..."
 ```
 </CodeGroup>
 
@@ -335,22 +323,8 @@ MCP_API_KEY="your-key" mcp-agent deploy my-agent
 ### Secrets Management
 
 MCP Agent Cloud securely handles secrets through the `mcp_agent.secrets.yaml` file:
-
-```yaml mcp_agent.secrets.yaml
-openai:
-  api_key: !developer_secret  # Will be stored securely
-
-anthropic:
-  api_key: !developer_secret
-
-custom_service:
-  token: !developer_secret
-```
-
-During deployment, secrets marked with `!developer_secret` are:
-1. Prompted for if not already stored
-2. Securely uploaded to MCP Agent Cloud's vault
-3. Referenced by handle in the deployed configuration
+1. During `mcp-agent deploy`, you will be prompted through the secrets management flow
+2. Secrets are safely secured in MCP Agent Cloud
 
 ## Testing with MCP Inspector
 
