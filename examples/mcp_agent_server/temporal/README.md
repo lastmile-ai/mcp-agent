@@ -271,8 +271,8 @@ class PauseResumeWorkflow(Workflow[str]):
         print(f"Workflow is pausing, workflow_id: {self.id}, run_id: {self.run_id}")
 
         # Wait for the resume signal - this will pause the workflow
-        await app.context.executor.signal_bus.wait_for_signal(
-            Signal(name="resume", workflow_id=self.id, run_id=self.run_id),
+        await app.context.executor.wait_for_signal(
+            signal_name="resume", workflow_id=self.id, run_id=self.run_id,
         )
 
         print("Signal received, workflow is resuming...")

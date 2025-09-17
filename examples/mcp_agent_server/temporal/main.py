@@ -15,7 +15,6 @@ import os
 from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
 from mcp_agent.core.context import Context
-from mcp_agent.executor.workflow_signal import Signal
 from mcp_agent.server.app_server import create_mcp_server_for_app
 from mcp_agent.executor.workflow import Workflow, WorkflowResult
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
@@ -29,12 +28,19 @@ from mcp.types import SamplingMessage, TextContent, ModelPreferences, ModelHint
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
+def signal_notification_callback(**kwargs):
+    """Callback to notify when a signal is received in a workflow."""
+    logger.info(f"SIGNAL NOTIFICATION CALLBACK: {kwargs}")
+
+
 # Create a single FastMCPApp instance (which extends MCPApp)
 app = MCPApp(
     name="basic_agent_server",
     description="Basic agent server example",
     human_input_callback=console_input_callback,  # for local sampling approval
     elicitation_callback=console_elicitation_callback,  # for local elicitation
+    signal_notification=signal_notification_callback,
 )
 
 
@@ -160,8 +166,11 @@ class PauseResumeWorkflow(Workflow[str]):
         )
 
         # Wait for the resume signal - this will pause the workflow until the signal is received
-        await app.context.executor.signal_bus.wait_for_signal(
-            Signal(name="resume", workflow_id=self.id, run_id=self.run_id),
+        await app.context.executor.wait_for_signal(
+            signal_name="resume",
+            workflow_id=self.id,
+            run_id=self.run_id,
+            timeout_seconds=60,
         )
 
         print("Signal received, workflow is resuming...")
