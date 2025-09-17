@@ -20,6 +20,9 @@ from mcp_agent.executor.temporal.system_activities import SystemActivities
 from mcp_agent.executor.temporal.temporal_context import get_execution_id
 
 
+# Global state for signal handling (will be stored per workflow instance)
+_workflow_states: Dict[str, Dict[str, Any]] = {}
+
 class SessionProxy(ServerSession):
     """
     SessionProxy acts like an MCP `ServerSession` for code running under the
@@ -116,15 +119,27 @@ class SessionProxy(ServerSession):
             return {"error": "missing_execution_id"}
 
         if _in_workflow_runtime():
+            from temporalio import workflow
             act = self._context.task_registry.get_activity("mcp_relay_request")
-            return await self._executor.execute(
+
+            await self._executor.execute(
                 act,
+                True,
                 exec_id,
                 method,
                 params or {},
             )
+
+            # Wait for the _elicitation_response signal to be triggered
+            await workflow.wait_condition(
+                lambda: _workflow_states.get(exec_id, {}).get('response_received', False)
+            )
+
+            return _workflow_states.get(exec_id, {}).get('response_data', {"error": "no_response"})
+
+        # Non-workflow (activity/asyncio): direct call and wait for result
         return await self._system_activities.relay_request(
-            exec_id, method, params or {}
+            False, exec_id, method, params or {}
         )
 
     async def send_notification(

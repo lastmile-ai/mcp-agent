@@ -90,11 +90,12 @@ class SystemActivities(ContextDependent):
 
     @activity.defn(name="mcp_relay_request")
     async def relay_request(
-        self, execution_id: str, method: str, params: Dict[str, Any] | None = None
+        self, make_async_call: bool, execution_id: str, method: str, params: Dict[str, Any] | None = None
     ) -> Dict[str, Any]:
         gateway_url = getattr(self.context, "gateway_url", None)
         gateway_token = getattr(self.context, "gateway_token", None)
         return await request_via_proxy(
+            make_async_call=make_async_call,
             execution_id=execution_id,
             method=method,
             params=params or {},
