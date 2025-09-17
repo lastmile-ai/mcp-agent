@@ -34,6 +34,7 @@ async def confirm_action(action: str, app_ctx: Optional[AppContext] = None) -> s
     """Ask the user to confirm an action."""
     _app = app_ctx.app if app_ctx else app
     upstream = getattr(_app.context, "upstream_session", None)
+
     class ConfirmBooking(BaseModel):
         confirm: bool = Field(description="Confirm action?")
         notes: str = Field(default="", description="Optional notes")

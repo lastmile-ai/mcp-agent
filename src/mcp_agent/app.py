@@ -4,7 +4,17 @@ import sys
 import functools
 
 from types import MethodType
-from typing import Any, Dict, Optional, Type, TypeVar, Callable, TYPE_CHECKING, ParamSpec, overload
+from typing import (
+    Any,
+    Dict,
+    Optional,
+    Type,
+    TypeVar,
+    Callable,
+    TYPE_CHECKING,
+    ParamSpec,
+    overload,
+)
 from datetime import timedelta
 from contextlib import asynccontextmanager
 
@@ -716,8 +726,7 @@ class MCPApp:
         return auto_cls
 
     @overload
-    def tool(self, __fn: Callable[P, R]) -> Callable[P, R]:
-        ...
+    def tool(self, __fn: Callable[P, R]) -> Callable[P, R]: ...
 
     @overload
     def tool(
@@ -726,8 +735,7 @@ class MCPApp:
         *,
         description: str | None = None,
         structured_output: bool | None = None,
-    ) -> Callable[[Callable[P, R]], Callable[P, R]]:
-        ...
+    ) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
 
     def tool(
         self,
@@ -784,8 +792,7 @@ class MCPApp:
         return decorator
 
     @overload
-    def async_tool(self, __fn: Callable[P, R]) -> Callable[P, R]:
-        ...
+    def async_tool(self, __fn: Callable[P, R]) -> Callable[P, R]: ...
 
     @overload
     def async_tool(
@@ -793,8 +800,7 @@ class MCPApp:
         name: str | None = None,
         *,
         description: str | None = None,
-    ) -> Callable[[Callable[P, R]], Callable[P, R]]:
-        ...
+    ) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
 
     def async_tool(
         self,

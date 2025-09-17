@@ -60,10 +60,11 @@ async def main() -> None:
         ) as server:
             await server.set_logging_level("info")
             await server.call_tool("notify", {"message": "Hello from client"})
-            await server.call_tool("notify_progress", {"progress": 0.25, "message": "Quarter"})
+            await server.call_tool(
+                "notify_progress", {"progress": 0.25, "message": "Quarter"}
+            )
             print("Sent notify + notify_progress")
 
 
 if __name__ == "__main__":
     asyncio.run(main())
-
