@@ -7,7 +7,7 @@ import concurrent.futures
 from typing import Any, List, Optional, TYPE_CHECKING, Literal
 import warnings
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import ConfigDict
 
 from mcp import ServerSession
 from mcp.server.fastmcp import FastMCP
@@ -167,7 +167,9 @@ class Context(MCPContext):
 
     # ---- FastMCP Context method fallbacks (safe outside requests) ---------
 
-    def bind_request(self, request_context: Any, fastmcp: FastMCP | None = None) -> "Context":
+    def bind_request(
+        self, request_context: Any, fastmcp: FastMCP | None = None
+    ) -> "Context":
         """Return a shallow-copied Context bound to a specific FastMCP request.
 
         - Shares app-wide state (config, registries, token counter, etc.) with the original Context
