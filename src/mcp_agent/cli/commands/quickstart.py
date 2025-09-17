@@ -86,6 +86,10 @@ def overview() -> None:
         ("token-counter", "data/examples/basic/token_counter"),
         ("agent-factory", "data/examples/basic/agent_factory"),
         ("basic-agent-server", "data/examples/mcp_agent_server/asyncio"),
+        ("reference-agent-server", "data/examples/mcp_agent_server/reference"),
+        ("elicitation", "data/examples/mcp_agent_server/elicitation"),
+        ("sampling", "data/examples/mcp_agent_server/sampling"),
+        ("notifications", "data/examples/mcp_agent_server/notifications"),
     ]
     for n, p in rows:
         table.add_row(n, p)
@@ -198,4 +202,47 @@ def basic_agent_server(
     if not copied:
         src = EXAMPLE_ROOT / "mcp_agent_server" / "asyncio"
         copied = _copy_tree(src, dst, force)
+    console.print(f"Copied {copied} set(s) to {dst}")
+
+
+@app.command("reference-agent-server")
+def reference_agent_server(
+    dir: Path = typer.Argument(Path(".")),
+    force: bool = typer.Option(False, "--force", "-f"),
+) -> None:
+    dst = dir.resolve() / "reference_agent_server"
+    copied = _copy_pkg_tree("mcp_agent_server/reference", dst, force)
+    if not copied:
+        src = EXAMPLE_ROOT / "mcp_agent_server" / "reference"
+        copied = _copy_tree(src, dst, force)
+    console.print(f"Copied {copied} set(s) to {dst}")
+
+
+@app.command("elicitation")
+def elicitation(
+    dir: Path = typer.Argument(Path(".")),
+    force: bool = typer.Option(False, "--force", "-f"),
+) -> None:
+    dst = dir.resolve() / "elicitation"
+    copied = _copy_pkg_tree("mcp_agent_server/elicitation", dst, force)
+    console.print(f"Copied {copied} set(s) to {dst}")
+
+
+@app.command("sampling")
+def sampling(
+    dir: Path = typer.Argument(Path(".")),
+    force: bool = typer.Option(False, "--force", "-f"),
+) -> None:
+    dst = dir.resolve() / "sampling"
+    copied = _copy_pkg_tree("mcp_agent_server/sampling", dst, force)
+    console.print(f"Copied {copied} set(s) to {dst}")
+
+
+@app.command("notifications")
+def notifications(
+    dir: Path = typer.Argument(Path(".")),
+    force: bool = typer.Option(False, "--force", "-f"),
+) -> None:
+    dst = dir.resolve() / "notifications"
+    copied = _copy_pkg_tree("mcp_agent_server/notifications", dst, force)
     console.print(f"Copied {copied} set(s) to {dst}")

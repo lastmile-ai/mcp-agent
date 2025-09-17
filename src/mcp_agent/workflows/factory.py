@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Callable, List, Literal, Sequence, Tuple
+from typing import Any, Callable, List, Literal, Sequence, Tuple, overload
 import os
 import re
 import json
@@ -65,6 +65,32 @@ def agent_from_spec(spec: AgentSpec, context: Context | None = None) -> Agent:
     )
 
 
+@overload
+def create_llm(
+    agent: Agent | AgentSpec,
+    provider: str | None = "openai",
+    model: str | ModelPreferences | None = None,
+    request_params: RequestParams | None = None,
+    context: Context | None = None,
+) -> AugmentedLLM:
+    """
+    Create an Augmented LLM from an agent or agent spec.
+    """
+    agent = (
+        agent if isinstance(agent, Agent) else agent_from_spec(agent, context=context)
+    )
+
+    factory = _llm_factory(
+        provider=provider,
+        model=model,
+        request_params=request_params,
+        context=context,
+    )
+
+    return factory(agent=agent)
+
+
+@overload
 def create_llm(
     agent_name: str,
     server_names: List[str] | None = None,
@@ -74,6 +100,10 @@ def create_llm(
     request_params: RequestParams | None = None,
     context: Context | None = None,
 ) -> AugmentedLLM:
+    """
+    Create an Augmented LLM.
+    """
+
     agent = agent_from_spec(
         AgentSpec(
             name=agent_name, instruction=instruction, server_names=server_names or []
