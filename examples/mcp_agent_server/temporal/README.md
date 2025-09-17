@@ -318,10 +318,16 @@ async with gen_client("basic_agent_server", context.server_registry) as server:
     )
 
     # The workflow will pause - to resume it, send the resume signal
-    run_id = pause_result.content[0].text
+    execution = WorkflowExecution(
+      **json.loads(pause_result.content[0].text)
+   )
+
+   run_id = execution.run_id
+   workflow_id = exection.workflow_id
+
     await server.call_tool(
         "workflows-resume",
-        arguments={"workflow_id": "PauseResumeWorkflow", "run_id": run_id}
+        arguments={"workflow_id": workflow_id, "run_id": run_id}
     )
 ```
 
