@@ -45,7 +45,11 @@ _EXAMPLE_SETTINGS = Settings(
 class TestConfigPreload:
     @pytest.fixture(autouse=True)
     def clear_global_settings(self):
+        old = get_settings()
         _clear_global_settings()
+        yield
+        global _settings
+        _settings = old
 
     @pytest.fixture(autouse=True)
     def clear_test_env(self, monkeypatch: pytest.MonkeyPatch):
@@ -107,9 +111,11 @@ class TestSetGlobalParameter:
     @pytest.fixture(autouse=True)
     def clear_global_settings(self):
         """Clear global settings before and after each test."""
+        old = get_settings()
         _clear_global_settings()
         yield
-        _clear_global_settings()
+        global _settings
+        _settings = old
 
     @pytest.fixture(autouse=True)
     def clear_test_env(self, monkeypatch: pytest.MonkeyPatch):
@@ -254,9 +260,11 @@ class TestThreadSafety:
     @pytest.fixture(autouse=True)
     def clear_global_settings(self):
         """Clear global settings before and after each test."""
+        old = get_settings()
         _clear_global_settings()
         yield
-        _clear_global_settings()
+        global _settings
+        _settings = old
 
     @pytest.fixture
     def simple_config(self):
@@ -353,9 +361,11 @@ class TestConfigMergingWithSetGlobal:
     @pytest.fixture(autouse=True)
     def clear_global_settings(self):
         """Clear global settings before and after each test."""
+        old = get_settings()
         _clear_global_settings()
         yield
-        _clear_global_settings()
+        global _settings
+        _settings = old
 
     @pytest.fixture
     def config_data_with_secrets(self):
