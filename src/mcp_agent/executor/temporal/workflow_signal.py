@@ -1,3 +1,4 @@
+import asyncio
 from contextvars import ContextVar
 from datetime import timedelta
 from typing import Any, Callable, Optional, TYPE_CHECKING
@@ -122,7 +123,7 @@ class TemporalSignalHandler(BaseSignalHandler[SignalValueT]):
             )
 
             return mailbox.value(signal.name)
-        except exceptions.TimeoutError as e:
+        except (exceptions.TimeoutError, asyncio.TimeoutError) as e:
             raise TimeoutError(f"Timeout waiting for signal {signal.name}") from e
 
     def on_signal(self, signal_name: str):
