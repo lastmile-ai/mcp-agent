@@ -12,17 +12,19 @@ import asyncio
 import logging
 import os
 
-from mcp_agent.app import MCPApp
+from mcp.types import ModelHint, ModelPreferences, SamplingMessage, TextContent
+from temporalio.exceptions import ApplicationError
+
 from mcp_agent.agents.agent import Agent
-from mcp_agent.core.context import Context
-from mcp_agent.server.app_server import create_mcp_server_for_app
-from mcp_agent.executor.workflow import Workflow, WorkflowResult
-from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
-from mcp_agent.human_input.handler import console_input_callback
-from mcp_agent.elicitation.handler import console_elicitation_callback
-from mcp_agent.mcp.gen_client import gen_client
+from mcp_agent.app import MCPApp
 from mcp_agent.config import MCPServerSettings
-from mcp.types import SamplingMessage, TextContent, ModelPreferences, ModelHint
+from mcp_agent.core.context import Context
+from mcp_agent.elicitation.handler import console_elicitation_callback
+from mcp_agent.executor.workflow import Workflow, WorkflowResult
+from mcp_agent.human_input.handler import console_input_callback
+from mcp_agent.mcp.gen_client import gen_client
+from mcp_agent.server.app_server import create_mcp_server_for_app
+from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 
 # Initialize logging
 logging.basicConfig(level=logging.INFO)
@@ -166,12 +168,21 @@ class PauseResumeWorkflow(Workflow[str]):
         )
 
         # Wait for the resume signal - this will pause the workflow until the signal is received
-        await app.context.executor.wait_for_signal(
-            signal_name="resume",
-            workflow_id=self.id,
-            run_id=self.run_id,
-            timeout_seconds=60,
-        )
+        timeout_seconds = 60
+        try:
+            await app.context.executor.wait_for_signal(
+                signal_name="resume",
+                workflow_id=self.id,
+                run_id=self.run_id,
+                timeout_seconds=timeout_seconds,
+            )
+        except TimeoutError as e:
+            # Raise ApplicationError to fail the entire workflow run, not just the task
+            raise ApplicationError(
+                f"Workflow timed out waiting for resume signal after {timeout_seconds} seconds",
+                type="SignalTimeout",
+                non_retryable=True,
+            ) from e
 
         print("Signal received, workflow is resuming...")
         result = f"Workflow successfully resumed! Original message: {message}"

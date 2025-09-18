@@ -1,5 +1,8 @@
-import pytest
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 from mcp_agent.executor.temporal.workflow_signal import TemporalSignalHandler
 from mcp_agent.executor.workflow_signal import Signal, SignalMailbox
 
@@ -63,6 +66,21 @@ async def test_wait_for_signal(_mock_in_wf, handler, mock_workflow):
     with patch("temporalio.workflow.wait_condition", AsyncMock()):
         result = await handler.wait_for_signal(signal)
         assert result == "test_value"
+
+
+@pytest.mark.asyncio
+@patch("temporalio.workflow.in_workflow", return_value=True)
+async def test_wait_for_signal_timeout(_mock_in_wf, handler, mock_workflow):
+    handler.attach_to_workflow(mock_workflow)
+    # Patch the handler's ContextVar to point to the mock_workflow's mailbox
+    handler._mailbox_ref.set(mock_workflow._signal_mailbox)
+    signal = Signal(name="test_signal", payload="test_value")
+    with patch(
+        "temporalio.workflow.wait_condition",
+        AsyncMock(side_effect=asyncio.TimeoutError),
+    ):
+        with pytest.raises(TimeoutError):
+            await handler.wait_for_signal(signal, timeout_seconds=1)
 
 
 @pytest.mark.asyncio
