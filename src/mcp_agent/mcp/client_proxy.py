@@ -177,7 +177,7 @@ async def request_via_proxy(
         from mcp_agent.executor.temporal.session_proxy import reset_signal_response
 
         # Reset the signal response state, so we're ready to accept a new response signal
-        reset_signal_response(execution_id)
+        await reset_signal_response(execution_id)
 
         # Make the HTTP request (but don't return the response directly)
         base = _resolve_gateway_url(gateway_url=gateway_url, context_gateway_url=None)

@@ -441,7 +441,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
                     workflow_info = workflow.info()
                     workflow_key = f"{workflow_info.run_id}"
 
-                    set_signal_response(workflow_key, response)
+                    await set_signal_response(workflow_key, response)
             except ImportError:
                 # Fallback for non-temporal environments
                 pass

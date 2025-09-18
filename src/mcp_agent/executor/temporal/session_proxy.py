@@ -29,7 +29,7 @@ _WORKFLOW_SIGNAL_LOCK = asyncio.Lock()
 _workflow_signal_states: Dict[str, Dict[str, Any]] = {}
 
 
-def reset_signal_response(execution_id: str) -> None:
+async def reset_signal_response(execution_id: str) -> None:
     """
     Reset the signal response state for a given workflow execution ID, ready to accept a new signal
     """
@@ -41,7 +41,7 @@ def reset_signal_response(execution_id: str) -> None:
         _workflow_signal_states[execution_id]['response_received'] = False
 
 
-def set_signal_response(execution_id: str, data: Any) -> None:
+async def set_signal_response(execution_id: str, data: Any) -> None:
     """
     Register that a signal response has been received for a given workflow execution ID.
     """
@@ -53,7 +53,7 @@ def set_signal_response(execution_id: str, data: Any) -> None:
         _workflow_signal_states[execution_id]['response_received'] = True
 
 
-def has_signal_response(execution_id: str) -> bool:
+async def has_signal_response(execution_id: str) -> bool:
     """
     Check if a signal response has been received for a given workflow execution ID.
     """
@@ -63,7 +63,7 @@ def has_signal_response(execution_id: str) -> bool:
         return _workflow_signal_states[execution_id]['response_received']
 
 
-def get_signal_response(execution_id: str) -> Any:
+async def get_signal_response(execution_id: str) -> Any:
     """
     Retrieve the signal response data for a given workflow execution ID.
     """
@@ -72,6 +72,23 @@ def get_signal_response(execution_id: str) -> Any:
                 not _workflow_signal_states[execution_id]['response_received']:
             raise RuntimeError("No signal response received yet")
         return _workflow_signal_states[execution_id]['response_data']
+
+
+def has_signal_response_sync(execution_id: str) -> bool:
+    """
+    Synchronously check if a signal response has been received for a given workflow execution ID.
+    This method is safe to use in Temporal wait_condition lambdas since it doesn't use async/await.
+
+    Only reads when the lock is not currently held to minimize race conditions.
+    Returns False conservatively if the lock is held or if no response is available.
+    """
+    # Only read if lock is not currently held
+    if _WORKFLOW_SIGNAL_LOCK.locked():
+        return False  # Conservative: assume no response if lock is held
+
+    if execution_id not in _workflow_signal_states:
+        return False
+    return _workflow_signal_states[execution_id]['response_received']
 
 
 class SessionProxy(ServerSession):
@@ -174,25 +191,25 @@ class SessionProxy(ServerSession):
 
             await self._executor.execute(
                 act,
+                True,  # Use the async APIs with signalling for response
                 exec_id,
                 method,
                 params or {},
-                make_async_call=True,  # Use the async APIs with signalling for response
             )
 
             # Wait for the _elicitation_response signal to be triggered
             await _twf.wait_condition(
-                lambda: has_signal_response(exec_id)
+                lambda: has_signal_response_sync(exec_id)
             )
 
-            return get_signal_response(exec_id)
+            return await get_signal_response(exec_id)
 
         # Non-workflow (activity/asyncio): direct call and wait for result
         return await self._system_activities.relay_request(
+            False,  # Do not use the async APIs, but the synchronous ones instead
             exec_id,
             method,
             params or {},
-            make_async_call=False,  # Do not use the async APIs, but the synchronous ones instead
         )
 
     async def send_notification(
