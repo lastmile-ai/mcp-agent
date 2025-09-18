@@ -13,7 +13,7 @@ import warnings
 from httpx import URL
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
+import yaml
 
 from mcp_agent.agents.agent_spec import AgentSpec
 
@@ -724,6 +724,20 @@ def _clear_global_settings():
     _settings = None
 
 
+def _set_and_warn_global_settings(settings: Settings) -> None:
+    """Set global settings and warn if called from non-main thread."""
+    global _settings
+    _settings = settings
+    # Thread-safety advisory: warn when setting global singleton from non-main thread
+    if threading.current_thread() is not threading.main_thread():
+        warnings.warn(
+            "get_settings() is setting the global Settings singleton from a non-main thread. "
+            "In multithreaded environments, use get_settings(set_global=False) to avoid "
+            "global state modification, or pass the Settings instance explicitly to MCPApp(settings=...).",
+            stacklevel=3,  # Adjusted stacklevel since we're now in a helper function
+        )
+
+
 def get_settings(config_path: str | None = None, set_global: bool = True) -> Settings:
     """Get settings instance, automatically loading from config file if available.
 
@@ -756,8 +770,6 @@ def get_settings(config_path: str | None = None, set_global: bool = True) -> Set
         if _settings:
             return _settings
 
-    import yaml  # pylint: disable=C0415
-
     merged_settings = {}
 
     preload_settings = PreloadSettings()
@@ -773,7 +785,7 @@ def get_settings(config_path: str | None = None, set_global: bool = True) -> Set
             # Preload is authoritative: construct from YAML directly (no env overlay)
             settings = Settings(**yaml_settings)
             if set_global:
-                _settings = settings
+                _set_and_warn_global_settings(settings)
             return settings
         except Exception as e:
             if preload_settings.preload_strict:
@@ -822,24 +834,11 @@ def get_settings(config_path: str | None = None, set_global: bool = True) -> Set
 
         settings = Settings(**merged_settings)
         if set_global:
-            _settings = settings
+            _set_and_warn_global_settings(settings)
         return settings
 
     # No valid config found anywhere
     settings = Settings()
     if set_global:
-        _settings = settings
-
-    # Thread-safety advisory: warn when setting global singleton from non-main thread
-    if (
-        set_global
-        and threading.current_thread() is not threading.main_thread()
-        and config_path is None
-    ):
-        warnings.warn(
-            "get_settings() is setting the global Settings singleton from a non-main thread. "
-            "In multithreaded environments, use get_settings(set_global=False) to avoid "
-            "global state modification, or pass the Settings instance explicitly to MCPApp(settings=...).",
-            stacklevel=2,
-        )
+        _set_and_warn_global_settings(settings)
     return settings
