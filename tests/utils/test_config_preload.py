@@ -107,9 +107,12 @@ class TestSetGlobalParameter:
     @pytest.fixture(autouse=True)
     def clear_global_settings(self):
         """Clear global settings before and after each test."""
+        import mcp_agent.config
+
+        old = mcp_agent.config._settings
         _clear_global_settings()
         yield
-        _clear_global_settings()
+        mcp_agent.config._settings = old
 
     @pytest.fixture(autouse=True)
     def clear_test_env(self, monkeypatch: pytest.MonkeyPatch):
@@ -254,9 +257,12 @@ class TestThreadSafety:
     @pytest.fixture(autouse=True)
     def clear_global_settings(self):
         """Clear global settings before and after each test."""
+        import mcp_agent.config
+
+        old = mcp_agent.config._settings
         _clear_global_settings()
         yield
-        _clear_global_settings()
+        mcp_agent.config._settings = old
 
     @pytest.fixture
     def simple_config(self):
@@ -353,9 +359,12 @@ class TestConfigMergingWithSetGlobal:
     @pytest.fixture(autouse=True)
     def clear_global_settings(self):
         """Clear global settings before and after each test."""
+        import mcp_agent.config
+
+        old = mcp_agent.config._settings
         _clear_global_settings()
         yield
-        _clear_global_settings()
+        mcp_agent.config._settings = old
 
     @pytest.fixture
     def config_data_with_secrets(self):
