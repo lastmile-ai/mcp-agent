@@ -45,12 +45,7 @@ _EXAMPLE_SETTINGS = Settings(
 class TestConfigPreload:
     @pytest.fixture(autouse=True)
     def clear_global_settings(self):
-        import mcp_agent.config
-
-        old = mcp_agent.config._settings
         _clear_global_settings()
-        yield
-        mcp_agent.config._settings = old
 
     @pytest.fixture(autouse=True)
     def clear_test_env(self, monkeypatch: pytest.MonkeyPatch):
