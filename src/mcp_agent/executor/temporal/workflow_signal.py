@@ -3,7 +3,7 @@ from contextvars import ContextVar
 from datetime import timedelta
 from typing import Any, Callable, Optional, TYPE_CHECKING
 
-from temporalio import exceptions, workflow
+from temporalio import workflow
 
 from mcp_agent.executor.workflow_signal import (
     BaseSignalHandler,
@@ -123,7 +123,7 @@ class TemporalSignalHandler(BaseSignalHandler[SignalValueT]):
             )
 
             return mailbox.value(signal.name)
-        except (exceptions.TimeoutError, asyncio.TimeoutError) as e:
+        except asyncio.TimeoutError as e:
             raise TimeoutError(f"Timeout waiting for signal {signal.name}") from e
 
     def on_signal(self, signal_name: str):
