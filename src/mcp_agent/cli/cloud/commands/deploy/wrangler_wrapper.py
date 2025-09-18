@@ -18,6 +18,12 @@ from mcp_agent.cli.utils.git_utils import (
     utc_iso_now,
 )
 
+from .bundle_utils import (
+    create_pathspec_from_gitignore,
+    should_ignore_by_gitignore,
+    clean_yaml_files_in_directory,
+    clean_python_files_in_directory,
+)
 from .constants import (
     CLOUDFLARE_ACCOUNT_ID,
     CLOUDFLARE_EMAIL,
@@ -156,21 +162,41 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
     with tempfile.TemporaryDirectory(prefix="mcp-deploy-") as temp_dir_str:
         temp_project_dir = Path(temp_dir_str) / "project"
 
+        # Parse gitignore patterns once for efficiency using pathspec
+        gitignore_path = project_dir / '.gitignore'
+        gitignore_spec = create_pathspec_from_gitignore(gitignore_path)
+
         # Copy the entire project to temp directory, excluding unwanted directories and secrets file
-        def ignore_patterns(_path, names):
+        def ignore_patterns(path_str, names):
             ignored = set()
+
+            # Keep existing hardcoded exclusions (highest priority)
             for name in names:
                 if (name.startswith(".") and name not in {".env"}) or name in {
                     "logs",
                     "__pycache__",
                     "node_modules",
                     "venv",
-                    MCP_SECRETS_FILENAME,
+                    MCP_SECRETS_FILENAME,  # Continue excluding mcp_agent.secrets.yaml
                 }:
                     ignored.add(name)
+
+            # Apply gitignore patterns to remaining files
+            gitignore_ignored = should_ignore_by_gitignore(path_str, names, project_dir, gitignore_spec)
+            ignored.update(gitignore_ignored)
+
             return ignored
 
         shutil.copytree(project_dir, temp_project_dir, ignore=ignore_patterns)
+
+        # Clean comments from YAML and Python files to prevent secret leakage
+        yaml_cleaned = clean_yaml_files_in_directory(temp_project_dir)
+        python_cleaned = clean_python_files_in_directory(temp_project_dir)
+
+        if yaml_cleaned > 0:
+            print_info(f"Cleaned comments from {yaml_cleaned} YAML file(s)")
+        if python_cleaned > 0:
+            print_info(f"Cleaned comments from {python_cleaned} Python file(s)")
 
         # Handle requirements.txt modification if needed
         requirements_path = temp_project_dir / "requirements.txt"
