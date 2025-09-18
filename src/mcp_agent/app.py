@@ -4,7 +4,17 @@ import sys
 import functools
 
 from types import MethodType
-from typing import Any, Dict, Optional, Type, TypeVar, Callable, TYPE_CHECKING
+from typing import (
+    Any,
+    Dict,
+    Optional,
+    Type,
+    TypeVar,
+    Callable,
+    TYPE_CHECKING,
+    ParamSpec,
+    overload,
+)
 from datetime import timedelta
 from contextlib import asynccontextmanager
 
@@ -36,6 +46,7 @@ if TYPE_CHECKING:
     from mcp_agent.agents.agent_spec import AgentSpec
     from mcp_agent.executor.workflow import Workflow
 
+P = ParamSpec("P")
 R = TypeVar("R")
 
 
@@ -746,13 +757,25 @@ class MCPApp:
         self.workflow(auto_cls, workflow_id=workflow_name)
         return auto_cls
 
+    @overload
+    def tool(self, __fn: Callable[P, R]) -> Callable[P, R]: ...
+
+    @overload
     def tool(
         self,
         name: str | None = None,
         *,
         description: str | None = None,
         structured_output: bool | None = None,
-    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    ) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
+
+    def tool(
+        self,
+        name: str | None = None,
+        *,
+        description: str | None = None,
+        structured_output: bool | None = None,
+    ):
         """
         Decorator to declare a synchronous MCP tool that runs via an auto-generated
         Workflow and waits for completion before returning.
@@ -761,7 +784,7 @@ class MCPApp:
         endpoints are available.
         """
 
-        def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
+        def decorator(fn: Callable[P, R]) -> Callable[P, R]:
             tool_name = name or fn.__name__
 
             # Early validation: Use the shared tool adapter logic to validate
@@ -794,18 +817,29 @@ class MCPApp:
 
         # Support bare usage: @app.tool without parentheses
         if callable(name) and description is None and structured_output is None:
-            fn = name  # type: ignore[assignment]
+            _fn = name  # type: ignore[assignment]
             name = None
-            return decorator(fn)  # type: ignore[arg-type]
+            return decorator(_fn)  # type: ignore[arg-type]
 
         return decorator
+
+    @overload
+    def async_tool(self, __fn: Callable[P, R]) -> Callable[P, R]: ...
+
+    @overload
+    def async_tool(
+        self,
+        name: str | None = None,
+        *,
+        description: str | None = None,
+    ) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
 
     def async_tool(
         self,
         name: str | None = None,
         *,
         description: str | None = None,
-    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    ):
         """
         Decorator to declare an asynchronous MCP tool.
 
@@ -813,7 +847,7 @@ class MCPApp:
         the standard per-workflow tools (run/get_status) are exposed by the server.
         """
 
-        def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
+        def decorator(fn: Callable[P, R]) -> Callable[P, R]:
             workflow_name = name or fn.__name__
 
             # Early validation: Use the shared tool adapter logic to validate
@@ -844,9 +878,9 @@ class MCPApp:
 
         # Support bare usage: @app.async_tool without parentheses
         if callable(name) and description is None:
-            fn = name  # type: ignore[assignment]
+            _fn = name  # type: ignore[assignment]
             name = None
-            return decorator(fn)  # type: ignore[arg-type]
+            return decorator(_fn)  # type: ignore[arg-type]
 
         return decorator
 

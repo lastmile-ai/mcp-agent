@@ -8,10 +8,7 @@ from mcp_agent.app import MCPApp
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = MCPApp(
-    name="elicitation_demo",
-    description="Demo of workflow with elicitation"
-)
+app = MCPApp(name="elicitation_demo", description="Demo of workflow with elicitation")
 
 
 # mcp_context for fastmcp context
@@ -24,7 +21,9 @@ async def book_table(date: str, party_size: int, app_ctx: Context) -> str:
         confirm: bool = Field(description="Confirm booking?")
         notes: str = Field(default="", description="Special requests")
 
-    app.logger.info(f"Confirming the use wants to book a table for {party_size} on {date} via elicitation")
+    app.logger.info(
+        f"Confirming the use wants to book a table for {party_size} on {date} via elicitation"
+    )
 
     result = await app.context.upstream_session.elicit(
         message=f"Confirm booking for {party_size} on {date}?",
@@ -42,4 +41,3 @@ async def book_table(date: str, party_size: int, app_ctx: Context) -> str:
         return "Booking declined"
     elif result.action == "cancel":
         return "Booking cancelled"
-
