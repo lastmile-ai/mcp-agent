@@ -98,7 +98,7 @@ async def finder_tool(request: str, app_ctx: Context | None = None) -> str:
     """
     Run the basic agent workflow using the app.tool decorator to set up the workflow.
     The code in this function is run in workflow context.
-    LLM calls are executed in the activity context..
+    LLM calls are executed in the activity context.
     You can use the app_ctx to access the executor to run activities explicitly.
     Functions decorated with @app.workflow_task will be run in activity context.
 
