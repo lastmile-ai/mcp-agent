@@ -31,18 +31,12 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def signal_notification_callback(**kwargs):
-    """Callback to notify when a signal is received in a workflow."""
-    logger.info(f"SIGNAL NOTIFICATION CALLBACK: {kwargs}")
-
-
 # Create a single FastMCPApp instance (which extends MCPApp)
 app = MCPApp(
     name="basic_agent_server",
     description="Basic agent server example",
     human_input_callback=console_input_callback,  # for local sampling approval
     elicitation_callback=console_elicitation_callback,  # for local elicitation
-    signal_notification=signal_notification_callback,
 )
 
 
