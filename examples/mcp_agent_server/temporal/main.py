@@ -200,9 +200,7 @@ async def call_nested_sampling(topic: str) -> str:
     )
     nested_name = "nested_sampling"
     nested_path = os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__), "..", "shared", "nested_sampling_server.py"
-        )
+        os.path.join(os.path.dirname(__file__), "nested_sampling_server.py")
     )
     app_ctx.config.mcp.servers[nested_name] = MCPServerSettings(
         name=nested_name,
@@ -240,9 +238,7 @@ async def call_nested_elicitation(action: str) -> str:
     )
     nested_name = "nested_elicitation"
     nested_path = os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__), "..", "shared", "nested_elicitation_server.py"
-        )
+        os.path.join(os.path.dirname(__file__), "nested_elicitation_server.py")
     )
     app_ctx.config.mcp.servers[nested_name] = MCPServerSettings(
         name=nested_name,
