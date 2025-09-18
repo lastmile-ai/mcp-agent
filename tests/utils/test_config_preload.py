@@ -140,12 +140,13 @@ class TestSetGlobalParameter:
         """Test that get_settings() with default parameters sets global state."""
         # Verify global settings is None initially
         import mcp_agent.config
+
         assert mcp_agent.config._settings is None
 
         # Mock file operations
         yaml_content = yaml.dump(sample_config)
-        with patch('builtins.open', mock_open(read_data=yaml_content)):
-            with patch('pathlib.Path.exists', return_value=True):
+        with patch("builtins.open", mock_open(read_data=yaml_content)):
+            with patch("pathlib.Path.exists", return_value=True):
                 # Load settings with default behavior
                 settings = get_settings(config_path="/fake/path/config.yaml")
 
@@ -157,12 +158,15 @@ class TestSetGlobalParameter:
     def test_set_global_false_no_global_state(self, sample_config):
         """Test that set_global=False doesn't modify global state."""
         import mcp_agent.config
+
         assert mcp_agent.config._settings is None
 
         yaml_content = yaml.dump(sample_config)
-        with patch('builtins.open', mock_open(read_data=yaml_content)):
-            with patch('pathlib.Path.exists', return_value=True):
-                settings = get_settings(config_path="/fake/path/config.yaml", set_global=False)
+        with patch("builtins.open", mock_open(read_data=yaml_content)):
+            with patch("pathlib.Path.exists", return_value=True):
+                settings = get_settings(
+                    config_path="/fake/path/config.yaml", set_global=False
+                )
 
                 # Global state should remain None
                 assert mcp_agent.config._settings is None
@@ -173,12 +177,15 @@ class TestSetGlobalParameter:
     def test_explicit_set_global_true(self, sample_config):
         """Test explicitly passing set_global=True."""
         import mcp_agent.config
+
         assert mcp_agent.config._settings is None
 
         yaml_content = yaml.dump(sample_config)
-        with patch('builtins.open', mock_open(read_data=yaml_content)):
-            with patch('pathlib.Path.exists', return_value=True):
-                settings = get_settings(config_path="/fake/path/config.yaml", set_global=True)
+        with patch("builtins.open", mock_open(read_data=yaml_content)):
+            with patch("pathlib.Path.exists", return_value=True):
+                settings = get_settings(
+                    config_path="/fake/path/config.yaml", set_global=True
+                )
 
                 assert mcp_agent.config._settings is not None
                 assert mcp_agent.config._settings == settings
@@ -186,8 +193,8 @@ class TestSetGlobalParameter:
     def test_returns_cached_global_when_set(self, sample_config):
         """Test that subsequent calls return cached global settings."""
         yaml_content = yaml.dump(sample_config)
-        with patch('builtins.open', mock_open(read_data=yaml_content)):
-            with patch('pathlib.Path.exists', return_value=True):
+        with patch("builtins.open", mock_open(read_data=yaml_content)):
+            with patch("pathlib.Path.exists", return_value=True):
                 # First call sets global state
                 settings1 = get_settings(config_path="/fake/path/config.yaml")
 
@@ -197,18 +204,23 @@ class TestSetGlobalParameter:
                 # They should be the same object
                 assert settings1 is settings2
                 import mcp_agent.config
+
                 assert mcp_agent.config._settings is settings1
 
     def test_no_cached_return_when_set_global_false(self, sample_config):
         """Test that set_global=False always loads fresh settings."""
         yaml_content = yaml.dump(sample_config)
-        with patch('builtins.open', mock_open(read_data=yaml_content)):
-            with patch('pathlib.Path.exists', return_value=True):
+        with patch("builtins.open", mock_open(read_data=yaml_content)):
+            with patch("pathlib.Path.exists", return_value=True):
                 # First call with set_global=False
-                settings1 = get_settings(config_path="/fake/path/config.yaml", set_global=False)
+                settings1 = get_settings(
+                    config_path="/fake/path/config.yaml", set_global=False
+                )
 
                 # Second call with set_global=False
-                settings2 = get_settings(config_path="/fake/path/config.yaml", set_global=False)
+                settings2 = get_settings(
+                    config_path="/fake/path/config.yaml", set_global=False
+                )
 
                 # They should be different objects (not cached)
                 assert settings1 is not settings2
@@ -216,6 +228,7 @@ class TestSetGlobalParameter:
                 assert settings1 == settings2
                 # Global should remain None
                 import mcp_agent.config
+
                 assert mcp_agent.config._settings is None
 
     def test_preload_with_set_global_false(self, sample_config, monkeypatch):
@@ -227,6 +240,7 @@ class TestSetGlobalParameter:
 
         # Global state should not be set
         import mcp_agent.config
+
         assert mcp_agent.config._settings is None
 
         # Settings should be loaded from preload
@@ -295,8 +309,7 @@ class TestThreadSafety:
 
             # Should not have thread-related warnings
             thread_warnings = [
-                warn for warn in w
-                if "non-main thread" in str(warn.message)
+                warn for warn in w if "non-main thread" in str(warn.message)
             ]
             assert len(thread_warnings) == 0
 
@@ -306,8 +319,8 @@ class TestThreadSafety:
 
         def load_settings(thread_id, config_path):
             yaml_content = yaml.dump(simple_config)
-            with patch('builtins.open', mock_open(read_data=yaml_content)):
-                with patch('pathlib.Path.exists', return_value=True):
+            with patch("builtins.open", mock_open(read_data=yaml_content)):
+                with patch("pathlib.Path.exists", return_value=True):
                     settings = get_settings(config_path=config_path, set_global=False)
                     thread_settings[thread_id] = settings
 
@@ -315,8 +328,7 @@ class TestThreadSafety:
         threads = []
         for i in range(3):
             thread = threading.Thread(
-                target=load_settings,
-                args=(i, "/fake/path/config.yaml")
+                target=load_settings, args=(i, "/fake/path/config.yaml")
             )
             threads.append(thread)
             thread.start()
@@ -327,6 +339,7 @@ class TestThreadSafety:
 
         # Verify all threads got settings but global state wasn't set
         import mcp_agent.config
+
         assert mcp_agent.config._settings is None
         assert len(thread_settings) == 3
         for i in range(3):
@@ -356,23 +369,28 @@ class TestConfigMergingWithSetGlobal:
         }
         return config_data, secrets_data
 
-    def test_config_and_secrets_merge_with_set_global_false(self, config_data_with_secrets):
+    def test_config_and_secrets_merge_with_set_global_false(
+        self, config_data_with_secrets
+    ):
         """Test that config and secrets merge correctly without setting global state."""
         config_data, secrets_data = config_data_with_secrets
 
         # Merge the data as the config loader would
         merged_data = config_data.copy()
-        merged_data['openai'] = secrets_data['openai']  # Secrets override config
+        merged_data["openai"] = secrets_data["openai"]  # Secrets override config
 
         # Mock the config file read with already merged data
         merged_yaml = yaml.dump(merged_data)
 
-        with patch('builtins.open', mock_open(read_data=merged_yaml)):
-            with patch('pathlib.Path.exists', return_value=True):
-                settings = get_settings(config_path="/fake/path/config.yaml", set_global=False)
+        with patch("builtins.open", mock_open(read_data=merged_yaml)):
+            with patch("pathlib.Path.exists", return_value=True):
+                settings = get_settings(
+                    config_path="/fake/path/config.yaml", set_global=False
+                )
 
                 # Global state should not be set
                 import mcp_agent.config
+
                 assert mcp_agent.config._settings is None
 
                 # Settings should have the merged values
@@ -386,6 +404,7 @@ class TestConfigMergingWithSetGlobal:
 
         # Global state should not be set
         import mcp_agent.config
+
         assert mcp_agent.config._settings is None
 
         # Should get default settings
