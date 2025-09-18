@@ -19,7 +19,7 @@ from mcp_agent.app import MCPApp
 from mcp_agent.core.context import Context
 from mcp_agent.config import Settings
 from mcp_agent.mcp.gen_client import gen_client
-from mcp_agent.human_input.handler import console_input_callback
+from mcp_agent.human_input.console_handler import console_input_callback
 from mcp_agent.elicitation.handler import console_elicitation_callback
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from mcp import ClientSession

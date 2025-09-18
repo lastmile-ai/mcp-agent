@@ -19,7 +19,7 @@ from mcp_agent.executor.workflow_signal import Signal
 from mcp_agent.server.app_server import create_mcp_server_for_app
 from mcp_agent.executor.workflow import Workflow, WorkflowResult
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
-from mcp_agent.human_input.handler import console_input_callback
+from mcp_agent.human_input.console_handler import console_input_callback
 from mcp_agent.elicitation.handler import console_elicitation_callback
 from mcp_agent.mcp.gen_client import gen_client
 from mcp_agent.config import MCPServerSettings

@@ -12,7 +12,7 @@ from mcp_agent.core.context import Context
 from mcp_agent.executor.workflow import WorkflowExecution
 from mcp_agent.mcp.gen_client import gen_client
 from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
-from mcp_agent.human_input.handler import console_input_callback
+from mcp_agent.human_input.console_handler import console_input_callback
 from mcp_agent.elicitation.handler import console_elicitation_callback
 
 from rich import print

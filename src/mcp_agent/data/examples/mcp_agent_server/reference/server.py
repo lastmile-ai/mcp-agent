@@ -25,7 +25,7 @@ from typing import Optional, Literal
 from mcp_agent.app import MCPApp
 from mcp_agent.core.context import Context as AppContext
 from mcp_agent.server.app_server import create_mcp_server_for_app
-from mcp_agent.human_input.handler import console_input_callback
+from mcp_agent.human_input.console_handler import console_input_callback
 from mcp_agent.elicitation.handler import console_elicitation_callback
 
 from mcp_agent.agents.agent import Agent
