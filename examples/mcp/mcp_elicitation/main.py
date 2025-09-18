@@ -3,7 +3,7 @@ import time
 
 from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
-from mcp_agent.human_input.handler import console_input_callback
+from mcp_agent.human_input.console_handler import console_input_callback
 from mcp_agent.elicitation.handler import console_elicitation_callback
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 
