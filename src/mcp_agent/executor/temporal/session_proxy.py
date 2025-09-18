@@ -19,9 +19,60 @@ from mcp_agent.core.context import Context
 from mcp_agent.executor.temporal.system_activities import SystemActivities
 from mcp_agent.executor.temporal.temporal_context import get_execution_id
 
-
 # Global state for signal handling (will be stored per workflow instance)
-_workflow_states: Dict[str, Dict[str, Any]] = {}
+# Stores
+#   run_id -> {
+#     response_received: bool  # Whether a response has been received
+#     response_data: Any       # The actual response data (typically a dict)
+#   }
+_WORKFLOW_SIGNAL_LOCK = asyncio.Lock()
+_workflow_signal_states: Dict[str, Dict[str, Any]] = {}
+
+
+def reset_signal_response(execution_id: str) -> None:
+    """
+    Reset the signal response state for a given workflow execution ID, ready to accept a new signal
+    """
+    async with _WORKFLOW_SIGNAL_LOCK:
+        if execution_id not in _workflow_signal_states:
+            _workflow_signal_states[execution_id] = {}
+
+        _workflow_signal_states[execution_id]['response_data'] = None
+        _workflow_signal_states[execution_id]['response_received'] = False
+
+
+def set_signal_response(execution_id: str, data: Any) -> None:
+    """
+    Register that a signal response has been received for a given workflow execution ID.
+    """
+    async with _WORKFLOW_SIGNAL_LOCK:
+        if execution_id not in _workflow_signal_states:
+            _workflow_signal_states[execution_id] = {}
+
+        _workflow_signal_states[execution_id]['response_data'] = data
+        _workflow_signal_states[execution_id]['response_received'] = True
+
+
+def has_signal_response(execution_id: str) -> bool:
+    """
+    Check if a signal response has been received for a given workflow execution ID.
+    """
+    async with _WORKFLOW_SIGNAL_LOCK:
+        if execution_id not in _workflow_signal_states:
+            return False
+        return _workflow_signal_states[execution_id]['response_received']
+
+
+def get_signal_response(execution_id: str) -> Any:
+    """
+    Retrieve the signal response data for a given workflow execution ID.
+    """
+    async with _WORKFLOW_SIGNAL_LOCK:
+        if execution_id not in _workflow_signal_states or \
+                not _workflow_signal_states[execution_id]['response_received']:
+            raise RuntimeError("No signal response received yet")
+        return _workflow_signal_states[execution_id]['response_data']
+
 
 class SessionProxy(ServerSession):
     """
@@ -109,7 +160,7 @@ class SessionProxy(ServerSession):
         return True
 
     async def request(
-        self, method: str, params: Dict[str, Any] | None = None
+            self, method: str, params: Dict[str, Any] | None = None
     ) -> Dict[str, Any]:
         """Send a server->client request and return the client's response.
         The result is a plain JSON-serializable dict.
@@ -119,33 +170,35 @@ class SessionProxy(ServerSession):
             return {"error": "missing_execution_id"}
 
         if _in_workflow_runtime():
-            from temporalio import workflow
             act = self._context.task_registry.get_activity("mcp_relay_request")
 
             await self._executor.execute(
                 act,
-                True,
                 exec_id,
                 method,
                 params or {},
+                make_async_call=True,  # Use the async APIs with signalling for response
             )
 
             # Wait for the _elicitation_response signal to be triggered
-            await workflow.wait_condition(
-                lambda: _workflow_states.get(exec_id, {}).get('response_received', False)
+            await _twf.wait_condition(
+                lambda: has_signal_response(exec_id)
             )
 
-            return _workflow_states.get(exec_id, {}).get('response_data', {"error": "no_response"})
+            return get_signal_response(exec_id)
 
         # Non-workflow (activity/asyncio): direct call and wait for result
         return await self._system_activities.relay_request(
-            False, exec_id, method, params or {}
+            exec_id,
+            method,
+            params or {},
+            make_async_call=False,  # Do not use the async APIs, but the synchronous ones instead
         )
 
     async def send_notification(
-        self,
-        notification: types.ServerNotification,
-        related_request_id: types.RequestId | None = None,
+            self,
+            notification: types.ServerNotification,
+            related_request_id: types.RequestId | None = None,
     ) -> None:
         root = notification.root
         params: Dict[str, Any] | None = None
@@ -163,10 +216,10 @@ class SessionProxy(ServerSession):
         await self.notify(root.method, params)  # type: ignore[attr-defined]
 
     async def send_request(
-        self,
-        request: types.ServerRequest,
-        result_type: Type[Any],
-        metadata: ServerMessageMetadata | None = None,
+            self,
+            request: types.ServerRequest,
+            result_type: Type[Any],
+            metadata: ServerMessageMetadata | None = None,
     ) -> Any:
         root = request.root
         params: Dict[str, Any] | None = None
@@ -186,11 +239,11 @@ class SessionProxy(ServerSession):
             return payload
 
     async def send_log_message(
-        self,
-        level: types.LoggingLevel,
-        data: Any,
-        logger: str | None = None,
-        related_request_id: types.RequestId | None = None,
+            self,
+            level: types.LoggingLevel,
+            data: Any,
+            logger: str | None = None,
+            related_request_id: types.RequestId | None = None,
     ) -> None:
         """Best-effort log forwarding to the client's UI."""
         # Prefer activity-based forwarding inside workflow for determinism
@@ -223,12 +276,12 @@ class SessionProxy(ServerSession):
         await self.notify("notifications/message", params)
 
     async def send_progress_notification(
-        self,
-        progress_token: str | int,
-        progress: float,
-        total: float | None = None,
-        message: str | None = None,
-        related_request_id: str | None = None,
+            self,
+            progress_token: str | int,
+            progress: float,
+            total: float | None = None,
+            message: str | None = None,
+            related_request_id: str | None = None,
     ) -> None:
         params: Dict[str, Any] = {
             "progressToken": progress_token,
@@ -263,17 +316,17 @@ class SessionProxy(ServerSession):
         return types.ListRootsResult.model_validate(result)
 
     async def create_message(
-        self,
-        messages: List[types.SamplingMessage],
-        *,
-        max_tokens: int,
-        system_prompt: str | None = None,
-        include_context: types.IncludeContext | None = None,
-        temperature: float | None = None,
-        stop_sequences: List[str] | None = None,
-        metadata: Dict[str, Any] | None = None,
-        model_preferences: types.ModelPreferences | None = None,
-        related_request_id: types.RequestId | None = None,
+            self,
+            messages: List[types.SamplingMessage],
+            *,
+            max_tokens: int,
+            system_prompt: str | None = None,
+            include_context: types.IncludeContext | None = None,
+            temperature: float | None = None,
+            stop_sequences: List[str] | None = None,
+            metadata: Dict[str, Any] | None = None,
+            model_preferences: types.ModelPreferences | None = None,
+            related_request_id: types.RequestId | None = None,
     ) -> types.CreateMessageResult:
         params: Dict[str, Any] = {
             "messages": [m.model_dump(by_alias=True, mode="json") for m in messages],
@@ -304,10 +357,10 @@ class SessionProxy(ServerSession):
             raise RuntimeError(f"sampling/createMessage returned invalid result: {e}")
 
     async def elicit(
-        self,
-        message: str,
-        requestedSchema: types.ElicitRequestedSchema,
-        related_request_id: types.RequestId | None = None,
+            self,
+            message: str,
+            requestedSchema: types.ElicitRequestedSchema,
+            related_request_id: types.RequestId | None = None,
     ) -> types.ElicitResult:
         params: Dict[str, Any] = {
             "message": message,
@@ -340,6 +393,6 @@ class _RPC:
         await self._proxy.notify(method, params or {})
 
     async def request(
-        self, method: str, params: Dict[str, Any] | None = None
+            self, method: str, params: Dict[str, Any] | None = None
     ) -> Dict[str, Any]:
         return await self._proxy.request(method, params or {})

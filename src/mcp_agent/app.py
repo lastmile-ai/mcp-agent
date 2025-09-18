@@ -670,17 +670,13 @@ class MCPApp:
             # Import here to avoid circular dependencies
             try:
                 from temporalio import workflow
-                from mcp_agent.executor.temporal.session_proxy import _workflow_states
+                from mcp_agent.executor.temporal.session_proxy import set_signal_response
 
                 if workflow.in_workflow():
                     workflow_info = workflow.info()
                     workflow_key = f"{workflow_info.run_id}"
 
-                    if workflow_key not in _workflow_states:
-                        _workflow_states[workflow_key] = {}
-
-                    _workflow_states[workflow_key]['response_data'] = response
-                    _workflow_states[workflow_key]['response_received'] = True
+                    set_signal_response(workflow_key, response)
             except ImportError:
                 # Fallback for non-temporal environments
                 pass

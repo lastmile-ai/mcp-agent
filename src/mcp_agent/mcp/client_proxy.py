@@ -174,15 +174,10 @@ async def request_via_proxy(
         if not in_temporal:
             return {"error": "not_in_workflow_or_activity"}
 
-        from mcp_agent.executor.temporal.session_proxy import _workflow_states
+        from mcp_agent.executor.temporal.session_proxy import reset_signal_response
 
-        # Initialize workflow state if not present
-        if execution_id not in _workflow_states:
-            _workflow_states[execution_id] = {}
-
-        # Reset the signal response state
-        _workflow_states[execution_id]['response_data'] = None
-        _workflow_states[execution_id]['response_received'] = False
+        # Reset the signal response state, so we're ready to accept a new response signal
+        reset_signal_response(execution_id)
 
         # Make the HTTP request (but don't return the response directly)
         base = _resolve_gateway_url(gateway_url=gateway_url, context_gateway_url=None)

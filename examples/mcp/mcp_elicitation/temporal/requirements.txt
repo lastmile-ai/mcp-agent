@@ -4,3 +4,4 @@ mcp-agent
 # Additional dependencies specific to this example
 anthropic
 openai
+temporalio
