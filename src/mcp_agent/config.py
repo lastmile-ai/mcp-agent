@@ -13,7 +13,7 @@ import warnings
 from httpx import URL
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-import yaml
+
 
 from mcp_agent.agents.agent_spec import AgentSpec
 
@@ -724,31 +724,8 @@ def _clear_global_settings():
     _settings = None
 
 
-def _set_and_warn_global_settings(settings: Settings) -> None:
-    """Set global settings and warn if called from non-main thread."""
-    global _settings
-    _settings = settings
-    # Thread-safety advisory: warn when setting global singleton from non-main thread
-    if threading.current_thread() is not threading.main_thread():
-        warnings.warn(
-            "get_settings() is setting the global Settings singleton from a non-main thread. "
-            "In multithreaded environments, use get_settings(set_global=False) to avoid "
-            "global state modification, or pass the Settings instance explicitly to MCPApp(settings=...).",
-            stacklevel=3,  # Adjusted stacklevel since we're now in a helper function
-        )
-
-
-def get_settings(config_path: str | None = None, set_global: bool = True) -> Settings:
-    """Get settings instance, automatically loading from config file if available.
-
-    Args:
-        config_path: Optional path to config file. If None, searches for config automatically.
-        set_global: Whether to set the loaded settings as the global singleton. Default is True for backward
-                    compatibility. Set to False for multi-threaded environments to avoid global state modification.
-
-    Returns:
-        Settings instance with loaded configuration.
-    """
+def get_settings(config_path: str | None = None) -> Settings:
+    """Get settings instance, automatically loading from config file if available."""
 
     def deep_merge(base: dict, update: dict) -> dict:
         """Recursively merge two dictionaries, preserving nested structures."""
@@ -764,11 +741,11 @@ def get_settings(config_path: str | None = None, set_global: bool = True) -> Set
                 merged[key] = value
         return merged
 
-    # Only return cached global settings when no explicit config_path is provided
-    if set_global:
-        global _settings
-        if _settings:
-            return _settings
+    global _settings
+    if _settings:
+        return _settings
+
+    import yaml  # pylint: disable=C0415
 
     merged_settings = {}
 
@@ -829,13 +806,21 @@ def get_settings(config_path: str | None = None, set_global: bool = True) -> Set
                     yaml_secrets = yaml.safe_load(f) or {}
                     merged_settings = deep_merge(merged_settings, yaml_secrets)
 
-        settings = Settings(**merged_settings)
-        if set_global:
-            _set_and_warn_global_settings(settings)
-        return settings
+        _settings = Settings(**merged_settings)
+        return _settings
 
     # No valid config found anywhere
-    settings = Settings()
-    if set_global:
-        _set_and_warn_global_settings(settings)
-    return settings
+    _settings = Settings()
+
+    # Thread-safety advisory: warn when using global singleton from non-main thread
+    if (
+        threading.current_thread() is not threading.main_thread()
+        and config_path is None
+    ):
+        warnings.warn(
+            "get_settings() returned the global Settings singleton on a non-main thread. "
+            "In multithreaded environments, prefer passing a Settings instance explicitly to MCPApp("
+            "settings=...) or provide a per-thread config_path to avoid cross-thread coupling.",
+            stacklevel=2,
+        )
+    return _settings
