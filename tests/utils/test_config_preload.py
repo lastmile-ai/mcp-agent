@@ -2,7 +2,7 @@ import os
 import threading
 import warnings
 from pathlib import Path
-from unittest.mock import patch, mock_open
+from unittest.mock import patch, mock_open, MagicMock
 
 from pydantic_yaml import to_yaml_str
 import pytest
@@ -151,12 +151,18 @@ class TestSetGlobalParameter:
         yaml_content = yaml.dump(sample_config)
         config_path = "/fake/path/config.yaml"
 
-        def mock_exists(self):
-            # Only mock exists for our specific config path
-            return str(self) == config_path or str(self).endswith(".secrets.yaml")
+        # Mock Path construction only in mcp_agent.config module
+        original_path = Path
+
+        def mock_path_constructor(path_str):
+            mock_path = MagicMock(spec=Path)
+            mock_path.exists.return_value = True
+            mock_path.parent = MagicMock()
+            mock_path.__str__ = lambda: path_str
+            return mock_path
 
         with patch("builtins.open", mock_open(read_data=yaml_content)):
-            with patch.object(Path, "exists", mock_exists):
+            with patch("mcp_agent.config.Path", side_effect=mock_path_constructor):
                 # Load settings with default behavior
                 settings = get_settings(config_path=config_path)
 
@@ -174,12 +180,16 @@ class TestSetGlobalParameter:
         yaml_content = yaml.dump(sample_config)
         config_path = "/fake/path/config.yaml"
 
-        def mock_exists(self):
-            # Only mock exists for our specific config path
-            return str(self) == config_path or str(self).endswith(".secrets.yaml")
+        # Mock Path construction only in mcp_agent.config module
+        def mock_path_constructor(path_str):
+            mock_path = MagicMock(spec=Path)
+            mock_path.exists.return_value = True
+            mock_path.parent = MagicMock()
+            mock_path.__str__ = lambda: path_str
+            return mock_path
 
         with patch("builtins.open", mock_open(read_data=yaml_content)):
-            with patch.object(Path, "exists", mock_exists):
+            with patch("mcp_agent.config.Path", side_effect=mock_path_constructor):
                 settings = get_settings(
                     config_path=config_path, set_global=False
                 )
@@ -199,12 +209,16 @@ class TestSetGlobalParameter:
         yaml_content = yaml.dump(sample_config)
         config_path = "/fake/path/config.yaml"
 
-        def mock_exists(self):
-            # Only mock exists for our specific config path
-            return str(self) == config_path or str(self).endswith(".secrets.yaml")
+        # Mock Path construction only in mcp_agent.config module
+        def mock_path_constructor(path_str):
+            mock_path = MagicMock(spec=Path)
+            mock_path.exists.return_value = True
+            mock_path.parent = MagicMock()
+            mock_path.__str__ = lambda: path_str
+            return mock_path
 
         with patch("builtins.open", mock_open(read_data=yaml_content)):
-            with patch.object(Path, "exists", mock_exists):
+            with patch("mcp_agent.config.Path", side_effect=mock_path_constructor):
                 settings = get_settings(
                     config_path=config_path, set_global=True
                 )
@@ -217,12 +231,16 @@ class TestSetGlobalParameter:
         yaml_content = yaml.dump(sample_config)
         config_path = "/fake/path/config.yaml"
 
-        def mock_exists(self):
-            # Only mock exists for our specific config path
-            return str(self) == config_path or str(self).endswith(".secrets.yaml")
+        # Mock Path construction only in mcp_agent.config module
+        def mock_path_constructor(path_str):
+            mock_path = MagicMock(spec=Path)
+            mock_path.exists.return_value = True
+            mock_path.parent = MagicMock()
+            mock_path.__str__ = lambda: path_str
+            return mock_path
 
         with patch("builtins.open", mock_open(read_data=yaml_content)):
-            with patch.object(Path, "exists", mock_exists):
+            with patch("mcp_agent.config.Path", side_effect=mock_path_constructor):
                 # First call sets global state
                 settings1 = get_settings(config_path=config_path)
 
@@ -240,12 +258,16 @@ class TestSetGlobalParameter:
         yaml_content = yaml.dump(sample_config)
         config_path = "/fake/path/config.yaml"
 
-        def mock_exists(self):
-            # Only mock exists for our specific config path
-            return str(self) == config_path or str(self).endswith(".secrets.yaml")
+        # Mock Path construction only in mcp_agent.config module
+        def mock_path_constructor(path_str):
+            mock_path = MagicMock(spec=Path)
+            mock_path.exists.return_value = True
+            mock_path.parent = MagicMock()
+            mock_path.__str__ = lambda: path_str
+            return mock_path
 
         with patch("builtins.open", mock_open(read_data=yaml_content)):
-            with patch.object(Path, "exists", mock_exists):
+            with patch("mcp_agent.config.Path", side_effect=mock_path_constructor):
                 # First call with set_global=False
                 settings1 = get_settings(
                     config_path=config_path, set_global=False
@@ -357,12 +379,16 @@ class TestThreadSafety:
         def load_settings(thread_id, config_path):
             yaml_content = yaml.dump(simple_config)
 
-            def mock_exists(self):
-                # Only mock exists for our specific config path
-                return str(self) == config_path or str(self).endswith(".secrets.yaml")
+            # Mock Path construction only in mcp_agent.config module
+            def mock_path_constructor(path_str):
+                mock_path = MagicMock(spec=Path)
+                mock_path.exists.return_value = True
+                mock_path.parent = MagicMock()
+                mock_path.__str__ = lambda: path_str
+                return mock_path
 
             with patch("builtins.open", mock_open(read_data=yaml_content)):
-                with patch.object(Path, "exists", mock_exists):
+                with patch("mcp_agent.config.Path", side_effect=mock_path_constructor):
                     settings = get_settings(config_path=config_path, set_global=False)
                     thread_settings[thread_id] = settings
 
@@ -429,12 +455,16 @@ class TestConfigMergingWithSetGlobal:
 
         config_path = "/fake/path/config.yaml"
 
-        def mock_exists(self):
-            # Only mock exists for our specific config path
-            return str(self) == config_path or str(self).endswith(".secrets.yaml")
+        # Mock Path construction only in mcp_agent.config module
+        def mock_path_constructor(path_str):
+            mock_path = MagicMock(spec=Path)
+            mock_path.exists.return_value = True
+            mock_path.parent = MagicMock()
+            mock_path.__str__ = lambda: path_str
+            return mock_path
 
         with patch("builtins.open", mock_open(read_data=merged_yaml)):
-            with patch.object(Path, "exists", mock_exists):
+            with patch("mcp_agent.config.Path", side_effect=mock_path_constructor):
                 settings = get_settings(
                     config_path=config_path, set_global=False
                 )
