@@ -161,7 +161,7 @@ class TestSetGlobalParameter:
             mock_path.__str__ = lambda: path_str
             return mock_path
 
-        with patch("builtins.open", mock_open(read_data=yaml_content)):
+        with patch("mcp_agent.config.open", mock_open(read_data=yaml_content)):
             with patch("mcp_agent.config.Path", side_effect=mock_path_constructor):
                 # Load settings with default behavior
                 settings = get_settings(config_path=config_path)
@@ -188,7 +188,7 @@ class TestSetGlobalParameter:
             mock_path.__str__ = lambda: path_str
             return mock_path
 
-        with patch("builtins.open", mock_open(read_data=yaml_content)):
+        with patch("mcp_agent.config.open", mock_open(read_data=yaml_content)):
             with patch("mcp_agent.config.Path", side_effect=mock_path_constructor):
                 settings = get_settings(
                     config_path=config_path, set_global=False
@@ -217,7 +217,7 @@ class TestSetGlobalParameter:
             mock_path.__str__ = lambda: path_str
             return mock_path
 
-        with patch("builtins.open", mock_open(read_data=yaml_content)):
+        with patch("mcp_agent.config.open", mock_open(read_data=yaml_content)):
             with patch("mcp_agent.config.Path", side_effect=mock_path_constructor):
                 settings = get_settings(
                     config_path=config_path, set_global=True
@@ -239,7 +239,7 @@ class TestSetGlobalParameter:
             mock_path.__str__ = lambda: path_str
             return mock_path
 
-        with patch("builtins.open", mock_open(read_data=yaml_content)):
+        with patch("mcp_agent.config.open", mock_open(read_data=yaml_content)):
             with patch("mcp_agent.config.Path", side_effect=mock_path_constructor):
                 # First call sets global state
                 settings1 = get_settings(config_path=config_path)
@@ -266,7 +266,7 @@ class TestSetGlobalParameter:
             mock_path.__str__ = lambda: path_str
             return mock_path
 
-        with patch("builtins.open", mock_open(read_data=yaml_content)):
+        with patch("mcp_agent.config.open", mock_open(read_data=yaml_content)):
             with patch("mcp_agent.config.Path", side_effect=mock_path_constructor):
                 # First call with set_global=False
                 settings1 = get_settings(
@@ -387,7 +387,7 @@ class TestThreadSafety:
                 mock_path.__str__ = lambda: path_str
                 return mock_path
 
-            with patch("builtins.open", mock_open(read_data=yaml_content)):
+            with patch("mcp_agent.config.open", mock_open(read_data=yaml_content)):
                 with patch("mcp_agent.config.Path", side_effect=mock_path_constructor):
                     settings = get_settings(config_path=config_path, set_global=False)
                     thread_settings[thread_id] = settings
@@ -463,7 +463,7 @@ class TestConfigMergingWithSetGlobal:
             mock_path.__str__ = lambda: path_str
             return mock_path
 
-        with patch("builtins.open", mock_open(read_data=merged_yaml)):
+        with patch("mcp_agent.config.open", mock_open(read_data=merged_yaml)):
             with patch("mcp_agent.config.Path", side_effect=mock_path_constructor):
                 settings = get_settings(
                     config_path=config_path, set_global=False
