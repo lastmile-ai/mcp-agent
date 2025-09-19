@@ -323,7 +323,7 @@ async with gen_client("basic_agent_server", context.server_registry) as server:
    )
 
    run_id = execution.run_id
-   workflow_id = exection.workflow_id
+   workflow_id = execution.workflow_id
 
     await server.call_tool(
         "workflows-resume",
