@@ -218,7 +218,7 @@ class Executor(ABC, ContextDependent):
             workflow_id=workflow_id,
             run_id=run_id,
         )
-        return await self.signal_bus.wait_for_signal(signal)
+        return await self.signal_bus.wait_for_signal(signal, timeout_seconds)
 
     def uuid(self) -> uuid.UUID:
         """

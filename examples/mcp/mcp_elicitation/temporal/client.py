@@ -15,6 +15,7 @@ from mcp import ClientSession
 from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
 from mcp.types import CallToolResult, LoggingMessageNotificationParams
 from mcp_agent.human_input.console_handler import console_input_callback
+
 try:
     from exceptiongroup import ExceptionGroup as _ExceptionGroup  # Python 3.10 backport
 except Exception:  # pragma: no cover
