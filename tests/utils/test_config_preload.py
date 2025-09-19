@@ -1,4 +1,6 @@
 import os
+import threading
+import warnings
 from unittest.mock import patch, mock_open
 
 from pydantic_yaml import to_yaml_str
@@ -249,106 +251,106 @@ class TestSetGlobalParameter:
         assert settings.execution_engine == "asyncio"
 
 
-# class TestThreadSafety:
-#     """Test thread safety with the set_global parameter."""
-#
-#     @pytest.fixture(autouse=True)
-#     def clear_global_settings(self):
-#         """Clear global settings before and after each test."""
-#         import mcp_agent.config
-#
-#         old = mcp_agent.config._settings
-#         _clear_global_settings()
-#         yield
-#         mcp_agent.config._settings = old
-#
-#     @pytest.fixture
-#     def simple_config(self):
-#         """Simple config for thread safety tests."""
-#         return {"execution_engine": "asyncio"}
-#
-#     def test_warning_from_non_main_thread_with_set_global(self):
-#         """Test that warning is issued when setting global from non-main thread."""
-#         warning_caught = []
-#
-#         def load_in_thread():
-#             with warnings.catch_warnings(record=True) as w:
-#                 warnings.simplefilter("always")
-#                 get_settings(set_global=True)
-#                 if w:
-#                     warning_caught.extend(w)
-#
-#         thread = threading.Thread(target=load_in_thread)
-#         thread.start()
-#         thread.join()
-#
-#         # Should have caught a warning
-#         assert len(warning_caught) > 0
-#         assert "non-main thread" in str(warning_caught[0].message)
-#         assert "set_global=False" in str(warning_caught[0].message)
-#
-#     def test_no_warning_from_non_main_thread_without_set_global(self):
-#         """Test that no warning is issued with set_global=False from non-main thread."""
-#         warning_caught = []
-#
-#         def load_in_thread():
-#             with warnings.catch_warnings(record=True) as w:
-#                 warnings.simplefilter("always")
-#                 get_settings(set_global=False)
-#                 if w:
-#                     warning_caught.extend(w)
-#
-#         thread = threading.Thread(target=load_in_thread)
-#         thread.start()
-#         thread.join()
-#
-#         # Should not have any warnings
-#         assert len(warning_caught) == 0
-#
-#     def test_no_warning_from_main_thread(self):
-#         """Test that no warning is issued from main thread."""
-#         with warnings.catch_warnings(record=True) as w:
-#             warnings.simplefilter("always")
-#             get_settings(set_global=True)
-#
-#             # Should not have thread-related warnings
-#             thread_warnings = [
-#                 warn for warn in w if "non-main thread" in str(warn.message)
-#             ]
-#             assert len(thread_warnings) == 0
-#
-#     def test_multiple_threads_independent_settings(self, simple_config):
-#         """Test that multiple threads can load independent settings."""
-#         thread_settings = {}
-#
-#         def load_settings(thread_id, config_path):
-#             yaml_content = yaml.dump(simple_config)
-#             with patch("builtins.open", mock_open(read_data=yaml_content)):
-#                 with patch("pathlib.Path.exists", return_value=True):
-#                     settings = get_settings(config_path=config_path, set_global=False)
-#                     thread_settings[thread_id] = settings
-#
-#         # Create threads
-#         threads = []
-#         for i in range(3):
-#             thread = threading.Thread(
-#                 target=load_settings, args=(i, "/fake/path/config.yaml")
-#             )
-#             threads.append(thread)
-#             thread.start()
-#
-#         # Wait for all threads
-#         for thread in threads:
-#             thread.join()
-#
-#         # Verify all threads got settings but global state wasn't set
-#         import mcp_agent.config
-#
-#         assert mcp_agent.config._settings is None
-#         assert len(thread_settings) == 3
-#         for i in range(3):
-#             assert thread_settings[i] is not None
-#             assert thread_settings[i].execution_engine == "asyncio"
+class TestThreadSafety:
+    """Test thread safety with the set_global parameter."""
+
+    @pytest.fixture(autouse=True)
+    def clear_global_settings(self):
+        """Clear global settings before and after each test."""
+        import mcp_agent.config
+
+        old = mcp_agent.config._settings
+        _clear_global_settings()
+        yield
+        mcp_agent.config._settings = old
+
+    @pytest.fixture
+    def simple_config(self):
+        """Simple config for thread safety tests."""
+        return {"execution_engine": "asyncio"}
+
+    def test_warning_from_non_main_thread_with_set_global(self):
+        """Test that warning is issued when setting global from non-main thread."""
+        warning_caught = []
+
+        def load_in_thread():
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                get_settings(set_global=True)
+                if w:
+                    warning_caught.extend(w)
+
+        thread = threading.Thread(target=load_in_thread)
+        thread.start()
+        thread.join()
+
+        # Should have caught a warning
+        assert len(warning_caught) > 0
+        assert "non-main thread" in str(warning_caught[0].message)
+        assert "set_global=False" in str(warning_caught[0].message)
+
+    def test_no_warning_from_non_main_thread_without_set_global(self):
+        """Test that no warning is issued with set_global=False from non-main thread."""
+        warning_caught = []
+
+        def load_in_thread():
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                get_settings(set_global=False)
+                if w:
+                    warning_caught.extend(w)
+
+        thread = threading.Thread(target=load_in_thread)
+        thread.start()
+        thread.join()
+
+        # Should not have any warnings
+        assert len(warning_caught) == 0
+
+    def test_no_warning_from_main_thread(self):
+        """Test that no warning is issued from main thread."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            get_settings(set_global=True)
+
+            # Should not have thread-related warnings
+            thread_warnings = [
+                warn for warn in w if "non-main thread" in str(warn.message)
+            ]
+            assert len(thread_warnings) == 0
+
+    def test_multiple_threads_independent_settings(self, simple_config):
+        """Test that multiple threads can load independent settings."""
+        thread_settings = {}
+
+        def load_settings(thread_id, config_path):
+            yaml_content = yaml.dump(simple_config)
+            with patch("builtins.open", mock_open(read_data=yaml_content)):
+                with patch("pathlib.Path.exists", return_value=True):
+                    settings = get_settings(config_path=config_path, set_global=False)
+                    thread_settings[thread_id] = settings
+
+        # Create threads
+        threads = []
+        for i in range(3):
+            thread = threading.Thread(
+                target=load_settings, args=(i, "/fake/path/config.yaml")
+            )
+            threads.append(thread)
+            thread.start()
+
+        # Wait for all threads
+        for thread in threads:
+            thread.join()
+
+        # Verify all threads got settings but global state wasn't set
+        import mcp_agent.config
+
+        assert mcp_agent.config._settings is None
+        assert len(thread_settings) == 3
+        for i in range(3):
+            assert thread_settings[i] is not None
+            assert thread_settings[i].execution_engine == "asyncio"
 
 
 class TestConfigMergingWithSetGlobal:
