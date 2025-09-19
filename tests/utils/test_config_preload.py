@@ -8,6 +8,7 @@ from pydantic_yaml import to_yaml_str
 import pytest
 import yaml
 
+import mcp_agent.config
 from mcp_agent.config import (
     Settings,
     LoggerSettings,
@@ -108,8 +109,6 @@ class TestSetGlobalParameter:
     @pytest.fixture(autouse=True)
     def clear_global_settings(self):
         """Clear global settings before and after each test."""
-        import mcp_agent.config
-
         old = mcp_agent.config._settings
         _clear_global_settings()
         yield
@@ -143,16 +142,11 @@ class TestSetGlobalParameter:
     def test_default_sets_global_state(self, sample_config):
         """Test that get_settings() with default parameters sets global state."""
         # Verify global settings is None initially
-        import mcp_agent.config
-
         assert mcp_agent.config._settings is None
 
         # Mock file operations
         yaml_content = yaml.dump(sample_config)
         config_path = "/fake/path/config.yaml"
-
-        # Mock Path construction only in mcp_agent.config module
-        original_path = Path
 
         def mock_path_constructor(path_str):
             mock_path = MagicMock(spec=Path)
@@ -173,8 +167,6 @@ class TestSetGlobalParameter:
 
     def test_set_global_false_no_global_state(self, sample_config):
         """Test that set_global=False doesn't modify global state."""
-        import mcp_agent.config
-
         assert mcp_agent.config._settings is None
 
         yaml_content = yaml.dump(sample_config)
@@ -202,8 +194,6 @@ class TestSetGlobalParameter:
 
     def test_explicit_set_global_true(self, sample_config):
         """Test explicitly passing set_global=True."""
-        import mcp_agent.config
-
         assert mcp_agent.config._settings is None
 
         yaml_content = yaml.dump(sample_config)
@@ -249,8 +239,6 @@ class TestSetGlobalParameter:
 
                 # They should be the same object
                 assert settings1 is settings2
-                import mcp_agent.config
-
                 assert mcp_agent.config._settings is settings1
 
     def test_no_cached_return_when_set_global_false(self, sample_config):
@@ -283,8 +271,6 @@ class TestSetGlobalParameter:
                 # But have the same content
                 assert settings1 == settings2
                 # Global should remain None
-                import mcp_agent.config
-
                 assert mcp_agent.config._settings is None
 
     def test_preload_with_set_global_false(self, sample_config, monkeypatch):
@@ -295,8 +281,6 @@ class TestSetGlobalParameter:
         settings = get_settings(set_global=False)
 
         # Global state should not be set
-        import mcp_agent.config
-
         assert mcp_agent.config._settings is None
 
         # Settings should be loaded from preload
@@ -310,8 +294,6 @@ class TestThreadSafety:
     @pytest.fixture(autouse=True)
     def clear_global_settings(self):
         """Clear global settings before and after each test."""
-        import mcp_agent.config
-
         old = mcp_agent.config._settings
         _clear_global_settings()
         yield
@@ -406,8 +388,6 @@ class TestThreadSafety:
             thread.join()
 
         # Verify all threads got settings but global state wasn't set
-        import mcp_agent.config
-
         assert mcp_agent.config._settings is None
         assert len(thread_settings) == 3
         for i in range(3):
@@ -421,8 +401,6 @@ class TestConfigMergingWithSetGlobal:
     @pytest.fixture(autouse=True)
     def clear_global_settings(self):
         """Clear global settings before and after each test."""
-        import mcp_agent.config
-
         old = mcp_agent.config._settings
         _clear_global_settings()
         yield
@@ -470,8 +448,6 @@ class TestConfigMergingWithSetGlobal:
                 )
 
                 # Global state should not be set
-                import mcp_agent.config
-
                 assert mcp_agent.config._settings is None
 
                 # Settings should have the merged values
@@ -484,8 +460,6 @@ class TestConfigMergingWithSetGlobal:
         settings = get_settings(set_global=False)
 
         # Global state should not be set
-        import mcp_agent.config
-
         assert mcp_agent.config._settings is None
 
         # Should get default settings
