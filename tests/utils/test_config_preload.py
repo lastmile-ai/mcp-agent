@@ -1,6 +1,4 @@
 import os
-import builtins
-from pathlib import Path
 import threading
 import warnings
 from unittest.mock import patch, mock_open
@@ -19,18 +17,6 @@ from mcp_agent.config import (
     get_settings,
     _clear_global_settings,
 )  # pylint: disable=import-private-name
-
-
-# Ensure any accidental global file I/O patches do not leak from these tests
-@pytest.fixture(autouse=True)
-def _restore_fileio_after_test():
-    orig_open = builtins.open
-    orig_exists = Path.exists
-    yield
-    if builtins.open is not orig_open:
-        builtins.open = orig_open
-    if Path.exists is not orig_exists:
-        Path.exists = orig_exists
 
 _EXAMPLE_SETTINGS = Settings(
     execution_engine="asyncio",
