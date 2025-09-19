@@ -123,7 +123,7 @@ async def create_router_llm(
     functions: List[Callable] | None = None,
     routing_instruction: str | None = None,
     name: str | None = None,
-    provider: SupportedRoutingProviders = "openai",
+    provider: SupportedLLMProviders = "openai",
     model: str | ModelPreferences | None = None,
     request_params: RequestParams | None = None,
     context: Context | None = None,
@@ -185,8 +185,22 @@ async def create_router_llm(
             **kwargs,
         )
     else:
-        raise ValueError(
-            f"Unsupported routing provider: {provider}. Currently supported providers are: ['openai', 'anthropic']. To request support, please create an issue at https://github.com/lastmile-ai/mcp-agent/issues"
+        factory = _llm_factory(
+            provider=provider,
+            model=model,
+            request_params=request_params,
+            context=context,
+        )
+
+        return await LLMRouter.create(
+            name=name,
+            llm_factory=factory,
+            server_names=server_names,
+            agents=normalized_agents,
+            functions=functions,
+            routing_instruction=routing_instruction,
+            context=context,
+            **kwargs,
         )
 
 
@@ -974,9 +988,20 @@ def _llm_factory(
     request_params: RequestParams | None = None,
     context: Context | None = None,
 ) -> Callable[[Agent], AugmentedLLM]:
+    # Allow model to come from an explicit string, request_params.model,
+    # or request_params.modelPreferences (to run selection) in that order.
+    # Compute the chosen model by precedence:
+    # 1) explicit model_name from _select_provider_and_model (includes ModelPreferences)
+    # 2) provider default from provider_cls.get_provider_config(context)
+    # 3) provider hardcoded fallback
+    model_selector_input = (
+        model
+        or getattr(request_params, "model", None)
+        or getattr(request_params, "modelPreferences", None)
+    )
     prov, model_name = _select_provider_and_model(
         provider=provider,
-        model=model or getattr(request_params, "model", None),
+        model=model_selector_input,
         context=context,
     )
     provider_cls = _get_provider_class(prov)
@@ -990,9 +1015,28 @@ def _llm_factory(
             return RequestParams(modelPreferences=model)
         return None
 
+    # Merge provider-selected or configured default model into RequestParams if missing.
+    effective_params: RequestParams | None = request_params
+    if effective_params is not None:
+        chosen_model: str | None = model_name
+
+        if not chosen_model:
+            cfg_obj = None
+            try:
+                cfg_obj = provider_cls.get_provider_config(context)
+            except Exception:
+                cfg_obj = None
+            if cfg_obj is not None:
+                chosen_model = getattr(cfg_obj, "default_model", None)
+
+        # If the user did not specify a model in RequestParams, but provided other
+        # overrides (maxTokens, temperature, etc.), fill in the model only.
+        if getattr(effective_params, "model", None) is None and chosen_model:
+            effective_params.model = chosen_model
+
     return lambda agent: provider_cls(
         agent=agent,
-        default_request_params=request_params or _default_params(),
+        default_request_params=effective_params or _default_params(),
         context=context,
     )
 

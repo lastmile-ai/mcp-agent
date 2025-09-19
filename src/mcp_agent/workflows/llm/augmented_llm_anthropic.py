@@ -149,6 +149,10 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             use_history=True,
         )
 
+    @classmethod
+    def get_provider_config(cls, context):
+        return getattr(getattr(context, "config", None), "anthropic", None)
+
     @track_tokens()
     async def generate(
         self,

@@ -354,6 +354,12 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
     ) -> ModelT:
         """Request a structured LLM generation and return the result as a Pydantic model."""
 
+    # Provider configuration access
+    @classmethod
+    @abstractmethod
+    def get_provider_config(cls, context: Optional["Context"]):
+        """Return the provider-specific settings object from the app context, or None."""
+
     async def select_model(
         self, request_params: RequestParams | None = None
     ) -> str | None:
