@@ -30,6 +30,7 @@ from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 # Create a single FastMCPApp instance (which extends MCPApp)
 app = MCPApp(
     name="basic_agent_server",
@@ -193,9 +194,7 @@ async def call_nested_sampling(topic: str) -> str:
     )
     nested_name = "nested_sampling"
     nested_path = os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__), "..", "shared", "nested_sampling_server.py"
-        )
+        os.path.join(os.path.dirname(__file__), "nested_sampling_server.py")
     )
     app_ctx.config.mcp.servers[nested_name] = MCPServerSettings(
         name=nested_name,
@@ -233,9 +232,7 @@ async def call_nested_elicitation(action: str) -> str:
     )
     nested_name = "nested_elicitation"
     nested_path = os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__), "..", "shared", "nested_elicitation_server.py"
-        )
+        os.path.join(os.path.dirname(__file__), "nested_elicitation_server.py")
     )
     app_ctx.config.mcp.servers[nested_name] = MCPServerSettings(
         name=nested_name,
