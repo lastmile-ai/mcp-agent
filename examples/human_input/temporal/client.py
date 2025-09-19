@@ -75,8 +75,7 @@ async def main():
         pass
     app = MCPApp(
         name="workflow_mcp_client",
-        # Disable sampling approval prompts entirely to keep flows non-interactive.
-        # Elicitation remains interactive via console_elicitation_callback.
+        # In the client, we want to use `console_input_callback` to enable direct interaction through the console
         human_input_callback=console_input_callback,
         elicitation_callback=console_elicitation_callback,
         settings=settings,
