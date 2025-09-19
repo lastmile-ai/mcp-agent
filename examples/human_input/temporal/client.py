@@ -1,5 +1,4 @@
 import asyncio
-import json
 import time
 from mcp_agent.app import MCPApp
 from mcp_agent.config import Settings, LoggerSettings, MCPSettings
@@ -7,7 +6,6 @@ import yaml
 from mcp_agent.elicitation.handler import console_elicitation_callback
 from mcp_agent.config import MCPServerSettings
 from mcp_agent.core.context import Context
-from mcp_agent.executor.workflow import WorkflowExecution
 from mcp_agent.mcp.gen_client import gen_client
 from datetime import timedelta
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
@@ -15,7 +13,6 @@ from mcp import ClientSession
 from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
 from mcp.types import CallToolResult, LoggingMessageNotificationParams
 from mcp_agent.human_input.console_handler import console_input_callback
-
 try:
     from exceptiongroup import ExceptionGroup as _ExceptionGroup  # Python 3.10 backport
 except Exception:  # pragma: no cover
@@ -78,8 +75,7 @@ async def main():
         pass
     app = MCPApp(
         name="workflow_mcp_client",
-        # Disable sampling approval prompts entirely to keep flows non-interactive.
-        # Elicitation remains interactive via console_elicitation_callback.
+        # In the client, we want to use `console_input_callback` to enable direct interaction through the console
         human_input_callback=console_input_callback,
         elicitation_callback=console_elicitation_callback,
         settings=settings,
@@ -151,98 +147,12 @@ async def main():
                     # Older servers may not support logging capability
                     print("[client] Server does not support logging/setLevel")
 
-                # Call the `book_table` tool defined via `@app.tool`
+                # Call the `greet` tool defined via `@app.tool`
                 run_result = await server.call_tool(
-                    "book_table",
-                    arguments={
-                        "date": "today",
-                        "party_size": 2,
-                        "topic": "autumn"
-                    },
+                    "greet",
+                    arguments={}
                 )
                 print(f"[client] Workflow run result: {run_result}")
-
-                # Run the `TestWorkflow` workflow...
-                run_result = await server.call_tool(
-                    "workflows-TestWorkflow-run",
-                    arguments={
-                        "run_parameters":{
-                            "args":{
-                                "date": "today",
-                                "party_size": 2,
-                                "topic": "autumn"
-                            }
-                        }
-                    }
-                )
-
-                execution = WorkflowExecution(
-                    **json.loads(run_result.content[0].text)
-                )
-                run_id = execution.run_id
-                workflow_id = execution.workflow_id
-
-                # and wait for execution to complete
-                while True:
-                    get_status_result = await server.call_tool(
-                        "workflows-get_status",
-                        arguments={
-                            "run_id": run_id,
-                            "workflow_id": workflow_id
-                        },
-                    )
-
-                    workflow_status = _tool_result_to_json(get_status_result)
-                    if workflow_status is None:
-                        logger.error(
-                            f"Failed to parse workflow status response: {get_status_result}"
-                        )
-                        break
-
-                    logger.info(
-                        f"Workflow run {run_id} status:",
-                        data=workflow_status,
-                    )
-
-                    if not workflow_status.get("status"):
-                        logger.error(
-                            f"Workflow run {run_id} status is empty. get_status_result:",
-                            data=get_status_result,
-                        )
-                        break
-
-                    if workflow_status.get("status") == "completed":
-                        logger.info(
-                            f"Workflow run {run_id} completed successfully! Result:",
-                            data=workflow_status.get("result"),
-                        )
-
-                        break
-                    elif workflow_status.get("status") == "error":
-                        logger.error(
-                            f"Workflow run {run_id} failed with error:",
-                            data=workflow_status,
-                        )
-                        break
-                    elif workflow_status.get("status") == "running":
-                        logger.info(
-                            f"Workflow run {run_id} is still running...",
-                        )
-                    elif workflow_status.get("status") == "cancelled":
-                        logger.error(
-                            f"Workflow run {run_id} was cancelled.",
-                            data=workflow_status,
-                        )
-                        break
-                    else:
-                        logger.error(
-                            f"Unknown workflow status: {workflow_status.get('status')}",
-                            data=workflow_status,
-                        )
-                        break
-
-                    await asyncio.sleep(5)
-
         except Exception as e:
             # Tolerate benign shutdown races from SSE client (BrokenResourceError within ExceptionGroup)
             if _ExceptionGroup is not None and isinstance(e, _ExceptionGroup):
