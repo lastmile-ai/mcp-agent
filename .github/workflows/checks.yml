@@ -61,7 +61,7 @@ jobs:
         with:
           python-version-file: ".python-version"
 
-      - name: Install dependencies
-        run: make sync
+      - name: Install the project (frozen)
+        run: uv sync --frozen --all-extras --dev
       - name: Run tests with coverage
         run: make coverage
