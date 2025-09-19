@@ -77,7 +77,7 @@ def create_llm(
 
 @overload
 def create_llm(
-    agent: str,
+    agent_name: str,
     server_names: List[str] | None = None,
     instruction: str | None = None,
     provider: str = "openai",
