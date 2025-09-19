@@ -126,12 +126,12 @@ class SessionProxy(ServerSession):
                 params or {},
             )
 
-            if execution_info.get("error", "") != "":
+            if execution_info.get("error"):
                 return execution_info
 
             signal_name = execution_info.get("signal_name", "")
 
-            if signal_name == "":
+            if not signal_name:
                 return {"error": "no_signal_name_returned_from_activity"}
 
             # Wait for the response via workflow signal
@@ -144,9 +144,13 @@ class SessionProxy(ServerSession):
                 # Timeout can be controlled by Temporal workflow/activity timeouts
             )
 
-            return_value = _twf.payload_converter().from_payload(payload.payload, dict)
-
-            return return_value
+            pc = _twf.payload_converter()
+            # Support either a Temporal payload wrapper or a plain dict
+            if hasattr(payload, "payload"):
+                return pc.from_payload(payload.payload, dict)
+            if isinstance(payload, dict):
+                return payload
+            return pc.from_payload(payload, dict)
 
         # Non-workflow (activity/asyncio): direct call and wait for result
         return await self._system_activities.relay_request(
@@ -157,9 +161,9 @@ class SessionProxy(ServerSession):
         )
 
     async def send_notification(
-            self,
-            notification: types.ServerNotification,
-            related_request_id: types.RequestId | None = None,
+        self,
+        notification: types.ServerNotification,
+        related_request_id: types.RequestId | None = None,
     ) -> None:
         root = notification.root
         params: Dict[str, Any] | None = None
@@ -177,10 +181,10 @@ class SessionProxy(ServerSession):
         await self.notify(root.method, params)  # type: ignore[attr-defined]
 
     async def send_request(
-            self,
-            request: types.ServerRequest,
-            result_type: Type[Any],
-            metadata: ServerMessageMetadata | None = None,
+        self,
+        request: types.ServerRequest,
+        result_type: Type[Any],
+        metadata: ServerMessageMetadata | None = None,
     ) -> Any:
         root = request.root
         params: Dict[str, Any] | None = None
@@ -200,11 +204,11 @@ class SessionProxy(ServerSession):
             return payload
 
     async def send_log_message(
-            self,
-            level: types.LoggingLevel,
-            data: Any,
-            logger: str | None = None,
-            related_request_id: types.RequestId | None = None,
+        self,
+        level: types.LoggingLevel,
+        data: Any,
+        logger: str | None = None,
+        related_request_id: types.RequestId | None = None,
     ) -> None:
         """Best-effort log forwarding to the client's UI."""
         # Prefer activity-based forwarding inside workflow for determinism
@@ -237,12 +241,12 @@ class SessionProxy(ServerSession):
         await self.notify("notifications/message", params)
 
     async def send_progress_notification(
-            self,
-            progress_token: str | int,
-            progress: float,
-            total: float | None = None,
-            message: str | None = None,
-            related_request_id: str | None = None,
+        self,
+        progress_token: str | int,
+        progress: float,
+        total: float | None = None,
+        message: str | None = None,
+        related_request_id: str | None = None,
     ) -> None:
         params: Dict[str, Any] = {
             "progressToken": progress_token,
@@ -277,17 +281,17 @@ class SessionProxy(ServerSession):
         return types.ListRootsResult.model_validate(result)
 
     async def create_message(
-            self,
-            messages: List[types.SamplingMessage],
-            *,
-            max_tokens: int,
-            system_prompt: str | None = None,
-            include_context: types.IncludeContext | None = None,
-            temperature: float | None = None,
-            stop_sequences: List[str] | None = None,
-            metadata: Dict[str, Any] | None = None,
-            model_preferences: types.ModelPreferences | None = None,
-            related_request_id: types.RequestId | None = None,
+        self,
+        messages: List[types.SamplingMessage],
+        *,
+        max_tokens: int,
+        system_prompt: str | None = None,
+        include_context: types.IncludeContext | None = None,
+        temperature: float | None = None,
+        stop_sequences: List[str] | None = None,
+        metadata: Dict[str, Any] | None = None,
+        model_preferences: types.ModelPreferences | None = None,
+        related_request_id: types.RequestId | None = None,
     ) -> types.CreateMessageResult:
         params: Dict[str, Any] = {
             "messages": [m.model_dump(by_alias=True, mode="json") for m in messages],
