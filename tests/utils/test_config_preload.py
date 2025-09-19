@@ -1,6 +1,7 @@
 import os
 import threading
 import warnings
+from pathlib import Path
 from unittest.mock import patch, mock_open
 
 from pydantic_yaml import to_yaml_str
@@ -148,10 +149,16 @@ class TestSetGlobalParameter:
 
         # Mock file operations
         yaml_content = yaml.dump(sample_config)
+        config_path = "/fake/path/config.yaml"
+
+        def mock_exists(self):
+            # Only mock exists for our specific config path
+            return str(self) == config_path or str(self).endswith(".secrets.yaml")
+
         with patch("builtins.open", mock_open(read_data=yaml_content)):
-            with patch("pathlib.Path.exists", return_value=True):
+            with patch.object(Path, "exists", mock_exists):
                 # Load settings with default behavior
-                settings = get_settings(config_path="/fake/path/config.yaml")
+                settings = get_settings(config_path=config_path)
 
                 # Verify global state was set
                 assert mcp_agent.config._settings is not None
@@ -165,10 +172,16 @@ class TestSetGlobalParameter:
         assert mcp_agent.config._settings is None
 
         yaml_content = yaml.dump(sample_config)
+        config_path = "/fake/path/config.yaml"
+
+        def mock_exists(self):
+            # Only mock exists for our specific config path
+            return str(self) == config_path or str(self).endswith(".secrets.yaml")
+
         with patch("builtins.open", mock_open(read_data=yaml_content)):
-            with patch("pathlib.Path.exists", return_value=True):
+            with patch.object(Path, "exists", mock_exists):
                 settings = get_settings(
-                    config_path="/fake/path/config.yaml", set_global=False
+                    config_path=config_path, set_global=False
                 )
 
                 # Global state should remain None
@@ -184,10 +197,16 @@ class TestSetGlobalParameter:
         assert mcp_agent.config._settings is None
 
         yaml_content = yaml.dump(sample_config)
+        config_path = "/fake/path/config.yaml"
+
+        def mock_exists(self):
+            # Only mock exists for our specific config path
+            return str(self) == config_path or str(self).endswith(".secrets.yaml")
+
         with patch("builtins.open", mock_open(read_data=yaml_content)):
-            with patch("pathlib.Path.exists", return_value=True):
+            with patch.object(Path, "exists", mock_exists):
                 settings = get_settings(
-                    config_path="/fake/path/config.yaml", set_global=True
+                    config_path=config_path, set_global=True
                 )
 
                 assert mcp_agent.config._settings is not None
@@ -196,10 +215,16 @@ class TestSetGlobalParameter:
     def test_returns_cached_global_when_set(self, sample_config):
         """Test that subsequent calls return cached global settings."""
         yaml_content = yaml.dump(sample_config)
+        config_path = "/fake/path/config.yaml"
+
+        def mock_exists(self):
+            # Only mock exists for our specific config path
+            return str(self) == config_path or str(self).endswith(".secrets.yaml")
+
         with patch("builtins.open", mock_open(read_data=yaml_content)):
-            with patch("pathlib.Path.exists", return_value=True):
+            with patch.object(Path, "exists", mock_exists):
                 # First call sets global state
-                settings1 = get_settings(config_path="/fake/path/config.yaml")
+                settings1 = get_settings(config_path=config_path)
 
                 # Second call without path should return cached global
                 settings2 = get_settings()
@@ -213,16 +238,22 @@ class TestSetGlobalParameter:
     def test_no_cached_return_when_set_global_false(self, sample_config):
         """Test that set_global=False always loads fresh settings."""
         yaml_content = yaml.dump(sample_config)
+        config_path = "/fake/path/config.yaml"
+
+        def mock_exists(self):
+            # Only mock exists for our specific config path
+            return str(self) == config_path or str(self).endswith(".secrets.yaml")
+
         with patch("builtins.open", mock_open(read_data=yaml_content)):
-            with patch("pathlib.Path.exists", return_value=True):
+            with patch.object(Path, "exists", mock_exists):
                 # First call with set_global=False
                 settings1 = get_settings(
-                    config_path="/fake/path/config.yaml", set_global=False
+                    config_path=config_path, set_global=False
                 )
 
                 # Second call with set_global=False
                 settings2 = get_settings(
-                    config_path="/fake/path/config.yaml", set_global=False
+                    config_path=config_path, set_global=False
                 )
 
                 # They should be different objects (not cached)
@@ -325,8 +356,13 @@ class TestThreadSafety:
 
         def load_settings(thread_id, config_path):
             yaml_content = yaml.dump(simple_config)
+
+            def mock_exists(self):
+                # Only mock exists for our specific config path
+                return str(self) == config_path or str(self).endswith(".secrets.yaml")
+
             with patch("builtins.open", mock_open(read_data=yaml_content)):
-                with patch("pathlib.Path.exists", return_value=True):
+                with patch.object(Path, "exists", mock_exists):
                     settings = get_settings(config_path=config_path, set_global=False)
                     thread_settings[thread_id] = settings
 
@@ -391,10 +427,16 @@ class TestConfigMergingWithSetGlobal:
         # Mock the config file read with already merged data
         merged_yaml = yaml.dump(merged_data)
 
+        config_path = "/fake/path/config.yaml"
+
+        def mock_exists(self):
+            # Only mock exists for our specific config path
+            return str(self) == config_path or str(self).endswith(".secrets.yaml")
+
         with patch("builtins.open", mock_open(read_data=merged_yaml)):
-            with patch("pathlib.Path.exists", return_value=True):
+            with patch.object(Path, "exists", mock_exists):
                 settings = get_settings(
-                    config_path="/fake/path/config.yaml", set_global=False
+                    config_path=config_path, set_global=False
                 )
 
                 # Global state should not be set
