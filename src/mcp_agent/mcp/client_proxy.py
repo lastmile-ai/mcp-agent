@@ -2,6 +2,7 @@ from typing import Any, Dict, Optional
 
 import os
 import httpx
+import uuid
 
 from urllib.parse import quote
 
@@ -174,14 +175,11 @@ async def request_via_proxy(
         if not in_temporal:
             return {"error": "not_in_workflow_or_activity"}
 
-        from mcp_agent.executor.temporal.session_proxy import reset_signal_response
-
-        # Reset the signal response state, so we're ready to accept a new response signal
-        await reset_signal_response(execution_id)
+        signal_name = f"mcp_rpc_{method}_{uuid.uuid4().hex}"
 
         # Make the HTTP request (but don't return the response directly)
         base = _resolve_gateway_url(gateway_url=gateway_url, context_gateway_url=None)
-        url = f"{base}/internal/session/by-run/{workflow_id}/{quote(execution_id, safe='')}/async-request"
+        url = f"{base}/internal/session/by-run/{quote(workflow_id, safe='')}/{quote(execution_id, safe='')}/async-request"
         headers: Dict[str, str] = {}
         tok = gateway_token or os.environ.get("MCP_GATEWAY_TOKEN")
         if tok:
@@ -205,12 +203,19 @@ async def request_via_proxy(
                 timeout = timeout_float
             async with httpx.AsyncClient(timeout=timeout) as client:
                 r = await client.post(
-                    url, json={"method": method, "params": params or {}}, headers=headers
+                    url,
+                    json={
+                        "method": method,
+                        "params": params or {},
+                        "signal_name": signal_name
+                    },
+                    headers=headers
                 )
         except httpx.RequestError:
             return {"error": "request_failed"}
         if r.status_code >= 400:
             return {"error": r.text}
+        return {"error": "", "signal_name": signal_name}
     else:
         # Use original synchronous approach for non-workflow contexts
         base = _resolve_gateway_url(gateway_url=gateway_url, context_gateway_url=None)

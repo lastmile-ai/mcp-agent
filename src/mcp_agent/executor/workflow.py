@@ -429,23 +429,6 @@ class Workflow(ABC, Generic[T], ContextDependent):
         from temporalio.common import RawValue
         from typing import Sequence
 
-        @workflow.signal()
-        async def _user_response(self, response: Dict[str, Any]):
-            """Signal handler that receives user responses."""
-            # Import here to avoid circular dependencies
-            try:
-                from temporalio import workflow
-                from mcp_agent.executor.temporal.session_proxy import set_signal_response
-
-                if workflow.in_workflow():
-                    workflow_info = workflow.info()
-                    workflow_key = f"{workflow_info.run_id}"
-
-                    await set_signal_response(workflow_key, response)
-            except ImportError:
-                # Fallback for non-temporal environments
-                pass
-
         @workflow.signal(dynamic=True)
         async def _signal_receiver(self, name: str, args: Sequence[RawValue]):
             """Dynamic signal handler for Temporal workflows."""

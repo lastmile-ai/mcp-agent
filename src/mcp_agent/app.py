@@ -32,7 +32,7 @@ from mcp_agent.executor.decorator_registry import (
     register_temporal_decorators,
 )
 from mcp_agent.executor.task_registry import ActivityRegistry
-from mcp_agent.executor.workflow_signal import SignalWaitCallback
+from mcp_agent.executor.workflow_signal import Signal, SignalWaitCallback
 from mcp_agent.executor.workflow_task import GlobalWorkflowTaskRegistry
 from mcp_agent.human_input.types import HumanInputCallback
 from mcp_agent.elicitation.types import ElicitationCallback
@@ -41,6 +41,7 @@ from mcp_agent.tracing.telemetry import get_tracer
 from mcp_agent.utils.common import unwrap
 from mcp_agent.workflows.llm.llm_selector import ModelSelector
 from mcp_agent.workflows.factory import load_agent_specs_from_dir
+
 
 if TYPE_CHECKING:
     from mcp_agent.agents.agent_spec import AgentSpec
@@ -675,29 +676,11 @@ class MCPApp:
         else:
             decorated_run = self.workflow_run(_run)
 
-        # Create signal handler for elicitation response
-        async def _user_response(self, response: dict[str,Any]):
-            """Signal handler that receives elicitation responses."""
-            # Import here to avoid circular dependencies
-            try:
-                from temporalio import workflow
-                from mcp_agent.executor.temporal.session_proxy import set_signal_response
-
-                if workflow.in_workflow():
-                    workflow_info = workflow.info()
-                    workflow_key = f"{workflow_info.run_id}"
-
-                    await set_signal_response(workflow_key, response)
-            except ImportError:
-                # Fallback for non-temporal environments
-                pass
-
         # Build the Workflow subclass dynamically
         cls_dict: Dict[str, Any] = {
             "__doc__": description or (fn.__doc__ or ""),
             "run": decorated_run,
             "__mcp_agent_param_source_fn__": fn,
-            "_user_response": _user_response,
         }
         if mark_sync_tool:
             cls_dict["__mcp_agent_sync_tool__"] = True
@@ -705,19 +688,6 @@ class MCPApp:
             cls_dict["__mcp_agent_async_tool__"] = True
 
         auto_cls = type(f"AutoWorkflow_{workflow_name}", (_Workflow,), cls_dict)
-
-        # Apply the workflow signal decorator to the signal handler
-        try:
-            signal_handler = getattr(auto_cls, "_user_response")
-            engine_type = self.config.execution_engine
-            signal_decorator = self._decorator_registry.get_workflow_signal_decorator(
-                engine_type
-            )
-            if signal_decorator:
-                decorated_signal = signal_decorator(name="_user_response")(signal_handler)
-                setattr(auto_cls, "_user_response", decorated_signal)
-        except Exception:
-            pass
 
         # Workaround for Temporal: publish the dynamically created class as a
         # top-level (module global) so it is not considered a "local class".

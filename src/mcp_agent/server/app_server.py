@@ -679,6 +679,13 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             workflow_id = request.path_params.get("workflow_id")
             method = body.get("method")
             params = body.get("params") or {}
+            signal_name = body.get("signal_name")
+
+            # Check authentication
+            auth_error = _check_gateway_auth(request)
+            if auth_error:
+                return auth_error
+
             try:
                 logger.info(f"[async-request] incoming execution_id={execution_id} method={method}")
             except Exception:
@@ -689,10 +696,8 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                 return JSONResponse({"error": f"async not supported for method {method}"},
                                     status_code=405)
 
-            # Check authentication
-            auth_error = _check_gateway_auth(request)
-            if auth_error:
-                return auth_error
+            if not signal_name:
+                return JSONResponse({"error": "missing_signal_name"}, status_code=400)
 
             # Create background task to handle the request and signal the workflow
             async def _handle_async_request_task():
@@ -728,7 +733,6 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
 
                     # Signal the workflow with the result using method-specific signal
                     try:
-
                         # Try to get Temporal client from the app context
                         app = _get_attached_app(mcp_server)
                         if app and app.context and hasattr(app.context, 'executor'):
@@ -742,7 +746,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                                         run_id=execution_id
                                     )
 
-                                    await workflow_handle.signal("_user_response", result)
+                                    await workflow_handle.signal(signal_name, result)
                                     logger.info(f"[async-request] signaled workflow {execution_id} "
                                                 f"with {method} result using signal")
                                 except Exception as signal_error:
@@ -758,7 +762,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             asyncio.create_task(_handle_async_request_task())
 
             # Return immediately with 200 status to indicate request was received
-            return JSONResponse({"status": "received", "execution_id": execution_id, "method": method})
+            return JSONResponse(
+                {"status": "received", "execution_id": execution_id, "method": method, "signal_name": signal_name}
+            )
 
         @mcp_server.custom_route(
             "/internal/workflows/log", methods=["POST"], include_in_schema=False

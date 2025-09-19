@@ -19,77 +19,6 @@ from mcp_agent.core.context import Context
 from mcp_agent.executor.temporal.system_activities import SystemActivities
 from mcp_agent.executor.temporal.temporal_context import get_execution_id
 
-# Global state for signal handling (will be stored per workflow instance)
-# Stores
-#   run_id -> {
-#     response_received: bool  # Whether a response has been received
-#     response_data: Any       # The actual response data (typically a dict)
-#   }
-_WORKFLOW_SIGNAL_LOCK = asyncio.Lock()
-_workflow_signal_states: Dict[str, Dict[str, Any]] = {}
-
-
-async def reset_signal_response(execution_id: str) -> None:
-    """
-    Reset the signal response state for a given workflow execution ID, ready to accept a new signal
-    """
-    async with _WORKFLOW_SIGNAL_LOCK:
-        if execution_id not in _workflow_signal_states:
-            _workflow_signal_states[execution_id] = {}
-
-        _workflow_signal_states[execution_id]['response_data'] = None
-        _workflow_signal_states[execution_id]['response_received'] = False
-
-
-async def set_signal_response(execution_id: str, data: Any) -> None:
-    """
-    Register that a signal response has been received for a given workflow execution ID.
-    """
-    async with _WORKFLOW_SIGNAL_LOCK:
-        if execution_id not in _workflow_signal_states:
-            _workflow_signal_states[execution_id] = {}
-
-        _workflow_signal_states[execution_id]['response_data'] = data
-        _workflow_signal_states[execution_id]['response_received'] = True
-
-
-async def has_signal_response(execution_id: str) -> bool:
-    """
-    Check if a signal response has been received for a given workflow execution ID.
-    """
-    async with _WORKFLOW_SIGNAL_LOCK:
-        if execution_id not in _workflow_signal_states:
-            return False
-        return _workflow_signal_states[execution_id]['response_received']
-
-
-async def get_signal_response(execution_id: str) -> Any:
-    """
-    Retrieve the signal response data for a given workflow execution ID.
-    """
-    async with _WORKFLOW_SIGNAL_LOCK:
-        if execution_id not in _workflow_signal_states or \
-                not _workflow_signal_states[execution_id]['response_received']:
-            raise RuntimeError("No signal response received yet")
-        return _workflow_signal_states[execution_id]['response_data']
-
-
-def has_signal_response_sync(execution_id: str) -> bool:
-    """
-    Synchronously check if a signal response has been received for a given workflow execution ID.
-    This method is safe to use in Temporal wait_condition lambdas since it doesn't use async/await.
-
-    Only reads when the lock is not currently held to minimize race conditions.
-    Returns False conservatively if the lock is held or if no response is available.
-    """
-    # Only read if lock is not currently held
-    if _WORKFLOW_SIGNAL_LOCK.locked():
-        return False  # Conservative: assume no response if lock is held
-
-    if execution_id not in _workflow_signal_states:
-        return False
-    return _workflow_signal_states[execution_id]['response_received']
-
 
 class SessionProxy(ServerSession):
     """
@@ -189,7 +118,7 @@ class SessionProxy(ServerSession):
         if _in_workflow_runtime():
             act = self._context.task_registry.get_activity("mcp_relay_request")
 
-            await self._executor.execute(
+            execution_info = await self._executor.execute(
                 act,
                 True,  # Use the async APIs with signalling for response
                 exec_id,
@@ -197,12 +126,27 @@ class SessionProxy(ServerSession):
                 params or {},
             )
 
-            # Wait for the _elicitation_response signal to be triggered
-            await _twf.wait_condition(
-                lambda: has_signal_response_sync(exec_id)
+            if execution_info.get("error", "") != "":
+                return execution_info
+
+            signal_name = execution_info.get("signal_name", "")
+
+            if signal_name == "":
+                return {"error": "no_signal_name_returned_from_activity"}
+
+            # Wait for the response via workflow signal
+            info = _twf.info()
+            payload = await self._context.executor.wait_for_signal(  # type: ignore[attr-defined]
+                signal_name,
+                workflow_id=info.workflow_id,
+                run_id=info.run_id,
+                signal_description=f"Waiting for async response to {method}",
+                # Timeout can be controlled by Temporal workflow/activity timeouts
             )
 
-            return await get_signal_response(exec_id)
+            return_value = _twf.payload_converter().from_payload(payload.payload, dict)
+
+            return return_value
 
         # Non-workflow (activity/asyncio): direct call and wait for result
         return await self._system_activities.relay_request(
