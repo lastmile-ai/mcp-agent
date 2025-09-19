@@ -765,10 +765,9 @@ def get_settings(config_path: str | None = None, set_global: bool = True) -> Set
         return merged
 
     # Only return cached global settings if we're in set_global mode
-    if set_global:
-        global _settings
-        if _settings:
-            return _settings
+    global _settings
+    if set_global and _settings:
+        return _settings
 
     merged_settings = {}
 
