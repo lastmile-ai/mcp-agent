@@ -356,9 +356,9 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
 
     # Provider configuration access
     @classmethod
-    @abstractmethod
     def get_provider_config(cls, context: Optional["Context"]):
         """Return the provider-specific settings object from the app context, or None."""
+        return None
 
     async def select_model(
         self, request_params: RequestParams | None = None
