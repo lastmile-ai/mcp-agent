@@ -765,7 +765,7 @@ def get_settings(config_path: str | None = None, set_global: bool = True) -> Set
         return merged
 
     # Only return cached global settings when no explicit config_path is provided
-    if set_global and config_path is None:
+    if set_global:
         global _settings
         if _settings:
             return _settings
