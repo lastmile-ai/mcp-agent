@@ -4,7 +4,7 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, mock_open
 
 import pytest
 
@@ -16,6 +16,14 @@ from mcp_agent.cli.cloud.commands.deploy.wrangler_wrapper import (
     _modify_requirements_txt,
     _needs_requirements_modification,
     wrangler_deploy,
+)
+from mcp_agent.cli.cloud.commands.deploy.bundle_utils import (
+    create_pathspec_from_gitignore,
+    should_ignore_by_gitignore,
+    clean_yaml_comments,
+    clean_python_comments,
+    clean_yaml_files_in_directory,
+    clean_python_files_in_directory,
 )
 from mcp_agent.cli.core.constants import MCP_SECRETS_FILENAME
 
@@ -1000,3 +1008,330 @@ db_password: !developer_secret
         assert not (project_path / f"{MCP_SECRETS_FILENAME}.mcpac.py").exists(), (
             "No secrets .mcpac.py file should exist in original directory"
         )
+
+
+# Bundle utils tests
+
+
+def test_create_pathspec_from_gitignore():
+    """Test creating PathSpec from gitignore file."""
+    gitignore_content = """*.log
+# Comment line
+node_modules/
+*.pyc
+
+temp/
+build/
+"""
+
+    with patch("builtins.open", mock_open(read_data=gitignore_content)):
+        with patch("pathlib.Path.exists", return_value=True):
+            spec = create_pathspec_from_gitignore(Path("/fake/.gitignore"))
+            assert spec is not None
+
+            # Test pattern matching with pathspec
+            assert spec.match_file("test.log") == True
+            assert spec.match_file("debug.log") == True
+            assert spec.match_file("node_modules/file.js") == True
+            assert spec.match_file("test.pyc") == True
+            assert spec.match_file("temp/file.txt") == True
+            assert spec.match_file("build/output.js") == True
+            assert spec.match_file("main.py") == False
+            assert spec.match_file("config.yaml") == False
+
+
+def test_should_ignore_by_gitignore():
+    """Test gitignore pattern matching with pathspec."""
+    import pathspec
+
+    gitignore_content = """*.log
+*.pyc
+node_modules/
+temp/
+build/
+"""
+
+    # Create a mock PathSpec directly
+    spec = pathspec.PathSpec.from_lines('gitwildmatch', gitignore_content.splitlines())
+
+    project_dir = Path("/fake/project")
+    current_path = str(project_dir)
+    names = ["test.log", "main.py", "node_modules", "config.yaml", "test.pyc"]
+
+    # Mock Path.is_dir method properly
+    original_is_dir = Path.is_dir
+    Path.is_dir = lambda self: self.name in ["node_modules", "temp", "build"]
+
+    try:
+        ignored = should_ignore_by_gitignore(current_path, names, project_dir, spec)
+    finally:
+        # Restore original method
+        Path.is_dir = original_is_dir
+
+    assert "test.log" in ignored
+    assert "test.pyc" in ignored
+    assert "node_modules" in ignored
+    assert "main.py" not in ignored
+    assert "config.yaml" not in ignored
+
+
+def test_clean_yaml_comments():
+    """Test YAML comment cleaning."""
+    yaml_with_comments = """# This is a comment
+key1: value1  # inline comment with SECRET_KEY=abc123
+
+# Another comment
+nested:
+  # Nested comment
+  key2: value2  # Another inline comment
+  key3: value3
+
+# Final comment
+"""
+
+    cleaned = clean_yaml_comments(yaml_with_comments)
+
+    assert "# This is a comment" not in cleaned
+    assert "# inline comment" not in cleaned
+    assert "SECRET_KEY=abc123" not in cleaned
+    assert "key1: value1" in cleaned
+    assert "key2: value2" in cleaned
+    assert "key3: value3" in cleaned
+
+
+def test_clean_python_comments():
+    """Test Python comment cleaning."""
+    python_with_comments = '''#!/usr/bin/env python3
+"""Module docstring with SECRET=xyz789."""
+
+# Import comment
+import os  # inline import comment
+
+class MyClass:
+    """Class docstring."""
+
+    def method(self):
+        """Method docstring."""
+        # Method comment with API_KEY=secret123
+        x = 1  # inline comment
+        y = "string with # not a comment"
+        return x + y
+'''
+
+    cleaned = clean_python_comments(python_with_comments)
+
+    assert "Module docstring" not in cleaned
+    assert "SECRET=xyz789" not in cleaned
+    assert "# Import comment" not in cleaned
+    assert "# inline import comment" not in cleaned
+    assert "Class docstring" not in cleaned
+    assert "Method docstring" not in cleaned
+    assert "API_KEY=secret123" not in cleaned
+    assert "# inline comment" not in cleaned
+
+    # Should preserve actual code
+    assert "import os" in cleaned
+    assert "class MyClass" in cleaned
+    assert "def method" in cleaned
+    assert "x = 1" in cleaned
+    assert "string with # not a comment" in cleaned
+
+
+def test_clean_yaml_files_in_directory():
+    """Test cleaning YAML files in a directory."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        project_path = Path(temp_dir)
+
+        # Create YAML files with comments
+        config_yaml = project_path / "config.yaml"
+        config_yaml.write_text("""# Config file
+app_name: test-app  # Application name
+# Secret comment with API_KEY=secret
+port: 8080
+""")
+
+        nested_dir = project_path / "nested"
+        nested_dir.mkdir()
+        nested_yaml = nested_dir / "nested.yml"
+        nested_yaml.write_text("""# Nested config
+key: value  # Comment
+""")
+
+        # Clean YAML files
+        cleaned_count = clean_yaml_files_in_directory(project_path)
+
+        assert cleaned_count == 2
+
+        # Check comments were removed
+        config_content = config_yaml.read_text()
+        assert "# Config file" not in config_content
+        assert "# Application name" not in config_content
+        assert "API_KEY=secret" not in config_content
+        assert "app_name: test-app" in config_content
+        assert "port: 8080" in config_content
+
+        nested_content = nested_yaml.read_text()
+        assert "# Nested config" not in nested_content
+        assert "# Comment" not in nested_content
+        assert "key: value" in nested_content
+
+
+def test_clean_python_files_in_directory():
+    """Test cleaning Python files in a directory."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        project_path = Path(temp_dir)
+
+        # Create Python files with comments
+        main_py = project_path / "main.py"
+        main_py.write_text('''"""Main module with SECRET=abc123."""
+# Import section
+import os  # os import
+
+def main():
+    """Main function."""
+    # Do something with API_KEY=xyz789
+    print("Hello")  # Print hello
+''')
+
+        nested_dir = project_path / "nested"
+        nested_dir.mkdir()
+        nested_py = nested_dir / "helper.py"
+        nested_py.write_text('''# Helper module
+class Helper:
+    """Helper class."""
+    pass  # Empty class
+''')
+
+        # Clean Python files
+        cleaned_count = clean_python_files_in_directory(project_path)
+
+        assert cleaned_count == 2
+
+        # Check comments and docstrings were removed
+        main_content = main_py.read_text()
+        assert "SECRET=abc123" not in main_content
+        assert "# Import section" not in main_content
+        assert "# os import" not in main_content
+        assert "Main function." not in main_content
+        assert "API_KEY=xyz789" not in main_content
+        assert "# Print hello" not in main_content
+        assert "import os" in main_content
+        assert "def main" in main_content
+        assert 'print("Hello")' in main_content
+
+        helper_content = nested_py.read_text()
+        assert "# Helper module" not in helper_content
+        assert "Helper class." not in helper_content
+        assert "# Empty class" not in helper_content
+        assert "class Helper" in helper_content
+
+
+def test_wrangler_deploy_with_gitignore():
+    """Test that wrangler_deploy respects .gitignore patterns."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        project_path = Path(temp_dir)
+
+        # Create main.py
+        (project_path / "main.py").write_text("""
+from mcp_agent_cloud import MCPApp
+app = MCPApp(name="test-app")
+""")
+
+        # Create .gitignore
+        gitignore_content = """*.log
+*.tmp
+build/
+dist/
+*.pyc
+"""
+        (project_path / ".gitignore").write_text(gitignore_content)
+
+        # Create files that should be ignored
+        (project_path / "debug.log").write_text("log content")
+        (project_path / "temp.tmp").write_text("temp content")
+        (project_path / "cache.pyc").write_text("pyc content")
+
+        build_dir = project_path / "build"
+        build_dir.mkdir()
+        (build_dir / "output.txt").write_text("build output")
+
+        # Create files that should be included
+        (project_path / "config.yaml").write_text("config: value")
+        (project_path / "data.txt").write_text("data content")
+
+        def check_gitignore_respected(*args, **kwargs):
+            temp_project_dir = Path(kwargs["cwd"])
+
+            # Files matching gitignore should NOT be copied
+            assert not (temp_project_dir / "debug.log").exists()
+            assert not (temp_project_dir / "temp.tmp").exists()
+            assert not (temp_project_dir / "cache.pyc").exists()
+            assert not (temp_project_dir / "build").exists()
+
+            # Files not matching gitignore should be copied
+            assert (temp_project_dir / "main.py").exists()
+            assert (temp_project_dir / "config.yaml.mcpac.py").exists()
+            assert (temp_project_dir / "data.txt.mcpac.py").exists()
+
+            return MagicMock(returncode=0)
+
+        with patch("subprocess.run", side_effect=check_gitignore_respected):
+            wrangler_deploy("test-app", "test-api-key", project_path)
+
+
+def test_wrangler_deploy_comment_cleaning():
+    """Test that wrangler_deploy cleans comments from YAML and Python files."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        project_path = Path(temp_dir)
+
+        # Create main.py with comments
+        main_content = '''"""Main module with SECRET=abc123."""
+from mcp_agent_cloud import MCPApp
+
+# Create app with API_KEY=xyz789
+app = MCPApp(name="test-app")  # Initialize app
+'''
+        (project_path / "main.py").write_text(main_content)
+
+        # Create config.yaml with comments
+        config_content = """# Config file
+app_name: test-app  # App name
+# DB_PASSWORD=secret123
+port: 8080
+"""
+        (project_path / "config.yaml").write_text(config_content)
+
+        def check_comments_cleaned(*args, **kwargs):
+            temp_project_dir = Path(kwargs["cwd"])
+
+            # Check Python file has comments removed
+            main_py = temp_project_dir / "main.py"
+            assert main_py.exists()
+            main_cleaned = main_py.read_text()
+            assert "SECRET=abc123" not in main_cleaned
+            assert "API_KEY=xyz789" not in main_cleaned
+            assert "# Initialize app" not in main_cleaned
+            assert "from mcp_agent_cloud import MCPApp" in main_cleaned
+            assert "app = MCPApp" in main_cleaned
+
+            # Check YAML file has comments removed (it's renamed to .mcpac.py)
+            config_yaml = temp_project_dir / "config.yaml.mcpac.py"
+            assert config_yaml.exists()
+            config_cleaned = config_yaml.read_text()
+            assert "# Config file" not in config_cleaned
+            assert "# App name" not in config_cleaned
+            assert "DB_PASSWORD=secret123" not in config_cleaned
+            assert "app_name: test-app" in config_cleaned
+            assert "port: 8080" in config_cleaned
+
+            return MagicMock(returncode=0)
+
+        with patch("subprocess.run", side_effect=check_comments_cleaned):
+            # Capture print output to verify info messages
+            with patch("mcp_agent.cli.cloud.commands.deploy.wrangler_wrapper.print_info") as mock_print:
+                wrangler_deploy("test-app", "test-api-key", project_path)
+
+                # Check that cleaning was reported
+                print_calls = [call[0][0] for call in mock_print.call_args_list]
+                assert any("Cleaned comments from" in call and "YAML" in call for call in print_calls)
+                assert any("Cleaned comments from" in call and "Python" in call for call in print_calls)
