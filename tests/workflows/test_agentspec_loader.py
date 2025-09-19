@@ -2,6 +2,13 @@ from textwrap import dedent
 
 import pytest
 
+
+@pytest.fixture(autouse=True)
+def _clear_preload_env(monkeypatch):
+    """Ensure preload env vars don't leak into these tests from earlier modules."""
+    monkeypatch.delenv("MCP_APP_SETTINGS_PRELOAD", raising=False)
+    monkeypatch.delenv("MCP_APP_SETTINGS_PRELOAD_STRICT", raising=False)
+
 from mcp_agent.workflows.factory import (
     AgentSpec,
     load_agent_specs_from_text,
