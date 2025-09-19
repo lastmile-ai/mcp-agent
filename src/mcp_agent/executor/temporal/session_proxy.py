@@ -106,7 +106,7 @@ class SessionProxy(ServerSession):
         return True
 
     async def request(
-        self, method: str, params: Dict[str, Any] | None = None
+            self, method: str, params: Dict[str, Any] | None = None
     ) -> Dict[str, Any]:
         """Send a server->client request and return the client's response.
         The result is a plain JSON-serializable dict.
@@ -117,14 +117,47 @@ class SessionProxy(ServerSession):
 
         if _in_workflow_runtime():
             act = self._context.task_registry.get_activity("mcp_relay_request")
-            return await self._executor.execute(
+
+            execution_info = await self._executor.execute(
                 act,
+                True,  # Use the async APIs with signalling for response
                 exec_id,
                 method,
                 params or {},
             )
+
+            if execution_info.get("error"):
+                return execution_info
+
+            signal_name = execution_info.get("signal_name", "")
+
+            if not signal_name:
+                return {"error": "no_signal_name_returned_from_activity"}
+
+            # Wait for the response via workflow signal
+            info = _twf.info()
+            payload = await self._context.executor.wait_for_signal(  # type: ignore[attr-defined]
+                signal_name,
+                workflow_id=info.workflow_id,
+                run_id=info.run_id,
+                signal_description=f"Waiting for async response to {method}",
+                # Timeout can be controlled by Temporal workflow/activity timeouts
+            )
+
+            pc = _twf.payload_converter()
+            # Support either a Temporal payload wrapper or a plain dict
+            if hasattr(payload, "payload"):
+                return pc.from_payload(payload.payload, dict)
+            if isinstance(payload, dict):
+                return payload
+            return pc.from_payload(payload, dict)
+
+        # Non-workflow (activity/asyncio): direct call and wait for result
         return await self._system_activities.relay_request(
-            exec_id, method, params or {}
+            False,  # Do not use the async APIs, but the synchronous ones instead
+            exec_id,
+            method,
+            params or {},
         )
 
     async def send_notification(
@@ -289,10 +322,10 @@ class SessionProxy(ServerSession):
             raise RuntimeError(f"sampling/createMessage returned invalid result: {e}")
 
     async def elicit(
-        self,
-        message: str,
-        requestedSchema: types.ElicitRequestedSchema,
-        related_request_id: types.RequestId | None = None,
+            self,
+            message: str,
+            requestedSchema: types.ElicitRequestedSchema,
+            related_request_id: types.RequestId | None = None,
     ) -> types.ElicitResult:
         params: Dict[str, Any] = {
             "message": message,
@@ -325,6 +358,6 @@ class _RPC:
         await self._proxy.notify(method, params or {})
 
     async def request(
-        self, method: str, params: Dict[str, Any] | None = None
+            self, method: str, params: Dict[str, Any] | None = None
     ) -> Dict[str, Any]:
         return await self._proxy.request(method, params or {})

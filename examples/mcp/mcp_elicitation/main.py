@@ -15,6 +15,7 @@ app = MCPApp(
 )
 
 
+@app.tool
 async def example_usage():
     async with app.run() as agent_app:
         logger = agent_app.logger

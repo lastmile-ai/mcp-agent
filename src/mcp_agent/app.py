@@ -42,6 +42,7 @@ from mcp_agent.utils.common import unwrap
 from mcp_agent.workflows.llm.llm_selector import ModelSelector
 from mcp_agent.workflows.factory import load_agent_specs_from_dir
 
+
 if TYPE_CHECKING:
     from mcp_agent.agents.agent_spec import AgentSpec
     from mcp_agent.executor.workflow import Workflow
@@ -459,6 +460,7 @@ class MCPApp:
             decorated_cls = workflow_defn_decorator(
                 cls, sandboxed=False, *args, **kwargs
             )
+
             self._workflows[workflow_id] = decorated_cls
             return decorated_cls
         else:
@@ -705,9 +707,9 @@ class MCPApp:
         # decorate the run method with the engine-specific run decorator.
         if engine_type == "temporal":
             try:
-                run_decorator = self._decorator_registry.get_workflow_run_decorator(
+                run_decorator = (self._decorator_registry.get_workflow_run_decorator(
                     engine_type
-                )
+                ))
                 if run_decorator:
                     fn_run = getattr(auto_cls, "run")
                     # Ensure method appears as top-level for Temporal

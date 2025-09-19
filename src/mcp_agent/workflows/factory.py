@@ -72,22 +72,7 @@ def create_llm(
     model: str | ModelPreferences | None = None,
     request_params: RequestParams | None = None,
     context: Context | None = None,
-) -> AugmentedLLM:
-    """
-    Create an Augmented LLM from an agent or agent spec.
-    """
-    agent = (
-        agent if isinstance(agent, Agent) else agent_from_spec(agent, context=context)
-    )
-
-    factory = _llm_factory(
-        provider=provider,
-        model=model,
-        request_params=request_params,
-        context=context,
-    )
-
-    return factory(agent=agent)
+) -> AugmentedLLM: ...
 
 
 @overload
@@ -99,21 +84,45 @@ def create_llm(
     model: str | ModelPreferences | None = None,
     request_params: RequestParams | None = None,
     context: Context | None = None,
+) -> AugmentedLLM: ...
+
+
+def create_llm(
+    agent: Agent | AgentSpec | None = None,
+    agent_name: str | None = None,
+    server_names: List[str] | None = None,
+    instruction: str | None = None,
+    provider: str = "openai",
+    model: str | ModelPreferences | None = None,
+    request_params: RequestParams | None = None,
+    context: Context | None = None,
 ) -> AugmentedLLM:
     """
-    Create an Augmented LLM.
+    Create an Augmented LLM from an agent, agent spec, or agent name.
     """
+    if isinstance(agent_name, str):
+        # Handle the case where first argument is agent_name (string)
+        agent_obj = agent_from_spec(
+            AgentSpec(
+                name=agent_name, instruction=instruction, server_names=server_names or []
+            ),
+            context=context,
+        )
+    elif isinstance(agent, AgentSpec):
+        # Handle AgentSpec case
+        agent_obj = agent_from_spec(agent, context=context)
+    else:
+        # Handle Agent case
+        agent_obj = agent
 
-    agent = agent_from_spec(
-        AgentSpec(
-            name=agent_name, instruction=instruction, server_names=server_names or []
-        ),
+    factory = _llm_factory(
+        provider=provider,
+        model=model,
+        request_params=request_params,
         context=context,
     )
-    factory = _llm_factory(
-        provider=provider, model=model, request_params=request_params, context=context
-    )
-    return factory(agent=agent)
+
+    return factory(agent=agent_obj)
 
 
 async def create_router_llm(
