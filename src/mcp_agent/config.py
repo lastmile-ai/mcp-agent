@@ -777,6 +777,8 @@ def get_settings(config_path: str | None = None, set_global: bool = True) -> Set
         if _settings:
             return _settings
 
+    import yaml  # pylint: disable=C0415
+
     merged_settings = {}
 
     preload_settings = PreloadSettings()
