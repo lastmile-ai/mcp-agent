@@ -341,6 +341,13 @@ class GoogleSettings(BaseSettings, VertexAIMixin):
         ),
     )
 
+    default_model: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "default_model", "GOOGLE_DEFAULT_MODEL", "google__default_model"
+        ),
+    )
+
     model_config = SettingsConfigDict(
         env_prefix="GOOGLE_",
         extra="allow",

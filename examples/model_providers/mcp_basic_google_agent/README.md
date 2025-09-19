@@ -42,7 +42,7 @@ Before running the agent, ensure you have your Gemini Developer API or Vertex AI
 - `vertexai`: Boolean flag to enable VertexAI integration (default: false)
 - `project`: Google Cloud project ID (required if using VertexAI)
 - `location`: Google Cloud location (required if using VertexAI)
-- `default_model`: Defaults to "gemini-2.0-flash" but can be customized in your config
+- `default_model`: Defaults to "gemini-2.5-flash" but can be customized in your config
 
 You can provide these in one of the following ways:
 

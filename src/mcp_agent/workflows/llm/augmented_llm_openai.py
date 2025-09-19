@@ -135,6 +135,10 @@ class OpenAIAugmentedLLM(
         )
 
     @classmethod
+    def get_provider_config(cls, context):
+        return getattr(getattr(context, "config", None), "openai", None)
+
+    @classmethod
     def convert_message_to_message_param(
         cls, message: ChatCompletionMessage, **kwargs
     ) -> ChatCompletionMessageParam:
