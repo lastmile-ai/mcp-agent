@@ -1,4 +1,6 @@
 import os
+import threading
+import warnings
 from unittest.mock import patch, mock_open
 
 from pydantic_yaml import to_yaml_str
