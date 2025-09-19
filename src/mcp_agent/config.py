@@ -790,10 +790,10 @@ def get_settings(config_path: str | None = None, set_global: bool = True) -> Set
             yaml_settings = yaml.safe_load(buf) or {}
 
             # Preload is authoritative: construct from YAML directly (no env overlay)
-            settings = Settings(**yaml_settings)
-            if set_global:
-                _set_and_warn_global_settings(settings)
-            return settings
+            # settings = Settings(**yaml_settings)
+            # if set_global:
+            #     _set_and_warn_global_settings(settings)
+            return Settings(**yaml_settings)
         except Exception as e:
             if preload_settings.preload_strict:
                 raise ValueError(
