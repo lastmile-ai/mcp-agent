@@ -122,10 +122,9 @@ class TestMCPApp:
 
     @pytest.mark.asyncio
     async def test_initialization_with_settings_path(self):
-        """Test initialization with settings path."""
-        app = MCPApp(name="test_app", settings="path/to/settings.yaml")
-
-        assert app._config is not None
+        """Test initialization with an explicit settings path must exist."""
+        with pytest.raises(FileNotFoundError):
+            MCPApp(name="test_app", settings="path/to/settings.yaml")
 
     @pytest.mark.asyncio
     async def test_initialization_with_callbacks(
