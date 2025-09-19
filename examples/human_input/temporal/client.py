@@ -148,7 +148,7 @@ async def main():
                     # Older servers may not support logging capability
                     print("[client] Server does not support logging/setLevel")
 
-                # Call the `book_table` tool defined via `@app.tool`
+                # Call the `greet` tool defined via `@app.tool`
                 run_result = await server.call_tool(
                     "greet",
                     arguments={}

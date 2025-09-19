@@ -69,14 +69,24 @@ This way, the client will prompt for input in the console whenever an upstream r
 The following diagram shows the components involved and the flow of requests and responses.
 
 ```plaintext
+┌──────────┐
+│   LLM    │
+│          │
+└──────────┘
+     ▲
+     │
+     1
+     │
+     ▼
 ┌──────────┐       ┌──────────────┐       ┌──────────────┐       ┌──────────────┐
-│ Temporal │───1──▶│   MCP App    │◀──2──▶│    Client    │◀──3──▶│     User     │
-│  worker  │◀──4───│              │       │              │       │ (via console)│
+│ Temporal │───2──▶│   MCP App    │◀──3──▶│    Client    │◀──4──▶│     User     │
+│  worker  │◀──5───│              │       │              │       │ (via console)│
 └──────────┘       └──────────────┘       └──────────────┘       └──────────────┘
 ```
 
 In the diagram,
-- (1) uses a HTTPS request to tell the MCP App that the workflow wants to make a request,
-- (2) uses the MCP protocol for sending the request to the client and receiving the response,
-- (3) uses a console prompt to get the input from the user, and
-- (4) uses a Temporal signal to send the response back to the workflow.
+- (1) uses the tool calling mechanism to call a system-provided tool for human input,
+- (2) uses a HTTPS request to tell the MCP App that the workflow wants to make a request,
+- (3) uses the MCP protocol for sending the request to the client and receiving the response,
+- (4) uses a console prompt to get the input from the user, and
+- (5) uses a Temporal signal to send the response back to the workflow.
