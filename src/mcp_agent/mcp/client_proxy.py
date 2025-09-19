@@ -148,21 +148,78 @@ async def notify_via_proxy(
     return bool(resp.get("ok", True))
 
 
-async def request_via_proxy(
+async def _request_via_proxy_impl(
     execution_id: str,
     method: str,
     params: Dict[str, Any] | None = None,
     *,
     gateway_url: Optional[str] = None,
     gateway_token: Optional[str] = None,
-) -> Dict[str, Any]:
+    make_async_call: Optional[bool] = None,
+    signal_name: Optional[str] = None,
+) -> Dict[str, Any] | None:
+    """
+    Relay a server->client request via the gateway.
+
+    - If make_async_call is falsy/None: perform synchronous HTTP RPC and return the JSON result.
+    - If make_async_call is True: trigger an async request on the server that will signal the
+      workflow with the result, then return None (the workflow should wait on signal_name).
+    """
     base = _resolve_gateway_url(gateway_url=gateway_url, context_gateway_url=None)
-    url = f"{base}/internal/session/by-run/{quote(execution_id, safe='')}/request"
     headers: Dict[str, str] = {}
     tok = gateway_token or os.environ.get("MCP_GATEWAY_TOKEN")
     if tok:
         headers["X-MCP-Gateway-Token"] = tok
         headers["Authorization"] = f"Bearer {tok}"
+
+    if bool(make_async_call):
+        # Determine workflow_id from Temporal activity context if not provided
+        try:
+            from temporalio import activity as _ta  # type: ignore
+            if _ta.in_activity():
+                wf_id = _ta.info().workflow_id
+            else:
+                wf_id = None
+        except Exception:
+            wf_id = None
+
+        if not wf_id:
+            # Without workflow_id, we cannot route the signal back to the workflow
+            return {"error": "not_in_workflow_or_activity"}
+
+        if not signal_name:
+            return {"error": "missing_signal_name"}
+
+        url = f"{base}/internal/session/by-run/{quote(wf_id, safe='')}/{quote(execution_id, safe='')}/async-request"
+        # Fire-and-forget style: return immediately after enqueuing on server
+        timeout_str = os.environ.get("MCP_GATEWAY_REQUEST_TIMEOUT")
+        if timeout_str is None:
+            timeout = httpx.Timeout(None)
+        else:
+            try:
+                timeout = float(str(timeout_str).strip())
+            except Exception:
+                timeout = httpx.Timeout(None)
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                r = await client.post(
+                    url,
+                    json={
+                        "method": method,
+                        "params": params or {},
+                        "signal_name": signal_name,
+                    },
+                    headers=headers,
+                )
+        except httpx.RequestError:
+            return {"error": "request_failed"}
+        if r.status_code >= 400:
+            return {"error": r.text}
+        # No payload is expected for async path beyond ack
+        return None
+
+    # Synchronous request path
+    url = f"{base}/internal/session/by-run/{quote(execution_id, safe='')}/request"
     # Requests require a response; default to no HTTP timeout.
     # Configure with MCP_GATEWAY_REQUEST_TIMEOUT (seconds). If unset or <= 0, no timeout is applied.
     timeout_str = os.environ.get("MCP_GATEWAY_REQUEST_TIMEOUT")
@@ -192,3 +249,29 @@ async def request_via_proxy(
         return r.json() if r.content else {"error": "invalid_response"}
     except ValueError:
         return {"error": "invalid_response"}
+
+
+# Backward-compatible wrapper accepting positional or keyword args
+async def request_via_proxy(*args, **kwargs) -> Dict[str, Any] | None:
+    """Backward-compatible wrapper for request_via_proxy.
+
+    Supports both positional (execution_id, method, params) and keyword-only usage,
+    and forwards optional async parameters when provided as keywords.
+    """
+    if args:
+        # Extract legacy positional args
+        execution_id = args[0] if len(args) > 0 else kwargs.get("execution_id")
+        method = args[1] if len(args) > 1 else kwargs.get("method")
+        params = args[2] if len(args) > 2 else kwargs.get("params")
+        # Remaining arguments must be passed as keywords (gateway_url, gateway_token, make_async_call, signal_name)
+        return await _request_via_proxy_impl(
+            execution_id=execution_id,
+            method=method,
+            params=params,
+            gateway_url=kwargs.get("gateway_url"),
+            gateway_token=kwargs.get("gateway_token"),
+            make_async_call=kwargs.get("make_async_call"),
+            signal_name=kwargs.get("signal_name"),
+        )
+    # Pure keyword usage
+    return await _request_via_proxy_impl(**kwargs)

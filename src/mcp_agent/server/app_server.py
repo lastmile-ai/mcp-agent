@@ -358,6 +358,25 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                 return None
             return None
 
+        # Helper function for shared authentication across internal endpoints
+        def _check_gateway_auth(request: Request) -> JSONResponse | None:
+            gw_token = os.environ.get("MCP_GATEWAY_TOKEN")
+            if not gw_token:
+                return None
+            bearer = request.headers.get("Authorization", "")
+            bearer_token = (
+                bearer.split(" ", 1)[1]
+                if bearer.lower().startswith("bearer ")
+                else ""
+            )
+            header_tok = request.headers.get("X-MCP-Gateway-Token", "")
+            if not (
+                secrets.compare_digest(header_tok, gw_token)
+                or secrets.compare_digest(bearer_token, gw_token)
+            ):
+                return JSONResponse({"error": "unauthorized"}, status_code=401)
+            return None
+
         @mcp_server.custom_route(
             "/internal/session/by-run/{execution_id}/notify",
             methods=["POST"],
@@ -370,22 +389,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             params = body.get("params") or {}
 
             # Optional shared-secret auth
-            gw_token = os.environ.get("MCP_GATEWAY_TOKEN")
-            if gw_token:
-                bearer = request.headers.get("Authorization", "")
-                bearer_token = (
-                    bearer.split(" ", 1)[1]
-                    if bearer.lower().startswith("bearer ")
-                    else ""
-                )
-                header_tok = request.headers.get("X-MCP-Gateway-Token", "")
-                if not (
-                    secrets.compare_digest(header_tok, gw_token)
-                    or secrets.compare_digest(bearer_token, gw_token)
-                ):
-                    return JSONResponse(
-                        {"ok": False, "error": "unauthorized"}, status_code=401
-                    )
+            auth_err = _check_gateway_auth(request)
+            if auth_err:
+                return auth_err
 
             # Optional idempotency handling
             idempotency_key = params.get("idempotency_key")
@@ -526,6 +532,108 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                     {"ok": False, "error": str(e_mapped)}, status_code=500
                 )
 
+        # Helper functions for handling requests through a session; shared by sync and async endpoints
+        async def _handle_request_via_rpc(
+            session, method: str, params: Dict[str, Any], execution_id: str, log_prefix: str = "request"
+        ) -> Any | None:
+            rpc = getattr(session, "rpc", None)
+            if rpc and hasattr(rpc, "request"):
+                result = await rpc.request(method, params)
+                try:
+                    logger.debug(
+                        f"[{log_prefix}] delivered via session_id={id(session)} (generic '{method}')"
+                    )
+                except Exception:
+                    pass
+                return result
+            return None
+
+        async def _handle_specific_request(
+            session, method: str, params: Dict[str, Any], log_prefix: str = "request"
+        ) -> Any:
+            from mcp.types import (
+                CreateMessageRequest,
+                CreateMessageRequestParams,
+                CreateMessageResult,
+                ElicitRequest,
+                ElicitRequestParams,
+                ElicitResult,
+                ListRootsRequest,
+                ListRootsResult,
+                PingRequest,
+                EmptyResult,
+                ServerRequest,
+            )
+            if method == "sampling/createMessage":
+                req = ServerRequest(
+                    CreateMessageRequest(
+                        method="sampling/createMessage",
+                        params=CreateMessageRequestParams(**params),
+                    )
+                )
+                result = await session.send_request(  # type: ignore[attr-defined]
+                    request=req, result_type=CreateMessageResult
+                )
+                return result.model_dump(by_alias=True, mode="json", exclude_none=True)
+            elif method == "elicitation/create":
+                req = ServerRequest(
+                    ElicitRequest(
+                        method="elicitation/create",
+                        params=ElicitRequestParams(**params),
+                    )
+                )
+                result = await session.send_request(  # type: ignore[attr-defined]
+                    request=req, result_type=ElicitResult
+                )
+                return result.model_dump(by_alias=True, mode="json", exclude_none=True)
+            elif method == "roots/list":
+                req = ServerRequest(ListRootsRequest(method="roots/list"))
+                result = await session.send_request(  # type: ignore[attr-defined]
+                    request=req, result_type=ListRootsResult
+                )
+                return result.model_dump(by_alias=True, mode="json", exclude_none=True)
+            elif method == "ping":
+                req = ServerRequest(PingRequest(method="ping"))
+                result = await session.send_request(  # type: ignore[attr-defined]
+                    request=req, result_type=EmptyResult
+                )
+                return result.model_dump(by_alias=True, mode="json", exclude_none=True)
+            else:
+                raise ValueError(f"unsupported method: {method}")
+
+        async def _try_session_request(
+            session,
+            method: str,
+            params: Dict[str, Any],
+            execution_id: str,
+            *,
+            log_prefix: str = "request",
+            register_session: bool = False,
+        ) -> Any:
+            # Try RPC first
+            result = await _handle_request_via_rpc(
+                session, method, params, execution_id, log_prefix
+            )
+            if result is not None:
+                if register_session:
+                    try:
+                        await _register_session(
+                            run_id=execution_id, execution_id=execution_id, session=session
+                        )
+                    except Exception:
+                        pass
+                return result
+            # Fallback to typed mapping
+            result = await _handle_specific_request(session, method, params, log_prefix)
+            if register_session:
+                try:
+                    await _register_session(
+                        run_id=execution_id, execution_id=execution_id, session=session
+                    )
+                except Exception:
+                    pass
+            return result
+
         @mcp_server.custom_route(
             "/internal/session/by-run/{execution_id}/request",
             methods=["POST"],
@@ -551,6 +659,11 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             method = body.get("method")
             params = body.get("params") or {}
 
+            # Optional shared-secret auth
+            auth_err = _check_gateway_auth(request)
+            if auth_err:
+                return auth_err
+
             # Prefer latest upstream session first
             latest_session = _get_fallback_upstream_session()
             if latest_session is not None:
@@ -558,17 +671,11 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                     rpc = getattr(latest_session, "rpc", None)
                     if rpc and hasattr(rpc, "request"):
                         result = await rpc.request(method, params)
-                        # logger.debug(
-                        #     f"[request] delivered via latest session_id={id(latest_session)} (generic '{method}')"
-                        # )
                         try:
                             await _register_session(
                                 run_id=execution_id,
                                 execution_id=execution_id,
                                 session=latest_session,
-                            )
-                            logger.debug(
-                                f"[request] rebound mapping to latest session_id={id(latest_session)} for execution_id={execution_id}"
                             )
                         except Exception:
                             pass
@@ -744,6 +851,99 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                 except Exception:
                     pass
                 return JSONResponse({"error": str(e)}, status_code=500)
+
+        @mcp_server.custom_route(
+            "/internal/session/by-run/{workflow_id}/{execution_id}/async-request",
+            methods=["POST"],
+            include_in_schema=False,
+        )
+        async def _relay_async_request(request: Request):
+            """Start an async RPC to the connected client and signal the workflow with the result.
+
+            Body: { method: str, params: dict, signal_name: str }
+            Path: workflow_id, execution_id (run_id)
+            """
+            body = await request.json()
+            execution_id = request.path_params.get("execution_id")
+            workflow_id = request.path_params.get("workflow_id")
+            method = body.get("method")
+            params = body.get("params") or {}
+            signal_name = body.get("signal_name")
+
+            # Auth
+            auth_err = _check_gateway_auth(request)
+            if auth_err:
+                return auth_err
+
+            if not signal_name:
+                return JSONResponse({"error": "missing_signal_name"}, status_code=400)
+
+            async def _do_async():
+                result: Dict[str, Any] | None = None
+                error: str | None = None
+                try:
+                    # Try latest session first
+                    latest_session = _get_fallback_upstream_session()
+                    if latest_session is not None:
+                        try:
+                            result = await _try_session_request(
+                                latest_session,
+                                method,
+                                params,
+                                execution_id,
+                                log_prefix="async-request",
+                                register_session=True,
+                            )
+                        except Exception as e_latest:
+                            try:
+                                logger.warning(
+                                    f"[async-request] latest session failed for execution_id={execution_id} method={method}: {e_latest}"
+                                )
+                            except Exception:
+                                pass
+
+                    # Fallback to mapped session
+                    if result is None:
+                        session = await _get_session(execution_id)
+                        if not session:
+                            error = "session_not_available"
+                        else:
+                            try:
+                                result = await _try_session_request(
+                                    session,
+                                    method,
+                                    params,
+                                    execution_id,
+                                    log_prefix="async-request",
+                                    register_session=False,
+                                )
+                            except Exception as e_sess:
+                                error = str(e_sess)
+                except Exception as e:
+                    error = str(e)
+
+                # Signal the workflow with the result or error
+                try:
+                    app = _get_attached_app(mcp_server)
+                    if app and app.context and getattr(app.context, "executor", None):
+                        executor = app.context.executor
+                        client = getattr(executor, "client", None)
+                        if client and workflow_id and execution_id:
+                            handle = client.get_workflow_handle(
+                                workflow_id=workflow_id, run_id=execution_id
+                            )
+                            payload = result if error is None else {"error": error}
+                            await handle.signal(signal_name, payload)
+                except Exception as se:
+                    try:
+                        logger.error(f"[async-request] failed to signal workflow: {se}")
+                    except Exception:
+                        pass
+
+            asyncio.create_task(_do_async())
+            return JSONResponse(
+                {"status": "received", "execution_id": execution_id, "signal_name": signal_name}
+            )
 
         @mcp_server.custom_route(
             "/internal/workflows/log", methods=["POST"], include_in_schema=False

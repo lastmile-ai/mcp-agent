@@ -116,15 +116,35 @@ class SessionProxy(ServerSession):
             return {"error": "missing_execution_id"}
 
         if _in_workflow_runtime():
+            # In workflow context, dispatch an async request and wait for a signal
+            # indicating the response payload. The activity returns a unique signal
+            # name that the server will use to signal the workflow with the result.
+            from temporalio import workflow as _twf  # type: ignore
+
             act = self._context.task_registry.get_activity("mcp_relay_request")
-            return await self._executor.execute(
+            signal_name = await self._executor.execute(
                 act,
+                True,  # make_async_call
                 exec_id,
                 method,
                 params or {},
             )
+
+            # Wait for the response via workflow signal
+            info = _twf.info()
+            payload = await self._context.executor.wait_for_signal(  # type: ignore[attr-defined]
+                signal_name,
+                workflow_id=info.workflow_id,
+                run_id=info.run_id,
+                signal_description=f"Waiting for async response to {method}",
+                # Timeout can be controlled by Temporal workflow/activity timeouts
+            )
+            return payload
         return await self._system_activities.relay_request(
-            exec_id, method, params or {}
+            False,  # synchronous call path
+            exec_id,
+            method,
+            params or {},
         )
 
     async def send_notification(

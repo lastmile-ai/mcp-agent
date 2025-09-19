@@ -1,6 +1,7 @@
 from typing import Any, Dict
 import anyio
 import os
+import uuid
 
 from temporalio import activity
 
@@ -90,11 +91,39 @@ class SystemActivities(ContextDependent):
 
     @activity.defn(name="mcp_relay_request")
     async def relay_request(
-        self, execution_id: str, method: str, params: Dict[str, Any] | None = None
-    ) -> Dict[str, Any]:
+        self,
+        make_async_call: bool,
+        execution_id: str,
+        method: str,
+        params: Dict[str, Any] | None = None,
+    ) -> Any:
+        """
+        Relay a server->client request via the gateway.
+
+        - If make_async_call is False: performs a synchronous RPC and returns the JSON result.
+        - If make_async_call is True: kicks off an async request on the server that will signal
+          the workflow with the result; returns a unique signal_name that the workflow should wait on.
+        """
         gateway_url = getattr(self.context, "gateway_url", None)
         gateway_token = getattr(self.context, "gateway_token", None)
+
+        if make_async_call:
+            # Create a unique signal name for this request
+            signal_name = f"mcp_rpc_{method}_{uuid.uuid4().hex}"
+            await request_via_proxy(
+                make_async_call=True,
+                execution_id=execution_id,
+                method=method,
+                params=params or {},
+                signal_name=signal_name,
+                gateway_url=gateway_url,
+                gateway_token=gateway_token,
+            )
+            return signal_name
+
+        # Synchronous path
         return await request_via_proxy(
+            make_async_call=False,
             execution_id=execution_id,
             method=method,
             params=params or {},
