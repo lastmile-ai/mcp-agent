@@ -32,7 +32,6 @@ def _restore_fileio_after_test():
     if Path.exists is not orig_exists:
         Path.exists = orig_exists
 
-
 _EXAMPLE_SETTINGS = Settings(
     execution_engine="asyncio",
     logger=LoggerSettings(type="file", level="debug"),
