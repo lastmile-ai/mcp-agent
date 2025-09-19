@@ -32,7 +32,7 @@ from mcp_agent.executor.decorator_registry import (
     register_temporal_decorators,
 )
 from mcp_agent.executor.task_registry import ActivityRegistry
-from mcp_agent.executor.workflow_signal import Signal, SignalWaitCallback
+from mcp_agent.executor.workflow_signal import SignalWaitCallback
 from mcp_agent.executor.workflow_task import GlobalWorkflowTaskRegistry
 from mcp_agent.human_input.types import HumanInputCallback
 from mcp_agent.elicitation.types import ElicitationCallback
