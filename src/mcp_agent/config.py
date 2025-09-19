@@ -765,9 +765,10 @@ def get_settings(config_path: str | None = None, set_global: bool = True) -> Set
         return merged
 
     # Only return cached global settings if we're in set_global mode
-    global _settings
-    if set_global and _settings:
-        return _settings
+    if set_global:
+        global _settings
+        if _settings:
+            return _settings
 
     merged_settings = {}
 
@@ -782,10 +783,10 @@ def get_settings(config_path: str | None = None, set_global: bool = True) -> Set
             yaml_settings = yaml.safe_load(buf) or {}
 
             # Preload is authoritative: construct from YAML directly (no env overlay)
-            settings = Settings(**yaml_settings)
-            if set_global:
-                _set_and_warn_global_settings(settings)
-            return settings
+            # settings = Settings(**yaml_settings)
+            # if set_global:
+            #     _set_and_warn_global_settings(settings)
+            return Settings(**yaml_settings)
         except Exception as e:
             if preload_settings.preload_strict:
                 raise ValueError(
