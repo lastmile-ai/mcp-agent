@@ -242,32 +242,60 @@ class MCPAgentPlugin(ClientPlugin, WorkerPlugin):
 
         runner = config.get('workflow_runner')
         if isinstance(runner, SandboxedWorkflowRunner):
+            # Disable most restrictions for MCP Agent workflows
+            # This is necessary because MCP Agent code uses many libraries that aren't workflow-safe by default
             config['workflow_runner'] = replace(
                 runner,
                 restrictions=runner.restrictions.with_passthrough_modules(
-                    # MCP Agent modules
+                    # MCP Agent modules - pass through everything
                     'mcp_agent',
                     'mcp',
                     # AI/ML libraries
                     'openai',
                     'anthropic',
+                    'google',
                     'pydantic',
                     'pydantic_core',
+                    'pydantic_ai',
                     # Logging and tracing
                     'logfire',
                     'rich',
-                    # HTTP client
+                    'logging',
+                    'opentelemetry',
+                    # HTTP clients and networking
                     'httpx',
+                    'httpcore',
                     'aiohttp',
+                    'urllib3',
+                    'requests',
+                    # Async libraries
+                    'asyncio',
+                    'anyio',
+                    'sniffio',
                     # Data processing
                     'attrs',
                     'numpy',
                     'pandas',
-                    # Standard library modules that might be needed
+                    # Threading and concurrency (needed by many libraries)
+                    'threading',
+                    'concurrent',
+                    'multiprocessing',
+                    # Standard library modules
                     'datetime',
                     'json',
                     'typing',
                     'typing_extensions',
+                    'dataclasses',
+                    'functools',
+                    'collections',
+                    're',
+                    'uuid',
+                    'hashlib',
+                    'base64',
+                    'os',
+                    'sys',
+                    'pathlib',
+                    'warnings',
                 ),
             )
 
