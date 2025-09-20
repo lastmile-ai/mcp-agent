@@ -36,7 +36,7 @@ dependencies = [
 
 [project.optional-dependencies]
 temporal = [
-    "temporalio[opentelemetry]>=1.10.0",
+    "temporalio[opentelemetry]>=1.17.0",
 ]
 anthropic = [
     "anthropic>=0.48.0",
