@@ -1,10 +1,6 @@
 from temporalio import workflow
-
-with workflow.unsafe.imports_passed_through():
-    from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
-    from mcp_agent.agents.agent import Agent
-    from mcp_agent.app import MCPApp
-    from main import app
+from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
+from mcp_agent.agents.agent import Agent
 
 
 @workflow.defn

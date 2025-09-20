@@ -1,6 +1,6 @@
 import asyncio
 from temporalio.client import Client
-from temporalio.worker import Worker, UnsandboxedWorkflowRunner
+from temporalio.worker import Worker
 from basic_workflow import BasicWorkflow
 from mcp_agent.temporal import MCPAgentPlugin
 from main import app, settings
@@ -13,7 +13,6 @@ async def main():
             config=settings.temporal, context=running_app.context, app=app
         )
 
-        # Create client without plugin (to avoid duplicate plugin warning)
         client = await Client.connect(
             "localhost:7233",
         )
@@ -22,11 +21,9 @@ async def main():
         # The plugin will be applied to both client and worker through the worker
         worker = Worker(
             client,
-            task_queue="example_queue",  # Match the task queue in client workflow
+            task_queue="example_queue",
             workflows=[BasicWorkflow],
             plugins=[plugin],
-            debug_mode=True,
-            workflow_runner=UnsandboxedWorkflowRunner(),
         )
 
         print("Running worker with MCP Agent plugin...")
