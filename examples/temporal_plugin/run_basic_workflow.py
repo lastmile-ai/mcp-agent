@@ -27,7 +27,7 @@ async def main():
 
         result = await client.execute_workflow(
             BasicWorkflow.run,
-            "Tell me about recursion in programming.",
+            "Print the first 2 paragraphs of https://modelcontextprotocol.io/introduction",
             id=workflow_id,
             task_queue="mcp-agent",
             task_timeout=timedelta(minutes=10),
