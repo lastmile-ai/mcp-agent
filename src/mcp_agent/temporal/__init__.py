@@ -6,7 +6,7 @@ MCP Agent capabilities to their Temporal workflows with a single line of configu
 """
 
 from contextlib import AbstractAsyncContextManager
-from typing import AsyncIterator, Dict, Any, Optional, TYPE_CHECKING
+from typing import AsyncIterator, Optional, TYPE_CHECKING
 import warnings
 
 from temporalio.worker import (
@@ -153,71 +153,39 @@ class MCPAgentPlugin(ClientPlugin, WorkerPlugin):
         """Configure the worker with MCP Agent activities and settings."""
         activities = list(config.get("activities") or [])
 
-        # Initialize system activities if we have context
-        if self.context:
-            # Register system activities (already decorated with @activity.defn)
-            if not self._system_activities:
-                from mcp_agent.executor.temporal.system_activities import SystemActivities
-                self._system_activities = SystemActivities(context=self.context)
-
-            # Add system activities - they're already decorated, just add them directly
-            activities.extend(
-                [
-                    self._system_activities.forward_log,
-                    self._system_activities.request_user_input,
-                    self._system_activities.relay_notify,
-                    self._system_activities.relay_request,
-                ]
-            )
-
-            # Register agent tasks if available
+        # Initialize and register activities if we have context and app
+        if self.context and self.app:
+            # Register agent tasks using app.workflow_task()
             if not self._agent_tasks:
                 from mcp_agent.agents.agent import AgentTasks
                 self._agent_tasks = AgentTasks(context=self.context)
 
-            # Register agent tasks - create wrapper functions for bound methods
-            # since we're in a plugin context, not relying on the app's executor
-            from temporalio import activity
-            import functools
+            self.app.workflow_task()(self._agent_tasks.call_tool_task)
+            self.app.workflow_task()(self._agent_tasks.get_capabilities_task)
+            self.app.workflow_task()(self._agent_tasks.get_prompt_task)
+            self.app.workflow_task()(self._agent_tasks.initialize_aggregator_task)
+            self.app.workflow_task()(self._agent_tasks.list_prompts_task)
+            self.app.workflow_task()(self._agent_tasks.list_tools_task)
+            self.app.workflow_task()(self._agent_tasks.shutdown_aggregator_task)
 
-            # Create wrapper functions for agent tasks (bound methods can't be decorated directly)
-            def make_activity_wrapper(method, name):
-                @functools.wraps(method)
-                async def wrapper(*args, **kwargs):
-                    return await method(*args, **kwargs)
-                return activity.defn(name=name)(wrapper)
+            # Register system activities using app.workflow_task()
+            if not self._system_activities:
+                from mcp_agent.executor.temporal.system_activities import SystemActivities
+                self._system_activities = SystemActivities(context=self.context)
 
-            activities.extend([
-                make_activity_wrapper(self._agent_tasks.call_tool_task, "mcp_agent.call_tool_task"),
-                make_activity_wrapper(self._agent_tasks.get_capabilities_task, "mcp_agent.get_capabilities_task"),
-                make_activity_wrapper(self._agent_tasks.get_prompt_task, "mcp_agent.get_prompt_task"),
-                make_activity_wrapper(self._agent_tasks.initialize_aggregator_task, "mcp_agent.initialize_aggregator_task"),
-                make_activity_wrapper(self._agent_tasks.list_prompts_task, "mcp_agent.list_prompts_task"),
-                make_activity_wrapper(self._agent_tasks.list_tools_task, "mcp_agent.list_tools_task"),
-                make_activity_wrapper(self._agent_tasks.shutdown_aggregator_task, "mcp_agent.shutdown_aggregator_task"),
-            ])
+            self.app.workflow_task(name="mcp_forward_log")(self._system_activities.forward_log)
+            self.app.workflow_task(name="mcp_request_user_input")(self._system_activities.request_user_input)
+            self.app.workflow_task(name="mcp_relay_notify")(self._system_activities.relay_notify)
+            self.app.workflow_task(name="mcp_relay_request")(self._system_activities.relay_request)
 
-            # Auto-discover and register activities from task registry
-            # When using asyncio executor, activities won't be decorated with @activity.defn
-            # So we need to wrap them here for Temporal use
+            # Collect activities from the task registry
             if hasattr(self.context, 'task_registry'):
                 activity_registry = self.context.task_registry
-
                 for name in activity_registry.list_activities():
-                    activity_func = activity_registry.get_activity(name)
-
-                    # Check if already a Temporal activity
-                    if hasattr(activity_func, "__temporal_activity_definition"):
-                        activities.append(activity_func)
-                    else:
-                        # Create wrapper for non-Temporal activities (handles both functions and bound methods)
-                        try:
-                            # Use the same wrapper pattern as agent tasks
-                            wrapped = make_activity_wrapper(activity_func, name)
-                            activities.append(wrapped)
-                        except Exception as e:
-                            # Skip if there are issues
-                            logger.debug(f"Skipping activity {name}: {e}")
+                    activities.append(activity_registry.get_activity(name))
+        
+        else:
+            warnings.warn("No context and app - Activities not registered.")
 
         config["activities"] = activities
 
