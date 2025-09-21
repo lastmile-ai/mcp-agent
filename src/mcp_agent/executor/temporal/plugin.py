@@ -210,6 +210,8 @@ class MCPAgentPlugin(ClientPlugin, WorkerPlugin):
                     "logging",
                     "opentelemetry",
                     "httpx",
+                    "httpcore",
+                    "sniffio",
                     "aiohttp",
                     "attrs",
                     "numpy",
