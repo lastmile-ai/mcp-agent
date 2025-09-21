@@ -4,7 +4,15 @@ $schema: https://raw.githubusercontent.com/lastmile-ai/mcp-agent/refs/heads/main
 
 # Execution engine: asyncio or temporal
 # For temporal mode, see: https://github.com/lastmile-ai/mcp-agent/blob/main/examples/temporal/README.md
-execution_engine: asyncio
+execution_engine: temporal
+
+temporal:
+  host: "localhost:7233" # Default Temporal server address
+  namespace: "default" # Default Temporal namespace
+  task_queue: "mcp-agent" # Task queue for workflows and activities
+  max_concurrent_activities: 10 # Maximum number of concurrent activities
+  rpc_metadata:
+    X-Client-Name: "mcp-agent"
 
 logger:
   transports: [console, file]
