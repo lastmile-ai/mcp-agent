@@ -15,16 +15,12 @@ async def main():
 
         client = await Client.connect(
             "localhost:7233",
+            plugins=[plugin],
         )
 
         # Create worker with plugin - activities will be auto-registered
         # The plugin will be applied to both client and worker through the worker
-        worker = Worker(
-            client,
-            task_queue="example_queue",
-            workflows=[BasicWorkflow],
-            plugins=[plugin],
-        )
+        worker = Worker(client, task_queue="example_queue", workflows=[BasicWorkflow])
 
         print("Running worker with MCP Agent plugin...")
         print("Task queue: example_queue")
