@@ -1,6 +1,6 @@
 import asyncio
 from basic_workflow import BasicWorkflow
-from mcp_agent.temporal import MCPAgentPlugin
+from mcp_agent.executor.temporal.plugin import MCPAgentPlugin
 from temporalio.client import Client
 from uuid import uuid4
 from main import app

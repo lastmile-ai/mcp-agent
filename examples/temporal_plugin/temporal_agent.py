@@ -4,7 +4,7 @@ from temporalio import workflow
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 from mcp_agent.agents.agent import Agent
 from temporalio.client import Client
-from mcp_agent.temporal import MCPAgentPlugin
+from mcp_agent.executor.temporal.plugin import MCPAgentPlugin
 from mcp_agent.app import MCPApp
 from temporalio.worker import Worker
 
