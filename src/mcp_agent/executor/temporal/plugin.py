@@ -204,55 +204,16 @@ class MCPAgentPlugin(ClientPlugin, WorkerPlugin):
             config["workflow_runner"] = replace(
                 runner,
                 restrictions=runner.restrictions.with_passthrough_modules(
-                    # MCP Agent modules - pass through everything
                     "mcp_agent",
                     "mcp",
-                    # AI/ML libraries
-                    "openai",
-                    "anthropic",
-                    "google",
-                    "pydantic",
-                    "pydantic_core",
-                    "pydantic_ai",
-                    # Logging and tracing
-                    "logfire",
                     "rich",
                     "logging",
                     "opentelemetry",
-                    # HTTP clients and networking
                     "httpx",
-                    "httpcore",
                     "aiohttp",
-                    "urllib3",
-                    "requests",
-                    # Async libraries
-                    "asyncio",
-                    "anyio",
-                    "sniffio",
-                    # Data processing
                     "attrs",
                     "numpy",
-                    "pandas",
-                    # Threading and concurrency (needed by many libraries)
-                    "threading",
-                    "concurrent",
-                    "multiprocessing",
-                    # Standard library modules
-                    "datetime",
-                    "json",
-                    "typing",
-                    "typing_extensions",
-                    "dataclasses",
-                    "functools",
-                    "collections",
-                    "re",
-                    "uuid",
-                    "hashlib",
-                    "base64",
-                    "os",
-                    "sys",
-                    "pathlib",
-                    "warnings",
+                    "pydantic",
                 ),
             )
 
