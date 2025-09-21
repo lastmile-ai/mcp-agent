@@ -3,28 +3,28 @@ from temporalio.client import Client
 from temporalio.worker import Worker
 from basic_workflow import BasicWorkflow
 from mcp_agent.temporal import MCPAgentPlugin
-from main import app, settings
+from main import app
 
 
 async def main():
     async with app.run() as running_app:
-        # Create plugin with config and context
-        plugin = MCPAgentPlugin(
-            config=settings.temporal, context=running_app.context, app=app
-        )
+        plugin = MCPAgentPlugin(running_app)
 
+        # The plugin will be applied to both client and worker through the client
         client = await Client.connect(
-            "localhost:7233",
+            running_app.config.temporal.host,
             plugins=[plugin],
         )
 
-        # Create worker with plugin - activities will be auto-registered
-        # The plugin will be applied to both client and worker through the worker
-        worker = Worker(client, task_queue="example_queue", workflows=[BasicWorkflow])
+        worker = Worker(
+            client,
+            task_queue=running_app.config.temporal.task_queue,
+            workflows=[BasicWorkflow],
+        )
 
-        print("Running worker with MCP Agent plugin...")
-        print("Task queue: example_queue")
-        print(f"Namespace: {settings.temporal.namespace}")
+        print("Running worker with mcp-agent plugin...")
+        print(f"Task queue: {running_app.config.temporal.task_queue}")
+        print(f"Namespace: {running_app.config.temporal.namespace}")
 
         await worker.run()
 

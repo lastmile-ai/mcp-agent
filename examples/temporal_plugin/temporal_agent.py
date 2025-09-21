@@ -29,14 +29,10 @@ async def main():
     app = MCPApp(name="mcp_basic_agent")
 
     async with app.run() as running_app:
-        plugin = MCPAgentPlugin(
-            config=running_app.config.temporal,
-            context=running_app.context,
-            app=running_app,
-        )
+        plugin = MCPAgentPlugin(running_app)
 
         client = await Client.connect(
-            "localhost:7233",
+            running_app.config.temporal.host,
             plugins=[plugin],
         )
 
