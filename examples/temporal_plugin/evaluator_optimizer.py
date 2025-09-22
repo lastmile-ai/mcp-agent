@@ -1,5 +1,4 @@
 import asyncio
-import os
 from uuid import uuid4
 from temporalio import workflow
 from mcp_agent.core.context import get_current_context
