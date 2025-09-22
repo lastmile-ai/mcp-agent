@@ -926,7 +926,7 @@ app = MCPApp(name="test-app")
 
 
 def test_wrangler_deploy_secrets_file_exclusion():
-    """Test that mcp_agent.secrets.yaml is excluded from the bundle and not processed as mcpac.py."""
+    """Test that mcp_agent.secrets.yaml and mcp_agent.secrets.yaml.example are excluded from the bundle."""
     with tempfile.TemporaryDirectory() as temp_dir:
         project_path = Path(temp_dir)
 
@@ -943,6 +943,14 @@ db_password: !developer_secret
 """
         secrets_file = project_path / MCP_SECRETS_FILENAME
         secrets_file.write_text(secrets_content)
+
+        # Create secrets example file
+        secrets_example_file = project_path / "mcp_agent.secrets.yaml.example"
+        secrets_example_file.write_text("""
+# Example secrets file
+api_key: your_api_key_here
+db_password: your_password_here
+""")
 
         # Create other YAML files that should be processed
         config_file = project_path / "config.yaml"
@@ -964,6 +972,14 @@ db_password: !developer_secret
             assert not (
                 temp_project_dir / f"{MCP_SECRETS_FILENAME}.mcpac.py"
             ).exists(), "Secrets file should not be processed as .mcpac.py"
+
+            # Secrets example file should NOT exist in temp directory at all
+            assert not (temp_project_dir / "mcp_agent.secrets.yaml.example").exists(), (
+                "Secrets example file should be excluded from temp directory"
+            )
+            assert not (
+                temp_project_dir / "mcp_agent.secrets.yaml.example.mcpac.py"
+            ).exists(), "Secrets example file should not be processed as .mcpac.py"
 
             # Other YAML files should be processed normally
             assert (temp_project_dir / "config.yaml.mcpac.py").exists(), (
@@ -1002,6 +1018,7 @@ db_password: !developer_secret
         assert secrets_file.read_text() == secrets_content, (
             "Secrets file content should be preserved"
         )
+        assert secrets_example_file.exists(), "Secrets example file should still exist"
         assert config_file.exists(), "Config file should still exist"
 
         # No secrets-related mcpac.py files should exist in original directory

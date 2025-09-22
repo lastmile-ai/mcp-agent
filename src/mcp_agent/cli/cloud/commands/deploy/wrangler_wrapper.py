@@ -178,6 +178,7 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
                     "node_modules",
                     "venv",
                     MCP_SECRETS_FILENAME,  # Continue excluding mcp_agent.secrets.yaml
+                    f"{MCP_SECRETS_FILENAME}.example",  # Exclude mcp_agent.secrets.yaml.example
                 }:
                     ignored.add(name)
 
@@ -259,6 +260,7 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
                     "node_modules",
                     "venv",
                     MCP_SECRETS_FILENAME,
+                    f"{MCP_SECRETS_FILENAME}.example",
                 },
             )
             meta_vars.update({"MCP_DEPLOY_WORKSPACE_HASH": bundle_hash})
