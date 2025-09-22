@@ -1047,14 +1047,14 @@ build/
             assert spec is not None
 
             # Test pattern matching with pathspec
-            assert spec.match_file("test.log") == True
-            assert spec.match_file("debug.log") == True
-            assert spec.match_file("node_modules/file.js") == True
-            assert spec.match_file("test.pyc") == True
-            assert spec.match_file("temp/file.txt") == True
-            assert spec.match_file("build/output.js") == True
-            assert spec.match_file("main.py") == False
-            assert spec.match_file("config.yaml") == False
+            assert spec.match_file("test.log")
+            assert spec.match_file("debug.log")
+            assert spec.match_file("node_modules/file.js")
+            assert spec.match_file("test.pyc")
+            assert spec.match_file("temp/file.txt")
+            assert spec.match_file("build/output.js")
+            assert not spec.match_file("main.py")
+            assert not spec.match_file("config.yaml")
 
 
 def test_should_ignore_by_gitignore():
