@@ -6,7 +6,7 @@ from mcp_agent.human_input.types import HumanInputRequest, HumanInputResponse
 from mcp_agent.human_input.elicitation_handler import (
     elicitation_input_callback,
     _create_elicitation_message,
-    _handle_elicitation_response
+    _handle_elicitation_response,
 )
 
 
@@ -23,8 +23,7 @@ class TestElicitationHandler:
     def test_create_elicitation_message_with_description(self):
         """Test message creation with description."""
         request = HumanInputRequest(
-            prompt="Enter your name",
-            description="We need your name for the booking"
+            prompt="Enter your name", description="We need your name for the booking"
         )
         message = _create_elicitation_message(request)
 
@@ -33,10 +32,7 @@ class TestElicitationHandler:
 
     def test_create_elicitation_message_with_timeout(self):
         """Test message creation with timeout."""
-        request = HumanInputRequest(
-            prompt="Enter your name",
-            timeout_seconds=30
-        )
+        request = HumanInputRequest(prompt="Enter your name", timeout_seconds=30)
         message = _create_elicitation_message(request)
 
         assert "Enter your name" in message
@@ -46,10 +42,7 @@ class TestElicitationHandler:
     def test_handle_elicitation_response_accept(self):
         """Test handling accept response."""
         request = HumanInputRequest(prompt="Test", request_id="test-123")
-        result = types.ElicitResult(
-            action="accept",
-            content={"response": "John Doe"}
-        )
+        result = types.ElicitResult(action="accept", content={"response": "John Doe"})
 
         response = _handle_elicitation_response(result, request)
 
@@ -77,7 +70,6 @@ class TestElicitationHandler:
         assert response.request_id == "test-123"
         assert response.response == "cancel"
 
-
     @pytest.mark.asyncio
     async def test_elicitation_input_callback_success(self):
         """Test successful elicitation callback."""
@@ -87,19 +79,19 @@ class TestElicitationHandler:
 
         # Mock the elicit method to return a successful response
         mock_session.elicit.return_value = types.ElicitResult(
-            action="accept",
-            content={"response": "Test response"}
+            action="accept", content={"response": "Test response"}
         )
 
         mock_context.upstream_session = mock_session
 
         # Mock get_current_context() to return our mock context
         with pytest.MonkeyPatch.context() as m:
-            m.setattr("mcp_agent.core.context.get_current_context", lambda: mock_context)
+            m.setattr(
+                "mcp_agent.core.context.get_current_context", lambda: mock_context
+            )
 
             request = HumanInputRequest(
-                prompt="Please enter something",
-                request_id="test-123"
+                prompt="Please enter something", request_id="test-123"
             )
 
             response = await elicitation_input_callback(request)
@@ -132,7 +124,9 @@ class TestElicitationHandler:
         mock_context.upstream_session = None
 
         with pytest.MonkeyPatch.context() as m:
-            m.setattr("mcp_agent.core.context.get_current_context", lambda: mock_context)
+            m.setattr(
+                "mcp_agent.core.context.get_current_context", lambda: mock_context
+            )
 
             request = HumanInputRequest(prompt="Test")
 
@@ -151,7 +145,9 @@ class TestElicitationHandler:
         mock_context.upstream_session = mock_session
 
         with pytest.MonkeyPatch.context() as m:
-            m.setattr("mcp_agent.core.context.get_current_context", lambda: mock_context)
+            m.setattr(
+                "mcp_agent.core.context.get_current_context", lambda: mock_context
+            )
 
             request = HumanInputRequest(prompt="Test")
 

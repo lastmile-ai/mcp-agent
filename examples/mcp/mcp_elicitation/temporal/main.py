@@ -13,10 +13,7 @@ from mcp_agent.executor.workflow import Workflow, WorkflowResult
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = MCPApp(
-    name="elicitation_demo",
-    description="Demo of workflow with elicitation"
-)
+app = MCPApp(name="elicitation_demo", description="Demo of workflow with elicitation")
 
 
 @app.tool()
@@ -61,7 +58,6 @@ async def book_table(date: str, party_size: int, topic: str, app_ctx: Context) -
 
 @app.workflow
 class TestWorkflow(Workflow[str]):
-
     @app.workflow_run
     async def run(self, args: Dict[str, Any]) -> WorkflowResult[str]:
         app_ctx = app.context

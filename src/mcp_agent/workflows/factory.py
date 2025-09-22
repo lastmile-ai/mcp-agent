@@ -104,7 +104,9 @@ def create_llm(
         # Handle the case where first argument is agent_name (string)
         agent_obj = agent_from_spec(
             AgentSpec(
-                name=agent_name, instruction=instruction, server_names=server_names or []
+                name=agent_name,
+                instruction=instruction,
+                server_names=server_names or [],
             ),
             context=context,
         )

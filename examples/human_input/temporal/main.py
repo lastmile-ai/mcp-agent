@@ -6,6 +6,7 @@ This example shows how the new handler enables LLMs to request user input
 when running in Temporal workflows by routing requests through the MCP
 elicitation framework instead of direct console I/O.
 """
+
 import asyncio
 from mcp_agent.app import MCPApp
 from mcp_agent.human_input.elicitation_handler import elicitation_input_callback

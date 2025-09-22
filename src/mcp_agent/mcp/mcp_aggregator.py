@@ -1,9 +1,12 @@
 import asyncio
 from typing import List, Literal, Dict, Optional, TypeVar, TYPE_CHECKING
 
+import anyio.lowlevel
+
 from opentelemetry import trace
 from pydantic import BaseModel
 from mcp.client.session import ClientSession
+from mcp.shared.session import RequestResponder
 from mcp.server.lowlevel.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import (
@@ -18,6 +21,10 @@ from mcp.types import (
     Tool,
     TextContent,
     Resource,
+    ServerNotification,
+    ToolListChangedNotification,
+    PromptListChangedNotification,
+    ResourceListChangedNotification,
 )
 
 from mcp_agent.logging.event_progress import ProgressAction
@@ -147,6 +154,16 @@ class MCPAggregator(ContextDependent):
         self._server_to_resource_map: Dict[str, List[NamespacedResource]] = {}
         self._resource_map_lock = asyncio.Lock()
 
+        # Track message handler registration and refresh state per server
+        self._notification_handler_sessions: Dict[str, ClientSession] = {}
+        self._server_refresh_tasks: Dict[str, asyncio.Task] = {}
+        self._server_refresh_pending: Dict[str, bool] = {}
+        self._capability_list_changed_supported: Dict[str, Dict[str, bool]] = {
+            "tools": {},
+            "prompts": {},
+            "resources": {},
+        }
+
     async def initialize(self, force: bool = False):
         """Initialize the application."""
         tracer = get_tracer(self.context)
@@ -271,6 +288,16 @@ class MCPAggregator(ContextDependent):
             finally:
                 # Always mark as uninitialized regardless of errors
                 self.initialized = False
+
+                if self._server_refresh_tasks:
+                    tasks = list(self._server_refresh_tasks.values())
+                    for task in tasks:
+                        task.cancel()
+                    await asyncio.gather(*tasks, return_exceptions=True)
+                    self._server_refresh_tasks.clear()
+
+                self._server_refresh_pending.clear()
+                self._notification_handler_sessions.clear()
 
     @classmethod
     async def create(
@@ -509,14 +536,28 @@ class MCPAggregator(ContextDependent):
 
             self.initialized = True
 
+    async def _get_persistent_server_connection(self, server_name: str):
+        if not self._persistent_connection_manager:
+            raise RuntimeError(
+                "Persistent connection manager is not available for this aggregator"
+            )
+
+        server_conn = await self._persistent_connection_manager.get_server(
+            server_name, client_session_factory=MCPAgentClientSession
+        )
+
+        session = server_conn.session
+        if session is not None:
+            self._ensure_notification_handler(server_name, session)
+
+        return server_conn
+
     async def get_server(self, server_name: str) -> Optional[ClientSession]:
         """Get a server connection if available."""
 
         if self.connection_persistence:
             try:
-                server_conn = await self._persistent_connection_manager.get_server(
-                    server_name, client_session_factory=MCPAgentClientSession
-                )
+                server_conn = await self._get_persistent_server_connection(server_name)
                 return server_conn.session
             except Exception as e:
                 logger.warning(
@@ -537,6 +578,151 @@ class MCPAggregator(ContextDependent):
             ) as client:
                 return client
 
+    def _ensure_notification_handler(
+        self, server_name: str, session: ClientSession
+    ) -> None:
+        if session is None:
+            return
+
+        existing = self._notification_handler_sessions.get(server_name)
+        if existing is session:
+            return
+
+        original_handler = getattr(session, "_message_handler", None)
+
+        async def downstream_handler(message):
+            if original_handler is not None:
+                try:
+                    await original_handler(message)
+                except Exception as exc:  # pragma: no cover - defensive
+                    logger.warning(
+                        f"Error in original message handler for '{server_name}': {exc}",
+                        exc_info=True,
+                    )
+            else:
+                await anyio.lowlevel.checkpoint()
+
+        async def message_handler(message):
+            try:
+                await self._handle_incoming_server_message(server_name, message)
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning(
+                    f"Error handling notification from server '{server_name}': {exc}",
+                    exc_info=True,
+                )
+
+            await downstream_handler(message)
+
+        # Replace the session's message handler so we can observe notifications
+        setattr(session, "_message_handler", message_handler)
+        self._notification_handler_sessions[server_name] = session
+
+    async def _handle_incoming_server_message(
+        self,
+        server_name: str,
+        message: RequestResponder | ServerNotification | Exception,
+    ) -> None:
+        if isinstance(message, RequestResponder):
+            return
+
+        if isinstance(message, Exception):
+            logger.debug(
+                f"Server '{server_name}' raised exception in message stream: {message}"
+            )
+            return
+
+        if not isinstance(message, ServerNotification):
+            return
+
+        root = message.root
+        method = getattr(root, "method", None)
+
+        capability = None
+        if method == "notifications/tools/list_changed" or isinstance(
+            root, ToolListChangedNotification
+        ):
+            capability = "tools"
+        elif method == "notifications/prompts/list_changed" or isinstance(
+            root, PromptListChangedNotification
+        ):
+            capability = "prompts"
+        elif method == "notifications/resources/list_changed" or isinstance(
+            root, ResourceListChangedNotification
+        ):
+            capability = "resources"
+
+        if capability is None:
+            return
+
+        if not self.connection_persistence:
+            logger.debug(
+                f"Received {capability} list_changed without persistent connections; ignoring",
+                data={"server_name": server_name},
+            )
+            return
+
+        supports = self._capability_list_changed_supported.get(capability, {}).get(
+            server_name
+        )
+        if supports is False:
+            logger.debug(
+                f"Server reported {capability} list_changed but capability not advertised; skipping",
+                data={"server_name": server_name},
+            )
+            return
+
+        self._schedule_server_refresh(server_name)
+
+    def _schedule_server_refresh(self, server_name: str) -> None:
+        existing_task = self._server_refresh_tasks.get(server_name)
+        if existing_task and not existing_task.done():
+            self._server_refresh_pending[server_name] = True
+            return
+
+        self._server_refresh_pending.pop(server_name, None)
+        self._server_refresh_tasks[server_name] = asyncio.create_task(
+            self._refresh_server(server_name)
+        )
+
+    async def _refresh_server(self, server_name: str) -> None:
+        try:
+            await self.load_server(server_name)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                f"Failed to refresh server '{server_name}' after list_changed notification: {exc}",
+                exc_info=True,
+            )
+        finally:
+            if self._server_refresh_pending.pop(server_name, False):
+                self._server_refresh_tasks[server_name] = asyncio.create_task(
+                    self._refresh_server(server_name)
+                )
+            else:
+                self._server_refresh_tasks.pop(server_name, None)
+
+    def _update_capability_support(
+        self, capabilities: ServerCapabilities | dict | None, server_name: str
+    ) -> None:
+        if capabilities is None:
+            for mapping in self._capability_list_changed_supported.values():
+                mapping.pop(server_name, None)
+            return
+
+        def get_capability(cap_name: str):
+            if isinstance(capabilities, dict):
+                return capabilities.get(cap_name)
+            return getattr(capabilities, cap_name, None)
+
+        for cap_name, mapping in self._capability_list_changed_supported.items():
+            cap_obj = get_capability(cap_name)
+            if isinstance(cap_obj, dict):
+                supported = bool(cap_obj.get("listChanged"))
+            else:
+                supported = bool(getattr(cap_obj, "listChanged", False))
+            mapping[server_name] = supported
+
     async def get_capabilities(self, server_name: str):
         """Get server capabilities if available."""
         tracer = get_tracer(self.context)
@@ -548,8 +734,8 @@ class MCPAggregator(ContextDependent):
             span.set_attribute("connection_persistence", self.connection_persistence)
             span.set_attribute("server_name", server_name)
 
-            def _annotate_span_for_capabilities(capabilities: ServerCapabilities):
-                if not self.context.tracing_enabled:
+            def _annotate_span_for_capabilities(capabilities: ServerCapabilities | dict | None):
+                if not self.context.tracing_enabled or capabilities is None:
                     return
 
                 for attr in [
@@ -559,19 +745,22 @@ class MCPAggregator(ContextDependent):
                     "resources",
                     "tools",
                 ]:
-                    value = getattr(capabilities, attr, None)
+                    if isinstance(capabilities, dict):
+                        value = capabilities.get(attr)
+                    else:
+                        value = getattr(capabilities, attr, None)
                     span.set_attribute(
                         f"{server_name}.capabilities.{attr}", value is not None
                     )
 
             if self.connection_persistence:
                 try:
-                    server_conn = await self._persistent_connection_manager.get_server(
-                        server_name, client_session_factory=MCPAgentClientSession
+                    server_conn = await self._get_persistent_server_connection(
+                        server_name
                     )
-                    # TODO: saqadri (FA1) - verify
                     # server_capabilities is a property, not a coroutine
                     res = server_conn.server_capabilities
+                    self._update_capability_support(res, server_name)
                     _annotate_span_for_capabilities(res)
                     return res
                 except Exception as e:
@@ -596,6 +785,7 @@ class MCPAggregator(ContextDependent):
                     try:
                         initialize_result = await session.initialize()
                         res = initialize_result.capabilities
+                        self._update_capability_support(res, server_name)
                         _annotate_span_for_capabilities(res)
                         return res
                     except Exception as e:
@@ -782,9 +972,7 @@ class MCPAggregator(ContextDependent):
                     return ReadResourceResult(contents=[])
 
             if self.connection_persistence:
-                server_conn = await self._persistent_connection_manager.get_server(
-                    server_name, client_session_factory=MCPAgentClientSession
-                )
+                server_conn = await self._get_persistent_server_connection(server_name)
                 res = await try_read_resource(server_conn.session)
                 # TODO: jerron - annotate span for result
                 return res
@@ -912,10 +1100,8 @@ class MCPAggregator(ContextDependent):
                     )
 
             if self.connection_persistence:
-                server_connection = (
-                    await self._persistent_connection_manager.get_server(
-                        server_name, client_session_factory=MCPAgentClientSession
-                    )
+                server_connection = await self._get_persistent_server_connection(
+                    server_name
                 )
                 res = await try_call_tool(server_connection.session)
                 _annotate_span_for_result(res)
@@ -1101,10 +1287,8 @@ class MCPAggregator(ContextDependent):
 
             result: GetPromptResult = GetPromptResult(messages=[])
             if self.connection_persistence:
-                server_connection = (
-                    await self._persistent_connection_manager.get_server(
-                        server_name, client_session_factory=MCPAgentClientSession
-                    )
+                server_connection = await self._get_persistent_server_connection(
+                    server_name
                 )
                 result = await try_get_prompt(server_connection.session)
             else:
@@ -1234,9 +1418,7 @@ class MCPAggregator(ContextDependent):
                 },
             )
 
-            server_conn = await self._persistent_connection_manager.get_server(
-                server_name, client_session_factory=MCPAgentClientSession
-            )
+            server_conn = await self._get_persistent_server_connection(server_name)
 
             logger.info(
                 f"MCP Server initialized for agent '{self.agent_name}'",
@@ -1353,14 +1535,13 @@ class MCPAggregator(ContextDependent):
         resources: List[Resource] = []
 
         if self.connection_persistence:
-            server_connection = await self._persistent_connection_manager.get_server(
-                server_name, client_session_factory=MCPAgentClientSession
+            server_connection = await self._get_persistent_server_connection(
+                server_name
             )
-            tools = await self._fetch_tools(server_connection.session, server_name)
-            prompts = await self._fetch_prompts(server_connection.session, server_name)
-            resources = await self._fetch_resources(
-                server_connection.session, server_name
-            )
+            session = server_connection.session
+            tools = await self._fetch_tools(session, server_name)
+            prompts = await self._fetch_prompts(session, server_name)
+            resources = await self._fetch_resources(session, server_name)
         else:
             async with gen_client(
                 server_name, server_registry=self.context.server_registry
