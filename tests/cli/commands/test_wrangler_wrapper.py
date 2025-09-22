@@ -1217,7 +1217,8 @@ class Helper:
         assert "# Print hello" not in main_content
         assert "import os" in main_content
         assert "def main" in main_content
-        assert 'print("Hello")' in main_content
+        # Check for print statement with either single or double quotes
+        assert "print('Hello')" in main_content or 'print("Hello")' in main_content
 
         helper_content = nested_py.read_text()
         assert "# Helper module" not in helper_content
