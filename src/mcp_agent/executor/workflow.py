@@ -779,28 +779,6 @@ class Workflow(ABC, Generic[T], ContextDependent):
                 # Safe to ignore if called outside workflow sandbox or memo unavailable
                 pass
 
-            # Expose a virtual upstream session (passthrough) bound to this run via activities
-            # This lets any code use context.upstream_session like a real session.
-            try:
-                from mcp_agent.executor.temporal.session_proxy import SessionProxy
-
-                upstream_session = getattr(self.context, "upstream_session", None)
-
-                if upstream_session is None:
-                    self.context.upstream_session = SessionProxy(
-                        executor=self.executor,
-                        context=self.context,
-                    )
-
-                    app = self.context.app
-                    if app:
-                        # Ensure the app's logger is bound to the current context with upstream_session
-                        if app._logger and hasattr(app._logger, "_bound_context"):
-                            app._logger._bound_context = self.context
-            except Exception:
-                # Non-fatal if context is immutable early; will be set after run_id assignment in run_async
-                pass
-
         self._initialized = True
         self.state.updated_at = datetime.now(timezone.utc).timestamp()
 

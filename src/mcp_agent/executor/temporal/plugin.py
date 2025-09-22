@@ -27,6 +27,7 @@ from temporalio.service import ConnectConfig, ServiceClient
 from temporalio.contrib.opentelemetry import TracingInterceptor
 
 from mcp_agent.executor.temporal.interceptor import ContextPropagationInterceptor
+from mcp_agent.executor.temporal.session_proxy import SessionProxy
 from mcp_agent.logging.logger import get_logger
 
 if TYPE_CHECKING:
@@ -72,6 +73,20 @@ class MCPAgentPlugin(ClientPlugin, WorkerPlugin):
         self.context = self.app.context
         self._system_activities = None
         self._agent_tasks = None
+
+        # Expose a virtual upstream session (passthrough) bound to this run via activities
+        # This lets any code use context.upstream_session like a real session.
+        upstream_session = getattr(self.context, "upstream_session", None)
+        if upstream_session is None:
+            self.context.upstream_session = SessionProxy(
+                executor=self.context.executor,
+                context=self.context,
+            )
+            app = self.context.app
+            if app:
+                # Ensure the app's logger is bound to the current context with upstream_session
+                if app._logger and hasattr(app._logger, "_bound_context"):
+                    app._logger._bound_context = self.context
 
     def init_client_plugin(self, next: ClientPlugin) -> None:
         self.next_client_plugin = next
