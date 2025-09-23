@@ -1,5 +1,4 @@
 import asyncio
-import sys
 
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
@@ -27,6 +26,13 @@ if TYPE_CHECKING:
     from temporalio.client import WorkflowHandle
     from mcp_agent.core.context import Context
     from mcp_agent.executor.temporal import TemporalExecutor
+
+try:
+    from temporalio import workflow as temporal_workflow
+    from temporalio.common import RawValue
+except ImportError:  # Temporal not installed or available in this environment
+    temporal_workflow = None  # type: ignore[assignment]
+    RawValue = None  # type: ignore[assignment]
 
 T = TypeVar("T")
 
@@ -424,15 +430,8 @@ class Workflow(ABC, Generic[T], ContextDependent):
             self._logger.error(f"Error cancelling workflow {self._run_id}: {e}")
             return False
 
-    # Add the dynamic signal handler method in the case that the workflow is running under Temporal
-    try:
-        from temporalio import workflow as temporal_workflow
-        from temporalio.common import RawValue
-    except ImportError:  # Temporal not installed or available in this environment
-        temporal_workflow = None  # type: ignore[assignment]
-        RawValue = None  # type: ignore[assignment]
-
     if temporal_workflow is not None:
+
         @temporal_workflow.signal(dynamic=True)
         async def _signal_receiver(self, name: str, args: Sequence[RawValue]):
             """Dynamic signal handler for Temporal workflows."""

@@ -106,7 +106,7 @@ class SessionProxy(ServerSession):
         return True
 
     async def request(
-            self, method: str, params: Dict[str, Any] | None = None
+        self, method: str, params: Dict[str, Any] | None = None
     ) -> Dict[str, Any]:
         """Send a server->client request and return the client's response.
         The result is a plain JSON-serializable dict.
@@ -322,10 +322,10 @@ class SessionProxy(ServerSession):
             raise RuntimeError(f"sampling/createMessage returned invalid result: {e}")
 
     async def elicit(
-            self,
-            message: str,
-            requestedSchema: types.ElicitRequestedSchema,
-            related_request_id: types.RequestId | None = None,
+        self,
+        message: str,
+        requestedSchema: types.ElicitRequestedSchema,
+        related_request_id: types.RequestId | None = None,
     ) -> types.ElicitResult:
         params: Dict[str, Any] = {
             "message": message,
@@ -358,6 +358,6 @@ class _RPC:
         await self._proxy.notify(method, params or {})
 
     async def request(
-            self, method: str, params: Dict[str, Any] | None = None
+        self, method: str, params: Dict[str, Any] | None = None
     ) -> Dict[str, Any]:
         return await self._proxy.request(method, params or {})

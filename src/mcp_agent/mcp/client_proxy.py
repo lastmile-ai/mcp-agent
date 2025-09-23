@@ -8,9 +8,9 @@ from urllib.parse import quote
 
 
 def _resolve_gateway_url(
-        *,
-        gateway_url: Optional[str] = None,
-        context_gateway_url: Optional[str] = None,
+    *,
+    gateway_url: Optional[str] = None,
+    context_gateway_url: Optional[str] = None,
 ) -> str:
     """Resolve the base URL for the MCP gateway.
 
@@ -38,14 +38,14 @@ def _resolve_gateway_url(
 
 
 async def log_via_proxy(
-        execution_id: str,
-        level: str,
-        namespace: str,
-        message: str,
-        data: Dict[str, Any] | None = None,
-        *,
-        gateway_url: Optional[str] = None,
-        gateway_token: Optional[str] = None,
+    execution_id: str,
+    level: str,
+    namespace: str,
+    message: str,
+    data: Dict[str, Any] | None = None,
+    *,
+    gateway_url: Optional[str] = None,
+    gateway_token: Optional[str] = None,
 ) -> bool:
     base = _resolve_gateway_url(gateway_url=gateway_url, context_gateway_url=None)
     url = f"{base}/internal/workflows/log"
@@ -80,12 +80,12 @@ async def log_via_proxy(
 
 
 async def ask_via_proxy(
-        execution_id: str,
-        prompt: str,
-        metadata: Dict[str, Any] | None = None,
-        *,
-        gateway_url: Optional[str] = None,
-        gateway_token: Optional[str] = None,
+    execution_id: str,
+    prompt: str,
+    metadata: Dict[str, Any] | None = None,
+    *,
+    gateway_url: Optional[str] = None,
+    gateway_token: Optional[str] = None,
 ) -> Dict[str, Any]:
     base = _resolve_gateway_url(gateway_url=gateway_url, context_gateway_url=None)
     url = f"{base}/internal/human/prompts"
@@ -117,12 +117,12 @@ async def ask_via_proxy(
 
 
 async def notify_via_proxy(
-        execution_id: str,
-        method: str,
-        params: Dict[str, Any] | None = None,
-        *,
-        gateway_url: Optional[str] = None,
-        gateway_token: Optional[str] = None,
+    execution_id: str,
+    method: str,
+    params: Dict[str, Any] | None = None,
+    *,
+    gateway_url: Optional[str] = None,
+    gateway_token: Optional[str] = None,
 ) -> bool:
     base = _resolve_gateway_url(gateway_url=gateway_url, context_gateway_url=None)
     url = f"{base}/internal/session/by-run/{quote(execution_id, safe='')}/notify"
@@ -150,18 +150,19 @@ async def notify_via_proxy(
 
 
 async def request_via_proxy(
-        make_async_call: bool,
-        execution_id: str,
-        method: str,
-        params: Dict[str, Any] | None = None,
-        *,
-        gateway_url: Optional[str] = None,
-        gateway_token: Optional[str] = None,
+    make_async_call: bool,
+    execution_id: str,
+    method: str,
+    params: Dict[str, Any] | None = None,
+    *,
+    gateway_url: Optional[str] = None,
+    gateway_token: Optional[str] = None,
 ) -> Dict[str, Any]:
     if make_async_call:
         # Make sure we're running in a Temporal workflow context
         try:
             from temporalio import workflow, activity
+
             in_temporal = workflow.in_workflow()
             if in_temporal:
                 workflow_id = workflow.info().workflow_id
@@ -207,9 +208,9 @@ async def request_via_proxy(
                     json={
                         "method": method,
                         "params": params or {},
-                        "signal_name": signal_name
+                        "signal_name": signal_name,
                     },
-                    headers=headers
+                    headers=headers,
                 )
         except httpx.RequestError:
             return {"error": "request_failed"}
@@ -244,7 +245,9 @@ async def request_via_proxy(
                 timeout = timeout_float
             async with httpx.AsyncClient(timeout=timeout) as client:
                 r = await client.post(
-                    url, json={"method": method, "params": params or {}}, headers=headers
+                    url,
+                    json={"method": method, "params": params or {}},
+                    headers=headers,
                 )
         except httpx.RequestError:
             return {"error": "request_failed"}

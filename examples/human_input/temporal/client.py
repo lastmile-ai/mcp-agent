@@ -13,6 +13,7 @@ from mcp import ClientSession
 from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
 from mcp.types import CallToolResult, LoggingMessageNotificationParams
 from mcp_agent.human_input.console_handler import console_input_callback
+
 try:
     from exceptiongroup import ExceptionGroup as _ExceptionGroup  # Python 3.10 backport
 except Exception:  # pragma: no cover
@@ -119,10 +120,10 @@ async def main():
                     return await super()._received_notification(notification)
 
             def make_session(
-                    read_stream: MemoryObjectReceiveStream,
-                    write_stream: MemoryObjectSendStream,
-                    read_timeout_seconds: timedelta | None,
-                    context: Context | None = None,
+                read_stream: MemoryObjectReceiveStream,
+                write_stream: MemoryObjectSendStream,
+                read_timeout_seconds: timedelta | None,
+                context: Context | None = None,
             ) -> ClientSession:
                 return ConsolePrintingClientSession(
                     read_stream=read_stream,
@@ -134,9 +135,9 @@ async def main():
 
             # Connect to the workflow server
             async with gen_client(
-                    "basic_agent_server",
-                    context.server_registry,
-                    client_session_factory=make_session,
+                "basic_agent_server",
+                context.server_registry,
+                client_session_factory=make_session,
             ) as server:
                 # Ask server to send logs at the requested level (default info)
                 level = "info"
@@ -148,25 +149,22 @@ async def main():
                     print("[client] Server does not support logging/setLevel")
 
                 # Call the `greet` tool defined via `@app.tool`
-                run_result = await server.call_tool(
-                    "greet",
-                    arguments={}
-                )
+                run_result = await server.call_tool("greet", arguments={})
                 print(f"[client] Workflow run result: {run_result}")
         except Exception as e:
             # Tolerate benign shutdown races from SSE client (BrokenResourceError within ExceptionGroup)
             if _ExceptionGroup is not None and isinstance(e, _ExceptionGroup):
                 subs = getattr(e, "exceptions", []) or []
                 if (
-                        _BrokenResourceError is not None
-                        and subs
-                        and all(isinstance(se, _BrokenResourceError) for se in subs)
+                    _BrokenResourceError is not None
+                    and subs
+                    and all(isinstance(se, _BrokenResourceError) for se in subs)
                 ):
                     logger.debug("Ignored BrokenResourceError from SSE shutdown")
                 else:
                     raise
             elif _BrokenResourceError is not None and isinstance(
-                    e, _BrokenResourceError
+                e, _BrokenResourceError
             ):
                 logger.debug("Ignored BrokenResourceError from SSE shutdown")
             elif "BrokenResourceError" in str(e):

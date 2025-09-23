@@ -30,15 +30,11 @@ if TYPE_CHECKING:
     from mcp_agent.core.context import Context
 
 
-def _format_sampling_request_for_human(
-        params: CreateMessageRequestParams
-) -> str:
+def _format_sampling_request_for_human(params: CreateMessageRequestParams) -> str:
     """Format sampling request for human review"""
     messages_text = ""
     for i, msg in enumerate(params.messages):
-        content = (
-            msg.content.text if hasattr(msg.content, "text") else str(msg.content)
-        )
+        content = msg.content.text if hasattr(msg.content, "text") else str(msg.content)
         messages_text += f"  Message {i + 1} ({msg.role}): {content[:200]}{'...' if len(content) > 200 else ''}\n"
 
     system_prompt_display = (
@@ -86,9 +82,7 @@ MESSAGES:
 def _format_sampling_response_for_human(result: CreateMessageResult) -> str:
     """Format sampling response for human review"""
     content = (
-        result.content.text
-        if hasattr(result.content, "text")
-        else str(result.content)
+        result.content.text if hasattr(result.content, "text") else str(result.content)
     )
     return f"""RESPONSE DETAILS:
 - Model: {result.model}
@@ -192,7 +186,6 @@ class SamplingHandler(ContextDependent):
                 "LLM has generated a response. Respond 'approve' to send, "
                 "anything else to reject (your input will be recorded as reason)."
                 f"\n\n{response_summary}"
-
             ),
             description="MCP Sampling Response Approval",
             request_id=f"sampling_response_{uuid4()}",

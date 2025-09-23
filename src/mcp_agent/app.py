@@ -707,9 +707,9 @@ class MCPApp:
         # decorate the run method with the engine-specific run decorator.
         if engine_type == "temporal":
             try:
-                run_decorator = (self._decorator_registry.get_workflow_run_decorator(
+                run_decorator = self._decorator_registry.get_workflow_run_decorator(
                     engine_type
-                ))
+                )
                 if run_decorator:
                     fn_run = getattr(auto_cls, "run")
                     # Ensure method appears as top-level for Temporal
