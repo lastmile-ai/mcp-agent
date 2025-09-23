@@ -88,6 +88,9 @@ class MCPAgentPlugin(ClientPlugin, WorkerPlugin):
                 if app._logger and hasattr(app._logger, "_bound_context"):
                     app._logger._bound_context = self.context
 
+        # Register activities with the app so they're available in workflow context
+        self._register_activities()
+
     def init_client_plugin(self, next: ClientPlugin) -> None:
         self.next_client_plugin = next
 
@@ -141,74 +144,78 @@ class MCPAgentPlugin(ClientPlugin, WorkerPlugin):
 
         return await self.next_client_plugin.connect_service_client(config)
 
-    def configure_worker(self, config: WorkerConfig) -> WorkerConfig:
-        """Configure the worker with MCP Agent activities and settings."""
+    def _register_activities(self) -> None:
+        """Register MCP Agent activities."""
+        if not (self.context and self.app):
+            warnings.warn("No context and app - Activities not registered.")
+            return
+
+        # Register agent tasks
+        if not self._agent_tasks:
+            from mcp_agent.agents.agent import AgentTasks
+
+            self._agent_tasks = AgentTasks(context=self.context)
+
+        self.app.workflow_task()(self._agent_tasks.call_tool_task)
+        self.app.workflow_task()(self._agent_tasks.get_capabilities_task)
+        self.app.workflow_task()(self._agent_tasks.get_prompt_task)
+        self.app.workflow_task()(self._agent_tasks.initialize_aggregator_task)
+        self.app.workflow_task()(self._agent_tasks.list_prompts_task)
+        self.app.workflow_task()(self._agent_tasks.list_tools_task)
+        self.app.workflow_task()(self._agent_tasks.shutdown_aggregator_task)
+
+        # Register system activities
+        if not self._system_activities:
+            from mcp_agent.executor.temporal.system_activities import (
+                SystemActivities,
+            )
+
+            self._system_activities = SystemActivities(context=self.context)
+
+        self.app.workflow_task(name="mcp_forward_log")(
+            self._system_activities.forward_log
+        )
+        self.app.workflow_task(name="mcp_request_user_input")(
+            self._system_activities.request_user_input
+        )
+        self.app.workflow_task(name="mcp_relay_notify")(
+            self._system_activities.relay_notify
+        )
+        self.app.workflow_task(name="mcp_relay_request")(
+            self._system_activities.relay_request
+        )
+
+    def _configure_activities(self, config: dict) -> None:
+        """Add registered activities to Worker config.
+
+        This method modifies the config dict in place by adding activities
+        to config["activities"].
+        """
         activities = list(config.get("activities") or [])
 
-        # Initialize and register activities if we have context and app
-        if self.context and self.app:
-            # Register agent tasks using app.workflow_task()
-            if not self._agent_tasks:
-                from mcp_agent.agents.agent import AgentTasks
-
-                self._agent_tasks = AgentTasks(context=self.context)
-
-            self.app.workflow_task()(self._agent_tasks.call_tool_task)
-            self.app.workflow_task()(self._agent_tasks.get_capabilities_task)
-            self.app.workflow_task()(self._agent_tasks.get_prompt_task)
-            self.app.workflow_task()(self._agent_tasks.initialize_aggregator_task)
-            self.app.workflow_task()(self._agent_tasks.list_prompts_task)
-            self.app.workflow_task()(self._agent_tasks.list_tools_task)
-            self.app.workflow_task()(self._agent_tasks.shutdown_aggregator_task)
-
-            # Register system activities using app.workflow_task()
-            if not self._system_activities:
-                from mcp_agent.executor.temporal.system_activities import (
-                    SystemActivities,
-                )
-
-                self._system_activities = SystemActivities(context=self.context)
-
-            self.app.workflow_task(name="mcp_forward_log")(
-                self._system_activities.forward_log
-            )
-            self.app.workflow_task(name="mcp_request_user_input")(
-                self._system_activities.request_user_input
-            )
-            self.app.workflow_task(name="mcp_relay_notify")(
-                self._system_activities.relay_notify
-            )
-            self.app.workflow_task(name="mcp_relay_request")(
-                self._system_activities.relay_request
-            )
-
+        if self.context and hasattr(self.context, "task_registry"):
             # Collect activities from the task registry
-            if hasattr(self.context, "task_registry"):
-                activity_registry = self.context.task_registry
-                for name in activity_registry.list_activities():
-                    activities.append(activity_registry.get_activity(name))
-
-        else:
-            warnings.warn("No context and app - Activities not registered.")
+            activity_registry = self.context.task_registry
+            for name in activity_registry.list_activities():
+                activities.append(activity_registry.get_activity(name))
 
         config["activities"] = activities
 
-        # Add interceptors
-        config["interceptors"] = list(config.get("interceptors") or []) + [
-            ContextPropagationInterceptor()
-        ]
+    def _configure_workflows(self, config: dict) -> None:
+        """Add workflows from app to configuration.
 
-        # Set task queue from config if available
-        if self.temporal_config and self.temporal_config.task_queue:
-            config["task_queue"] = self.temporal_config.task_queue
-
-        # Add workflows from app if available
+        This method modifies the config dict in place.
+        """
         if self.app and hasattr(self.app, "workflows"):
             existing_workflows = list(config.get("workflows") or [])
             existing_workflows.extend(self.app.workflows.values())
             config["workflows"] = existing_workflows
 
-        # Configure workflow sandbox to allow MCP Agent modules
+    def _configure_workflow_runner(self, config: dict) -> None:
+        """Configure workflow sandbox runner with MCP Agent modules.
+
+        This method modifies the config dict in place.
+        """
         from temporalio.worker.workflow_sandbox import SandboxedWorkflowRunner
         from dataclasses import replace
 
@@ -234,6 +241,36 @@ class MCPAgentPlugin(ClientPlugin, WorkerPlugin):
                 ),
             )
 
+    def _configure_interceptors(self, config: dict) -> None:
+        """Configure interceptors for tracing and context propagation.
+
+        This method modifies the config dict in place.
+        """
+        interceptors = list(config.get("interceptors") or [])
+
+        # Add tracing if enabled
+        if self.context and getattr(self.context, "tracing_enabled", False):
+            interceptors.append(TracingInterceptor())
+
+        # Always add context propagation
+        interceptors.append(ContextPropagationInterceptor())
+
+        config["interceptors"] = interceptors
+
+    def configure_worker(self, config: WorkerConfig) -> WorkerConfig:
+        """Configure the worker with MCP Agent activities and settings."""
+        self._configure_activities(config)
+
+        self._configure_workflows(config)
+
+        self._configure_workflow_runner(config)
+
+        self._configure_interceptors(config)
+
+        # Set task queue from config if available (Worker-specific)
+        if self.temporal_config and self.temporal_config.task_queue:
+            config["task_queue"] = self.temporal_config.task_queue
+
         return self.next_worker_plugin.configure_worker(config)
 
     async def run_worker(self, worker: Worker) -> None:
@@ -243,9 +280,17 @@ class MCPAgentPlugin(ClientPlugin, WorkerPlugin):
 
     def configure_replayer(self, config: ReplayerConfig) -> ReplayerConfig:
         """Configure the replayer with MCP Agent settings."""
+        # Configure data converter
         config["data_converter"] = self._get_new_data_converter(
             config.get("data_converter")
         )
+
+        self._configure_workflows(config)
+
+        self._configure_workflow_runner(config)
+
+        self._configure_interceptors(config)
+
         return self.next_worker_plugin.configure_replayer(config)
 
     def run_replayer(
