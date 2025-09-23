@@ -12,8 +12,13 @@ import secrets
 import asyncio
 
 from mcp.server.fastmcp import Context as MCPContext, FastMCP
+from mcp.server.fastmcp.server import AuthSettings
+from mcp.server.auth.middleware.auth_context import (
+    AuthenticatedUser,
+    auth_context_var,
+)
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import HTMLResponse, JSONResponse
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.fastmcp.tools import Tool as FastTool
 
@@ -30,6 +35,9 @@ from mcp_agent.executor.workflow_registry import (
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.logging.logger import LoggingConfig
 from mcp_agent.mcp.mcp_server_registry import ServerRegistry
+from mcp_agent.oauth.identity import OAuthUserIdentity
+from mcp_agent.oauth.callbacks import callback_registry
+from mcp_agent.server.token_verifier import MCPAgentTokenVerifier
 
 if TYPE_CHECKING:
     from mcp_agent.core.context import Context
@@ -178,6 +186,32 @@ def _set_upstream_from_request_ctx_if_available(ctx: MCPContext) -> None:
         # ctx.session property might raise ValueError if context not available
         pass
 
+    # Capture authenticated user information if available
+    identity: OAuthUserIdentity | None = None
+    try:
+        auth_user = auth_context_var.get()
+    except LookupError:
+        auth_user = None
+
+    if isinstance(auth_user, AuthenticatedUser):
+        access_token = getattr(auth_user, "access_token", None)
+        if access_token is not None:
+            # Prefer enriched token instances but fall back to raw data if necessary
+            try:
+                from mcp_agent.oauth.access_token import MCPAccessToken
+
+                if isinstance(access_token, MCPAccessToken):
+                    identity = OAuthUserIdentity.from_access_token(access_token)
+                else:
+                    token_dict = getattr(access_token, "model_dump", None)
+                    if callable(token_dict):
+                        maybe_token = MCPAccessToken.model_validate(
+                            access_token.model_dump()
+                        )
+                        identity = OAuthUserIdentity.from_access_token(maybe_token)
+            except Exception:
+                identity = None
+
     if session is not None:
         app: MCPApp | None = _get_attached_app(ctx.fastmcp)
         if app is not None and getattr(app, "context", None) is not None:
@@ -185,9 +219,15 @@ def _set_upstream_from_request_ctx_if_available(ctx: MCPContext) -> None:
             # Previously captured; no need to keep old value
             # Use direct assignment for Pydantic model
             app.context.upstream_session = session
+            app.context.current_user = identity
             return
         else:
             return
+    else:
+        # Update identity even if we failed to resolve a session
+        app: MCPApp | None = _get_attached_app(ctx.fastmcp)
+        if app is not None and getattr(app, "context", None) is not None:
+            app.context.current_user = identity
 
 
 def _resolve_workflows_and_context(
@@ -322,6 +362,34 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         A configured FastMCP server instance
     """
 
+    auth_settings_config = None
+    try:
+        if app.context and app.context.config:
+            auth_settings_config = app.context.config.authorization
+    except Exception:
+        auth_settings_config = None
+
+    effective_auth_settings: AuthSettings | None = None
+    token_verifier: MCPAgentTokenVerifier | None = None
+    owns_token_verifier = False
+    if auth_settings_config and auth_settings_config.enabled:
+        try:
+            effective_auth_settings = AuthSettings(
+                issuer_url=auth_settings_config.issuer_url,  # type: ignore[arg-type]
+                resource_server_url=auth_settings_config.resource_server_url,  # type: ignore[arg-type]
+                service_documentation_url=auth_settings_config.service_documentation_url,  # type: ignore[arg-type]
+                required_scopes=auth_settings_config.required_scopes or None,
+            )
+            token_verifier = MCPAgentTokenVerifier(auth_settings_config)
+        except Exception as exc:
+            logger.error(
+                "Failed to configure authorization server integration",
+                exc_info=True,
+                data={"error": str(exc)},
+            )
+            effective_auth_settings = None
+            token_verifier = None
+
     # Create a lifespan function specific to this app
     @asynccontextmanager
     async def app_specific_lifespan(mcp: FastMCP) -> AsyncIterator[ServerContext]:
@@ -341,7 +409,11 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             yield server_context
         finally:
             # Don't clean up the MCPApp here - let the caller handle that
-            pass
+            if owns_token_verifier and token_verifier is not None:
+                try:
+                    await token_verifier.aclose()
+                except Exception:
+                    pass
 
     # Helper: install internal HTTP routes (not MCP tools)
     def _install_internal_routes(mcp_server: FastMCP) -> None:
@@ -357,6 +429,41 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             except Exception:
                 return None
             return None
+
+        @mcp_server.custom_route(
+            "/internal/oauth/callback/{flow_id}",
+            methods=["GET", "POST"],
+            include_in_schema=False,
+        )
+        async def _oauth_callback(request: Request):
+            flow_id = request.path_params.get("flow_id")
+            if not flow_id:
+                return JSONResponse({"error": "missing_flow_id"}, status_code=400)
+
+            payload: Dict[str, Any] = {}
+            try:
+                payload.update({k: v for k, v in request.query_params.multi_items()})
+            except Exception:
+                payload.update(dict(request.query_params))
+
+            if request.method.upper() == "POST":
+                content_type = request.headers.get("content-type", "")
+                try:
+                    if "application/json" in content_type:
+                        body_data = await request.json()
+                    else:
+                        form = await request.form()
+                        body_data = {k: v for k, v in form.multi_items()}
+                except Exception:
+                    body_data = {}
+                payload.update(body_data)
+
+            delivered = await callback_registry.deliver(flow_id, payload)
+            if not delivered:
+                return JSONResponse({"error": "unknown_flow"}, status_code=404)
+
+            html = """<!DOCTYPE html><html><body><h3>Authorization complete.</h3><p>You may close this window and return to MCP Agent.</p></body></html>"""
+            return HTMLResponse(html)
 
         @mcp_server.custom_route(
             "/internal/session/by-run/{execution_id}/notify",
@@ -1039,6 +1146,11 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         except Exception:
             pass
     else:
+        if "auth" not in kwargs and effective_auth_settings is not None:
+            kwargs["auth"] = effective_auth_settings
+        if "token_verifier" not in kwargs and token_verifier is not None:
+            kwargs["token_verifier"] = token_verifier
+            owns_token_verifier = True
         mcp = FastMCP(
             name=app.name or "mcp_agent_server",
             # TODO: saqadri (MAC) - create a much more detailed description

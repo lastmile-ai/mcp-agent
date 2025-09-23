@@ -11,7 +11,15 @@ import threading
 import warnings
 
 from httpx import URL
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    AliasChoices,
+    AnyHttpUrl,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,6 +30,79 @@ class MCPServerAuthSettings(BaseModel):
     """Represents authentication configuration for a server."""
 
     api_key: str | None = None
+    oauth: Optional["MCPOAuthClientSettings"] = None
+
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
+
+class MCPAuthorizationServerSettings(BaseModel):
+    """Configuration for exposing the MCP Agent server as an OAuth protected resource."""
+
+    enabled: bool = False
+    issuer_url: AnyHttpUrl | None = None
+    resource_server_url: AnyHttpUrl | None = None
+    service_documentation_url: AnyHttpUrl | None = None
+    required_scopes: List[str] = Field(default_factory=list)
+    jwks_uri: AnyHttpUrl | None = None
+    introspection_endpoint: AnyHttpUrl | None = None
+    introspection_client_id: str | None = None
+    introspection_client_secret: str | None = None
+    token_cache_ttl_seconds: int = Field(300, ge=0)
+
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
+    @model_validator(mode="after")
+    def _validate_required_urls(self) -> "MCPAuthorizationServerSettings":
+        if self.enabled:
+            missing = []
+            if self.issuer_url is None:
+                missing.append("issuer_url")
+            if self.resource_server_url is None:
+                missing.append("resource_server_url")
+            if missing:
+                raise ValueError(
+                    " | ".join(missing) + " must be set when authorization is enabled"
+                )
+        return self
+
+
+class MCPOAuthClientSettings(BaseModel):
+    """Configuration for authenticating to downstream OAuth-protected MCP servers."""
+
+    enabled: bool = False
+    scopes: List[str] = Field(default_factory=list)
+    resource: AnyHttpUrl | None = None
+    authorization_server: AnyHttpUrl | None = None
+    client_id: str | None = None
+    client_secret: str | None = None
+    redirect_uri_options: List[str] = Field(default_factory=list)
+    extra_authorize_params: Dict[str, str] = Field(default_factory=dict)
+    extra_token_params: Dict[str, str] = Field(default_factory=dict)
+    require_pkce: bool = True
+    use_internal_callback: bool = True
+
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
+
+class OAuthTokenStoreSettings(BaseModel):
+    """Settings for OAuth token persistence."""
+
+    backend: Literal["memory", "redis"] = "memory"
+    redis_url: str | None = None
+    redis_prefix: str = "mcp_agent:oauth_tokens"
+    refresh_leeway_seconds: int = Field(60, ge=0)
+
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
+
+class OAuthSettings(BaseModel):
+    """Global OAuth-related settings for MCP Agent."""
+
+    token_store: OAuthTokenStoreSettings = Field(
+        default_factory=OAuthTokenStoreSettings
+    )
+    flow_timeout_seconds: int = Field(300, ge=30)
+    callback_base_url: AnyHttpUrl | None = None
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
@@ -638,6 +719,12 @@ class Settings(BaseSettings):
 
     agents: SubagentSettings | None = SubagentSettings()
     """Settings for defining and loading subagents for the MCP Agent application"""
+
+    authorization: MCPAuthorizationServerSettings | None = None
+    """Settings for exposing this MCP application as an OAuth protected resource"""
+
+    oauth: OAuthSettings | None = Field(default_factory=OAuthSettings)
+    """Global OAuth client configuration (token store, delegated auth defaults)"""
 
     def __eq__(self, other):  # type: ignore[override]
         if not isinstance(other, Settings):

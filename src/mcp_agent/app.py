@@ -3,7 +3,7 @@ import os
 import sys
 import functools
 
-from types import MethodType
+from types import MethodType, FunctionType
 from typing import (
     Any,
     Dict,
@@ -40,6 +40,8 @@ from mcp_agent.server.tool_adapter import validate_tool_schema
 from mcp_agent.tracing.telemetry import get_tracer
 from mcp_agent.utils.common import unwrap
 from mcp_agent.workflows.llm.llm_selector import ModelSelector
+from mcp_agent.oauth.manager import TokenManager
+from mcp_agent.oauth.store import InMemoryTokenStore
 from mcp_agent.workflows.factory import load_agent_specs_from_dir
 
 
@@ -248,6 +250,23 @@ class MCPApp:
 
         # Store a reference to this app instance in the context for easier access
         self._context.app = self
+
+        # Initialize OAuth token management helpers if configured
+        oauth_settings = None
+        try:
+            if self._context.config:
+                oauth_settings = self._context.config.oauth
+        except Exception:
+            oauth_settings = None
+
+        if oauth_settings:
+            token_store = InMemoryTokenStore()
+            token_manager = TokenManager(
+                token_store=token_store,
+                settings=oauth_settings,
+            )
+            self._context.token_store = token_store
+            self._context.token_manager = token_manager
 
         # Provide a safe default bound context for loggers created after init without explicit context
         try:
@@ -556,6 +575,25 @@ class MCPApp:
 
             # Fall back to the original function
             return await fn(*args, **kwargs)
+
+        # Ensure the wrapper shares the original function's globals so that
+        # string annotations (from __future__ import annotations) continue to
+        # resolve against the workflow module rather than mcp_agent.app.
+        original_globals = getattr(fn, "__globals__", None)
+        if original_globals is not None and wrapper.__globals__ is not original_globals:
+            rebuilt_wrapper = FunctionType(
+                wrapper.__code__,
+                original_globals,
+                name=wrapper.__name__,
+                argdefs=wrapper.__defaults__,
+                closure=wrapper.__closure__,
+            )
+            rebuilt_wrapper.__kwdefaults__ = wrapper.__kwdefaults__
+            rebuilt_wrapper.__annotations__ = wrapper.__annotations__
+            rebuilt_wrapper.__dict__.update(wrapper.__dict__)
+            rebuilt_wrapper = functools.update_wrapper(rebuilt_wrapper, fn)
+            rebuilt_wrapper.__wrapped__ = fn
+            wrapper = rebuilt_wrapper
 
         return wrapper
 
