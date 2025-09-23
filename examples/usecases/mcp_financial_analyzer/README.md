@@ -62,12 +62,6 @@ Install requirements specific to this example:
 uv pip install -r requirements.txt
 ```
 
-Install the g-search-mcp server (from https://github.com/jae-jae/g-search-mcp):
-
-```bash
-npm install -g g-search-mcp
-```
-
 ## `2` Set up secrets and environment variables
 
 Copy and configure your secrets:
@@ -187,7 +181,7 @@ Once deployed, your agent will expose the `analyze_stock` tool, which:
 After deployment, you can use the agent through Claude Desktop or MCP Inspector:
 
 ```
-Please analyze Tesla's financial performance and investment outlook.
+Please analyze Meta's financial performance and investment outlook.
 ```
 
 The agent will automatically:
