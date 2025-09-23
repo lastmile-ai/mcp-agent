@@ -9,6 +9,7 @@ from typing import (
     Generic,
     Literal,
     Optional,
+    Sequence,
     TypeVar,
     TYPE_CHECKING,
 )
@@ -424,16 +425,17 @@ class Workflow(ABC, Generic[T], ContextDependent):
             return False
 
     # Add the dynamic signal handler method in the case that the workflow is running under Temporal
-    if "temporalio.workflow" in sys.modules:
-        from temporalio import workflow
+    try:
+        from temporalio import workflow as temporal_workflow
         from temporalio.common import RawValue
-        from typing import Sequence
+    except ImportError:  # Temporal not installed or available in this environment
+        temporal_workflow = None  # type: ignore[assignment]
+        RawValue = None  # type: ignore[assignment]
 
-        @workflow.signal(dynamic=True)
+    if temporal_workflow is not None:
+        @temporal_workflow.signal(dynamic=True)
         async def _signal_receiver(self, name: str, args: Sequence[RawValue]):
             """Dynamic signal handler for Temporal workflows."""
-            from temporalio import workflow
-
             self._logger.debug(f"Dynamic signal received: name={name}, args={args}")
 
             # Extract payload and update mailbox
@@ -450,8 +452,8 @@ class Workflow(ABC, Generic[T], ContextDependent):
                 sig_obj = Signal(
                     name=name,
                     payload=payload,
-                    workflow_id=workflow.info().workflow_id,
-                    run_id=workflow.info().run_id,
+                    workflow_id=temporal_workflow.info().workflow_id,
+                    run_id=temporal_workflow.info().run_id,
                 )
 
                 # Live lookup of handlers (enables callbacks added after attach_to_workflow)
@@ -461,7 +463,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
                     else:
                         cb(sig_obj)
 
-        @workflow.query(name="token_tree")
+        @temporal_workflow.query(name="token_tree")
         def _query_token_tree(self) -> str:
             """Return a best-effort token usage tree string from the workflow process.
 
@@ -481,7 +483,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
             except Exception:
                 return "(no token usage)"
 
-        @workflow.query(name="token_summary")
+        @temporal_workflow.query(name="token_summary")
         def _query_token_summary(self) -> Dict[str, Any]:
             """Return a JSON-serializable token usage summary from the workflow process.
 
