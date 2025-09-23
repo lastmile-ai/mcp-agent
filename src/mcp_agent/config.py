@@ -6,7 +6,7 @@ for the application configuration.
 import sys
 from io import StringIO
 from pathlib import Path
-from typing import Dict, List, Literal, Optional, Set, Union
+from typing import Dict, List, Literal, Optional, Set
 import threading
 import warnings
 
@@ -745,12 +745,12 @@ def _set_and_warn_global_settings(settings: Settings) -> None:
         )
 
 
-def _check_file_exists(file_path: Union[str, Path]) -> bool:
+def _check_file_exists(file_path: (str | Path)) -> bool:
     """Check if a file exists at the given path."""
     return Path(file_path).exists()
 
 
-def _read_file_content(file_path: Union[str, Path]) -> str:
+def _read_file_content(file_path: (str | Path)) -> str:
     """Read and return the contents of a file."""
     with open(file_path, "r", encoding="utf-8") as f:
         return f.read()
