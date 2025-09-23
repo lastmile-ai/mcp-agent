@@ -29,8 +29,8 @@ def print_hello_world():
     print_to_console("Hello, world!")
 
 
-@workflow.defn(sandboxed=False)
-class BasicWorkflow:
+@workflow.defn()
+class RouterWorkflow:
     @workflow.run
     async def run(self) -> str:
         context = get_current_context()
@@ -140,14 +140,14 @@ async def main():
         async with Worker(
             client,
             task_queue=running_app.config.temporal.task_queue,
-            workflows=[BasicWorkflow],
+            workflows=[RouterWorkflow],
         ):
             running_app.context.config.mcp.servers["filesystem"].args.extend(
                 [os.getcwd()]
             )
 
             output = await client.execute_workflow(
-                BasicWorkflow.run,
+                RouterWorkflow.run,
                 id=f"basic-workflow-{uuid4()}",
                 task_queue=running_app.config.temporal.task_queue,
             )

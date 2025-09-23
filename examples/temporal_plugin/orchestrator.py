@@ -16,7 +16,7 @@ app = MCPApp(name="mcp_basic_agent")
 
 
 @workflow.defn
-class BasicWorkflow:
+class OrchestratorWorkflow:
     @workflow.run
     async def run(self, prompt: str) -> str:
         context = get_current_context()
@@ -96,7 +96,7 @@ async def main():
         async with Worker(
             client,
             task_queue=running_app.config.temporal.task_queue,
-            workflows=[BasicWorkflow],
+            workflows=[OrchestratorWorkflow],
         ):
             running_app.context.config.mcp.servers["filesystem"].args.extend(
                 [os.getcwd()]
@@ -109,7 +109,7 @@ async def main():
             Write the graded report to graded_report.md as soon as you complete your task. Don't take too many steps."""
 
             output = await client.execute_workflow(
-                BasicWorkflow.run,
+                OrchestratorWorkflow.run,
                 task,
                 id=f"basic-workflow-{uuid4()}",
                 task_queue=running_app.config.temporal.task_queue,

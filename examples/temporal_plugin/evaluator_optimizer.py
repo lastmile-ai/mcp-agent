@@ -18,7 +18,7 @@ app = MCPApp(name="mcp_basic_agent")
 
 
 @workflow.defn
-class BasicWorkflow:
+class EvaluatorOptimizerWorkflow:
     @workflow.run
     async def run(self, prompt: str) -> str:
         context = get_current_context()
@@ -83,7 +83,7 @@ async def main():
         async with Worker(
             client,
             task_queue=running_app.config.temporal.task_queue,
-            workflows=[BasicWorkflow],
+            workflows=[EvaluatorOptimizerWorkflow],
         ):
             job_posting = (
                 "Software Engineer at LastMile AI. Responsibilities include developing AI systems, "
@@ -103,7 +103,7 @@ async def main():
             task = f"Write a cover letter for the following job posting: {job_posting}\n\nCandidate Details: {candidate_details}\n\nCompany information: {company_information}"
 
             output = await client.execute_workflow(
-                BasicWorkflow.run,
+                EvaluatorOptimizerWorkflow.run,
                 task,
                 id=f"basic-workflow-{uuid4()}",
                 task_queue=running_app.config.temporal.task_queue,

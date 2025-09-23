@@ -37,7 +37,7 @@ app = MCPApp(name="mcp_basic_agent")
 
 
 @workflow.defn
-class BasicWorkflow:
+class ParallelAgentWorkflow:
     @workflow.run
     async def run(self, prompt: str) -> str:
         context = get_current_context()
@@ -97,10 +97,10 @@ async def main():
         async with Worker(
             client,
             task_queue=running_app.config.temporal.task_queue,
-            workflows=[BasicWorkflow],
+            workflows=[ParallelAgentWorkflow],
         ):
             output = await client.execute_workflow(
-                BasicWorkflow.run,
+                ParallelAgentWorkflow.run,
                 args=[SHORT_STORY],
                 id=f"basic-workflow-{uuid4()}",
                 task_queue=running_app.config.temporal.task_queue,
