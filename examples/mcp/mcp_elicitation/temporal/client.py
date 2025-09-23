@@ -123,10 +123,10 @@ async def main():
                     return await super()._received_notification(notification)
 
             def make_session(
-                    read_stream: MemoryObjectReceiveStream,
-                    write_stream: MemoryObjectSendStream,
-                    read_timeout_seconds: timedelta | None,
-                    context: Context | None = None,
+                read_stream: MemoryObjectReceiveStream,
+                write_stream: MemoryObjectSendStream,
+                read_timeout_seconds: timedelta | None,
+                context: Context | None = None,
             ) -> ClientSession:
                 return ConsolePrintingClientSession(
                     read_stream=read_stream,
@@ -138,9 +138,9 @@ async def main():
 
             # Connect to the workflow server
             async with gen_client(
-                    "basic_agent_server",
-                    context.server_registry,
-                    client_session_factory=make_session,
+                "basic_agent_server",
+                context.server_registry,
+                client_session_factory=make_session,
             ) as server:
                 # Ask server to send logs at the requested level (default info)
                 level = "info"
@@ -154,11 +154,7 @@ async def main():
                 # Call the `book_table` tool defined via `@app.tool`
                 run_result = await server.call_tool(
                     "book_table",
-                    arguments={
-                        "date": "today",
-                        "party_size": 2,
-                        "topic": "autumn"
-                    },
+                    arguments={"date": "today", "party_size": 2, "topic": "autumn"},
                 )
                 print(f"[client] Workflow run result: {run_result}")
 
@@ -166,19 +162,17 @@ async def main():
                 run_result = await server.call_tool(
                     "workflows-TestWorkflow-run",
                     arguments={
-                        "run_parameters":{
-                            "args":{
+                        "run_parameters": {
+                            "args": {
                                 "date": "today",
                                 "party_size": 2,
-                                "topic": "autumn"
+                                "topic": "autumn",
                             }
                         }
-                    }
+                    },
                 )
 
-                execution = WorkflowExecution(
-                    **json.loads(run_result.content[0].text)
-                )
+                execution = WorkflowExecution(**json.loads(run_result.content[0].text))
                 run_id = execution.run_id
                 workflow_id = execution.workflow_id
 
@@ -186,10 +180,7 @@ async def main():
                 while True:
                     get_status_result = await server.call_tool(
                         "workflows-get_status",
-                        arguments={
-                            "run_id": run_id,
-                            "workflow_id": workflow_id
-                        },
+                        arguments={"run_id": run_id, "workflow_id": workflow_id},
                     )
 
                     workflow_status = _tool_result_to_json(get_status_result)
@@ -248,15 +239,15 @@ async def main():
             if _ExceptionGroup is not None and isinstance(e, _ExceptionGroup):
                 subs = getattr(e, "exceptions", []) or []
                 if (
-                        _BrokenResourceError is not None
-                        and subs
-                        and all(isinstance(se, _BrokenResourceError) for se in subs)
+                    _BrokenResourceError is not None
+                    and subs
+                    and all(isinstance(se, _BrokenResourceError) for se in subs)
                 ):
                     logger.debug("Ignored BrokenResourceError from SSE shutdown")
                 else:
                     raise
             elif _BrokenResourceError is not None and isinstance(
-                    e, _BrokenResourceError
+                e, _BrokenResourceError
             ):
                 logger.debug("Ignored BrokenResourceError from SSE shutdown")
             elif "BrokenResourceError" in str(e):

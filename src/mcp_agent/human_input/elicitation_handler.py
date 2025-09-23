@@ -17,8 +17,7 @@ def _create_elicitation_message(request: HumanInputRequest) -> str:
 
 
 def _handle_elicitation_response(
-        result: types.ElicitResult,
-        request: HumanInputRequest
+    result: types.ElicitResult, request: HumanInputRequest
 ) -> HumanInputResponse:
     """Convert ElicitResult back to HumanInputResponse."""
     request_id = request.request_id or ""
@@ -31,7 +30,9 @@ def _handle_elicitation_response(
             # Handle slash commands that might be in the response
             response_text = response_text.strip()
             if response_text.lower() in ["/decline", "/cancel"]:
-                return HumanInputResponse(request_id=request_id, response=response_text.lower())
+                return HumanInputResponse(
+                    request_id=request_id, response=response_text.lower()
+                )
 
             return HumanInputResponse(request_id=request_id, response=response_text)
         else:
@@ -58,6 +59,7 @@ async def elicitation_input_callback(request: HumanInputRequest) -> HumanInputRe
     # Try to get the context and session proxy
     try:
         from mcp_agent.core.context import get_current_context
+
         context = get_current_context()
         if context is None:
             raise RuntimeError("No context available for elicitation")
@@ -77,8 +79,8 @@ async def elicitation_input_callback(request: HumanInputRequest) -> HumanInputRe
             data={
                 "request_id": request.request_id,
                 "description": request.description,
-                "timeout_seconds": request.timeout_seconds
-            }
+                "timeout_seconds": request.timeout_seconds,
+            },
         )
 
         # Send the elicitation request
@@ -89,12 +91,12 @@ async def elicitation_input_callback(request: HumanInputRequest) -> HumanInputRe
                 "properties": {
                     "response": {
                         "type": "string",
-                        "description": "The response or input"
+                        "description": "The response or input",
                     }
                 },
-                "required": ["response"]
+                "required": ["response"],
             },
-            related_request_id=request.request_id
+            related_request_id=request.request_id,
         )
 
         # Convert the result back to HumanInputResponse
@@ -105,8 +107,8 @@ async def elicitation_input_callback(request: HumanInputRequest) -> HumanInputRe
             data={
                 "request_id": request.request_id,
                 "action": result.action,
-                "response_length": len(response.response)
-            }
+                "response_length": len(response.response),
+            },
         )
 
         return response
@@ -118,6 +120,6 @@ async def elicitation_input_callback(request: HumanInputRequest) -> HumanInputRe
     except Exception as e:
         logger.error(
             f"Elicitation failed for human input request {request.request_id}",
-            data={"error": str(e)}
+            data={"error": str(e)},
         )
         raise RuntimeError(f"Elicitation failed: {e}") from e
