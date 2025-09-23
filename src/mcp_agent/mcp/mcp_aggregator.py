@@ -734,7 +734,9 @@ class MCPAggregator(ContextDependent):
             span.set_attribute("connection_persistence", self.connection_persistence)
             span.set_attribute("server_name", server_name)
 
-            def _annotate_span_for_capabilities(capabilities: ServerCapabilities | dict | None):
+            def _annotate_span_for_capabilities(
+                capabilities: ServerCapabilities | dict | None,
+            ):
                 if not self.context.tracing_enabled or capabilities is None:
                     return
 
