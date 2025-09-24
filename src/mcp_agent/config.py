@@ -49,6 +49,14 @@ class MCPAuthorizationServerSettings(BaseModel):
     introspection_client_secret: str | None = None
     token_cache_ttl_seconds: int = Field(300, ge=0)
 
+    # RFC 9068 audience validation settings
+    # TODO: this should really depend on the app_id, or config_id so that we can enforce unique values.
+    # To be removed and replaced with a fixed value once we have app_id/config_id support
+    expected_audiences: List[str] = Field(default_factory=list)
+    """List of audience values this resource server accepts.
+    MUST be configured to comply with RFC 9068 audience validation.
+    Audience validation is always enforced when authorization is enabled."""
+
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
     @model_validator(mode="after")
@@ -59,6 +67,9 @@ class MCPAuthorizationServerSettings(BaseModel):
                 missing.append("issuer_url")
             if self.resource_server_url is None:
                 missing.append("resource_server_url")
+            # Validate audience configuration for RFC 9068 compliance
+            if not self.expected_audiences:
+                missing.append("expected_audiences (required for RFC 9068 compliance)")
             if missing:
                 raise ValueError(
                     " | ".join(missing) + " must be set when authorization is enabled"

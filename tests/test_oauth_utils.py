@@ -63,13 +63,14 @@ def test_select_authorization_server_prefers_explicit():
             "https://auth2.example.com",
         ],
     )
+    # URLs get normalized with trailing slashes by pydantic
     assert (
-        select_authorization_server(metadata, "https://auth2.example.com")
-        == "https://auth2.example.com"
+        select_authorization_server(metadata, "https://auth2.example.com/")
+        == "https://auth2.example.com/"
     )
     assert (
         select_authorization_server(metadata, "https://unknown.example.com")
-        == "https://auth1.example.com"
+        == "https://auth1.example.com/"  # Falls back to first, which gets normalized
     )
 
 

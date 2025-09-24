@@ -35,7 +35,7 @@ def select_authorization_server(
     metadata: ProtectedResourceMetadata,
     preferred: str | None = None,
 ) -> str:
-    candidates: List[str] = list(metadata.authorization_servers or [])
+    candidates: List[str] = [str(url) for url in (metadata.authorization_servers or [])]
     if not candidates:
         raise ValueError(
             "Protected resource metadata did not include authorization servers"

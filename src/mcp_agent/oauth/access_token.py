@@ -16,6 +16,7 @@ class MCPAccessToken(AccessToken):
     issuer: str | None = None
     resource_indicator: str | None = None
     claims: Dict[str, Any] | None = None
+    audiences: List[str] | None = None
 
     @classmethod
     def from_introspection(
@@ -39,12 +40,9 @@ class MCPAccessToken(AccessToken):
         else:
             scopes = []
 
-        audience = payload.get("resource") or payload.get("aud")
-        if isinstance(audience, (list, tuple)):
-            audience_value = _first_non_empty(*audience)
-        else:
-            audience_value = audience
-
+        # Enhanced audience extraction for RFC 9068 compliance
+        audiences = _extract_all_audiences(payload)
+        audience_value = audiences[0] if audiences else None
         resource = resource_hint or audience_value
 
         expires_at = payload.get("exp")
@@ -61,6 +59,7 @@ class MCPAccessToken(AccessToken):
             ),
             issuer=payload.get("iss"),
             resource_indicator=resource,
+            audiences=audiences,
             claims=payload,
         )
 
@@ -70,6 +69,38 @@ class MCPAccessToken(AccessToken):
             return False
         now = datetime.now(tz=timezone.utc).timestamp()
         return now >= (self.expires_at - leeway_seconds)
+
+    def validate_audience(self, expected_audiences: List[str]) -> bool:
+        """Validate this token's audience claims against expected values per RFC 9068."""
+        if not self.audiences:
+            return False
+        if not expected_audiences:
+            return False
+
+        return bool(set(expected_audiences).intersection(set(self.audiences)))
+
+
+def _extract_all_audiences(payload: Dict[str, Any]) -> List[str]:
+    """Extract all audience values from token payload per RFC 9068."""
+    audiences = []
+
+    # Extract from 'aud' claim
+    aud_claim = payload.get("aud")
+    if aud_claim:
+        if isinstance(aud_claim, str):
+            audiences.append(aud_claim)
+        elif isinstance(aud_claim, (list, tuple)):
+            audiences.extend([str(aud) for aud in aud_claim if aud])
+
+    # Extract from 'resource' claim (OAuth 2.0 resource indicators)
+    resource_claim = payload.get("resource")
+    if resource_claim:
+        if isinstance(resource_claim, str):
+            audiences.append(resource_claim)
+        elif isinstance(resource_claim, (list, tuple)):
+            audiences.extend([str(res) for res in resource_claim if res])
+
+    return list(set(audiences))  # Remove duplicates
 
 
 def _first_non_empty(*values: Any) -> Any | None:
