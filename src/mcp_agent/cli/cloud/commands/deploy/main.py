@@ -104,15 +104,10 @@ def deploy_config(
         min=1,
         max=10,
     ),
-    ignore: bool = typer.Option(
-        False,
-        "--ignore",
-        help="Use .mcpacignore in CWD to ignore files",
-    ),
     ignore_file: Optional[Path] = typer.Option(
         None,
         "--ignore-file",
-        help="Specify custom ignore file (gitignore syntax)",
+        help="Path to ignore file (gitignore syntax). Defaults to '.mcpacignore' if present.",
         exists=False,
         readable=True,
         dir_okay=False,
@@ -300,11 +295,11 @@ def deploy_config(
         # Determine effective ignore path
         ignore_path: Optional[Path] = None
         if ignore_file is not None:
-            # Explicit custom file always wins
             ignore_path = ignore_file
-        elif ignore:
-            # Default to project config dir's .mcpacignore; only pass it through if present
-            candidate = (config_dir or Path.cwd()) / ".mcpacignore"
+        else:
+            candidate = config_dir / ".mcpacignore"
+            if not candidate.exists():
+                candidate = Path.cwd() / ".mcpacignore"
             ignore_path = candidate if candidate.exists() else None
 
         app = run_async(
