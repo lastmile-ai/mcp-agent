@@ -299,11 +299,13 @@ def deploy_config(
 
         # Determine effective ignore path
         ignore_path: Optional[Path] = None
-        if ignore:
-            # Use .mcpacignore in current working directory unless a custom path is provided
-            ignore_path = ignore_file or Path(".mcpacignore")
-        elif ignore_file is not None:
+        if ignore_file is not None:
+            # Explicit custom file always wins
             ignore_path = ignore_file
+        elif ignore:
+            # Default to project config dir's .mcpacignore; only pass it through if present
+            candidate = (config_dir or Path.cwd()) / ".mcpacignore"
+            ignore_path = candidate if candidate.exists() else None
 
         app = run_async(
             _deploy_with_retry(

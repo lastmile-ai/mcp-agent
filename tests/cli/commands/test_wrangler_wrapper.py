@@ -1137,4 +1137,3 @@ dist/
             wrangler_deploy("test-app", "test-api-key", project_path, project_path / ".mcpacignore")
 
 
-# Comment cleaning tests were removed as the feature is no longer supported.

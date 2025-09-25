@@ -145,63 +145,61 @@ def test_deploy_command_basic(runner, temp_config_dir):
     assert "Transformed secrets file written to" in result.stdout
 
 
-def test_deploy_ignore_uses_default_file(runner, temp_config_dir, monkeypatch):
-    """Bare --ignore uses .mcpacignore in CWD."""
-    # Create a dummy .mcpacignore in CWD by chdir to config dir
-    with monkeypatch.context() as m:
-        m.chdir(temp_config_dir)
-        (temp_config_dir / ".mcpacignore").write_text("*.log\n")
+def test_deploy_ignore_uses_config_dir_default(runner, temp_config_dir):
+    """Bare --ignore uses config_dir/.mcpacignore if present."""
+    default_ignore = temp_config_dir / ".mcpacignore"
+    default_ignore.write_text("*.log\n")
 
-        mock_client = AsyncMock()
-        mock_client.get_app_id_by_name.return_value = None
-        mock_app = MagicMock()
-        mock_app.appId = MOCK_APP_ID
-        mock_client.create_app.return_value = mock_app
+    mock_client = AsyncMock()
+    mock_client.get_app_id_by_name.return_value = None
+    mock_app = MagicMock()
+    mock_app.appId = MOCK_APP_ID
+    mock_client.create_app.return_value = mock_app
 
-        captured = {}
+    captured = {}
 
-        def _capture_wrangler(app_id, api_key, project_dir, ignore_file=None):
-            captured["ignore_file"] = ignore_file
-            return MOCK_APP_ID
+    def _capture_wrangler(app_id, api_key, project_dir, ignore_file=None):
+        captured["ignore_file"] = ignore_file
+        return MOCK_APP_ID
 
-        with (
-            patch(
-                "mcp_agent.cli.cloud.commands.deploy.main.MCPAppClient",
-                return_value=mock_client,
-            ),
-            patch(
-                "mcp_agent.cli.cloud.commands.deploy.main.wrangler_deploy",
-                side_effect=_capture_wrangler,
-            ),
-            patch(
-                "mcp_agent.cli.secrets.processor.process_config_secrets",
-                new_callable=AsyncMock,
-                return_value={
-                    "deployment_secrets": [],
-                    "user_secrets": [],
-                    "reused_secrets": [],
-                    "skipped_secrets": [],
-                },
-            ),
-        ):
-            result = runner.invoke(
-                app,
-                [
-                    "deploy",
-                    MOCK_APP_NAME,
-                    "--config-dir",
-                    str(temp_config_dir),
-                    "--api-url",
-                    "http://test-api.com",
-                    "--api-key",
-                    "test-api-key",
-                    "--non-interactive",
-                    "--ignore",
-                ],
-            )
+    with (
+        patch(
+            "mcp_agent.cli.cloud.commands.deploy.main.MCPAppClient",
+            return_value=mock_client,
+        ),
+        patch(
+            "mcp_agent.cli.cloud.commands.deploy.main.wrangler_deploy",
+            side_effect=_capture_wrangler,
+        ),
+        patch(
+            "mcp_agent.cli.secrets.processor.process_config_secrets",
+            new_callable=AsyncMock,
+            return_value={
+                "deployment_secrets": [],
+                "user_secrets": [],
+                "reused_secrets": [],
+                "skipped_secrets": [],
+            },
+        ),
+    ):
+        result = runner.invoke(
+            app,
+            [
+                "deploy",
+                MOCK_APP_NAME,
+                "--config-dir",
+                str(temp_config_dir),
+                "--api-url",
+                "http://test-api.com",
+                "--api-key",
+                "test-api-key",
+                "--non-interactive",
+                "--ignore",
+            ],
+        )
 
-        assert result.exit_code == 0, result.stdout
-        assert captured.get("ignore_file") == Path(".mcpacignore")
+    assert result.exit_code == 0, result.stdout
+    assert captured.get("ignore_file") == default_ignore.resolve()
 
 
 def test_deploy_ignore_file_custom(runner, temp_config_dir):
