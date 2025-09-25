@@ -104,6 +104,20 @@ def deploy_config(
         min=1,
         max=10,
     ),
+    ignore: Optional[Path] = typer.Option(
+        None,
+        "--ignore",
+        help=(
+            "Ignore files using gitignore syntax. Bare --ignore uses .mcpacignore in CWD; "
+            "use --ignore=<path> to specify a custom file."
+        ),
+        flag_value=Path(".mcpacignore"),
+        exists=False,
+        readable=True,
+        dir_okay=False,
+        file_okay=True,
+        resolve_path=True,
+    ),
 ) -> str:
     """Deploy an MCP agent using the specified configuration.
 
@@ -289,6 +303,7 @@ def deploy_config(
                 project_dir=config_dir,
                 mcp_app_client=mcp_app_client,
                 retry_count=retry_count,
+                ignore=ignore,
             )
         )
 
@@ -317,6 +332,7 @@ async def _deploy_with_retry(
     project_dir: Path,
     mcp_app_client: MCPAppClient,
     retry_count: int,
+    ignore: Optional[Path],
 ):
     """Execute the deployment operations with retry logic.
 
@@ -336,6 +352,7 @@ async def _deploy_with_retry(
             app_id=app_id,
             api_key=api_key,
             project_dir=project_dir,
+            ignore_file=ignore,
         )
     except Exception as e:
         raise CLIError(f"Bundling failed: {str(e)}") from e

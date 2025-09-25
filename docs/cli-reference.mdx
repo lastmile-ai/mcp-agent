@@ -251,6 +251,7 @@ mcp-agent deploy <APP_NAME> [OPTIONS]
 | `--dry-run` | Validate without deploying | `false` |
 | `--api-url` | API base URL | `https://deployments.mcp-agent.com` |
 | `--api-key` | API key | From env or config |
+| `--ignore[=<path>]` | Ignore files using gitignore syntax. Bare `--ignore` uses `.mcpacignore` in CWD; use `--ignore=<path>` for a custom file. | Not used |
 
 **Examples:**
 ```bash
@@ -264,6 +265,12 @@ mcp-agent deploy my-agent \
 
 # Dry run
 mcp-agent deploy my-agent --dry-run
+
+# Use an ignore file (default name)
+mcp-agent deploy my-agent --ignore
+
+# Use a custom ignore file
+mcp-agent deploy my-agent --ignore=.deployignore
 ```
 
 ### mcp-agent cloud configure
