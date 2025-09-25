@@ -37,6 +37,7 @@ from mcp_agent.logging.logger import LoggingConfig
 from mcp_agent.mcp.mcp_server_registry import ServerRegistry
 from mcp_agent.oauth.identity import OAuthUserIdentity
 from mcp_agent.oauth.callbacks import callback_registry
+from mcp_agent.oauth.manager import create_default_user_for_preconfigured_tokens
 from mcp_agent.server.token_verifier import MCPAgentTokenVerifier
 
 if TYPE_CHECKING:
@@ -1492,6 +1493,157 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             )
 
         return result
+
+    @mcp.tool(name="workflows-pre-auth")
+    async def workflow_pre_auth(
+        ctx: MCPContext, workflow_name: str, tokens: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Pre-authorize OAuth tokens for a workflow to use with MCP servers.
+
+        Stores OAuth tokens that the workflow can use when connecting to various MCP servers.
+        This allows workflows to authenticate with external services without requiring
+        interactive OAuth flows during execution.
+
+        Args:
+            workflow_name: The name of the workflow that will use these tokens.
+            tokens: List of OAuth token objects, each containing:
+                - access_token (str): The OAuth access token
+                - refresh_token (str, optional): The OAuth refresh token
+                - server_name (str): Name/identifier of the MCP server
+                - scopes (List[str], optional): List of OAuth scopes
+                - expires_at (float, optional): Token expiration timestamp
+                - authorization_server (str, optional): Authorization server URL
+
+        Returns:
+            Dictionary with success status and count of stored tokens.
+        """
+        # Ensure upstream session is available for any logs
+        try:
+            _set_upstream_from_request_ctx_if_available(ctx)
+        except Exception:
+            pass
+
+        workflows_dict, app_context = _resolve_workflows_and_context(ctx)
+        if not workflows_dict or not app_context:
+            raise ToolError("Server context not available for MCPApp Server.")
+
+        if workflow_name not in workflows_dict:
+            raise ToolError(f"Workflow '{workflow_name}' not found.")
+
+        if not app_context.token_store:
+            raise ToolError("Token storage not available.")
+
+        if not tokens:
+            raise ToolError("At least one token must be provided.")
+
+        stored_count = 0
+        errors = []
+
+        try:
+            for i, token_data in enumerate(tokens):
+                try:
+                    # Validate required fields
+                    if not isinstance(token_data, dict):
+                        errors.append(f"Token {i}: must be a dictionary")
+                        continue
+
+                    access_token = token_data.get("access_token")
+                    server_name = token_data.get("server_name")
+
+                    if not access_token:
+                        errors.append(
+                            f"Token {i}: missing required 'access_token' field"
+                        )
+                        continue
+
+                    if not server_name:
+                        errors.append(
+                            f"Token {i}: missing required 'server_name' field"
+                        )
+                        continue
+
+                    # Create TokenRecord
+                    from mcp_agent.oauth.records import TokenRecord
+                    from mcp_agent.oauth.store.base import (
+                        TokenStoreKey,
+                        scope_fingerprint,
+                    )
+
+                    scopes = token_data.get("scopes", [])
+                    if isinstance(scopes, str):
+                        scopes = [scopes]
+                    elif not isinstance(scopes, list):
+                        scopes = []
+
+                    token_record = TokenRecord(
+                        access_token=access_token,
+                        refresh_token=token_data.get("refresh_token"),
+                        scopes=tuple(scopes),
+                        expires_at=token_data.get("expires_at"),
+                        token_type=token_data.get("token_type", "Bearer"),
+                        resource=server_name,
+                        authorization_server=token_data.get("authorization_server"),
+                        metadata={"workflow_name": workflow_name},
+                    )
+
+                    # Ensure we have a user context for token storage
+                    if not app_context.current_user:
+                        # Create synthetic user if none exists
+                        synthetic_user = create_default_user_for_preconfigured_tokens()
+                        app_context.current_user = synthetic_user
+                        logger.info(f"Created synthetic user for workflow pre-auth: {synthetic_user.cache_key}")
+
+                    # Create storage key using current user
+                    store_key = TokenStoreKey(
+                        user_key=app_context.current_user.cache_key,
+                        resource=server_name,
+                        authorization_server=token_data.get("authorization_server"),
+                        scope_fingerprint=scope_fingerprint(scopes),
+                    )
+
+                    # Store the token
+                    await app_context.token_store.set(store_key, token_record)
+                    stored_count += 1
+
+                    logger.info(
+                        f"Stored OAuth token for workflow '{workflow_name}' and server '{server_name}'"
+                    )
+
+                except Exception as e:
+                    errors.append(f"Token {i}: {str(e)}")
+                    logger.error(
+                        f"Error storing token {i} for workflow '{workflow_name}': {e}"
+                    )
+
+            if errors and stored_count == 0:
+                raise ToolError(
+                    f"Failed to store any tokens. Errors: {'; '.join(errors)}"
+                )
+
+            result = {
+                "success": True,
+                "workflow_name": workflow_name,
+                "stored_tokens": stored_count,
+                "total_tokens": len(tokens),
+            }
+
+            if errors:
+                result["errors"] = errors
+                result["partial_success"] = True
+
+            logger.info(
+                f"Pre-authorization completed for workflow '{workflow_name}': "
+                f"{stored_count}/{len(tokens)} tokens stored"
+            )
+
+            return result
+
+        except Exception as e:
+            logger.error(
+                f"Error in workflow pre-authorization for '{workflow_name}': {e}"
+            )
+            raise ToolError(f"Failed to store tokens: {str(e)}")
 
     # endregion
 

@@ -86,6 +86,11 @@ class MCPOAuthClientSettings(BaseModel):
     authorization_server: AnyHttpUrl | None = None
     client_id: str | None = None
     client_secret: str | None = None
+    # Support for pre-configured access tokens (bypasses OAuth flow)
+    access_token: str | None = None
+    refresh_token: str | None = None
+    expires_at: float | None = None
+    token_type: str = "Bearer"
     redirect_uri_options: List[str] = Field(default_factory=list)
     extra_authorize_params: Dict[str, str] = Field(default_factory=dict)
     extra_token_params: Dict[str, str] = Field(default_factory=dict)

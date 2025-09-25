@@ -260,6 +260,7 @@ class MCPApp:
             oauth_settings = None
 
         if oauth_settings:
+            self.logger.debug("Initializing OAuth token management")
             token_store = InMemoryTokenStore()
             token_manager = TokenManager(
                 token_store=token_store,
@@ -267,6 +268,11 @@ class MCPApp:
             )
             self._context.token_store = token_store
             self._context.token_manager = token_manager
+
+            # Check for pre-configured tokens and store them with synthetic users
+            await self._initialize_preconfigured_tokens(token_manager)
+        else:
+            self.logger.debug("No OAuth settings found, skipping OAuth initialization")
 
         # Provide a safe default bound context for loggers created after init without explicit context
         try:
@@ -344,6 +350,44 @@ class MCPApp:
                 "session_id": self.session_id,
             },
         )
+
+    async def _initialize_preconfigured_tokens(self, token_manager):
+        """Check for pre-configured OAuth tokens and store them with a single synthetic user."""
+
+        mcp_config = getattr(self._context.config, 'mcp', None)
+        if not mcp_config or not getattr(mcp_config, 'servers', None):
+            self.logger.debug("No MCP servers found in config, skipping token initialization")
+            return
+
+        servers = mcp_config.servers
+        self.logger.debug(f"Found MCP servers in config: {list(servers.keys())}")
+
+        servers_with_tokens = []
+
+        # First pass: check which servers have pre-configured tokens
+        for server_name, server_config in servers.items():
+            if not hasattr(server_config, 'auth') or not server_config.auth:
+                self.logger.debug(f"Server '{server_name}' has no auth config, skipping")
+                continue
+
+            oauth_config = getattr(server_config.auth, 'oauth', None)
+
+            if not oauth_config or not oauth_config.enabled or not oauth_config.access_token:
+                continue
+
+            self.logger.debug(f"Server '{server_name}' has pre-configured OAuth token")
+            servers_with_tokens.append((server_name, server_config))
+
+        # If we have any servers with pre-configured tokens, create a single synthetic user
+        if servers_with_tokens:
+            synthetic_user = token_manager.create_default_user_for_preconfigured_tokens()
+            self._context.current_user = synthetic_user
+            self.logger.info(f"Created synthetic user for pre-configured OAuth tokens: {synthetic_user.cache_key}")
+
+            # Second pass: store all tokens using the same synthetic user
+            for server_name, server_config in servers_with_tokens:
+                self.logger.info(f"Storing pre-configured OAuth token for server: {server_name}")
+                await token_manager.store_preconfigured_token(server_name, server_config, synthetic_user)
 
     async def get_token_node(self):
         """Return the root app token node, if available."""

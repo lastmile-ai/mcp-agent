@@ -30,16 +30,18 @@ class OAuthHttpxAuth(httpx.Auth):
         self._scopes = list(scopes) if scopes is not None else None
 
     async def async_auth_flow(self, request: httpx.Request):
-        token_record = await self._token_manager.ensure_access_token(
-            context=self._context,
-            server_name=self._server_name,
-            server_config=self._server_config,
-            scopes=self._scopes,
-        )
+        try:
+            token_record = await self._token_manager.ensure_access_token(
+                context=self._context,
+                server_name=self._server_name,
+                server_config=self._server_config,
+                scopes=self._scopes,
+            )
+        except Exception as e:
+            raise
         request.headers["Authorization"] = (
             f"{token_record.token_type} {token_record.access_token}"
         )
-        retry_request = request.copy()
         response = yield request
 
         if response.status_code != 401:
@@ -61,6 +63,14 @@ class OAuthHttpxAuth(httpx.Auth):
             server_name=self._server_name,
             server_config=self._server_config,
             scopes=self._scopes,
+        )
+
+        # Create a new request with the refreshed token
+        retry_request = httpx.Request(
+            method=request.method,
+            url=request.url,
+            headers=request.headers.copy(),
+            content=request.content,
         )
         retry_request.headers["Authorization"] = (
             f"{refreshed_record.token_type} {refreshed_record.access_token}"
