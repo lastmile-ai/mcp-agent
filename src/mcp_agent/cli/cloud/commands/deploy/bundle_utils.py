@@ -62,7 +62,8 @@ def should_ignore_by_gitignore(
         full_path = current_path / name
         try:
             rel_path = full_path.relative_to(project_dir)
-            rel_path_str = str(rel_path)
+            # Normalize to POSIX separators so patterns work cross-platform (Windows too)
+            rel_path_str = rel_path.as_posix()
 
             # Match files exactly; for directories also try with a trailing slash
             # to respect patterns like `build/`.

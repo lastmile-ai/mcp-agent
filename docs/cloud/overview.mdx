@@ -24,7 +24,7 @@ description: "[In beta] Deploy and manage AI agents as MCP servers"
 
 <Note>When packaging your mcp-agent app for the cloud, our CLI will be searching for `main.py`. The entire directory will be deployed, so you can reference other files and upload other assets.</Note>
 
-<Note>You can optionally exclude files from the bundle using an ignore file with gitignore syntax. Use `--ignore` to look for `.mcpacignore` in your project directory, or `--ignore=<path>` to specify a different file.</Note>
+<Note>You can optionally exclude files from the bundle using an ignore file (gitignore syntax). Use `--ignore` to look for `.mcpacignore` in your project directory, or `--ignore-file <path>` to specify a different file. `--ignore-file` can be used on its own and takes precedence if both are provided.</Note>
 
 2. Make sure you have either a `pyproject.toml` or a `requirements.txt` file in your app directory.
 

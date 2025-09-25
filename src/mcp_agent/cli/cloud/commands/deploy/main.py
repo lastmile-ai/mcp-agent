@@ -104,14 +104,15 @@ def deploy_config(
         min=1,
         max=10,
     ),
-    ignore: Optional[Path] = typer.Option(
-        None,
+    ignore: bool = typer.Option(
+        False,
         "--ignore",
-        help=(
-            "Ignore files using gitignore syntax. Bare --ignore uses .mcpacignore in CWD; "
-            "use --ignore=<path> to specify a custom file."
-        ),
-        flag_value=Path(".mcpacignore"),
+        help="Use .mcpacignore in CWD to ignore files",
+    ),
+    ignore_file: Optional[Path] = typer.Option(
+        None,
+        "--ignore-file",
+        help="Specify custom ignore file (gitignore syntax)",
         exists=False,
         readable=True,
         dir_okay=False,
@@ -296,6 +297,14 @@ def deploy_config(
             else:
                 print_info("Skipping git tag (not a git repository)")
 
+        # Determine effective ignore path
+        ignore_path: Optional[Path] = None
+        if ignore:
+            # Use .mcpacignore in current working directory unless a custom path is provided
+            ignore_path = ignore_file or Path(".mcpacignore")
+        elif ignore_file is not None:
+            ignore_path = ignore_file
+
         app = run_async(
             _deploy_with_retry(
                 app_id=app_id,
@@ -303,7 +312,7 @@ def deploy_config(
                 project_dir=config_dir,
                 mcp_app_client=mcp_app_client,
                 retry_count=retry_count,
-                ignore=ignore,
+                ignore=ignore_path,
             )
         )
 
