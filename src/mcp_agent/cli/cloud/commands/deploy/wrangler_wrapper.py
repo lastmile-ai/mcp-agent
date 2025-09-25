@@ -230,32 +230,24 @@ def wrangler_deploy(
                 # Rename in place
                 file_path.rename(py_path)
 
-        # Compute and log which original files are being bundled
-        bundled_original_files = []
-        added_deployment_files = []
+        # Compute and log which original files are being bundled (skip internal helpers)
+        bundled_original_files: list[str] = []
+        internal_bundle_files = {"wrangler.toml", "mcp_deploy_breadcrumb.py"}
         for root, _dirs, files in os.walk(temp_project_dir):
             for filename in files:
                 rel = Path(root).relative_to(temp_project_dir) / filename
-                # Map transient .mcpac.py back to the original filename for logging
+                if filename in internal_bundle_files:
+                    continue
                 if filename.endswith(".mcpac.py"):
                     orig_rel = str(rel)[: -len(".mcpac.py")]
                     bundled_original_files.append(orig_rel)
-                elif filename in {"wrangler.toml", "mcp_deploy_breadcrumb.py"}:
-                    added_deployment_files.append(str(rel))
                 else:
-                    # Regular .py file or other file we didn't rename
                     bundled_original_files.append(str(rel))
 
-        # Sort for stable output
         bundled_original_files.sort()
-        added_deployment_files.sort()
-
-        print_info(f"Bundling {len(bundled_original_files)} project file(s):")
-        for p in bundled_original_files:
-            print_info(f" - {p}")
-        if added_deployment_files:
-            print_info("Including deployment helper files:")
-            for p in added_deployment_files:
+        if bundled_original_files:
+            print_info(f"Bundling {len(bundled_original_files)} project file(s):")
+            for p in bundled_original_files:
                 print_info(f" - {p}")
 
         # Collect deployment metadata (git if available, else workspace hash)
