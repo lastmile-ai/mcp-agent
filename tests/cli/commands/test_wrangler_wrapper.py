@@ -922,7 +922,7 @@ app = MCPApp(name="test-app")
 
 
 def test_wrangler_deploy_secrets_file_exclusion():
-    """Test that mcp_agent.secrets.yaml and mcp_agent.secrets.yaml.example are excluded from the bundle."""
+    """Test that the live secrets file is excluded from the bundle."""
     with tempfile.TemporaryDirectory() as temp_dir:
         project_path = Path(temp_dir)
 
@@ -969,13 +969,9 @@ db_password: your_password_here
                 temp_project_dir / f"{MCP_SECRETS_FILENAME}.mcpac.py"
             ).exists(), "Secrets file should not be processed as .mcpac.py"
 
-            # Secrets example file should NOT exist in temp directory at all
-            assert not (temp_project_dir / "mcp_agent.secrets.yaml.example").exists(), (
-                "Secrets example file should be excluded from temp directory"
-            )
-            assert not (
+            assert (
                 temp_project_dir / "mcp_agent.secrets.yaml.example.mcpac.py"
-            ).exists(), "Secrets example file should not be processed as .mcpac.py"
+            ).exists()
 
             # Other YAML files should be processed normally
             assert (temp_project_dir / "config.yaml.mcpac.py").exists(), (
@@ -1014,7 +1010,7 @@ db_password: your_password_here
         assert secrets_file.read_text() == secrets_content, (
             "Secrets file content should be preserved"
         )
-        assert secrets_example_file.exists(), "Secrets example file should still exist"
+        assert secrets_example_file.exists()
         assert config_file.exists(), "Config file should still exist"
 
         # No secrets-related mcpac.py files should exist in original directory

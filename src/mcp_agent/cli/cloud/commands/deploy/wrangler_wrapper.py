@@ -176,7 +176,7 @@ def wrangler_deploy(
         else:
             print_info("No ignore file provided; applying default excludes only")
 
-        # Copy the entire project to temp directory, excluding unwanted directories and secrets file
+        # Copy the entire project to temp directory, excluding unwanted directories and the live secrets file
         def ignore_patterns(path_str, names):
             ignored = set()
 
@@ -187,8 +187,7 @@ def wrangler_deploy(
                     "__pycache__",
                     "node_modules",
                     "venv",
-                    MCP_SECRETS_FILENAME,  # Continue excluding mcp_agent.secrets.yaml
-                    f"{MCP_SECRETS_FILENAME}.example",  # Exclude mcp_agent.secrets.yaml.example
+                    MCP_SECRETS_FILENAME,  # Exclude mcp_agent.secrets.yaml only
                 }:
                     ignored.add(name)
 
@@ -291,7 +290,6 @@ def wrangler_deploy(
                     "node_modules",
                     "venv",
                     MCP_SECRETS_FILENAME,
-                    f"{MCP_SECRETS_FILENAME}.example",
                 },
             )
             meta_vars.update({"MCP_DEPLOY_WORKSPACE_HASH": bundle_hash})
