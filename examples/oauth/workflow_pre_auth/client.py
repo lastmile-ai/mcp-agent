@@ -113,6 +113,12 @@ async def main():
                 context.server_registry,
                 client_session_factory=make_session,
             ) as server:
+                try:
+                    await server.set_logging_level("info")
+                except Exception:
+                    # Older servers may not support logging capability
+                    print("[client] Server does not support logging/setLevel")
+
                 # List available tools
                 tools_result = await server.list_tools()
                 logger.info(
@@ -127,14 +133,11 @@ async def main():
                                                {
                                                    "access_token": access_token,
                                                    "server_name": "github",
-                                                   "scopes": ["read:org", "public_repo", "user:email"],
-                                                   "authorization_server": "https://github.com/login/oauth",
-                                                   "token_type": "Bearer"
                                                }
                                            ]
                                        })
 
-                print(await server.call_tool("github_org_search", {"query": "last mile ai"}))
+                print(await server.call_tool("github_org_search", {"query": "lastmileai"}))
         except Exception as e:
             # Tolerate benign shutdown races from stdio client (BrokenResourceError within ExceptionGroup)
             if _ExceptionGroup is not None and isinstance(e, _ExceptionGroup):

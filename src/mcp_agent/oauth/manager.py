@@ -127,9 +127,15 @@ class TokenManager:
 
         user = context.current_user
         if not user:
-            raise MissingUserIdentityError(
-                "No authenticated MCP user available for OAuth flow (neither interactive nor pre-configured)"
-            )
+            # TODO: with a proper oauth flow, we should always have a user in the context; since we don't have a server
+            # yet, mock a user if necessary. In the future, should be replaced by: something like:
+            # raise MissingUserIdentityError("No authenticated MCP user available for OAuth flow (neither
+            # interactive nor pre-configured)")
+
+            # Create synthetic user if none exists
+            user = create_default_user_for_preconfigured_tokens()
+            context.current_user = user
+            logger.info(f"Created synthetic user for token access: {user.cache_key}")
 
         # Use the same key construction logic as store_preconfigured_token to ensure consistency
         resource_str = str(oauth_config.resource) if oauth_config.resource else getattr(server_config, "url", None)

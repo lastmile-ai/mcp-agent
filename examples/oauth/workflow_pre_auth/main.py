@@ -82,6 +82,13 @@ app = MCPApp(
 async def github_org_search(query: str, app_ctx: Optional[AppContext] = None) -> str:
     from mcp_agent.mcp.gen_client import gen_client
 
+    # Use the context's app if available for proper logging with upstream_session
+    _app = app_ctx.app if app_ctx else app
+    # Ensure the app's logger is bound to the current context with upstream_session
+    if _app._logger and hasattr(_app._logger, "_bound_context"):
+        _app._logger._bound_context = app_ctx
+    logger = _app.logger
+
     try:
         async with gen_client(
                 "github",

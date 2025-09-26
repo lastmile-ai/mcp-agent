@@ -24,6 +24,7 @@ from mcp.server.fastmcp.tools import Tool as FastTool
 
 from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
+from mcp_agent.config import MCPOAuthClientSettings
 from mcp_agent.core.context_dependent import ContextDependent
 from mcp_agent.executor.workflow import Workflow
 from mcp_agent.executor.workflow_registry import (
@@ -1563,6 +1564,32 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         )
                         continue
 
+                    server_config = app_context.server_registry.get_server_config(server_name)
+                    if not server_config:
+                        errors.append(
+                            f"Token {i}: server '{server_name}' not recognized"
+                        )
+                        continue
+
+                    oauth_config: MCPOAuthClientSettings | None = None
+                    if server_config and server_config.auth:
+                        oauth_config = getattr(server_config.auth, "oauth", None)
+                    if not oauth_config or not oauth_config.enabled:
+                        errors.append(
+                            f"Token {i}: Server '{server_name}' is not configured for OAuth authentication"
+                        )
+                        continue
+
+                    # Ensure we have a user context for token storage
+                    # TODO: This is a temporary workaround until we have proper oauth service, so that we have a user
+                    # in the context from the oauth token
+                    if not app_context.current_user:
+                        # Create synthetic user if none exists
+                        synthetic_user = create_default_user_for_preconfigured_tokens()
+                        app_context.current_user = synthetic_user
+                        logger.info(f"Created synthetic user for workflow pre-auth: {synthetic_user.cache_key}")
+                        logger.info(f"{id(app_context)}: {app_context}")
+
                     # Create TokenRecord
                     from mcp_agent.oauth.records import TokenRecord
                     from mcp_agent.oauth.store.base import (
@@ -1570,37 +1597,35 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         scope_fingerprint,
                     )
 
-                    scopes = token_data.get("scopes", [])
-                    if isinstance(scopes, str):
-                        scopes = [scopes]
-                    elif not isinstance(scopes, list):
-                        scopes = []
+                    resource_str = str(oauth_config.resource) if oauth_config.resource \
+                        else getattr(server_config, "url", None)
+                    auth_server_str = str(oauth_config.authorization_server) if oauth_config.authorization_server \
+                        else None
+                    scope_list = list(oauth_config.scopes or [])
 
                     token_record = TokenRecord(
                         access_token=access_token,
                         refresh_token=token_data.get("refresh_token"),
-                        scopes=tuple(scopes),
+                        scopes=tuple(scope_list),
                         expires_at=token_data.get("expires_at"),
                         token_type=token_data.get("token_type", "Bearer"),
                         resource=server_name,
-                        authorization_server=token_data.get("authorization_server"),
+                        authorization_server=auth_server_str,
                         metadata={"workflow_name": workflow_name},
                     )
 
-                    # Ensure we have a user context for token storage
-                    if not app_context.current_user:
-                        # Create synthetic user if none exists
-                        synthetic_user = create_default_user_for_preconfigured_tokens()
-                        app_context.current_user = synthetic_user
-                        logger.info(f"Created synthetic user for workflow pre-auth: {synthetic_user.cache_key}")
 
+                    str(oauth_config.resource) if oauth_config.resource else getattr(server_config, "url", None)
                     # Create storage key using current user
                     store_key = TokenStoreKey(
                         user_key=app_context.current_user.cache_key,
-                        resource=server_name,
-                        authorization_server=token_data.get("authorization_server"),
-                        scope_fingerprint=scope_fingerprint(scopes),
+                        resource=resource_str,
+                        authorization_server=auth_server_str,
+                        scope_fingerprint=scope_fingerprint(scope_list),
                     )
+
+                    logger.debug(
+                        f"Storing token with key: user_key={store_key.user_key}, resource={store_key.resource}, auth_server={store_key.authorization_server}, scope_fingerprint={store_key.scope_fingerprint}")
 
                     # Store the token
                     await app_context.token_store.set(store_key, token_record)
