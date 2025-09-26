@@ -430,6 +430,135 @@ class MCPApp:
                     await self.context.token_counter.pop()
                 await self.cleanup()
 
+    def register_workflows(
+        self, workflows: list[Type], workflow_ids: Dict[Type, str] | None = None
+    ) -> None:
+        """
+        Register workflow classes with the application.
+
+        This method can be used to register both pure Temporal workflows
+        (decorated with @workflow.defn) and MCPApp workflows (decorated with @app.workflow).
+
+        Args:
+            workflows: A list of workflow classes to register.
+            workflow_ids: Optional mapping of workflow class to custom workflow ID.
+                         If not provided, uses the class name as the ID.
+
+        Example:
+        ```
+            from basic_workflow import BasicWorkflow
+            app = MCPApp(name="my_app")
+            app.register_workflows([BasicWorkflow])
+        ```
+        """
+        workflow_ids = workflow_ids or {}
+
+        for workflow_cls in workflows:
+            # Determine the workflow ID
+            workflow_id = workflow_ids.get(workflow_cls, workflow_cls.__name__)
+
+            # Check if this is already an @app.workflow decorated class
+            # (it would have _app attribute set)
+            if not hasattr(workflow_cls, "_app"):
+                # For pure Temporal workflows, add the necessary MCP agent methods directly
+                self._patch_temporal_workflow(workflow_cls)
+                # Register it directly without additional decoration
+                self._workflows[workflow_id] = workflow_cls
+            else:
+                # For @app.workflow decorated classes, they're already processed
+                self._workflows[workflow_id] = workflow_cls
+
+    def _patch_temporal_workflow(self, temporal_workflow_cls: Type) -> None:
+        """
+        Patch a pure Temporal workflow class to be compatible with mcp-agent framework.
+
+        This adds the necessary methods that the MCP framework expects:
+        - create() class method
+        - run_async() instance method
+        """
+        from mcp_agent.executor.workflow import WorkflowExecution
+        import uuid
+
+        # Add the _app attribute so it's recognized as an app workflow
+        temporal_workflow_cls._app = self
+
+        # Add the create class method
+        @classmethod
+        async def create(cls, name=None, context=None, **kwargs):
+            """Factory method to create a workflow instance compatible with MCP framework."""
+            # Create a simple instance - pure Temporal workflows are typically stateless
+            instance = cls()
+
+            # Add the necessary attributes that MCP framework expects
+            instance.name = name or cls.__name__
+            instance._workflow_id = None
+            instance._run_id = None
+
+            # Set the context if provided
+            if context:
+                instance._context = context
+
+            return instance
+
+        # Add the run_async method
+        async def run_async(self, *args, **kwargs):
+            """Run the workflow asynchronously and return WorkflowExecution."""
+            # Generate IDs for this execution
+            workflow_id = f"{self.name}-{uuid.uuid4().hex[:8]}"
+            run_id = f"{workflow_id}-run-{uuid.uuid4().hex[:8]}"
+
+            self._workflow_id = workflow_id
+            self._run_id = run_id
+
+            # For pure Temporal workflows, we need to use the executor to run them
+            # But since we're in the MCP context, we'll delegate to the executor
+            from mcp_agent.core.context import get_current_context
+
+            try:
+                context = get_current_context()
+                if context and context.executor:
+                    # Extract special system parameters
+                    workflow_memo = kwargs.pop("__mcp_agent_workflow_memo", None)
+                    provided_workflow_id = kwargs.pop("__mcp_agent_workflow_id", None)
+                    provided_task_queue = kwargs.pop("__mcp_agent_task_queue", None)
+
+                    if provided_workflow_id:
+                        workflow_id = provided_workflow_id
+                        self._workflow_id = workflow_id
+
+                    # Start the workflow using the executor
+                    handle = await context.executor.start_workflow(
+                        self.__class__.__name__,
+                        *args,
+                        workflow_id=workflow_id,
+                        task_queue=provided_task_queue,
+                        workflow_memo=workflow_memo,
+                        **kwargs,
+                    )
+
+                    return WorkflowExecution(
+                        workflow_id=handle.id,
+                        run_id=handle.id,  # Temporal uses the same ID for both
+                    )
+                else:
+                    # Fallback - just run the workflow directly (for testing)
+                    await self.run(*args, **kwargs)
+                    return WorkflowExecution(
+                        workflow_id=workflow_id,
+                        run_id=run_id,
+                    )
+            except Exception:
+                # Fallback - just run the workflow directly
+                await self.run(*args, **kwargs)
+                return WorkflowExecution(
+                    workflow_id=workflow_id,
+                    run_id=run_id,
+                )
+
+        # Patch the class with the new methods
+        temporal_workflow_cls.create = create
+        temporal_workflow_cls.run_async = run_async
+
     def workflow(
         self, cls: Type, *args, workflow_id: str | None = None, **kwargs
     ) -> Type:
