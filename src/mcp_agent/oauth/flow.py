@@ -68,7 +68,7 @@ class AuthorizationFlowCoordinator:
         flow_id = uuid.uuid4().hex
         internal_redirect = None
         if oauth_config.use_internal_callback and self._settings.callback_base_url:
-            internal_redirect = f"{self._settings.callback_base_url.rstrip('/')}/internal/oauth/callback/{flow_id}"
+            internal_redirect = f"{str(self._settings.callback_base_url).rstrip('/')}/internal/oauth/callback/{flow_id}"
             redirect_options.insert(0, internal_redirect)
 
         if not redirect_options:
@@ -83,18 +83,24 @@ class AuthorizationFlowCoordinator:
         state = generate_state()
         scope_param = " ".join(scopes)
 
+        params = {
+            "response_type":"code",
+            "client_id":client_id,
+            "redirect_uri":redirect_uri,
+            "scope":scope_param,
+            "state":state,
+            "code_challenge":code_challenge,
+            "code_challenge_method":"S256",
+            "resource":resource,
+        }
+
+        # add extra params if any
+        if oauth_config.extra_authorize_params:
+            params.update(oauth_config.extra_authorize_params)
+
+        import urllib.parse
         authorize_url = httpx.URL(
-            str(auth_metadata.authorization_endpoint)
-        ).include_query_params(
-            response_type="code",
-            client_id=client_id,
-            redirect_uri=redirect_uri,
-            scope=scope_param,
-            state=state,
-            code_challenge=code_challenge,
-            code_challenge_method="S256",
-            resource=resource,
-            **(oauth_config.extra_authorize_params or {}),
+            str(auth_metadata.authorization_endpoint) +"?" + urllib.parse.urlencode(params)
         )
 
         callback_future = None
@@ -209,6 +215,7 @@ async def _send_auth_request(
     context: Context, payload: Dict[str, Any]
 ) -> Dict[str, Any]:
     session = getattr(context, "upstream_session", None)
+
     if session and isinstance(session, ServerSession):
         rpc = getattr(session, "rpc", None)
         if rpc and hasattr(rpc, "request"):

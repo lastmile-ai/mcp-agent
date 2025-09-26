@@ -322,7 +322,9 @@ class TokenManager:
         if cached and time.time() - cached[0] < 300:
             return cached[1]
         # Construct OAuth authorization server metadata URL
-        metadata_url = url.rstrip('/') + '/.well-known/oauth-authorization-server'
+        parsed_url = URL(url)
+        metadata_url = str(
+            parsed_url.copy_with(path="/.well-known/oauth-authorization-server" + parsed_url.path))
         metadata = await fetch_authorization_server_metadata(self._http_client, metadata_url)
         self._auth_metadata_cache[url] = (time.time(), metadata)
         return metadata

@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Type, TYPE_CHECKING
 import os
 import secrets
 import asyncio
+from pydantic import BaseModel, Field
 
 from mcp.server.fastmcp import Context as MCPContext, FastMCP
 from mcp.server.fastmcp.server import AuthSettings
@@ -717,6 +718,24 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                 result = await session.send_request(
                     request=req, result_type=EmptyResult
                 )  # type: ignore[attr-defined]
+                return result.model_dump(by_alias=True, mode="json", exclude_none=True)
+            elif method == "auth/request":
+                # TODO: special handling of auth request, should be replaced by future URL elicitation
+                class AuthToken(BaseModel):
+                    token: str = Field(description="The access token")
+
+                req = ElicitRequest(
+                    method="elicitation/create",
+                    params=ElicitRequestParams(
+                        message=params["message"] + "\n\n" + params["url"] ,
+                        requestedSchema=AuthToken.model_json_schema(),
+                    ),
+                )
+
+                result = await session.send_request(
+                    request=req, result_type=ElicitResult
+                )  # type: ignore[attr-defined]
+
                 return result.model_dump(by_alias=True, mode="json", exclude_none=True)
             else:
                 raise ValueError(f"unsupported method: {method}")
