@@ -248,7 +248,7 @@ def wrangler_deploy(
         if bundled_original_files:
             print_info(f"Bundling {len(bundled_original_files)} project file(s):")
             for p in bundled_original_files:
-                print_info(f" - {p}")
+                console.print(f" - {p}")
 
         # Collect deployment metadata (git if available, else workspace hash)
         git_meta = get_git_metadata(project_dir)
