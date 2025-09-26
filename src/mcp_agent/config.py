@@ -21,7 +21,7 @@ from pydantic import (
     model_validator,
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
+import yaml
 
 from mcp_agent.agents.agent_spec import AgentSpec
 
@@ -834,8 +834,47 @@ def _clear_global_settings():
     _settings = None
 
 
-def get_settings(config_path: str | None = None) -> Settings:
-    """Get settings instance, automatically loading from config file if available."""
+def _set_and_warn_global_settings(settings: Settings) -> None:
+    """Set global settings and warn if called from non-main thread."""
+    global _settings
+    _settings = settings
+    # Thread-safety advisory: warn when setting global singleton from non-main thread
+    if threading.current_thread() is not threading.main_thread():
+        warnings.warn(
+            "get_settings() is setting the global Settings singleton from a non-main thread. "
+            "In multithreaded environments, use get_settings(set_global=False) to avoid "
+            "global state modification, or pass the Settings instance explicitly to MCPApp(settings=...).",
+            stacklevel=3,  # Adjusted stacklevel since we're now in a helper function
+        )
+
+
+def _check_file_exists(file_path: (str | Path)) -> bool:
+    """Check if a file exists at the given path."""
+    return Path(file_path).exists()
+
+
+def _read_file_content(file_path: (str | Path)) -> str:
+    """Read and return the contents of a file."""
+    with open(file_path, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+def _load_yaml_from_string(yaml_content: str) -> dict:
+    """Load YAML content from a string."""
+    return yaml.safe_load(yaml_content) or {}
+
+
+def get_settings(config_path: str | None = None, set_global: bool = True) -> Settings:
+    """Get settings instance, automatically loading from config file if available.
+
+    Args:
+        config_path: Optional path to config file. If None, searches for config automatically.
+        set_global: Whether to set the loaded settings as the global singleton. Default is True for backward
+                    compatibility. Set to False for multi-threaded environments to avoid global state modification.
+
+    Returns:
+        Settings instance with loaded configuration.
+    """
 
     def deep_merge(base: dict, update: dict) -> dict:
         """Recursively merge two dictionaries, preserving nested structures."""
@@ -851,11 +890,11 @@ def get_settings(config_path: str | None = None) -> Settings:
                 merged[key] = value
         return merged
 
-    global _settings
-    if _settings:
-        return _settings
-
-    import yaml  # pylint: disable=C0415
+    # Only return cached global settings if we're in set_global mode
+    if set_global:
+        global _settings
+        if _settings:
+            return _settings
 
     merged_settings = {}
 
@@ -885,52 +924,44 @@ def get_settings(config_path: str | None = None) -> Settings:
     # Determine the config file to use
     if config_path:
         config_file = Path(config_path)
-        if not config_file.exists():
+        if not _check_file_exists(config_file):
             raise FileNotFoundError(f"Config file not found: {config_path}")
     else:
         config_file = Settings.find_config()
 
     # If we found a config file, load it
-    if config_file and config_file.exists():
-        with open(config_file, "r", encoding="utf-8") as f:
-            yaml_settings = yaml.safe_load(f) or {}
-            merged_settings = yaml_settings
+    if config_file and _check_file_exists(config_file):
+        file_content = _read_file_content(config_file)
+        yaml_settings = _load_yaml_from_string(file_content)
+        merged_settings = yaml_settings
 
         # Try to find secrets in the same directory as the config file
         config_dir = config_file.parent
         secrets_found = False
         for secrets_filename in ["mcp-agent.secrets.yaml", "mcp_agent.secrets.yaml"]:
             secrets_file = config_dir / secrets_filename
-            if secrets_file.exists():
-                with open(secrets_file, "r", encoding="utf-8") as f:
-                    yaml_secrets = yaml.safe_load(f) or {}
-                    merged_settings = deep_merge(merged_settings, yaml_secrets)
+            if _check_file_exists(secrets_file):
+                secrets_content = _read_file_content(secrets_file)
+                yaml_secrets = _load_yaml_from_string(secrets_content)
+                merged_settings = deep_merge(merged_settings, yaml_secrets)
                 secrets_found = True
                 break
 
         # If no secrets were found in the config directory, fall back to discovery
         if not secrets_found:
             secrets_file = Settings.find_secrets()
-            if secrets_file and secrets_file.exists():
-                with open(secrets_file, "r", encoding="utf-8") as f:
-                    yaml_secrets = yaml.safe_load(f) or {}
-                    merged_settings = deep_merge(merged_settings, yaml_secrets)
+            if secrets_file and _check_file_exists(secrets_file):
+                secrets_content = _read_file_content(secrets_file)
+                yaml_secrets = _load_yaml_from_string(secrets_content)
+                merged_settings = deep_merge(merged_settings, yaml_secrets)
 
-        _settings = Settings(**merged_settings)
-        return _settings
+        settings = Settings(**merged_settings)
+        if set_global:
+            _set_and_warn_global_settings(settings)
+        return settings
 
     # No valid config found anywhere
-    _settings = Settings()
-
-    # Thread-safety advisory: warn when using global singleton from non-main thread
-    if (
-        threading.current_thread() is not threading.main_thread()
-        and config_path is None
-    ):
-        warnings.warn(
-            "get_settings() returned the global Settings singleton on a non-main thread. "
-            "In multithreaded environments, prefer passing a Settings instance explicitly to MCPApp("
-            "settings=...) or provide a per-thread config_path to avoid cross-thread coupling.",
-            stacklevel=2,
-        )
-    return _settings
+    settings = Settings()
+    if set_global:
+        _set_and_warn_global_settings(settings)
+    return settings
