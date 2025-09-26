@@ -208,8 +208,19 @@ class MCPAgentPlugin(ClientPlugin, WorkerPlugin):
         """
         if self.app and hasattr(self.app, "workflows"):
             existing_workflows = list(config.get("workflows") or [])
-            existing_workflows.extend(self.app.workflows.values())
-            config["workflows"] = existing_workflows
+            app_workflows = list(self.app.workflows.values())
+
+            # Deduplicate workflows by class - avoid registering the same workflow class twice
+            all_workflows = existing_workflows + app_workflows
+            unique_workflows = []
+            seen_classes = set()
+
+            for workflow_cls in all_workflows:
+                if workflow_cls not in seen_classes:
+                    unique_workflows.append(workflow_cls)
+                    seen_classes.add(workflow_cls)
+
+            config["workflows"] = unique_workflows
 
     def _configure_workflow_runner(self, config: dict) -> None:
         """Configure workflow sandbox runner with MCP Agent modules.
