@@ -430,25 +430,25 @@ class MCPApp:
                     await self.context.token_counter.pop()
                 await self.cleanup()
 
-    def register_workflows(
+    def register_temporal_workflows(
         self, workflows: list[Type], workflow_ids: Dict[Type, str] | None = None
     ) -> None:
         """
-        Register workflow classes with the application.
+        Register pure Temporal workflow classes with the application.
 
-        This method can be used to register both pure Temporal workflows
-        (decorated with @workflow.defn) and MCPApp workflows (decorated with @app.workflow).
+        This method is specifically for Temporal workflows that are decorated with @workflow.defn.
+        It patches them to be compatible with the mcp-agent framework.
 
         Args:
-            workflows: A list of workflow classes to register.
+            workflows: A list of Temporal workflow classes (decorated with @workflow.defn) to register.
             workflow_ids: Optional mapping of workflow class to custom workflow ID.
                          If not provided, uses the class name as the ID.
 
         Example:
         ```
-            from basic_workflow import BasicWorkflow
+            from basic_workflow import BasicWorkflow  # Has @workflow.defn
             app = MCPApp(name="my_app")
-            app.register_workflows([BasicWorkflow])
+            app.register_temporal_workflows([BasicWorkflow])
         ```
         """
         workflow_ids = workflow_ids or {}
@@ -457,22 +457,31 @@ class MCPApp:
             # Determine the workflow ID
             workflow_id = workflow_ids.get(workflow_cls, workflow_cls.__name__)
 
-            # Check if this is already an @app.workflow decorated class
-            # (it would have _app attribute set)
-            if not hasattr(workflow_cls, "_app"):
-                # For pure Temporal workflows, add the necessary MCP agent methods directly
-                self._patch_temporal_workflow(workflow_cls)
-                # Register it directly without additional decoration
-                self._workflows[workflow_id] = workflow_cls
-            else:
-                # For @app.workflow decorated classes, they're already processed
-                self._workflows[workflow_id] = workflow_cls
+            # Verify this is actually a Temporal workflow
+            if not hasattr(workflow_cls, "__temporal_workflow_definition"):
+                raise ValueError(
+                    f"{workflow_cls.__name__} is not a Temporal workflow. "
+                    "It must be decorated with @workflow.defn before registering."
+                )
+
+            # Check if it's already been patched or decorated with @app.workflow
+            if hasattr(workflow_cls, "_app"):
+                print(
+                    f"Warning: {workflow_cls.__name__} already has MCPApp integration, skipping..."
+                )
+                continue
+
+            # Patch the Temporal workflow to be compatible with mcp-agent framework
+            self._patch_temporal_workflow(workflow_cls)
+
+            # Register it in our workflows dictionary
+            self._workflows[workflow_id] = workflow_cls
 
     def _patch_temporal_workflow(self, temporal_workflow_cls: Type) -> None:
         """
         Patch a pure Temporal workflow class to be compatible with mcp-agent framework.
 
-        This adds the necessary methods that the MCP framework expects:
+        This adds the necessary methods that the mcp-agent framework expects:
         - create() class method
         - run_async() instance method
         """
@@ -485,11 +494,11 @@ class MCPApp:
         # Add the create class method
         @classmethod
         async def create(cls, name=None, context=None, **kwargs):
-            """Factory method to create a workflow instance compatible with MCP framework."""
+            """Factory method to create a workflow instance compatible with mcp-agent framework."""
             # Create a simple instance - pure Temporal workflows are typically stateless
             instance = cls()
 
-            # Add the necessary attributes that MCP framework expects
+            # Add the necessary attributes that mcp-agent framework expects
             instance.name = name or cls.__name__
             instance._workflow_id = None
             instance._run_id = None
@@ -511,7 +520,7 @@ class MCPApp:
             self._run_id = run_id
 
             # For pure Temporal workflows, we need to use the executor to run them
-            # But since we're in the MCP context, we'll delegate to the executor
+            # But since we're in the mcp-agent context, we'll delegate to the executor
             from mcp_agent.core.context import get_current_context
 
             try:
