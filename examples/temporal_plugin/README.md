@@ -28,9 +28,9 @@ This example demonstrates multiple ways to use the Temporal plugin with MCP-Agen
 
 ## Usage Methods
 
-### Method 1: Separate Worker and Workflow Files
+### Method 1: MCP Server with Temporal Workflows
 
-This approach separates the worker and workflow execution into different processes, useful for distributed systems.
+This approach exposes Temporal workflows as MCP tools that can be called by Claude Desktop or other MCP clients.
 
 **Step 1: Define your workflow** (`basic_workflow.py`):
 ```python
@@ -54,6 +54,34 @@ class BasicWorkflow:
             return result
 ```
 
+**Step 2: Start the MCP server** (`basic_agent_server.py`):
+```bash
+uv run basic_agent_server.py
+```
+This starts an MCP server that exposes your Temporal workflows as tools.
+
+**Step 3: Run the Temporal worker** (in another terminal):
+```bash
+uv run run_worker.py
+```
+This starts a Temporal worker that can execute the workflows.
+
+**Step 4: Test with MCP Inspector**:
+```bash
+npx @modelcontextprotocol/inspector sse://localhost:3001
+```
+
+In the inspector, you can:
+- Call `workflows-list` to see available workflows
+- Call `workflows-BasicWorkflow-run` with a prompt parameter to execute the workflow
+- Monitor workflow execution in the Temporal UI at http://localhost:8233
+
+### Method 2: Separate Worker and Workflow Files
+
+This approach separates the worker and workflow execution into different processes, useful for distributed systems.
+
+**Step 1: Define your workflow** (already shown above)
+
 **Step 2: Run the worker** (`run_worker.py`):
 ```bash
 uv run run_worker.py
@@ -64,7 +92,7 @@ uv run run_worker.py
 uv run run_basic_workflow.py
 ```
 
-### Method 2: Single File Execution (temporal_agent.py)
+### Method 3: Single File Execution (temporal_agent.py)
 
 This approach combines worker and workflow execution in a single file, ideal for simpler deployments or testing.
 
@@ -120,23 +148,46 @@ temporal:
 ```
 temporal_plugin/
 ├── basic_workflow.py        # Workflow definition
-├── run_worker.py           # Worker process (Method 1)
-├── run_basic_workflow.py   # Workflow client (Method 1)
-├── temporal_agent.py       # Single-file approach (Method 2)
+├── basic_agent_server.py    # MCP server that exposes workflows as tools
+├── run_worker.py           # Worker process
+├── run_basic_workflow.py   # Workflow client (direct execution)
+├── temporal_agent.py       # Single-file approach
 ├── main.py                 # MCP-Agent app setup
 ├── mcp_agent.config.yaml   # Configuration (MUST set execution_engine: temporal)
 └── mcp_agent.secrets.yaml  # API keys
 ```
 
+## Registering Pure Temporal Workflows
+
+The new `register_temporal_workflows()` method allows you to register pure Temporal workflows (decorated with `@workflow.defn`) with the MCP-Agent framework:
+
+```python
+# In basic_agent_server.py
+from main import app
+from basic_workflow import BasicWorkflow
+
+# Register pure Temporal workflows
+app.register_temporal_workflows([BasicWorkflow])
+```
+
+This automatically:
+- Adds MCP-Agent compatibility to your pure Temporal workflows
+- Exposes them as MCP tools
+- Handles deduplication if workflows are registered in multiple places
+
 ## When to Use Each Method
 
-- **Separate Files (Method 1)**: Use when you need:
+- **MCP Server (Method 1)**: Use when you need:
+  - Integration with Claude Desktop or other MCP clients
+  - Exposing workflows as callable tools
+
+- **Separate Files (Method 2)**: Use when you need:
   - Distributed workers across multiple machines
   - Independent scaling of workers and clients
   - Clear separation of concerns
-  - Production deployments
+  - Production deployments with direct workflow execution
 
-- **Single File (Method 2)**: Use when you need:
+- **Single File (Method 3)**: Use when you need:
   - Quick prototyping and testing
   - Simple deployments
   - All-in-one execution for demos
