@@ -54,24 +54,23 @@ class BasicWorkflow:
             return result
 ```
 
-**Step 2: Start the MCP server** (`basic_agent_server.py`):
+**Step 2: Start the MCP server with worker** (`basic_agent_server.py`):
 ```bash
 uv run basic_agent_server.py
 ```
-This starts an MCP server that exposes your Temporal workflows as tools.
+This starts both a Temporal worker and an MCP server that exposes your workflows as tools.
 
-**Step 3: Run the Temporal worker** (in another terminal):
+**Step 3: Test with MCP Inspector**:
+
 ```bash
-uv run run_worker.py
-```
-This starts a Temporal worker that can execute the workflows.
+# UI mode - Opens a interactive visual interface
+npx @modelcontextprotocol/inspector
 
-**Step 4: Test with MCP Inspector**:
-```bash
-npx @modelcontextprotocol/inspector sse://localhost:3001
+# or CLI mode - Connect to a remote MCP server (with SSE transport)
+npx @modelcontextprotocol/inspector --cli http://127.0.0.1:8000/sse --transport sse --method tools/list
 ```
 
-In the inspector, you can:
+In inspector, you can:
 - Call `workflows-list` to see available workflows
 - Call `workflows-BasicWorkflow-run` with a prompt parameter to execute the workflow
 - Monitor workflow execution in the Temporal UI at http://localhost:8233
@@ -147,39 +146,23 @@ temporal:
 
 ```
 temporal_plugin/
-├── basic_workflow.py        # Workflow definition
-├── basic_agent_server.py    # MCP server that exposes workflows as tools
-├── run_worker.py           # Worker process
+├── basic_workflow.py        # Workflow definitions
+├── basic_agent_server.py    # MCP server with integrated worker
+├── run_worker.py           # Standalone worker process
 ├── run_basic_workflow.py   # Workflow client (direct execution)
 ├── temporal_agent.py       # Single-file approach
+├── replay.py               # Workflow replay testing for safe deployments
 ├── main.py                 # MCP-Agent app setup
 ├── mcp_agent.config.yaml   # Configuration (MUST set execution_engine: temporal)
 └── mcp_agent.secrets.yaml  # API keys
 ```
 
-## Registering Pure Temporal Workflows
-
-The new `register_temporal_workflows()` method allows you to register pure Temporal workflows (decorated with `@workflow.defn`) with the MCP-Agent framework:
-
-```python
-# In basic_agent_server.py
-from main import app
-from basic_workflow import BasicWorkflow
-
-# Register pure Temporal workflows
-app.register_temporal_workflows([BasicWorkflow])
-```
-
-This automatically:
-- Adds MCP-Agent compatibility to your pure Temporal workflows
-- Exposes them as MCP tools
-- Handles deduplication if workflows are registered in multiple places
-
 ## When to Use Each Method
 
-- **MCP Server (Method 1)**: Use when you need:
+- **MCP Server with Worker (Method 1)**: Use when you need:
   - Integration with Claude Desktop or other MCP clients
   - Exposing workflows as callable tools
+  - Simplified deployment with fewer processes
 
 - **Separate Files (Method 2)**: Use when you need:
   - Distributed workers across multiple machines
@@ -193,11 +176,39 @@ This automatically:
   - All-in-one execution for demos
   - Development and debugging
 
+## Safe Deployments with Workflow Replay
+
+The `replay.py` script provides a two-phase deployment strategy for safe Temporal deployments:
+
+### Phase 1: Verification
+Test workflow determinism before deployment:
+```bash
+uv run replay.py verify
+```
+Replays recent workflow histories (last 10 hours by default) to ensure code changes maintain determinism.
+
+### Phase 2: Deployment
+Run the worker in production:
+```bash
+uv run replay.py run
+```
+
+### Why Use Replay Testing?
+- **Prevents Breaking Changes**: Catches non-deterministic changes before they affect production
+- **Ensures Durability**: Maintains Temporal's guarantees for workflow recovery
+- **Safe Iteration**: Allows confident updates to workflow logic
+
+The replay script tests workflows:
+- `BasicWorkflow`
+- `OrchestratorWorkflow`
+- `ParallelAgentWorkflow`
+
 ## Troubleshooting
 
 1. **Temporal not working**: Ensure `execution_engine: temporal` in config
 2. **Connection refused**: Start Temporal server with `temporal server start-dev`
 3. **Task queue mismatch**: Verify task queue names match between worker and client
+4. **Workflow errors**: Run `uv run replay.py verify` to check for determinism issues
 
 ## Further Resources
 
