@@ -1,27 +1,34 @@
-import logging
 import asyncio
-from main import app
-from mcp_agent.server.app_server import create_mcp_server_for_app
+from temporalio.client import Client
+from mcp_agent.executor.temporal.plugin import MCPAgentPlugin
+from mcp_agent.app import MCPApp
+from temporalio.worker import Worker
 from basic_workflow import BasicWorkflow
+from mcp_agent.server.app_server import create_mcp_server_for_app
 
-# Initialize logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-app.register_temporal_workflows([BasicWorkflow])
+app = MCPApp(name="mcp_agent_server")
 
 
 async def main():
-    async with app.run() as agent_app:
-        logger.info(f"Creating MCP server for {agent_app.name}")
+    async with app.run() as running_app:
+        plugin = MCPAgentPlugin(running_app)
 
-        logger.info("Registered workflows:")
-        for workflow_id in agent_app.workflows:
-            logger.info(f"  - {workflow_id}")
+        client = await Client.connect(
+            running_app.config.temporal.host,
+            plugins=[plugin],
+        )
 
-        mcp_server = create_mcp_server_for_app(agent_app)
+        async with Worker(
+            client,
+            task_queue=running_app.config.temporal.task_queue,
+            workflows=[BasicWorkflow],
+        ):
+            print("Registered workflows:")
+            for workflow_id in running_app.workflows:
+                print(f"  - {workflow_id}")
 
-        await mcp_server.run_sse_async()
+            mcp_server = create_mcp_server_for_app(running_app)
+            await mcp_server.run_sse_async()
 
 
 if __name__ == "__main__":

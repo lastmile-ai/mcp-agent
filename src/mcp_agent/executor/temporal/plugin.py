@@ -208,6 +208,22 @@ class MCPAgentPlugin(ClientPlugin, WorkerPlugin):
         """
         if self.app and hasattr(self.app, "workflows"):
             existing_workflows = list(config.get("workflows") or [])
+
+            # Register Temporal workflows passed to Worker
+            if existing_workflows:
+                unregistered_workflows = []
+                for workflow_cls in existing_workflows:
+                    # Check if this is a Temporal workflow
+                    if hasattr(workflow_cls, "__temporal_workflow_definition"):
+                        workflow_id = workflow_cls.__name__
+                        # If not registered with MCPApp, add it to the list
+                        if workflow_id not in self.app.workflows:
+                            unregistered_workflows.append(workflow_cls)
+
+                # Register all unregistered workflows with MCPApp
+                if unregistered_workflows:
+                    self.app._register_temporal_workflows(unregistered_workflows)
+
             app_workflows = list(self.app.workflows.values())
 
             # Deduplicate workflows by class - avoid registering the same workflow class twice

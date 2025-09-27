@@ -430,7 +430,7 @@ class MCPApp:
                     await self.context.token_counter.pop()
                 await self.cleanup()
 
-    def register_temporal_workflows(
+    def _register_temporal_workflows(
         self, workflows: list[Type], workflow_ids: Dict[Type, str] | None = None
     ) -> None:
         """
