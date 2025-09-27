@@ -50,7 +50,7 @@ async def main():
         if args.mode == "verify":
             start_time = (datetime.now(timezone.utc) - timedelta(hours=10)).isoformat()
             workflows = client.list_workflows(
-                f"TaskQueue='{task_queue}' AND StartTime > '{start_time}'", limit=100
+                f"TaskQueue='{task_queue}' AND StartTime > '{start_time}' AND ExecutionStatus='Completed'", limit=100
             )
             histories = workflows.map_histories()
             replayer = Replayer(workflows=my_workflows, plugins=[plugin])
