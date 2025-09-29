@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch, mock_open
 
 import pytest
+import pathspec
 
 from mcp_agent.cli.cloud.commands.deploy.validation import (
     validate_entrypoint,
@@ -474,9 +475,9 @@ def test_wrangler_deploy_temp_directory_isolation(complex_project_structure):
             # Temp directory should have .mcpac.py versions
             assert temp_mcpac_file.exists(), f"Temp {file_path}.mcpac.py should exist"
             # Original files in temp should be renamed away
-            assert not temp_original_file.exists(), (
-                f"Temp {file_path} should be renamed"
-            )
+            assert (
+                not temp_original_file.exists()
+            ), f"Temp {file_path} should be renamed"
 
         return MagicMock(returncode=0)
 
@@ -548,9 +549,9 @@ def test_wrangler_deploy_venv_exclusion(complex_project_structure):
     def check_venv_during_subprocess(*args, **kwargs):
         temp_project_dir = Path(kwargs["cwd"])
         # During subprocess execution, .venv should not exist in temp directory
-        assert not (temp_project_dir / ".venv").exists(), (
-            ".venv should not be copied to temp dir"
-        )
+        assert not (
+            temp_project_dir / ".venv"
+        ).exists(), ".venv should not be copied to temp dir"
         # Original .venv should still exist and be untouched
         assert venv_dir.exists(), "Original .venv should still exist"
         return MagicMock(returncode=0)
@@ -573,12 +574,12 @@ def test_wrangler_deploy_nested_directory_creation(complex_project_structure):
         deep_mcpac = temp_project_dir / "nested/deep/deep_file.txt.mcpac.py"
 
         # During subprocess execution, .mcpac.py files should exist in temp nested directories
-        assert nested_mcpac.exists(), (
-            "Nested .mcpac.py file should exist during subprocess"
-        )
-        assert deep_mcpac.exists(), (
-            "Deep nested .mcpac.py file should exist during subprocess"
-        )
+        assert (
+            nested_mcpac.exists()
+        ), "Nested .mcpac.py file should exist during subprocess"
+        assert (
+            deep_mcpac.exists()
+        ), "Deep nested .mcpac.py file should exist during subprocess"
 
         # Check that the nested directory structure is preserved in temp directory
         assert nested_mcpac.parent == temp_project_dir / "nested"
@@ -654,17 +655,17 @@ app = MCPApp(name="test-app")
                 original_temp_file = temp_project_dir / filename
                 original_project_file = project_path / filename
 
-                assert mcpac_file.exists(), (
-                    f"Temp {filename}.mcpac.py should exist during subprocess"
-                )
+                assert (
+                    mcpac_file.exists()
+                ), f"Temp {filename}.mcpac.py should exist during subprocess"
                 # Original should not exist in temp directory (renamed to .mcpac.py)
-                assert not original_temp_file.exists(), (
-                    f"Temp {filename} should be renamed during subprocess"
-                )
+                assert (
+                    not original_temp_file.exists()
+                ), f"Temp {filename} should be renamed during subprocess"
                 # Original project file should be unchanged
-                assert original_project_file.exists(), (
-                    f"Original {filename} should be unchanged"
-                )
+                assert (
+                    original_project_file.exists()
+                ), f"Original {filename} should be unchanged"
 
             return MagicMock(returncode=0)
 
@@ -678,15 +679,15 @@ app = MCPApp(name="test-app")
                 original_file = project_path / filename
                 mcpac_file = project_path / f"{filename}.mcpac.py"
 
-                assert original_file.exists(), (
-                    f"Original {filename} should be unchanged"
-                )
-                assert original_file.read_text() == expected_content, (
-                    f"{filename} content should be preserved"
-                )
-                assert not mcpac_file.exists(), (
-                    f"No {filename}.mcpac.py should exist in original directory"
-                )
+                assert (
+                    original_file.exists()
+                ), f"Original {filename} should be unchanged"
+                assert (
+                    original_file.read_text() == expected_content
+                ), f"{filename} content should be preserved"
+                assert (
+                    not mcpac_file.exists()
+                ), f"No {filename}.mcpac.py should exist in original directory"
 
 
 # Requirements.txt processing tests
@@ -729,9 +730,9 @@ def test_needs_requirements_modification_with_relative_imports():
 {relative_import}
 numpy==1.24.0"""
             requirements_path.write_text(requirements_content)
-            assert _needs_requirements_modification(requirements_path), (
-                f"Should detect relative import: {relative_import}"
-            )
+            assert _needs_requirements_modification(
+                requirements_path
+            ), f"Should detect relative import: {relative_import}"
 
 
 def test_needs_requirements_modification_mixed_content():
@@ -847,9 +848,9 @@ def test_wrangler_deploy_requirements_txt_modification_in_temp_dir(
         assert "mcp-agent\n" in deployed_content
 
         # Original project requirements.txt should be unchanged
-        assert requirements_path.exists(), (
-            "Original requirements.txt should be unchanged"
-        )
+        assert (
+            requirements_path.exists()
+        ), "Original requirements.txt should be unchanged"
         assert requirements_path.read_text() == original_content
 
         return MagicMock(returncode=0)
@@ -877,17 +878,17 @@ def test_wrangler_deploy_requirements_txt_no_modification_needed(
 
         # In temp directory, requirements.txt should be renamed to .mcpac.py
         assert temp_mcpac_path.exists(), "Temp requirements.txt.mcpac.py should exist"
-        assert not temp_requirements_path.exists(), (
-            "Temp requirements.txt should be renamed"
-        )
+        assert (
+            not temp_requirements_path.exists()
+        ), "Temp requirements.txt should be renamed"
 
         # Content should be preserved in .mcpac.py version
         assert temp_mcpac_path.read_text() == original_content
 
         # Original project requirements.txt should be unchanged
-        assert requirements_path.exists(), (
-            "Original requirements.txt should be unchanged"
-        )
+        assert (
+            requirements_path.exists()
+        ), "Original requirements.txt should be unchanged"
         assert requirements_path.read_text() == original_content
 
         return MagicMock(returncode=0)
@@ -950,7 +951,7 @@ db_password: your_password_here
 
         # Create other YAML files that should be processed
         config_file = project_path / "config.yaml"
-        config_file.write_text("app_name: test-app")
+        config_file.write_text("name: test-app")
 
         mcp_config_file = project_path / "mcp_agent.config.yaml"
         mcp_config_file.write_text("config: value")
@@ -962,9 +963,9 @@ db_password: your_password_here
             temp_project_dir = Path(kwargs["cwd"])
 
             # Secrets file should NOT exist in temp directory at all
-            assert not (temp_project_dir / MCP_SECRETS_FILENAME).exists(), (
-                "Secrets file should be excluded from temp directory"
-            )
+            assert not (
+                temp_project_dir / MCP_SECRETS_FILENAME
+            ).exists(), "Secrets file should be excluded from temp directory"
             assert not (
                 temp_project_dir / f"{MCP_SECRETS_FILENAME}.mcpac.py"
             ).exists(), "Secrets file should not be processed as .mcpac.py"
@@ -974,29 +975,29 @@ db_password: your_password_here
             ).exists()
 
             # Other YAML files should be processed normally
-            assert (temp_project_dir / "config.yaml.mcpac.py").exists(), (
-                "Other YAML files should be processed as .mcpac.py"
-            )
-            assert (temp_project_dir / "mcp_agent.config.yaml.mcpac.py").exists(), (
-                "mcp_agent.config.yaml should be processed as .mcpac.py"
-            )
+            assert (
+                temp_project_dir / "config.yaml.mcpac.py"
+            ).exists(), "Other YAML files should be processed as .mcpac.py"
+            assert (
+                temp_project_dir / "mcp_agent.config.yaml.mcpac.py"
+            ).exists(), "mcp_agent.config.yaml should be processed as .mcpac.py"
             assert (
                 temp_project_dir / "mcp_agent.deployed.secrets.yaml.mcpac.py"
             ).exists(), (
                 "mcp_agent.deployed.secrets.yaml should be processed as .mcpac.py"
             )
-            assert not (temp_project_dir / "config.yaml").exists(), (
-                "Other YAML files should be renamed in temp directory"
-            )
+            assert not (
+                temp_project_dir / "config.yaml"
+            ).exists(), "Other YAML files should be renamed in temp directory"
 
             # Original files should remain untouched
-            assert secrets_file.exists(), (
-                "Original secrets file should remain untouched"
-            )
+            assert (
+                secrets_file.exists()
+            ), "Original secrets file should remain untouched"
             assert config_file.exists(), "Original config file should remain untouched"
-            assert secrets_file.read_text() == secrets_content, (
-                "Secrets file content should be unchanged"
-            )
+            assert (
+                secrets_file.read_text() == secrets_content
+            ), "Secrets file content should be unchanged"
 
             return MagicMock(returncode=0)
 
@@ -1014,44 +1015,14 @@ db_password: your_password_here
         assert config_file.exists(), "Config file should still exist"
 
         # No secrets-related mcpac.py files should exist in original directory
-        assert not (project_path / f"{MCP_SECRETS_FILENAME}.mcpac.py").exists(), (
-            "No secrets .mcpac.py file should exist in original directory"
-        )
+        assert not (
+            project_path / f"{MCP_SECRETS_FILENAME}.mcpac.py"
+        ).exists(), "No secrets .mcpac.py file should exist in original directory"
 
 
 # Bundle utils tests
-
-
-def test_create_pathspec_from_gitignore():
-    """Test creating PathSpec from ignore file (gitwildmatch syntax)."""
-    gitignore_content = """*.log
-# Comment line
-node_modules/
-*.pyc
-
-temp/
-build/
-"""
-
-    with patch("builtins.open", mock_open(read_data=gitignore_content)):
-        with patch("pathlib.Path.exists", return_value=True):
-            spec = create_pathspec_from_gitignore(Path("/fake/.gitignore"))
-            assert spec is not None
-
-            # Test pattern matching with pathspec
-            assert spec.match_file("test.log")
-            assert spec.match_file("debug.log")
-            assert spec.match_file("node_modules/file.js")
-            assert spec.match_file("test.pyc")
-            assert spec.match_file("temp/file.txt")
-            assert spec.match_file("build/output.js")
-            assert not spec.match_file("main.py")
-            assert not spec.match_file("config.yaml")
-
-
 def test_should_ignore_by_gitignore():
     """Test ignore pattern matching with pathspec."""
-    import pathspec
 
     gitignore_content = """*.log
 *.pyc

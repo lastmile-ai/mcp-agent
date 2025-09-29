@@ -600,6 +600,12 @@ class Settings(BaseSettings):
         nested_model_default_partial_update=True,
     )  # Customize the behavior of settings here
 
+    name: str | None = None
+    """The name of the MCP application"""
+
+    description: str | None = None
+    """The description of the MCP application"""
+
     mcp: MCPSettings | None = Field(default_factory=MCPSettings)
     """MCP config, such as MCP servers"""
 

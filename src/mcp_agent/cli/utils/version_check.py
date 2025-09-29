@@ -104,6 +104,6 @@ def maybe_warn_newer_version() -> None:
 
     if _is_outdated(current, latest):
         print_info(
-            f"A new version of mcp-agent is available: {current} -> {latest}. Update with: 'uv tool update mcp-agent'",
+            f"A new version of mcp-agent is available: {current} -> {latest}. Update with: 'uv tool upgrade mcp-agent'",
             console_output=True,
         )
