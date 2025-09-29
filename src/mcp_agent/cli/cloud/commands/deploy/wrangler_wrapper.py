@@ -133,19 +133,28 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
     # Copy existing env to avoid overwriting
     env = os.environ.copy()
 
-    env.update(
-        {
-            "CLOUDFLARE_ACCOUNT_ID": CLOUDFLARE_ACCOUNT_ID,
-            "CLOUDFLARE_API_TOKEN": api_key,
-            "CLOUDFLARE_EMAIL": CLOUDFLARE_EMAIL,
-            "WRANGLER_AUTH_DOMAIN": deployment_settings.wrangler_auth_domain,
-            "WRANGLER_AUTH_URL": deployment_settings.wrangler_auth_url,
-            "WRANGLER_SEND_METRICS": str(WRANGLER_SEND_METRICS).lower(),
-            "CLOUDFLARE_API_BASE_URL": deployment_settings.cloudflare_api_base_url,
-            "HOME": os.path.expanduser(settings.DEPLOYMENT_CACHE_DIR),
-            "XDG_HOME_DIR": os.path.expanduser(settings.DEPLOYMENT_CACHE_DIR),
-        }
-    )
+    env_updates = {
+        "CLOUDFLARE_ACCOUNT_ID": CLOUDFLARE_ACCOUNT_ID,
+        "CLOUDFLARE_API_TOKEN": api_key,
+        "CLOUDFLARE_EMAIL": CLOUDFLARE_EMAIL,
+        "WRANGLER_AUTH_DOMAIN": deployment_settings.wrangler_auth_domain,
+        "WRANGLER_AUTH_URL": deployment_settings.wrangler_auth_url,
+        "WRANGLER_SEND_METRICS": str(WRANGLER_SEND_METRICS).lower(),
+        "CLOUDFLARE_API_BASE_URL": deployment_settings.cloudflare_api_base_url,
+        "HOME": os.path.expanduser(settings.DEPLOYMENT_CACHE_DIR),
+        "XDG_HOME_DIR": os.path.expanduser(settings.DEPLOYMENT_CACHE_DIR),
+    }
+
+    if os.name == "nt":
+        # On Windows, configure npm to use a safe prefix within our cache directory
+        # to avoid issues with missing global npm directories
+        npm_prefix = (
+            Path(os.path.expanduser(settings.DEPLOYMENT_CACHE_DIR)) / "npm-global"
+        )
+        npm_prefix.mkdir(parents=True, exist_ok=True)
+        env_updates["npm_config_prefix"] = str(npm_prefix)
+
+    env.update(env_updates)
 
     validate_project(project_dir)
 
@@ -303,22 +312,28 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
             task = progress.add_task("Bundling MCP Agent...", total=None)
 
             try:
+                cmd = [
+                    "npx",
+                    "--yes",
+                    "wrangler@4.22.0",
+                    "deploy",
+                    main_py,
+                    "--name",
+                    app_id,
+                    "--no-bundle",
+                ]
+
                 subprocess.run(
-                    [
-                        "npx",
-                        "--yes",
-                        "wrangler@4.22.0",
-                        "deploy",
-                        main_py,
-                        "--name",
-                        app_id,
-                        "--no-bundle",
-                    ],
+                    cmd,
                     check=True,
                     env=env,
                     cwd=str(temp_project_dir),
                     capture_output=True,
                     text=True,
+                    # On Windows, we need to use shell=True for npx to work correctly
+                    shell=(os.name == "nt"),
+                    encoding="utf-8",
+                    errors="replace",
                 )
                 progress.update(task, description="✅ Bundled successfully")
                 return
