@@ -204,7 +204,7 @@ def test_deploy_defaults_to_configured_app_name(runner, temp_config_dir):
 def test_deploy_defaults_to_directory_name_when_config_missing_name(
     runner, temp_config_dir
 ):
-    """Fallback uses directory name when config doesn't define one."""
+    """Fallback uses the default name when config doesn't define one."""
 
     config_path = temp_config_dir / MCP_CONFIG_FILENAME
     original_config = config_path.read_text()
@@ -263,7 +263,7 @@ def test_deploy_defaults_to_directory_name_when_config_missing_name(
 
     assert result.exit_code == 0, f"Deploy command failed: {result.stdout}"
     first_call = mock_client.get_app_id_by_name.await_args_list[0]
-    assert first_call.args[0] == temp_config_dir.name
+    assert first_call.args[0] == "default"
 
 
 def test_deploy_uses_config_description_when_not_provided(runner, temp_config_dir):
