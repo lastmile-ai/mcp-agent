@@ -327,6 +327,67 @@ def test_deploy_uses_config_description_when_not_provided(runner, temp_config_di
     assert create_call.kwargs["description"] == "Configured app description"
 
 
+def test_deploy_uses_defaults_when_config_cannot_be_loaded(runner, temp_config_dir):
+    """If config parsing fails, fall back to default name and unset description."""
+
+    config_path = temp_config_dir / MCP_CONFIG_FILENAME
+    config_path.write_text("invalid: [\n")
+
+    output_path = temp_config_dir / MCP_DEPLOYED_SECRETS_FILENAME
+
+    async def mock_process_secrets(*args, **kwargs):
+        with open(kwargs.get("output_path", output_path), "w", encoding="utf-8") as f:
+            f.write("key: value\n")
+        return {
+            "deployment_secrets": [],
+            "user_secrets": [],
+            "reused_secrets": [],
+            "skipped_secrets": [],
+        }
+
+    mock_client = AsyncMock()
+    mock_client.get_app_id_by_name.return_value = None
+
+    mock_app = MagicMock()
+    mock_app.appId = MOCK_APP_ID
+    mock_client.create_app.return_value = mock_app
+
+    with (
+        patch(
+            "mcp_agent.cli.secrets.processor.process_config_secrets",
+            side_effect=mock_process_secrets,
+        ),
+        patch(
+            "mcp_agent.cli.cloud.commands.deploy.main.MCPAppClient",
+            return_value=mock_client,
+        ),
+        patch(
+            "mcp_agent.cli.cloud.commands.deploy.main.wrangler_deploy",
+            return_value=MOCK_APP_ID,
+        ),
+    ):
+        result = runner.invoke(
+            app,
+            [
+                "deploy",
+                "--working-dir",
+                temp_config_dir,
+                "--api-url",
+                "http://test-api.com",
+                "--api-key",
+                "test-api-key",
+                "--non-interactive",
+            ],
+        )
+
+    assert result.exit_code == 0, f"Deploy command failed: {result.stdout}"
+    name_call = mock_client.get_app_id_by_name.await_args_list[0]
+    assert name_call.args[0] == "default"
+
+    create_call = mock_client.create_app.await_args
+    assert create_call.kwargs.get("description") is None
+
+
 def test_deploy_with_secrets_file():
     """Test the deploy command with a secrets file."""
     # Create a temporary directory for test files
