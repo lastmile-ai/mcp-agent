@@ -19,6 +19,7 @@ from mcp_agent.cli.cloud.commands.deploy.wrangler_wrapper import (
     wrangler_deploy,
 )
 from mcp_agent.cli.cloud.commands.deploy.bundle_utils import (
+    create_pathspec_from_gitignore,
     should_ignore_by_gitignore,
 )
 from mcp_agent.cli.core.constants import MCP_SECRETS_FILENAME
@@ -1021,7 +1022,12 @@ db_password: your_password_here
 
 # Bundle utils tests
 def test_should_ignore_by_gitignore():
-    """Test ignore pattern matching with pathspec."""
+    """Exercise ignore matching for mixed files and directories.
+
+    Builds a `PathSpec` with file globs and directory suffixes and verifies the
+    adapter returns only the names that match those patterns, covering the
+    core filtering logic used during bundle copies.
+    """
 
     gitignore_content = """*.log
 *.pyc
@@ -1054,8 +1060,100 @@ build/
     assert "config.yaml" not in ignored
 
 
+def test_create_pathspec_from_gitignore(tmp_path):
+    """`create_pathspec_from_gitignore` should parse patterns into a matcher.
+
+    Writes a temporary ignore file, loads it into a `PathSpec`, and asserts the
+    resulting matcher includes and excludes representative paths.
+    """
+
+    ignore_path = tmp_path / ".mcpacignore"
+    ignore_path.write_text("*.log\nbuild/\n")
+
+    spec = create_pathspec_from_gitignore(ignore_path)
+
+    assert spec is not None
+    assert spec.match_file("debug.log")
+    assert spec.match_file("build/output.txt")
+    assert not spec.match_file("main.py")
+
+
+def test_create_pathspec_from_gitignore_missing_file(tmp_path):
+    """Missing ignore files must return `None`.
+
+    Ensures callers can detect the absence of an ignore file and fall back to
+    default behaviour without raising.
+    """
+
+    missing_path = tmp_path / ".doesnotexist"
+    assert create_pathspec_from_gitignore(missing_path) is None
+
+
+def test_should_ignore_by_gitignore_without_spec(tmp_path):
+    """When no spec is provided the adapter should ignore nothing.
+
+    Verifies the helper returns an empty set so the copy operation only applies
+    the hard-coded exclusions.
+    """
+
+    project_dir = tmp_path
+    (project_dir / "data.txt").write_text("data")
+
+    ignored = should_ignore_by_gitignore(
+        str(project_dir), ["data.txt"], project_dir, spec=None
+    )
+
+    assert ignored == set()
+
+
+def test_should_ignore_by_gitignore_matches_directories(tmp_path):
+    """Directory patterns like `build/` must match folder names.
+
+    Confirms the helper rewrites directory paths with a trailing slash when
+    checking patterns so gitignore-style directory globs are honoured.
+    """
+
+    project_dir = tmp_path
+    (project_dir / "build").mkdir()
+    spec = pathspec.PathSpec.from_lines("gitwildmatch", ["build/"])
+
+    ignored = should_ignore_by_gitignore(
+        str(project_dir), ["build"], project_dir, spec
+    )
+
+    assert "build" in ignored
+
+
+def test_should_ignore_by_gitignore_handles_nested_paths(tmp_path):
+    """Nested patterns should be evaluated relative to the project root.
+
+    Demonstrates that patterns such as `assets/*.txt` apply to files in a
+    subdirectory while sparing siblings that do not match.
+    """
+
+    project_dir = tmp_path
+    nested = project_dir / "assets"
+    nested.mkdir()
+    (nested / "notes.txt").write_text("notes")
+    (nested / "keep.md").write_text("keep")
+
+    spec = pathspec.PathSpec.from_lines("gitwildmatch", ["assets/*.txt"])
+
+    ignored = should_ignore_by_gitignore(
+        str(nested), ["notes.txt", "keep.md"], project_dir, spec
+    )
+
+    assert "notes.txt" in ignored
+    assert "keep.md" not in ignored
+
+
 def test_wrangler_deploy_with_ignore_file():
-    """Test that wrangler_deploy respects explicit ignore file patterns."""
+    """Bundling honours explicit ignore file patterns end to end.
+
+    Creates a project containing included and excluded files, supplies a real
+    `.mcpacignore`, and checks the temp bundle only contains files that should
+    survive, proving the ignore spec is wired into `copytree` correctly.
+    """
     with tempfile.TemporaryDirectory() as temp_dir:
         project_path = Path(temp_dir)
 
@@ -1107,3 +1205,49 @@ dist/
             wrangler_deploy("test-app", "test-api-key", project_path, project_path / ".mcpacignore")
 
 
+def test_wrangler_deploy_warns_when_ignore_file_missing():
+    """Missing ignore files should warn but still bundle everything.
+
+    Passes a nonexistent ignore path, asserts `print_warning` reports the issue,
+    and that the temporary bundle still includes files that would only be
+    skipped by an actual ignore spec.
+    """
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        project_path = Path(temp_dir)
+
+        (project_path / "main.py").write_text(
+            """
+from mcp_agent_cloud import MCPApp
+
+app = MCPApp(name="test-app")
+"""
+        )
+        (project_path / "config.yaml").write_text("name: test-app\n")
+        (project_path / "artifact.txt").write_text("artifact\n")
+
+        missing_ignore = project_path / ".customignore"
+
+        def check_missing_ignore_behavior(*args, **kwargs):
+            temp_project_dir = Path(kwargs["cwd"])
+
+            # Nothing should be ignored beyond defaults when the file is missing
+            assert (temp_project_dir / "artifact.txt.mcpac.py").exists()
+            assert (temp_project_dir / "config.yaml.mcpac.py").exists()
+
+            return MagicMock(returncode=0)
+
+        with (
+            patch(
+                "mcp_agent.cli.cloud.commands.deploy.wrangler_wrapper.print_warning"
+            ) as mock_warning,
+            patch("subprocess.run", side_effect=check_missing_ignore_behavior),
+        ):
+            wrangler_deploy(
+                "test-app", "test-api-key", project_path, missing_ignore
+            )
+
+        mock_warning.assert_called_once()
+        warning_message = mock_warning.call_args[0][0]
+        assert str(missing_ignore) in warning_message
+        assert "not found" in warning_message

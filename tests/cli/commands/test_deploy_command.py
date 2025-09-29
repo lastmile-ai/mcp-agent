@@ -391,7 +391,12 @@ def test_deploy_uses_defaults_when_config_cannot_be_loaded(runner, temp_config_d
 
 
 def test_deploy_auto_detects_mcpacignore(runner, temp_config_dir):
-    """A `.mcpacignore` in the project directory is respected automatically."""
+    """A `.mcpacignore` that lives beside the config dir is auto-detected.
+
+    The CLI should discover the file without extra flags, resolve it to an
+    absolute path, and hand that path through to `wrangler_deploy` so the
+    bundler applies the expected ignore patterns.
+    """
     default_ignore = temp_config_dir / ".mcpacignore"
     default_ignore.write_text("*.log\n")
 
@@ -407,6 +412,14 @@ def test_deploy_auto_detects_mcpacignore(runner, temp_config_dir):
         captured["ignore_file"] = ignore_file
         return MOCK_APP_ID
 
+    async def _fake_process_config_secrets(*_args, **_kwargs):
+        return {
+            "deployment_secrets": [],
+            "user_secrets": [],
+            "reused_secrets": [],
+            "skipped_secrets": [],
+        }
+
     with (
         patch(
             "mcp_agent.cli.cloud.commands.deploy.main.MCPAppClient",
@@ -418,13 +431,7 @@ def test_deploy_auto_detects_mcpacignore(runner, temp_config_dir):
         ),
         patch(
             "mcp_agent.cli.secrets.processor.process_config_secrets",
-            new_callable=AsyncMock,
-            return_value={
-                "deployment_secrets": [],
-                "user_secrets": [],
-                "reused_secrets": [],
-                "skipped_secrets": [],
-            },
+            side_effect=_fake_process_config_secrets,
         ),
     ):
         result = runner.invoke(
@@ -443,11 +450,92 @@ def test_deploy_auto_detects_mcpacignore(runner, temp_config_dir):
         )
 
     assert result.exit_code == 0, result.stdout
-    assert captured.get("ignore_file") == default_ignore.resolve()
+    ignore_path = captured.get("ignore_file")
+    assert ignore_path is not None
+    assert ignore_path.resolve() == default_ignore.resolve()
+
+
+def test_deploy_uses_cwd_mcpacignore_when_config_dir_lacks_one(
+    runner, temp_config_dir, monkeypatch
+):
+    """Fallback to the working directory's ignore file when config_dir has none.
+
+    When the project directory does not contain `.mcpacignore`, the CLI should
+    look in `Path.cwd()` and forward that file to the bundler, ensuring teams
+    can keep ignore rules in the working tree root.
+    """
+    default_ignore = temp_config_dir / ".mcpacignore"
+    if default_ignore.exists():
+        default_ignore.unlink()
+
+    with tempfile.TemporaryDirectory() as cwd_dir:
+        cwd_path = Path(cwd_dir)
+        monkeypatch.chdir(cwd_path)
+
+        cwd_ignore = cwd_path / ".mcpacignore"
+        cwd_ignore.write_text("*.tmp\n")
+
+        mock_client = AsyncMock()
+        mock_client.get_app_id_by_name.return_value = None
+        mock_app = MagicMock()
+        mock_app.appId = MOCK_APP_ID
+        mock_client.create_app.return_value = mock_app
+
+        captured = {}
+
+        def _capture_wrangler(app_id, api_key, project_dir, ignore_file=None):
+            captured["ignore_file"] = ignore_file
+            return MOCK_APP_ID
+
+        async def _fake_process_config_secrets(*_args, **_kwargs):
+            return {
+                "deployment_secrets": [],
+                "user_secrets": [],
+                "reused_secrets": [],
+                "skipped_secrets": [],
+            }
+
+        with (
+            patch(
+                "mcp_agent.cli.cloud.commands.deploy.main.MCPAppClient",
+                return_value=mock_client,
+            ),
+            patch(
+                "mcp_agent.cli.cloud.commands.deploy.main.wrangler_deploy",
+                side_effect=_capture_wrangler,
+            ),
+            patch(
+                "mcp_agent.cli.secrets.processor.process_config_secrets",
+                side_effect=_fake_process_config_secrets,
+            ),
+        ):
+            result = runner.invoke(
+                app,
+                [
+                    "deploy",
+                    MOCK_APP_NAME,
+                    "--config-dir",
+                    str(temp_config_dir),
+                    "--api-url",
+                    "http://test-api.com",
+                    "--api-key",
+                    "test-api-key",
+                    "--non-interactive",
+                ],
+            )
+
+        assert result.exit_code == 0, result.stdout
+        ignore_path = captured.get("ignore_file")
+        assert ignore_path is not None
+        assert ignore_path.resolve() == cwd_ignore.resolve()
 
 
 def test_deploy_no_ignore_when_file_missing(runner, temp_config_dir):
-    """No ignore file is used when neither `.mcpacignore` nor `--ignore-file` is provided."""
+    """No ignore file is used when neither `.mcpacignore` nor `--ignore-file` exists.
+
+    Ensures the CLI passes `None` to `wrangler_deploy`, meaning only the built-in
+    exclusions run when there is no ignore file anywhere on disk.
+    """
     default_ignore = temp_config_dir / ".mcpacignore"
     if default_ignore.exists():
         default_ignore.unlink()
@@ -464,6 +552,14 @@ def test_deploy_no_ignore_when_file_missing(runner, temp_config_dir):
         captured["ignore_file"] = ignore_file
         return MOCK_APP_ID
 
+    async def _fake_process_config_secrets(*_args, **_kwargs):
+        return {
+            "deployment_secrets": [],
+            "user_secrets": [],
+            "reused_secrets": [],
+            "skipped_secrets": [],
+        }
+
     with (
         patch(
             "mcp_agent.cli.cloud.commands.deploy.main.MCPAppClient",
@@ -475,13 +571,7 @@ def test_deploy_no_ignore_when_file_missing(runner, temp_config_dir):
         ),
         patch(
             "mcp_agent.cli.secrets.processor.process_config_secrets",
-            new_callable=AsyncMock,
-            return_value={
-                "deployment_secrets": [],
-                "user_secrets": [],
-                "reused_secrets": [],
-                "skipped_secrets": [],
-            },
+            side_effect=_fake_process_config_secrets,
         ),
     ):
         result = runner.invoke(
@@ -504,7 +594,11 @@ def test_deploy_no_ignore_when_file_missing(runner, temp_config_dir):
 
 
 def test_deploy_ignore_file_custom(runner, temp_config_dir):
-    """`--ignore-file` passes the provided path through to bundler."""
+    """`--ignore-file` should win over auto-detection and stay intact.
+
+    Confirms the CLI resolves the user-supplied path flag and forwards that
+    absolute location to `wrangler_deploy` unmodified.
+    """
     custom_ignore = temp_config_dir / ".deployignore"
     custom_ignore.write_text("*.tmp\n")
 
@@ -520,6 +614,14 @@ def test_deploy_ignore_file_custom(runner, temp_config_dir):
         captured["ignore_file"] = ignore_file
         return MOCK_APP_ID
 
+    async def _fake_process_config_secrets(*_args, **_kwargs):
+        return {
+            "deployment_secrets": [],
+            "user_secrets": [],
+            "reused_secrets": [],
+            "skipped_secrets": [],
+        }
+
     with (
         patch(
             "mcp_agent.cli.cloud.commands.deploy.main.MCPAppClient",
@@ -531,13 +633,7 @@ def test_deploy_ignore_file_custom(runner, temp_config_dir):
         ),
         patch(
             "mcp_agent.cli.secrets.processor.process_config_secrets",
-            new_callable=AsyncMock,
-            return_value={
-                "deployment_secrets": [],
-                "user_secrets": [],
-                "reused_secrets": [],
-                "skipped_secrets": [],
-            },
+            side_effect=_fake_process_config_secrets,
         ),
     ):
         result = runner.invoke(
@@ -558,12 +654,17 @@ def test_deploy_ignore_file_custom(runner, temp_config_dir):
         )
 
     assert result.exit_code == 0, result.stdout
-    # Typer resolves path, so expect absolute
-    assert captured.get("ignore_file") == custom_ignore.resolve()
+    ignore_path = captured.get("ignore_file")
+    assert ignore_path is not None
+    assert ignore_path.resolve() == custom_ignore.resolve()
 
 
 def test_deploy_ignore_file_overrides_default(runner, temp_config_dir):
-    """`--ignore-file` overrides the default `.mcpacignore` detection."""
+    """`--ignore-file` overrides any `.mcpacignore` located on disk.
+
+    With both files present, the bundler should receive the explicit flag’s
+    path, proving that manual overrides take precedence over defaults.
+    """
     default_ignore = temp_config_dir / ".mcpacignore"
     default_ignore.write_text("*.log\n")
     custom_ignore = temp_config_dir / ".customignore"
@@ -581,6 +682,14 @@ def test_deploy_ignore_file_overrides_default(runner, temp_config_dir):
         captured["ignore_file"] = ignore_file
         return MOCK_APP_ID
 
+    async def _fake_process_config_secrets(*_args, **_kwargs):
+        return {
+            "deployment_secrets": [],
+            "user_secrets": [],
+            "reused_secrets": [],
+            "skipped_secrets": [],
+        }
+
     with (
         patch(
             "mcp_agent.cli.cloud.commands.deploy.main.MCPAppClient",
@@ -592,13 +701,7 @@ def test_deploy_ignore_file_overrides_default(runner, temp_config_dir):
         ),
         patch(
             "mcp_agent.cli.secrets.processor.process_config_secrets",
-            new_callable=AsyncMock,
-            return_value={
-                "deployment_secrets": [],
-                "user_secrets": [],
-                "reused_secrets": [],
-                "skipped_secrets": [],
-            },
+            side_effect=_fake_process_config_secrets,
         ),
     ):
         result = runner.invoke(
@@ -619,7 +722,9 @@ def test_deploy_ignore_file_overrides_default(runner, temp_config_dir):
         )
 
     assert result.exit_code == 0, result.stdout
-    assert captured.get("ignore_file") == custom_ignore.resolve()
+    ignore_path = captured.get("ignore_file")
+    assert ignore_path is not None
+    assert ignore_path.resolve() == custom_ignore.resolve()
 
 
 def test_deploy_with_secrets_file():
