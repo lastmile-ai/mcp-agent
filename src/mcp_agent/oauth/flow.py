@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
+from json import JSONDecodeError
 from typing import Any, Dict, Sequence
 from urllib.parse import parse_qs, urlparse
 
@@ -111,6 +112,7 @@ class AuthorizationFlowCoordinator:
             "url": str(authorize_url),
             "message": f"Authorization required for {server_name}",
             "redirect_uri_options": redirect_options,
+            "flow_id": flow_id
         }
 
         result = await _send_auth_request(context, request_payload)
@@ -118,6 +120,10 @@ class AuthorizationFlowCoordinator:
         try:
             if result and result.get("url"):
                 callback_data = _parse_callback_params(result["url"])
+                if callback_future is not None:
+                    await callback_registry.discard(flow_id)
+            elif result and result.get("code"):
+                callback_data = result
                 if callback_future is not None:
                     await callback_registry.discard(flow_id)
             elif callback_future is not None:
@@ -170,21 +176,25 @@ class AuthorizationFlowCoordinator:
             data["client_secret"] = oauth_config.client_secret
 
         token_response = await self._http_client.post(
-            token_endpoint, data=data, auth=auth
+            token_endpoint, data=data, auth=auth, headers={"Accept": "application/json"}
         )
         token_response.raise_for_status()
-        payload = token_response.json()
 
-        access_token = payload.get("access_token")
+        try:
+            callback_data = token_response.json()
+        except JSONDecodeError:
+            callback_data = _parse_callback_params("?" + token_response.text)
+
+        access_token = callback_data.get("access_token")
         if not access_token:
             raise OAuthFlowError("Token endpoint response missing access_token")
-        refresh_token = payload.get("refresh_token")
-        expires_in = payload.get("expires_in")
+        refresh_token = callback_data.get("refresh_token")
+        expires_in = callback_data.get("expires_in")
         expires_at = None
         if isinstance(expires_in, (int, float)):
             expires_at = time.time() + float(expires_in)
 
-        scope_from_payload = payload.get("scope")
+        scope_from_payload = callback_data.get("scope")
         if isinstance(scope_from_payload, str) and scope_from_payload.strip():
             effective_scopes = tuple(scope_from_payload.split())
         else:
@@ -195,10 +205,10 @@ class AuthorizationFlowCoordinator:
             refresh_token=refresh_token,
             expires_at=expires_at,
             scopes=effective_scopes,
-            token_type=str(payload.get("token_type", "Bearer")),
+            token_type=str(callback_data.get("token_type", "Bearer")),
             resource=resource,
             authorization_server=authorization_server_url,
-            metadata={"raw": payload},
+            metadata={"raw": token_response.text},
         )
 
 

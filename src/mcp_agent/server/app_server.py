@@ -39,9 +39,11 @@ from mcp_agent.logging.logger import LoggingConfig
 from mcp_agent.mcp.mcp_server_registry import ServerRegistry
 from mcp_agent.oauth.identity import OAuthUserIdentity
 from mcp_agent.oauth.callbacks import callback_registry
+from mcp_agent.oauth.errors import (
+    CallbackTimeoutError,
+)
 from mcp_agent.oauth.manager import create_default_user_for_preconfigured_tokens
 from mcp_agent.server.token_verifier import MCPAgentTokenVerifier
-
 if TYPE_CHECKING:
     from mcp_agent.core.context import Context
 
@@ -722,12 +724,15 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             elif method == "auth/request":
                 # TODO: special handling of auth request, should be replaced by future URL elicitation
                 class AuthToken(BaseModel):
-                    token: str = Field(description="The access token")
+                    confirmation: str = Field(description="Please press enter to confirm this message has been received")
+
+                flow_id = params["flow_id"]
+                callback_future = await callback_registry.create_handle(flow_id)
 
                 req = ElicitRequest(
                     method="elicitation/create",
                     params=ElicitRequestParams(
-                        message=params["message"] + "\n\n" + params["url"] ,
+                        message=params["message"] + "\n\n" + params["url"],
                         requestedSchema=AuthToken.model_json_schema(),
                     ),
                 )
@@ -736,7 +741,17 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                     request=req, result_type=ElicitResult
                 )  # type: ignore[attr-defined]
 
-                return result.model_dump(by_alias=True, mode="json", exclude_none=True)
+                timeout = 300
+                try:
+                    callback_data = await asyncio.wait_for(
+                        callback_future, timeout=timeout
+                    )
+                except asyncio.TimeoutError as exc:
+                    raise CallbackTimeoutError(
+                        f"Timed out waiting for OAuth callback after {timeout} seconds"
+                    ) from exc
+
+                return callback_data
             else:
                 raise ValueError(f"unsupported method: {method}")
 

@@ -37,7 +37,7 @@ class OAuthHttpxAuth(httpx.Auth):
                 server_config=self._server_config,
                 scopes=self._scopes,
             )
-        except Exception as e:
+        except Exception:
             raise
         request.headers["Authorization"] = (
             f"{token_record.token_type} {token_record.access_token}"

@@ -28,6 +28,7 @@ class OAuthCallbackRegistry:
         async with self._lock:
             future = self._pending.get(flow_id)
             if future is None:
+                # print all entries in _pending for debugging
                 return False
             if not future.done():
                 future.set_result(payload)

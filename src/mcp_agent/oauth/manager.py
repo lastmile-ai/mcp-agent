@@ -13,7 +13,6 @@ from httpx import URL
 from mcp_agent.config import MCPOAuthClientSettings, OAuthSettings
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.oauth.errors import (
-    MissingUserIdentityError,
     OAuthFlowError,
     TokenRefreshError,
 )

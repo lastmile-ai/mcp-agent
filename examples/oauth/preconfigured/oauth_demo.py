@@ -198,7 +198,7 @@ class GitHubOAuthDemo:
 
         # Step 1: Generate authorization URL
         auth_url = self.get_authorization_url(scopes)
-        print(f"\n1. Please visit this URL to authorize the application:")
+        print("\n1. Please visit this URL to authorize the application:")
         print(f"   {auth_url}")
         print("\n2. After authorization, you'll be redirected to a callback URL.")
 
@@ -281,7 +281,7 @@ class GitHubOAuthDemo:
         print("5. Authorization code received, exchanging for access token...")
 
         # Step 4: Exchange code for token
-        token_data = await self.exchange_code_for_token(code, state)
+        await self.exchange_code_for_token(code, state)
         print("   ✓ Access token obtained successfully")
 
         # Step 5: Test the token
@@ -332,7 +332,7 @@ async def main():
         print("OAuth Flow Completed Successfully!")
         print("=" * 50)
 
-        print(f"\nToken Details:")
+        print("\nToken Details:")
         print(f"  Access Token: {token_data['access_token'][:20]}...")
         print(f"  Expires At: {time.ctime(token_data['expires_at'])}")
         print(f"  Scopes: {', '.join(token_data['scopes'])}")

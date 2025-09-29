@@ -1,8 +1,5 @@
-import argparse
 import asyncio
-import json
 import time
-import os
 
 from datetime import timedelta
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
@@ -11,7 +8,6 @@ from mcp.types import CallToolResult, LoggingMessageNotificationParams
 from mcp_agent.app import MCPApp
 from mcp_agent.config import MCPServerSettings
 from mcp_agent.core.context import Context
-from mcp_agent.executor.workflow import WorkflowExecution
 from mcp_agent.mcp.gen_client import gen_client
 from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
 from mcp_agent.human_input.console_handler import console_input_callback
@@ -27,24 +23,6 @@ try:
     from anyio import BrokenResourceError as _BrokenResourceError
 except Exception:  # pragma: no cover
     _BrokenResourceError = None  # type: ignore
-
-# Get GitHub access token from environment or ask user
-access_token = os.getenv('GITHUB_ACCESS_TOKEN')
-
-if not access_token:
-    print("\nGitHub access token not found in environment variable GITHUB_ACCESS_TOKEN")
-    print("\nTo get a GitHub access token:")
-    print("1. Run the oauth_demo.py script from examples/oauth/ to get a fresh token")
-    print("2. Or go to GitHub Settings > Developer settings > Personal access tokens")
-    print("3. Create a token with 'read:org' and 'public_repo' scopes")
-    print("\nThen set the token:")
-    print("export GITHUB_ACCESS_TOKEN='your_token_here'")
-
-# Verify token format
-if not access_token.startswith(('gho_', 'ghp_', 'github_pat_')):
-    print(f"Warning: Token doesn't look like a GitHub token (got: {access_token[:10]}...)")
-    print("GitHub tokens usually start with 'gho_', 'ghp_', or 'github_pat_'")
-
 
 async def main():
     # Create MCPApp to get the server registry

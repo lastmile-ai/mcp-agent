@@ -274,7 +274,6 @@ async def analyze_github_ecosystem(
 def _generate_ecosystem_insights(results: Dict[str, Any]) -> Dict[str, Any]:
     """Generate high-level insights from the ecosystem analysis."""
     organizations = results.get("organizations", [])
-    summary = results.get("summary", {})
 
     if not organizations:
         return {"message": "No data available for insights"}
@@ -386,7 +385,7 @@ async def demonstrate_pre_auth_workflow():
                 include_details=True
             )
 
-            print(f"\n3. Workflow Results:")
+            print("\n3. Workflow Results:")
             print(f"   - Focus areas analyzed: {result['focus_areas']}")
             print(f"   - Queries executed: {len(result['queries_executed'])}")
             print(f"   - Organizations found: {result['results']['summary'].get('total_organizations', 0)}")
@@ -394,7 +393,7 @@ async def demonstrate_pre_auth_workflow():
             if result['results']['errors']:
                 print(f"   - Errors encountered: {len(result['results']['errors'])}")
 
-            print(f"\n4. Ecosystem Insights:")
+            print("\n4. Ecosystem Insights:")
             insights = result['insights']
             if 'geographic_distribution' in insights:
                 top_locations = insights['geographic_distribution'].get('top_locations', {})

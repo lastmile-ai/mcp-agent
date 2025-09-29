@@ -7,11 +7,9 @@ This example demonstrates three approaches to creating agents and workflows:
 3. Declarative agent configuration using FastMCPApp decorators
 """
 
-import argparse
 import asyncio
 import json
-import os
-from typing import Dict, Any, Optional
+from typing import Optional
 from pydantic import AnyHttpUrl
 
 from mcp.server.fastmcp import FastMCP
@@ -19,16 +17,6 @@ from mcp_agent.core.context import Context as AppContext
 
 from mcp_agent.app import MCPApp
 from mcp_agent.server.app_server import create_mcp_server_for_app
-from mcp_agent.agents.agent import Agent
-from mcp_agent.workflows.llm.augmented_llm import RequestParams
-from mcp_agent.workflows.llm.llm_selector import ModelPreferences
-from mcp_agent.workflows.llm.augmented_llm_anthropic import AnthropicAugmentedLLM
-from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
-from mcp_agent.workflows.parallel.parallel_llm import ParallelLLM
-from mcp_agent.executor.workflow import Workflow, WorkflowResult
-from mcp_agent.tracing.token_counter import TokenNode
-from mcp_agent.human_input.console_handler import console_input_callback
-from mcp_agent.elicitation.handler import console_elicitation_callback
 from mcp_agent.mcp.gen_client import gen_client
 from mcp_agent.config import MCPServerSettings, Settings, LoggerSettings, MCPSettings, MCPServerAuthSettings, \
     MCPOAuthClientSettings
@@ -80,14 +68,12 @@ app = MCPApp(
 
 @app.tool(name="github_org_search")
 async def github_org_search(query: str, app_ctx: Optional[AppContext] = None) -> str:
-    from mcp_agent.mcp.gen_client import gen_client
 
     # Use the context's app if available for proper logging with upstream_session
     _app = app_ctx.app if app_ctx else app
     # Ensure the app's logger is bound to the current context with upstream_session
     if _app._logger and hasattr(_app._logger, "_bound_context"):
         _app._logger._bound_context = app_ctx
-    logger = _app.logger
 
     try:
         async with gen_client(
@@ -119,7 +105,7 @@ async def github_org_search(query: str, app_ctx: Optional[AppContext] = None) ->
                             pass
 
             return str(organizations)
-    except Exception as e:
+    except Exception:
         import traceback
         return f"Error: {traceback.format_exc()}"
 

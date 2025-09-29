@@ -18,8 +18,6 @@ from typing import Any, Dict, List
 
 from mcp_agent.app import MCPApp
 from mcp_agent.mcp.gen_client import gen_client
-from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
-from mcp_agent.mcp.mcp_connection_manager import MCPConnectionManager
 
 # Create the MCP app with OAuth configuration
 app = MCPApp(name="oauth_github_example")
@@ -78,7 +76,7 @@ async def search_github_orgs(query: str, limit: int = 5) -> List[Dict[str, Any]]
                     }
                 )
 
-                logger.info(f"Search completed, processing results...")
+                logger.info("Search completed, processing results...")
 
                 # Parse and return the results
                 if result.content:

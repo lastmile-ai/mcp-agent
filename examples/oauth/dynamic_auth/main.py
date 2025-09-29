@@ -24,7 +24,21 @@ from mcp_agent.config import MCPServerSettings, Settings, LoggerSettings, MCPSet
 # if not provided, a default FastMCP server will be created by MCPApp using create_mcp_server_for_app()
 mcp = FastMCP(name="basic_agent_server", instructions="My basic agent server example.")
 
+
+# Get client id and secret from environment variables
 client_id = os.getenv('GITHUB_CLIENT_ID')
+client_secret = os.getenv('GITHUB_CLIENT_SECRET')
+
+if not client_id or not client_secret:
+    print("\nGitHub client id and/or secret not found in GITHUB_CLIENT_Id and GITHUB_CLIENT_SECRET "
+          "environment variables.")
+    print("\nTo create these:")
+    print("\n1. Open your profile on github.com and navigate to 'Developer Settings'")
+    print("\n2. Create a new OAuth app and create a client secret for it.")
+    print("\n3. Create environment variables:")
+    print("\nexport GITHUB_CLIENT_ID='your_client_id_here'")
+    print("\nexport GITHUB_CLIENT_SECRET='your_client_secret_here'")
+
 
 settings = Settings(
         execution_engine="temporal",
@@ -36,7 +50,7 @@ settings = Settings(
         ),
         logger=LoggerSettings(level="info"),
         oauth=OAuthSettings(
-            callback_base_url=AnyHttpUrl("http://localhost:8080"),
+            callback_base_url=AnyHttpUrl("http://localhost:8000"),
             flow_timeout_seconds=300,
             token_store=OAuthTokenStoreSettings(refresh_leeway_seconds=60),
         ),
@@ -49,6 +63,7 @@ settings = Settings(
                     auth=MCPServerAuthSettings(
                         oauth=MCPOAuthClientSettings(
                             client_id=client_id,
+                            client_secret=client_secret,
                             use_internal_callback=True,
                             enabled=True,
                             scopes= [
@@ -121,18 +136,12 @@ async def github_org_search_activity(query: str) -> str:
 async def github_org_search(query: str) -> str:
     if app._logger and hasattr(app._logger, "_bound_context"):
         app._logger._bound_context = app.context
-    logger = app.logger
 
     result = await app.executor.execute(github_org_search_activity, query)
-    print(f"Result: {result}, {type(result)}")
+    print(f"Result: {result}")
 
-    return "ok!"
-    # try:
-    #     return await app.executor.execute(github_org_search_activity, query)
-    # except Exception as e:
-    #     import traceback
-    #     traceback.print_exc()
-    #     return f"Error: {e}"
+    return result
+
 
 async def main():
     async with app.run() as agent_app:

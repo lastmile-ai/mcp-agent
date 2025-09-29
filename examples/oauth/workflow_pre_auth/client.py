@@ -1,6 +1,4 @@
-import argparse
 import asyncio
-import json
 import time
 import os
 
@@ -11,7 +9,6 @@ from mcp.types import CallToolResult, LoggingMessageNotificationParams
 from mcp_agent.app import MCPApp
 from mcp_agent.config import MCPServerSettings
 from mcp_agent.core.context import Context
-from mcp_agent.executor.workflow import WorkflowExecution
 from mcp_agent.mcp.gen_client import gen_client
 from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
 from mcp_agent.human_input.console_handler import console_input_callback
