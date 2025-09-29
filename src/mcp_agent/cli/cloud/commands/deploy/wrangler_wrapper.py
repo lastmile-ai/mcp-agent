@@ -195,8 +195,7 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
                     continue
 
                 # For non-Python files, rename with .mcpac.py extension to be included as py files
-                relative_path = file_path.relative_to(temp_project_dir)
-                py_path = temp_project_dir / f"{relative_path}.mcpac.py"
+                py_path = file_path.with_suffix(file_path.suffix + ".mcpac.py")
 
                 # Rename in place
                 file_path.rename(py_path)
