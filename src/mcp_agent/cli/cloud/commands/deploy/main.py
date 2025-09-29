@@ -41,6 +41,7 @@ from mcp_agent.cli.utils.git_utils import (
     create_git_tag,
     sanitize_git_ref_component,
 )
+from mcp_agent.config import get_settings
 
 from .wrangler_wrapper import wrangler_deploy
 
@@ -57,11 +58,22 @@ def deploy_config(
         "-d",
         help="Description of the MCP App being deployed.",
     ),
-    config_dir: Path = typer.Option(
-        Path(""),
+    config_dir: Optional[Path] = typer.Option(
+        None,
         "--config-dir",
         "-c",
-        help="Path to the directory containing the app config and app files.",
+        help="Path to the directory containing the app config and app files."
+        " If relative, it is resolved against --working-dir.",
+        readable=True,
+        dir_okay=True,
+        file_okay=False,
+        resolve_path=False,
+    ),
+    working_dir: Path = typer.Option(
+        Path("."),
+        "--working-dir",
+        "-w",
+        help="Working directory to resolve config and bundle files from. Defaults to the current directory.",
         exists=True,
         readable=True,
         dir_okay=True,
@@ -126,12 +138,45 @@ def deploy_config(
     Returns:
         Newly-deployed MCP App ID
     """
-    # Show help if no app_name is provided
-    if app_name is None:
-        typer.echo(ctx.get_help())
-        raise typer.Exit()
-
     try:
+        if config_dir is None:
+            resolved_config_dir = working_dir
+        elif config_dir.is_absolute():
+            resolved_config_dir = config_dir
+        else:
+            resolved_config_dir = working_dir / config_dir
+
+        if not resolved_config_dir.exists() or not resolved_config_dir.is_dir():
+            raise CLIError(
+                f"Configuration directory '{resolved_config_dir}' does not exist or is not a directory.",
+                retriable=False,
+            )
+
+        config_dir = resolved_config_dir
+
+        config_file, secrets_file, deployed_secrets_file = get_config_files(config_dir)
+
+        default_app_name, default_app_description = _get_app_info_from_config(
+            config_file
+        )
+
+        if app_name is None:
+            if default_app_name:
+                print_info(
+                    f"No app name provided. Using '{default_app_name}' from configuration."
+                )
+                app_name = default_app_name
+            else:
+                app_name = "default"
+                print_info("No app name provided. Using 'default' as app name.")
+
+        if app_description is None:
+            if default_app_description:
+                print_info(
+                    "No app description provided. Using description from configuration."
+                )
+                app_description = default_app_description
+
         provided_key = api_key
         effective_api_url = api_url or settings.API_BASE_URL
         effective_api_key = (
@@ -174,7 +219,8 @@ def deploy_config(
                 )
                 if not non_interactive:
                     use_existing = typer.confirm(
-                        f"Do you want deploy an update to the existing app ID: {app_id}?"
+                        f"Do you want deploy an update to the existing app ID: {app_id}?",
+                        default=True,
                     )
                     if use_existing:
                         print_info(f"Will deploy an update to app ID: {app_id}")
@@ -195,9 +241,6 @@ def deploy_config(
         except Exception as e:
             raise CLIError(f"Error checking or creating app: {str(e)}") from e
 
-        # Validate config directory and required files
-        config_file, secrets_file, deployed_secrets_file = get_config_files(config_dir)
-
         # If a deployed secrets file already exists, determine if it should be used or overwritten
         if deployed_secrets_file:
             if secrets_file:
@@ -209,10 +252,11 @@ def deploy_config(
                         "--non-interactive specified, using existing deployed secrets file without changes."
                     )
                 else:
-                    update = typer.confirm(
-                        f"Do you want to update the existing '{MCP_DEPLOYED_SECRETS_FILENAME}' by re-processing '{MCP_SECRETS_FILENAME}'?"
+                    reuse = typer.confirm(
+                        f"Do you want to reuse the previously deployed secrets in '{MCP_DEPLOYED_SECRETS_FILENAME}'?",
+                        default=True,
                     )
-                    if update:
+                    if not reuse:
                         print_info(
                             f"Will update existing '{MCP_DEPLOYED_SECRETS_FILENAME}' by re-processing '{MCP_SECRETS_FILENAME}'."
                         )
@@ -443,3 +487,30 @@ def get_config_files(config_dir: Path) -> tuple[Path, Optional[Path], Optional[P
         deployed_secrets_file = deployed_secrets_path
 
     return config_file, secrets_file, deployed_secrets_file
+
+
+def _get_app_info_from_config(config_file: Path) -> Optional[tuple[str, str]]:
+    """Return a default deployment name sourced from configuration if available."""
+
+    try:
+        loaded_settings = get_settings(
+            config_path=str(config_file),
+            set_global=False,
+        )
+    except Exception:
+        return None, None
+
+    app_name = (
+        loaded_settings.name
+        if isinstance(loaded_settings.name, str) and loaded_settings.name.strip()
+        else None
+    )
+
+    app_description = (
+        loaded_settings.description
+        if isinstance(loaded_settings.description, str)
+        and loaded_settings.description.strip()
+        else None
+    )
+
+    return app_name, app_description
