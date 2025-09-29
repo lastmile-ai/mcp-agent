@@ -155,7 +155,7 @@ Integrate observability into your MCP Agent workflows:
 ```python
 # workflows/observable_workflow.py
 from mcp_agent.app import MCPApp
-from mcp_agent.workflows import Workflow, WorkflowResult
+from mcp_agent.executor.workflow import Workflow, WorkflowResult
 from mcp_agent.agents.agent import Agent
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 from opentelemetry import trace, metrics
@@ -1460,7 +1460,7 @@ receivers:
 - name: 'critical-alerts'
   slack_configs:
   - channel: '#critical-alerts'
-    title: '=¨ CRITICAL: MCP Agent Alert'
+    title: '=ï¿½ CRITICAL: MCP Agent Alert'
     text: |
       {{ range .Alerts }}
       *Alert:* {{ .Annotations.summary }}
@@ -1492,7 +1492,7 @@ receivers:
 - name: 'cost-alerts'
   slack_configs:
   - channel: '#cost-monitoring'
-    title: '=° LLM Cost Alert'
+    title: '=ï¿½ LLM Cost Alert'
     text: |
       {{ range .Alerts }}
       {{ .Annotations.summary }}
@@ -1633,7 +1633,7 @@ class AlertManager:
             if handler:
                 await handler(alert)
             
-            print(f"=¨ ALERT: {alert.severity.value.upper()} - {alert.message}")
+            print(f"=ï¿½ ALERT: {alert.severity.value.upper()} - {alert.message}")
     
     async def resolve_alert(self, name: str):
         """Resolve alerts by name."""
