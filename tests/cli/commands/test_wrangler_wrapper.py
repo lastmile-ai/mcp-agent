@@ -4,7 +4,7 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch, mock_open
+from unittest.mock import MagicMock, patch
 
 import pytest
 import pathspec
@@ -19,7 +19,6 @@ from mcp_agent.cli.cloud.commands.deploy.wrangler_wrapper import (
     wrangler_deploy,
 )
 from mcp_agent.cli.cloud.commands.deploy.bundle_utils import (
-    create_pathspec_from_gitignore,
     should_ignore_by_gitignore,
 )
 from mcp_agent.cli.core.constants import MCP_SECRETS_FILENAME

@@ -134,6 +134,7 @@ def wrangler_deploy(
         app_id (str): The application ID.
         api_key (str): User MCP Agent Cloud API key.
         project_dir (Path): The directory of the project to deploy.
+        ignore_file (Path | None): Optional path to a gitignore-style file for excluding files from the bundle.
     """
 
     # Copy existing env to avoid overwriting
