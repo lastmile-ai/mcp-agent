@@ -64,7 +64,7 @@ class EvaluatorOptimizerWorkflow:
         )
 
         result = await evaluator_optimizer.generate_str(
-            message=input,
+            message=prompt,
             request_params=RequestParams(model="gpt-4o"),
         )
 
