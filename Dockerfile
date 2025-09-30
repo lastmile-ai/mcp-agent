@@ -16,10 +16,6 @@ RUN useradd -m appuser && chown -R appuser:appuser /app
 COPY --from=builder /dist/*.whl /tmp/
 COPY --from=builder /wheelhouse /wheelhouse
 RUN python -m pip install --no-cache-dir --no-index --find-links=/wheelhouse /tmp/*.whl && rm -rf /tmp/* /wheelhouse
-USER appuser
-EXPOSE 8080
-
-# Write healthcheck script using a nested heredoc inside RUN (valid)
 RUN <<'SH'
 cat >/usr/local/bin/healthcheck.py <<'PY'
 import os, urllib.request, sys
@@ -32,6 +28,11 @@ except Exception:
 PY
 chmod +x /usr/local/bin/healthcheck.py
 SH
+
+USER appuser
+EXPOSE 8080
+
+# Write healthcheck script using a nested heredoc inside RUN (valid)
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s CMD ["python","/usr/local/bin/healthcheck.py"]
 
