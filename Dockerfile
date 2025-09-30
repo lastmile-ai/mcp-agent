@@ -12,8 +12,8 @@ FROM python:${PYTHON_VERSION} AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PORT=8080
 WORKDIR /app
 RUN useradd -m appuser && chown -R appuser:appuser /app
-COPY --from=builder /dist/*.whl /tmp/pkg.whl
-RUN python -m pip install --no-cache-dir --no-index --find-links=/tmp /tmp/pkg.whl && rm -rf /tmp/*
+COPY --from=builder /dist/*.whl /tmp/
+RUN python -m pip install --no-cache-dir --no-index --find-links=/tmp /tmp/*.whl && rm -rf /tmp/*
 USER appuser
 EXPOSE 8080
 
