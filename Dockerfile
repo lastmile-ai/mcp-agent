@@ -16,14 +16,18 @@ COPY --from=builder /dist/*.whl /tmp/pkg.whl
 RUN python -m pip install --no-cache-dir --no-index --find-links=/tmp /tmp/pkg.whl && rm -rf /tmp/*
 USER appuser
 EXPOSE 8080
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s CMD python - <<'PY' | grep -q 200 || exit 1
-import os, urllib.request
-u=f"http://127.0.0.1:{os.getenv('PORT','8080')}/health"
+
+# Write healthcheck script via RUN heredoc (allowed)
+RUN <<'PY' bash -lc 'cat > /usr/local/bin/healthcheck.py && chmod +x /usr/local/bin/healthcheck.py'
+import os, urllib.request, sys
+u = f"http://127.0.0.1:{os.getenv('PORT','8080')}/health"
 try:
-  with urllib.request.urlopen(u, timeout=2) as r:
-    print(r.status)
+    s = urllib.request.urlopen(u, timeout=2).status
+    sys.exit(0 if s == 200 else 1)
 except Exception:
-  print(0)
+    sys.exit(1)
 PY
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s CMD ["python","/usr/local/bin/healthcheck.py"]
 
 CMD ["python", "-m", "mcp_agent.health.server"]
