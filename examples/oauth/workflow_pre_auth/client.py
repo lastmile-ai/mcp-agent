@@ -1,6 +1,7 @@
 import asyncio
 import time
 import os
+import sys
 
 from datetime import timedelta
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
@@ -61,8 +62,10 @@ async def main():
         context.server_registry.registry["basic_agent_server"] = MCPServerSettings(
             name="basic_agent_server",
             description="Local workflow server running the basic agent example",
-            command="uv",
-            args=["run", "main.py"],
+            transport="sse",
+            url="http://127.0.0.1:8000/sse",
+            # command="uv",
+            # args=["run", "main.py"],
         )
 
         # Define a logging callback to receive server-side log notifications
@@ -123,16 +126,18 @@ async def main():
                     data={"tools": [tool.name for tool in tools_result.tools]},
                 )
 
-                await server.call_tool("workflows-pre-auth",
-                                       arguments={
-                                           "workflow_name": "github_org_search",
-                                           "tokens": [
-                                               {
-                                                   "access_token": access_token,
-                                                   "server_name": "github",
-                                               }
-                                           ]
-                                       })
+                if len(sys.argv) < 2 or sys.argv[1] != "--skip-pre-auth":
+                    print("Performing pre-auth")
+                    await server.call_tool("workflows-pre-auth",
+                                           arguments={
+                                               "workflow_name": "github_org_search",
+                                               "tokens": [
+                                                   {
+                                                       "access_token": access_token,
+                                                       "server_name": "github",
+                                                   }
+                                               ]
+                                           })
 
                 print(await server.call_tool("github_org_search", {"query": "lastmileai"}))
         except Exception as e:

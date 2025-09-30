@@ -40,7 +40,7 @@ class GitHubOAuthDemo:
         """
         self.client_id = client_id
         self.client_secret = client_secret
-        self.redirect_uri = redirect_uri or "http://localhost:8080/oauth/callback"
+        self.redirect_uri = redirect_uri or "http://localhost:8080/internal/oauth/callback"
         self.state = secrets.token_urlsafe(32)  # CSRF protection
         self.access_token: Optional[str] = None
         self.refresh_token: Optional[str] = None
@@ -240,7 +240,7 @@ class GitHubOAuthDemo:
 
         # Start local server
         app = web.Application()
-        app.router.add_get('/oauth/callback', handle_callback)
+        app.router.add_get('/internal/oauth/callback', handle_callback)
 
         runner = web.AppRunner(app)
         await runner.setup()
@@ -311,7 +311,7 @@ async def main():
         print("\nTo use this demo, you need to set up a GitHub OAuth App:")
         print("1. Go to GitHub Settings > Developer settings > OAuth Apps")
         print("2. Click 'New OAuth App'")
-        print("3. Set Authorization callback URL to: http://localhost:8080/oauth/callback")
+        print("3. Set Authorization callback URL to: http://localhost:8080/internal/oauth/callback")
         print("4. Set environment variables:")
         print("   export GITHUB_CLIENT_ID='your_client_id'")
         print("   export GITHUB_CLIENT_SECRET='your_client_secret'")

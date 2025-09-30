@@ -124,8 +124,8 @@ async def main():
         agent_app.logger.info(f"MCP Server settings: {mcp_server.settings}")
 
         # Run the server
-        await mcp_server.run_stdio_async()
-        # await mcp_server.run_sse_async()
+        #await mcp_server.run_stdio_async()
+        await mcp_server.run_sse_async()
 
 
 if __name__ == "__main__":

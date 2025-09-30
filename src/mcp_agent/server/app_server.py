@@ -217,6 +217,14 @@ def _set_upstream_from_request_ctx_if_available(ctx: MCPContext) -> None:
             except Exception:
                 identity = None
 
+    if not identity:
+        # Try create identity from session id
+        try:
+            session_id = ctx.request_context.request.query_params.get("session_id")
+            identity = create_default_user_for_preconfigured_tokens(session_id)
+        except Exception:
+            identity = None
+
     if session is not None:
         app: MCPApp | None = _get_attached_app(ctx.fastmcp)
         if app is not None and getattr(app, "context", None) is not None:
@@ -1614,16 +1622,6 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         )
                         continue
 
-                    # Ensure we have a user context for token storage
-                    # TODO: This is a temporary workaround until we have proper oauth service, so that we have a user
-                    # in the context from the oauth token
-                    if not app_context.current_user:
-                        # Create synthetic user if none exists
-                        synthetic_user = create_default_user_for_preconfigured_tokens()
-                        app_context.current_user = synthetic_user
-                        logger.info(f"Created synthetic user for workflow pre-auth: {synthetic_user.cache_key}")
-                        logger.info(f"{id(app_context)}: {app_context}")
-
                     # Create TokenRecord
                     from mcp_agent.oauth.records import TokenRecord
                     from mcp_agent.oauth.store.base import (
@@ -1648,7 +1646,6 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         metadata={"workflow_name": workflow_name},
                     )
 
-
                     str(oauth_config.resource) if oauth_config.resource else getattr(server_config, "url", None)
                     # Create storage key using current user
                     store_key = TokenStoreKey(
@@ -1658,17 +1655,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         scope_fingerprint=scope_fingerprint(scope_list),
                     )
 
-                    logger.debug(
-                        f"Storing token with key: user_key={store_key.user_key}, resource={store_key.resource}, auth_server={store_key.authorization_server}, scope_fingerprint={store_key.scope_fingerprint}")
-
                     # Store the token
                     await app_context.token_store.set(store_key, token_record)
                     stored_count += 1
-
-                    logger.info(
-                        f"Stored OAuth token for workflow '{workflow_name}' and server '{server_name}'"
-                    )
-
                 except Exception as e:
                     errors.append(f"Token {i}: {str(e)}")
                     logger.error(

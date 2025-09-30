@@ -38,13 +38,13 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-def create_default_user_for_preconfigured_tokens() -> "OAuthUserIdentity":
+def create_default_user_for_preconfigured_tokens(session_id: str | None = None) -> "OAuthUserIdentity":
     """Create a synthetic user identity for pre-configured tokens."""
     from mcp_agent.oauth.identity import OAuthUserIdentity
 
     return OAuthUserIdentity(
         provider="mcp-agent",
-        subject="preconfigured-tokens",
+        subject=f"preconfigured-tokens-{session_id}" if session_id else "preconfigured-tokens",
         claims={"token_source": "preconfigured", "description": "Synthetic user for pre-configured OAuth tokens"}
     )
 
@@ -125,22 +125,28 @@ class TokenManager:
             )
 
         user = context.current_user
-        if not user:
-            # TODO: with a proper oauth flow, we should always have a user in the context; since we don't have a server
-            # yet, mock a user if necessary. In the future, should be replaced by: something like:
-            # raise MissingUserIdentityError("No authenticated MCP user available for OAuth flow (neither
-            # interactive nor pre-configured)")
-
-            # Create synthetic user if none exists
-            user = create_default_user_for_preconfigured_tokens()
-            context.current_user = user
-            logger.info(f"Created synthetic user for token access: {user.cache_key}")
 
         # Use the same key construction logic as store_preconfigured_token to ensure consistency
         resource_str = str(oauth_config.resource) if oauth_config.resource else getattr(server_config, "url", None)
         auth_server_str = str(oauth_config.authorization_server) if oauth_config.authorization_server else None
         scope_list = list(scopes) if scopes is not None else list(oauth_config.scopes or [])
 
+        # check for a globally configure token
+        key = TokenStoreKey(
+            user_key=create_default_user_for_preconfigured_tokens().cache_key,
+            resource=resource_str,
+            authorization_server=auth_server_str,
+            scope_fingerprint=scope_fingerprint(scope_list)
+        )
+
+        lock = self._locks[key]
+
+        async with lock:
+            record = await self._token_store.get(key)
+            if record:
+                return record
+
+        # there is no global token, look for a user specific one
         key = TokenStoreKey(
             user_key=user.cache_key,
             resource=resource_str,
@@ -148,11 +154,9 @@ class TokenManager:
             scope_fingerprint=scope_fingerprint(scope_list)
         )
 
-        logger.debug(f"Looking for token with key: user_key={key.user_key}, resource={key.resource}, auth_server={key.authorization_server}, scope_fingerprint={key.scope_fingerprint}")
         lock = self._locks[key]
         async with lock:
             record = await self._token_store.get(key)
-            logger.debug(f"Found existing record: {record is not None}")
             leeway = (
                 self._settings.token_store.refresh_leeway_seconds
                 if self._settings and self._settings.token_store
