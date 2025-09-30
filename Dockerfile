@@ -17,8 +17,9 @@ RUN python -m pip install --no-cache-dir --no-index --find-links=/tmp /tmp/pkg.w
 USER appuser
 EXPOSE 8080
 
-# Write healthcheck script via RUN heredoc (allowed)
-RUN <<'PY' bash -lc 'cat > /usr/local/bin/healthcheck.py && chmod +x /usr/local/bin/healthcheck.py'
+# Write healthcheck script using a nested heredoc inside RUN (valid)
+RUN <<'SH'
+cat >/usr/local/bin/healthcheck.py <<'PY'
 import os, urllib.request, sys
 u = f"http://127.0.0.1:{os.getenv('PORT','8080')}/health"
 try:
@@ -27,7 +28,10 @@ try:
 except Exception:
     sys.exit(1)
 PY
+chmod +x /usr/local/bin/healthcheck.py
+SH
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s CMD ["python","/usr/local/bin/healthcheck.py"]
+
 
 CMD ["python", "-m", "mcp_agent.health.server"]
