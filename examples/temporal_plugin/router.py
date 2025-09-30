@@ -125,7 +125,7 @@ class RouterWorkflow:
         )
         logger.info("Router Results:", data=results)
 
-        return result
+        return str(result)
 
 
 async def main():
