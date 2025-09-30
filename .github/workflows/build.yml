@@ -14,12 +14,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   build:
-    runs-on:
-    - self-hosted
-    - linux
-    - x64
-    - vps
-    - docker
+    runs-on: self-hosted
     permissions:
       contents: read
       packages: write
