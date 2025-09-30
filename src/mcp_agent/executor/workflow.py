@@ -761,11 +761,20 @@ class Workflow(ABC, Generic[T], ContextDependent):
                 if isinstance(memo_map, dict):
                     gateway_url = memo_map.get("gateway_url")
                     gateway_token = memo_map.get("gateway_token")
-                    sanitized_token = (
-                        gateway_token[:6] + "..."
-                        if isinstance(gateway_token, str)
-                        else None
-                    )
+                    sanitized_token = None
+                    if isinstance(gateway_token, str):
+                        # If it's an MCP API key, include some suffix to allow debugging
+                        if (
+                            gateway_token.startswith("lm_mcp_api_")
+                            and len(gateway_token) > 24
+                        ):
+                            sanitized_token = (
+                                f"{gateway_token[:10]}...{gateway_token[-4:]}"
+                            )
+                        elif len(gateway_token) > 10:
+                            sanitized_token = f"{gateway_token[:4]}..."
+                        else:
+                            sanitized_token = "***"
 
                     self._logger.debug(
                         f"Proxy parameters: gateway_url={gateway_url}, gateway_token={sanitized_token}"
