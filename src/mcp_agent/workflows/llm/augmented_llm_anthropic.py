@@ -799,16 +799,14 @@ class AnthropicCompletionTasks:
         """
         # Prefer async client where available to avoid blocking the event loop
         if request.config.provider in (None, "", "anthropic"):
-            base_url = (
-                request.config.base_url if hasattr(request.config, "base_url") else None
+            client = AsyncAnthropic(
+                api_key=request.config.api_key, base_url=request.config.base_url
             )
-            client = AsyncAnthropic(api_key=request.config.api_key, base_url=base_url)
             payload = request.payload
             async with client:
                 async with client.messages.stream(**payload) as stream:
                     final = await stream.get_final_message()
-            # Convert Message object to dict before serialization
-            response = ensure_serializable(final.model_dump())
+            response = ensure_serializable(final)
             return response
         else:
             anthropic = create_anthropic_instance(request.config)
@@ -820,7 +818,7 @@ class AnthropicCompletionTasks:
 
             loop = asyncio.get_running_loop()
             final = await loop.run_in_executor(None, stream_and_get_final)
-            response = ensure_serializable(final.model_dump())
+            response = ensure_serializable(final)
             return response
 
 
