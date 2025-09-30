@@ -212,8 +212,6 @@ class TestAnthropicAugmentedLLM:
         """
         Tests structured output generation using native Anthropic API.
         """
-        from unittest.mock import patch
-
         # Define a simple response model
         class TestResponseModel(BaseModel):
             name: str
@@ -237,28 +235,16 @@ class TestAnthropicAugmentedLLM:
             usage=default_usage,
         )
 
-        # Mock the AsyncAnthropic client and streaming
-        with patch(
-            "mcp_agent.workflows.llm.augmented_llm_anthropic.AsyncAnthropic"
-        ) as MockAsyncAnthropic:
-            mock_client = MockAsyncAnthropic.return_value
-            mock_stream = AsyncMock()
-            mock_stream.get_final_message = AsyncMock(return_value=mock_message)
-            mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
-            mock_stream.__aexit__ = AsyncMock(return_value=None)
-            mock_client.messages.stream = MagicMock(return_value=mock_stream)
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=None)
+        # Setup mock executor to return the expected message
+        mock_llm.executor.execute = AsyncMock(return_value=mock_message)
 
-            # Call the method
-            result = await AnthropicAugmentedLLM.generate_structured(
-                mock_llm, "Test query", TestResponseModel
-            )
+        # Call the method
+        result = await mock_llm.generate_structured("Test query", TestResponseModel)
 
-            # Assertions
-            assert isinstance(result, TestResponseModel)
-            assert result.name == "Test"
-            assert result.value == 42
+        # Assertions
+        assert isinstance(result, TestResponseModel)
+        assert result.name == "Test"
+        assert result.value == 42
 
     # Test 4: With History
     @pytest.mark.asyncio
@@ -803,8 +789,6 @@ class TestAnthropicAugmentedLLM:
         """
         Tests generate_structured() method with mixed message types.
         """
-        from unittest.mock import patch
-
         # Define a simple response model
         class TestResponseModel(BaseModel):
             name: str
@@ -843,26 +827,16 @@ class TestAnthropicAugmentedLLM:
             ),
         )
 
-        # Mock the AsyncAnthropic client and streaming
-        with patch(
-            "mcp_agent.workflows.llm.augmented_llm_anthropic.AsyncAnthropic"
-        ) as MockAsyncAnthropic:
-            mock_client = MockAsyncAnthropic.return_value
-            mock_stream = AsyncMock()
-            mock_stream.get_final_message = AsyncMock(return_value=mock_message)
-            mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
-            mock_stream.__aexit__ = AsyncMock(return_value=None)
-            mock_client.messages.stream = MagicMock(return_value=mock_stream)
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=None)
+        # Setup mock executor to return the expected message
+        mock_llm.executor.execute = AsyncMock(return_value=mock_message)
 
-            # Call generate_structured with mixed message types
-            result = await mock_llm.generate_structured(messages, TestResponseModel)
+        # Call generate_structured with mixed message types
+        result = await mock_llm.generate_structured(messages, TestResponseModel)
 
-            # Assertions
-            assert isinstance(result, TestResponseModel)
-            assert result.name == "MixedTypes"
-            assert result.value == 123
+        # Assertions
+        assert isinstance(result, TestResponseModel)
+        assert result.name == "MixedTypes"
+        assert result.value == 123
 
     # Test 25: System Prompt Not None in API Call
     @pytest.mark.asyncio
