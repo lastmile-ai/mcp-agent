@@ -18,6 +18,10 @@ from mcp_agent.cli.utils.git_utils import (
     utc_iso_now,
 )
 
+from .bundle_utils import (
+    create_pathspec_from_gitignore,
+    should_ignore_by_gitignore,
+)
 from .constants import (
     CLOUDFLARE_ACCOUNT_ID,
     CLOUDFLARE_EMAIL,
@@ -107,7 +111,9 @@ def _handle_wrangler_error(e: subprocess.CalledProcessError) -> None:
         print_error(clean_output)
 
 
-def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
+def wrangler_deploy(
+    app_id: str, api_key: str, project_dir: Path, ignore_file: Path | None = None
+) -> None:
     """Bundle the MCP Agent using Wrangler.
 
     A thin wrapper around the Wrangler CLI to bundle the MCP Agent application code
@@ -128,6 +134,7 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
         app_id (str): The application ID.
         api_key (str): User MCP Agent Cloud API key.
         project_dir (Path): The directory of the project to deploy.
+        ignore_file (Path | None): Optional path to a gitignore-style file for excluding files from the bundle.
     """
 
     # Copy existing env to avoid overwriting
@@ -165,18 +172,41 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
     with tempfile.TemporaryDirectory(prefix="mcp-deploy-") as temp_dir_str:
         temp_project_dir = Path(temp_dir_str) / "project"
 
-        # Copy the entire project to temp directory, excluding unwanted directories and secrets file
-        def ignore_patterns(_path, names):
+        # Load ignore rules (gitignore syntax) only if an explicit ignore file is provided
+        ignore_spec = (
+            create_pathspec_from_gitignore(ignore_file) if ignore_file else None
+        )
+        if ignore_file:
+            if ignore_spec is None:
+                print_warning(
+                    f"Ignore file '{ignore_file}' not found; applying default excludes only"
+                )
+            else:
+                print_info(f"Using ignore patterns from {ignore_file}")
+        else:
+            print_info("No ignore file provided; applying default excludes only")
+
+        # Copy the entire project to temp directory, excluding unwanted directories and the live secrets file
+        def ignore_patterns(path_str, names):
             ignored = set()
+
+            # Keep existing hardcoded exclusions (highest priority)
             for name in names:
                 if (name.startswith(".") and name not in {".env"}) or name in {
                     "logs",
                     "__pycache__",
                     "node_modules",
                     "venv",
-                    MCP_SECRETS_FILENAME,
+                    MCP_SECRETS_FILENAME,  # Exclude mcp_agent.secrets.yaml only
                 }:
                     ignored.add(name)
+
+            # Apply explicit ignore file patterns (if provided)
+            spec_ignored = should_ignore_by_gitignore(
+                path_str, names, project_dir, ignore_spec
+            )
+            ignored.update(spec_ignored)
+
             return ignored
 
         shutil.copytree(project_dir, temp_project_dir, ignore=ignore_patterns)
@@ -208,6 +238,26 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
 
                 # Rename in place
                 file_path.rename(py_path)
+
+        # Compute and log which original files are being bundled (skip internal helpers)
+        bundled_original_files: list[str] = []
+        internal_bundle_files = {"wrangler.toml", "mcp_deploy_breadcrumb.py"}
+        for root, _dirs, files in os.walk(temp_project_dir):
+            for filename in files:
+                rel = Path(root).relative_to(temp_project_dir) / filename
+                if filename in internal_bundle_files:
+                    continue
+                if filename.endswith(".mcpac.py"):
+                    orig_rel = str(rel)[: -len(".mcpac.py")]
+                    bundled_original_files.append(orig_rel)
+                else:
+                    bundled_original_files.append(str(rel))
+
+        bundled_original_files.sort()
+        if bundled_original_files:
+            print_info(f"Bundling {len(bundled_original_files)} project file(s):")
+            for p in bundled_original_files:
+                console.print(f" - {p}")
 
         # Collect deployment metadata (git if available, else workspace hash)
         git_meta = get_git_metadata(project_dir)
