@@ -1,14 +1,13 @@
 import os
-import builtins
-from pathlib import Path
 import threading
 import warnings
-from unittest.mock import patch, mock_open
+from unittest.mock import patch
 
 from pydantic_yaml import to_yaml_str
 import pytest
 import yaml
 
+import mcp_agent.config
 from mcp_agent.config import (
     Settings,
     LoggerSettings,
@@ -19,19 +18,6 @@ from mcp_agent.config import (
     get_settings,
     _clear_global_settings,
 )  # pylint: disable=import-private-name
-
-
-# Ensure any accidental global file I/O patches do not leak from these tests
-@pytest.fixture(autouse=True)
-def _restore_fileio_after_test():
-    orig_open = builtins.open
-    orig_exists = Path.exists
-    yield
-    if builtins.open is not orig_open:
-        builtins.open = orig_open
-    if Path.exists is not orig_exists:
-        Path.exists = orig_exists
-
 
 _EXAMPLE_SETTINGS = Settings(
     execution_engine="asyncio",
@@ -122,12 +108,9 @@ class TestSetGlobalParameter:
     @pytest.fixture(autouse=True)
     def clear_global_settings(self):
         """Clear global settings before and after each test."""
-        import mcp_agent.config
-
-        old = mcp_agent.config._settings
         _clear_global_settings()
         yield
-        mcp_agent.config._settings = old
+        _clear_global_settings()
 
     @pytest.fixture(autouse=True)
     def clear_test_env(self, monkeypatch: pytest.MonkeyPatch):
@@ -157,17 +140,18 @@ class TestSetGlobalParameter:
     def test_default_sets_global_state(self, sample_config):
         """Test that get_settings() with default parameters sets global state."""
         # Verify global settings is None initially
-        import mcp_agent.config
-
         assert mcp_agent.config._settings is None
 
         # Mock file operations
         yaml_content = yaml.dump(sample_config)
-        # Patch file operations only within config module to avoid cross-test interference
-        with patch("mcp_agent.config.open", mock_open(read_data=yaml_content)):
-            with patch("mcp_agent.config.Path.exists", return_value=True):
+        config_path = "/fake/path/config.yaml"
+
+        with patch("mcp_agent.config._check_file_exists", return_value=True):
+            with patch(
+                "mcp_agent.config._read_file_content", return_value=yaml_content
+            ):
                 # Load settings with default behavior
-                settings = get_settings(config_path="/fake/path/config.yaml")
+                settings = get_settings(config_path=config_path)
 
                 # Verify global state was set
                 assert mcp_agent.config._settings is not None
@@ -176,16 +160,16 @@ class TestSetGlobalParameter:
 
     def test_set_global_false_no_global_state(self, sample_config):
         """Test that set_global=False doesn't modify global state."""
-        import mcp_agent.config
-
         assert mcp_agent.config._settings is None
 
         yaml_content = yaml.dump(sample_config)
-        with patch("mcp_agent.config.open", mock_open(read_data=yaml_content)):
-            with patch("mcp_agent.config.Path.exists", return_value=True):
-                settings = get_settings(
-                    config_path="/fake/path/config.yaml", set_global=False
-                )
+        config_path = "/fake/path/config.yaml"
+
+        with patch("mcp_agent.config._check_file_exists", return_value=True):
+            with patch(
+                "mcp_agent.config._read_file_content", return_value=yaml_content
+            ):
+                settings = get_settings(config_path=config_path, set_global=False)
 
                 # Global state should remain None
                 assert mcp_agent.config._settings is None
@@ -195,16 +179,16 @@ class TestSetGlobalParameter:
 
     def test_explicit_set_global_true(self, sample_config):
         """Test explicitly passing set_global=True."""
-        import mcp_agent.config
-
         assert mcp_agent.config._settings is None
 
         yaml_content = yaml.dump(sample_config)
-        with patch("mcp_agent.config.open", mock_open(read_data=yaml_content)):
-            with patch("mcp_agent.config.Path.exists", return_value=True):
-                settings = get_settings(
-                    config_path="/fake/path/config.yaml", set_global=True
-                )
+        config_path = "/fake/path/config.yaml"
+
+        with patch("mcp_agent.config._check_file_exists", return_value=True):
+            with patch(
+                "mcp_agent.config._read_file_content", return_value=yaml_content
+            ):
+                settings = get_settings(config_path=config_path, set_global=True)
 
                 assert mcp_agent.config._settings is not None
                 assert mcp_agent.config._settings == settings
@@ -212,42 +196,42 @@ class TestSetGlobalParameter:
     def test_returns_cached_global_when_set(self, sample_config):
         """Test that subsequent calls return cached global settings."""
         yaml_content = yaml.dump(sample_config)
-        with patch("mcp_agent.config.open", mock_open(read_data=yaml_content)):
-            with patch("mcp_agent.config.Path.exists", return_value=True):
+        config_path = "/fake/path/config.yaml"
+
+        with patch("mcp_agent.config._check_file_exists", return_value=True):
+            with patch(
+                "mcp_agent.config._read_file_content", return_value=yaml_content
+            ):
                 # First call sets global state
-                settings1 = get_settings(config_path="/fake/path/config.yaml")
+                settings1 = get_settings(config_path=config_path)
 
                 # Second call without path should return cached global
                 settings2 = get_settings()
 
                 # They should be the same object
                 assert settings1 is settings2
-                import mcp_agent.config
-
                 assert mcp_agent.config._settings is settings1
 
     def test_no_cached_return_when_set_global_false(self, sample_config):
         """Test that set_global=False always loads fresh settings."""
         yaml_content = yaml.dump(sample_config)
-        with patch("mcp_agent.config.open", mock_open(read_data=yaml_content)):
-            with patch("mcp_agent.config.Path.exists", return_value=True):
+        config_path = "/fake/path/config.yaml"
+
+        with patch("mcp_agent.config._check_file_exists", return_value=True):
+            with patch(
+                "mcp_agent.config._read_file_content", return_value=yaml_content
+            ):
                 # First call with set_global=False
-                settings1 = get_settings(
-                    config_path="/fake/path/config.yaml", set_global=False
-                )
+                settings1 = get_settings(config_path=config_path, set_global=False)
 
                 # Second call with set_global=False
-                settings2 = get_settings(
-                    config_path="/fake/path/config.yaml", set_global=False
-                )
+                settings2 = get_settings(config_path=config_path, set_global=False)
 
                 # They should be different objects (not cached)
                 assert settings1 is not settings2
                 # But have the same content
                 assert settings1 == settings2
                 # Global should remain None
-                import mcp_agent.config
-
                 assert mcp_agent.config._settings is None
 
     def test_preload_with_set_global_false(self, sample_config, monkeypatch):
@@ -258,13 +242,78 @@ class TestSetGlobalParameter:
         settings = get_settings(set_global=False)
 
         # Global state should not be set
-        import mcp_agent.config
-
         assert mcp_agent.config._settings is None
 
         # Settings should be loaded from preload
         assert settings is not None
         assert settings.execution_engine == "asyncio"
+
+    def test_explicit_config_path_with_cache_returns_cached(self, sample_config):
+        """Test that explicit config_path still returns cached settings when global cache exists."""
+        # First config with different values
+        initial_config = {
+            "execution_engine": "asyncio",
+            "logger": {
+                "type": "console",
+                "level": "info",
+            },
+        }
+
+        # Second config with different values (won't be loaded due to cache)
+        updated_config = {
+            "execution_engine": "temporal",  # Different value (valid option)
+            "logger": {
+                "type": "file",  # Different value
+                "level": "debug",  # Different value
+            },
+        }
+
+        initial_yaml = yaml.dump(initial_config)
+        updated_yaml = yaml.dump(updated_config)
+
+        # First load to set global cache with initial config
+        with patch("mcp_agent.config._check_file_exists", return_value=True):
+            with patch(
+                "mcp_agent.config._read_file_content", return_value=initial_yaml
+            ):
+                settings1 = get_settings(config_path="/fake/path/initial.yaml")
+                assert settings1.execution_engine == "asyncio"
+                assert settings1.logger.type == "console"
+                assert settings1.logger.level == "info"
+                assert mcp_agent.config._settings == settings1
+
+        # Second call without config_path should return cached settings
+        settings2 = get_settings()
+        assert settings2 is settings1
+        assert settings2.execution_engine == "asyncio"
+
+        # Third call with different config_path still returns cached settings (current behavior)
+        with patch("mcp_agent.config._check_file_exists", return_value=True):
+            with patch(
+                "mcp_agent.config._read_file_content", return_value=updated_yaml
+            ):
+                settings3 = get_settings(config_path="/fake/path/updated.yaml")
+                # Still returns cached settings, not the new config
+                assert settings3 is settings1
+                assert settings3.execution_engine == "asyncio"
+                assert settings3.logger.type == "console"
+                assert settings3.logger.level == "info"
+                assert mcp_agent.config._settings == settings1
+
+        # To actually load new config, must use set_global=False
+        with patch("mcp_agent.config._check_file_exists", return_value=True):
+            with patch(
+                "mcp_agent.config._read_file_content", return_value=updated_yaml
+            ):
+                settings4 = get_settings(
+                    config_path="/fake/path/updated.yaml", set_global=False
+                )
+                # Now we get the new config
+                assert settings4.execution_engine == "temporal"
+                assert settings4.logger.type == "file"
+                assert settings4.logger.level == "debug"
+                # But global cache is unchanged
+                assert mcp_agent.config._settings == settings1
 
 
 class TestThreadSafety:
@@ -273,12 +322,9 @@ class TestThreadSafety:
     @pytest.fixture(autouse=True)
     def clear_global_settings(self):
         """Clear global settings before and after each test."""
-        import mcp_agent.config
-
-        old = mcp_agent.config._settings
         _clear_global_settings()
         yield
-        mcp_agent.config._settings = old
+        _clear_global_settings()
 
     @pytest.fixture
     def simple_config(self):
@@ -338,30 +384,31 @@ class TestThreadSafety:
     def test_multiple_threads_independent_settings(self, simple_config):
         """Test that multiple threads can load independent settings."""
         thread_settings = {}
+        yaml_content = yaml.dump(simple_config)
 
         def load_settings(thread_id, config_path):
-            yaml_content = yaml.dump(simple_config)
-            with patch("mcp_agent.config.open", mock_open(read_data=yaml_content)):
-                with patch("mcp_agent.config.Path.exists", return_value=True):
-                    settings = get_settings(config_path=config_path, set_global=False)
-                    thread_settings[thread_id] = settings
+            settings = get_settings(config_path=config_path, set_global=False)
+            thread_settings[thread_id] = settings
 
-        # Create threads
-        threads = []
-        for i in range(3):
-            thread = threading.Thread(
-                target=load_settings, args=(i, "/fake/path/config.yaml")
-            )
-            threads.append(thread)
-            thread.start()
+        # Mock at test level, not inside threads
+        with patch("mcp_agent.config._check_file_exists", return_value=True):
+            with patch(
+                "mcp_agent.config._read_file_content", return_value=yaml_content
+            ):
+                # Create threads
+                threads = []
+                for i in range(3):
+                    thread = threading.Thread(
+                        target=load_settings, args=(i, "/fake/path/config.yaml")
+                    )
+                    threads.append(thread)
+                    thread.start()
 
-        # Wait for all threads
-        for thread in threads:
-            thread.join()
+                # Wait for all threads
+                for thread in threads:
+                    thread.join()
 
         # Verify all threads got settings but global state wasn't set
-        import mcp_agent.config
-
         assert mcp_agent.config._settings is None
         assert len(thread_settings) == 3
         for i in range(3):
@@ -375,12 +422,9 @@ class TestConfigMergingWithSetGlobal:
     @pytest.fixture(autouse=True)
     def clear_global_settings(self):
         """Clear global settings before and after each test."""
-        import mcp_agent.config
-
-        old = mcp_agent.config._settings
         _clear_global_settings()
         yield
-        mcp_agent.config._settings = old
+        _clear_global_settings()
 
     @pytest.fixture
     def config_data_with_secrets(self):
@@ -407,15 +451,13 @@ class TestConfigMergingWithSetGlobal:
         # Mock the config file read with already merged data
         merged_yaml = yaml.dump(merged_data)
 
-        with patch("mcp_agent.config.open", mock_open(read_data=merged_yaml)):
-            with patch("mcp_agent.config.Path.exists", return_value=True):
-                settings = get_settings(
-                    config_path="/fake/path/config.yaml", set_global=False
-                )
+        config_path = "/fake/path/config.yaml"
+
+        with patch("mcp_agent.config._check_file_exists", return_value=True):
+            with patch("mcp_agent.config._read_file_content", return_value=merged_yaml):
+                settings = get_settings(config_path=config_path, set_global=False)
 
                 # Global state should not be set
-                import mcp_agent.config
-
                 assert mcp_agent.config._settings is None
 
                 # Settings should have the merged values
@@ -428,8 +470,6 @@ class TestConfigMergingWithSetGlobal:
         settings = get_settings(set_global=False)
 
         # Global state should not be set
-        import mcp_agent.config
-
         assert mcp_agent.config._settings is None
 
         # Should get default settings

@@ -42,6 +42,7 @@ from mcp_agent.utils.common import unwrap
 from mcp_agent.workflows.llm.llm_selector import ModelSelector
 from mcp_agent.workflows.factory import load_agent_specs_from_dir
 
+
 if TYPE_CHECKING:
     from mcp_agent.agents.agent_spec import AgentSpec
     from mcp_agent.executor.workflow import Workflow
@@ -100,10 +101,6 @@ class MCPApp:
             initialize_model_selector: Initializes the built-in ModelSelector to help with model selection. Defaults to False.
         """
         self.mcp = mcp
-        self.name = name or (mcp.name if mcp else None)
-        self.description = description or (
-            mcp.instructions if mcp else "MCP Agent Application"
-        )
 
         # We use these to initialize the context in initialize()
         if settings is None:
@@ -112,6 +109,14 @@ class MCPApp:
             self._config = get_settings(config_path=settings)
         else:
             self._config = settings
+
+        self.name = name or self._config.name or (mcp.name if mcp else None)
+
+        self.description = (
+            description
+            or self._config.description
+            or (mcp.instructions if mcp else "MCP Agent Application")
+        )
 
         # We initialize the task and decorator registries at construction time
         # (prior to initializing the context) to ensure that they are available
@@ -597,6 +602,7 @@ class MCPApp:
             decorated_cls = workflow_defn_decorator(
                 cls, sandboxed=False, *args, **kwargs
             )
+
             self._workflows[workflow_id] = decorated_cls
             return decorated_cls
         else:

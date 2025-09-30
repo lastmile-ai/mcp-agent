@@ -938,7 +938,7 @@ db_password: !developer_secret
 
         # Create other YAML files that should be processed
         config_file = project_path / "config.yaml"
-        config_file.write_text("app_name: test-app")
+        config_file.write_text("name: test-app")
 
         mcp_config_file = project_path / "mcp_agent.config.yaml"
         mcp_config_file.write_text("config: value")

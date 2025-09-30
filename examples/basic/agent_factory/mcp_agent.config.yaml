@@ -4,7 +4,7 @@ execution_engine: asyncio
 
 logger:
   type: console
-  level: info
+  level: debug
 
 mcp:
   servers:
@@ -18,6 +18,9 @@ mcp:
 openai:
   # API keys and secrets go in mcp_agent.secrets.yaml; this file is safe to check in.
   default_model: gpt-4o-mini
+
+google:
+  default_model: gemini-2_5-pro
 
 agents:
   enabled: true

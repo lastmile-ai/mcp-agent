@@ -2,6 +2,7 @@ from typing import Any, Dict, Optional
 
 import os
 import httpx
+import uuid
 
 from urllib.parse import quote
 
@@ -149,6 +150,7 @@ async def notify_via_proxy(
 
 
 async def request_via_proxy(
+    make_async_call: bool,
     execution_id: str,
     method: str,
     params: Dict[str, Any] | None = None,
@@ -156,39 +158,103 @@ async def request_via_proxy(
     gateway_url: Optional[str] = None,
     gateway_token: Optional[str] = None,
 ) -> Dict[str, Any]:
-    base = _resolve_gateway_url(gateway_url=gateway_url, context_gateway_url=None)
-    url = f"{base}/internal/session/by-run/{quote(execution_id, safe='')}/request"
-    headers: Dict[str, str] = {}
-    tok = gateway_token or os.environ.get("MCP_GATEWAY_TOKEN")
-    if tok:
-        headers["X-MCP-Gateway-Token"] = tok
-        headers["Authorization"] = f"Bearer {tok}"
-    # Requests require a response; default to no HTTP timeout.
-    # Configure with MCP_GATEWAY_REQUEST_TIMEOUT (seconds). If unset or <= 0, no timeout is applied.
-    timeout_str = os.environ.get("MCP_GATEWAY_REQUEST_TIMEOUT")
-    timeout_float: float | None
-    if timeout_str is None:
-        timeout_float = None  # no timeout by default; activity timeouts still apply
-    else:
+    if make_async_call:
+        # Make sure we're running in a Temporal workflow context
         try:
-            timeout_float = float(str(timeout_str).strip())
-        except Exception:
+            from temporalio import workflow, activity
+
+            in_temporal = workflow.in_workflow()
+            if in_temporal:
+                workflow_id = workflow.info().workflow_id
+            else:
+                in_temporal = activity.in_activity()
+                if in_temporal:
+                    workflow_id = activity.info().workflow_id
+        except ImportError:
+            in_temporal = False
+
+        if not in_temporal:
+            return {"error": "not_in_workflow_or_activity"}
+
+        signal_name = f"mcp_rpc_{method}_{uuid.uuid4().hex}"
+
+        # Make the HTTP request (but don't return the response directly)
+        base = _resolve_gateway_url(gateway_url=gateway_url, context_gateway_url=None)
+        url = f"{base}/internal/session/by-run/{quote(workflow_id, safe='')}/{quote(execution_id, safe='')}/async-request"
+        headers: Dict[str, str] = {}
+        tok = gateway_token or os.environ.get("MCP_GATEWAY_TOKEN")
+        if tok:
+            headers["X-MCP-Gateway-Token"] = tok
+            headers["Authorization"] = f"Bearer {tok}"
+
+        timeout_str = os.environ.get("MCP_GATEWAY_REQUEST_TIMEOUT")
+        timeout_float: float | None
+        if timeout_str is None:
             timeout_float = None
-    try:
-        # If timeout is None, pass a Timeout object with no limits
-        if timeout_float is None:
-            timeout = httpx.Timeout(None)
         else:
-            timeout = timeout_float
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            r = await client.post(
-                url, json={"method": method, "params": params or {}}, headers=headers
-            )
-    except httpx.RequestError:
-        return {"error": "request_failed"}
-    if r.status_code >= 400:
-        return {"error": r.text}
-    try:
-        return r.json() if r.content else {"error": "invalid_response"}
-    except ValueError:
-        return {"error": "invalid_response"}
+            try:
+                timeout_float = float(str(timeout_str).strip())
+            except Exception:
+                timeout_float = None
+
+        try:
+            if timeout_float is None:
+                timeout = httpx.Timeout(None)
+            else:
+                timeout = timeout_float
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                r = await client.post(
+                    url,
+                    json={
+                        "method": method,
+                        "params": params or {},
+                        "signal_name": signal_name,
+                    },
+                    headers=headers,
+                )
+        except httpx.RequestError:
+            return {"error": "request_failed"}
+        if r.status_code >= 400:
+            return {"error": r.text}
+        return {"error": "", "signal_name": signal_name}
+    else:
+        # Use original synchronous approach for non-workflow contexts
+        base = _resolve_gateway_url(gateway_url=gateway_url, context_gateway_url=None)
+        url = f"{base}/internal/session/by-run/{quote(execution_id, safe='')}/request"
+        headers: Dict[str, str] = {}
+        tok = gateway_token or os.environ.get("MCP_GATEWAY_TOKEN")
+        if tok:
+            headers["X-MCP-Gateway-Token"] = tok
+            headers["Authorization"] = f"Bearer {tok}"
+        # Requests require a response; default to no HTTP timeout.
+        # Configure with MCP_GATEWAY_REQUEST_TIMEOUT (seconds). If unset or <= 0, no timeout is applied.
+        timeout_str = os.environ.get("MCP_GATEWAY_REQUEST_TIMEOUT")
+        timeout_float: float | None
+        if timeout_str is None:
+            timeout_float = None  # no timeout by default; activity timeouts still apply
+        else:
+            try:
+                timeout_float = float(str(timeout_str).strip())
+            except Exception:
+                timeout_float = None
+        try:
+            # If timeout is None, pass a Timeout object with no limits
+            if timeout_float is None:
+                timeout = httpx.Timeout(None)
+            else:
+                timeout = timeout_float
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                r = await client.post(
+                    url,
+                    json={"method": method, "params": params or {}},
+                    headers=headers,
+                )
+        except httpx.RequestError:
+            return {"error": "request_failed"}
+        if r.status_code >= 400:
+            return {"error": r.text}
+
+        try:
+            return r.json() if r.content else {"error": "invalid_response"}
+        except ValueError:
+            return {"error": "invalid_response"}

@@ -25,7 +25,7 @@ from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 from mcp_agent.workflows.parallel.parallel_llm import ParallelLLM
 from mcp_agent.executor.workflow import Workflow, WorkflowResult
 from mcp_agent.tracing.token_counter import TokenNode
-from mcp_agent.human_input.handler import console_input_callback
+from mcp_agent.human_input.console_handler import console_input_callback
 from mcp_agent.elicitation.handler import console_elicitation_callback
 from mcp_agent.mcp.gen_client import gen_client
 from mcp_agent.config import MCPServerSettings
@@ -128,9 +128,7 @@ async def sampling_demo(topic: str, app_ctx: Optional[AppContext] = None) -> str
     # Register a simple nested server that uses sampling in its get_haiku tool
     nested_name = "nested_sampling"
     nested_path = os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__), "..", "shared", "nested_sampling_server.py"
-        )
+        os.path.join(os.path.dirname(__file__), "nested_sampling_server.py")
     )
     _app.context.config.mcp.servers[nested_name] = MCPServerSettings(
         name=nested_name,
@@ -168,9 +166,7 @@ async def elicitation_demo(
 
     nested_name = "nested_elicitation"
     nested_path = os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__), "..", "shared", "nested_elicitation_server.py"
-        )
+        os.path.join(os.path.dirname(__file__), "nested_elicitation_server.py")
     )
     _app.context.config.mcp.servers[nested_name] = MCPServerSettings(
         name=nested_name,
