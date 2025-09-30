@@ -119,7 +119,10 @@ def deploy_config(
     ignore_file: Optional[Path] = typer.Option(
         None,
         "--ignore-file",
-        help="Path to ignore file (gitignore syntax). Defaults to '.mcpacignore' if present.",
+        help=(
+            "Path to ignore file (gitignore syntax). Precedence: 1) --ignore-file <path>, "
+            "2) .mcpacignore in --config-dir, 3) .mcpacignore in working directory."
+        ),
         exists=False,
         readable=True,
         dir_okay=False,

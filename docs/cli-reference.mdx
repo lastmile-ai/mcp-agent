@@ -272,8 +272,7 @@ mcp-agent deploy my-agent --ignore-file .deployignore
 
 Ignore file usage
 
-- If `.mcpacignore` exists in the working (or `--config-dir`) directory, it is applied automatically.
-- `--ignore-file <path>` overrides the default detection when you need a different ignore file.
+- Detection order: 1) `--ignore-file <path>` (highest precedence), 2) `.mcpacignore` in `--config-dir`, 3) `.mcpacignore` in the working directory (CWD).
 - Patterns follow gitignore syntax and are evaluated relative to `--config-dir`.
 
 ### mcp-agent cloud configure
