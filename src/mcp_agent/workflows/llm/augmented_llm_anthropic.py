@@ -83,6 +83,11 @@ class RequestCompletionRequest(BaseModel):
     payload: dict
 
 
+class RequestStreamingCompletionRequest(BaseModel):
+    config: AnthropicSettings
+    payload: dict
+
+
 def create_anthropic_instance(settings: AnthropicSettings):
     """Select and initialise the appropriate anthropic client instance based on settings"""
     if settings.provider == "bedrock":
@@ -465,18 +470,16 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             if params.stopSequences:
                 args["stop_sequences"] = params.stopSequences
 
-            # Call Anthropic directly (one-turn streaming for consistency)
-            base_url = None
-            if self.context and self.context.config and self.context.config.anthropic:
-                base_url = self.context.config.anthropic.base_url
-                api_key = self.context.config.anthropic.api_key
-                client = AsyncAnthropic(api_key=api_key, base_url=base_url)
-            else:
-                client = AsyncAnthropic()
+            config = self.context.config
+            request = RequestStreamingCompletionRequest(
+                config=config.anthropic,
+                payload=args,
+            )
 
-            async with client:
-                async with client.messages.stream(**args) as stream:
-                    final = await stream.get_final_message()
+            final: Message = await self.executor.execute(
+                AnthropicCompletionTasks.request_streaming_completion_task,
+                ensure_serializable(request),
+            )
 
             # Extract tool_use input and validate
             for block in final.content:
@@ -783,6 +786,39 @@ class AnthropicCompletionTasks:
                 None, functools.partial(anthropic.messages.create, **payload)
             )
             response = ensure_serializable(response)
+            return response
+
+    @staticmethod
+    @workflow_task
+    @telemetry.traced()
+    async def request_streaming_completion_task(
+        request: RequestStreamingCompletionRequest,
+    ) -> Message:
+        """
+        Request a streaming completion from Anthropic's API.
+        """
+        # Prefer async client where available to avoid blocking the event loop
+        if request.config.provider in (None, "", "anthropic"):
+            client = AsyncAnthropic(
+                api_key=request.config.api_key, base_url=request.config.base_url
+            )
+            payload = request.payload
+            async with client:
+                async with client.messages.stream(**payload) as stream:
+                    final = await stream.get_final_message()
+            response = ensure_serializable(final)
+            return response
+        else:
+            anthropic = create_anthropic_instance(request.config)
+            payload = request.payload
+
+            def stream_and_get_final():
+                with anthropic.messages.stream(**payload) as stream:
+                    return stream.get_final_message()
+
+            loop = asyncio.get_running_loop()
+            final = await loop.run_in_executor(None, stream_and_get_final)
+            response = ensure_serializable(final)
             return response
 
 
