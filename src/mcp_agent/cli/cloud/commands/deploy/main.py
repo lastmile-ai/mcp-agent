@@ -285,9 +285,7 @@ def deploy_config(
         secrets_transformed_path = None
         if secrets_file and not deployed_secrets_file:
             print_info("Processing secrets file...")
-            secrets_transformed_path = Path(
-                f"{config_dir}/{MCP_DEPLOYED_SECRETS_FILENAME}"
-            )
+            secrets_transformed_path = config_dir / MCP_DEPLOYED_SECRETS_FILENAME
 
             run_async(
                 process_config_secrets(

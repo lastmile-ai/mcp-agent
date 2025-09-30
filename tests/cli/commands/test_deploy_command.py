@@ -791,9 +791,9 @@ server:
             # Verify secrets file is unchanged
             with open(secrets_path, "r", encoding="utf-8") as f:
                 content = f.read()
-                assert (
-                    content == secrets_content
-                ), "Output file content should match original secrets"
+                assert content == secrets_content, (
+                    "Output file content should match original secrets"
+                )
 
             # Verify the function deployed the correct mock app
             assert result == MOCK_APP_ID
