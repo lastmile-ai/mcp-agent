@@ -1,0 +1,77 @@
+name: container-build
+'on':
+  push:
+    branches:
+    - work
+    - main
+    tags:
+    - agent-v*
+  pull_request:
+    branches:
+    - '**'
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on:
+    - self-hosted
+    - linux
+    - x64
+    - vps
+    - docker
+    permissions:
+      contents: read
+      packages: write
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+    - name: Set up Buildx
+      uses: docker/setup-buildx-action@v3
+    - name: Hadolint
+      uses: hadolint/hadolint-action@v3.1.0
+      with:
+        dockerfile: Dockerfile
+    - name: Trivy scan (optional)
+      uses: aquasecurity/trivy-action@0.24.0
+      with:
+        scan-type: config
+        format: table
+      continue-on-error: true
+    - name: Docker meta
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ghcr.io/${{ github.repository_owner }}/mcp-agent
+        tags: type=ref,event=tag
+    - name: Login to GHCR
+      if: startsWith(github.ref, 'refs/tags/agent-v')
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ secrets.GHCR_USERNAME }}
+        password: ${{ secrets.GHCR_TOKEN }}
+    - name: Build and maybe push
+      id: build
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        push: ${{ startsWith(github.ref, 'refs/tags/agent-v') }}
+        provenance: 'false'
+        labels: ${{ steps.meta.outputs.labels }}
+        tags: ${{ steps.meta.outputs.tags }}
+    - name: Write digest
+      run: echo ${{ steps.build.outputs.digest }} > image-digest.txt
+    - name: Upload digest artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: image-digest
+        path: image-digest.txt
+    - name: Smoke test (PR only)
+      if: github.event_name == 'pull_request'
+      run: "set -euo pipefail\ndocker build -t mcp-agent:pr .\ncid=$(docker run -d\
+        \ -p 18080:8080 mcp-agent:pr)\nfor i in $(seq 1 20); do\n  curl -fsS http://127.0.0.1:18080/health\
+        \ && ok=1 && break || sleep 1\ndone\ntest \"${ok:-0}\" = \"1\"\ndocker rm\
+        \ -f \"$cid\" >/dev/null\n"
