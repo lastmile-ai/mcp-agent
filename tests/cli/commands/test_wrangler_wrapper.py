@@ -1037,7 +1037,7 @@ build/
 """
 
     # Create a mock PathSpec directly
-    spec = pathspec.PathSpec.from_lines('gitwildmatch', gitignore_content.splitlines())
+    spec = pathspec.PathSpec.from_lines("gitwildmatch", gitignore_content.splitlines())
 
     project_dir = Path("/fake/project")
     current_path = str(project_dir)
@@ -1117,9 +1117,7 @@ def test_should_ignore_by_gitignore_matches_directories(tmp_path):
     (project_dir / "build").mkdir()
     spec = pathspec.PathSpec.from_lines("gitwildmatch", ["build/"])
 
-    ignored = should_ignore_by_gitignore(
-        str(project_dir), ["build"], project_dir, spec
-    )
+    ignored = should_ignore_by_gitignore(str(project_dir), ["build"], project_dir, spec)
 
     assert "build" in ignored
 
@@ -1202,7 +1200,9 @@ dist/
             return MagicMock(returncode=0)
 
         with patch("subprocess.run", side_effect=check_gitignore_respected):
-            wrangler_deploy("test-app", "test-api-key", project_path, project_path / ".mcpacignore")
+            wrangler_deploy(
+                "test-app", "test-api-key", project_path, project_path / ".mcpacignore"
+            )
 
 
 def test_wrangler_deploy_warns_when_ignore_file_missing():
@@ -1243,9 +1243,7 @@ app = MCPApp(name="test-app")
             ) as mock_warning,
             patch("subprocess.run", side_effect=check_missing_ignore_behavior),
         ):
-            wrangler_deploy(
-                "test-app", "test-api-key", project_path, missing_ignore
-            )
+            wrangler_deploy("test-app", "test-api-key", project_path, missing_ignore)
 
         mock_warning.assert_called_once()
         warning_message = mock_warning.call_args[0][0]

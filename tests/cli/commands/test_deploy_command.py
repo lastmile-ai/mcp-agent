@@ -117,22 +117,22 @@ def test_deploy_command_basic(runner, temp_config_dir):
             "mcp_agent.cli.cloud.commands.deploy.main.wrangler_deploy",
             return_value=MOCK_APP_ID,
         ),
-        ):
-            # Run the deploy command
-            result = runner.invoke(
-                app,
-                [
-                    "deploy",
-                    MOCK_APP_NAME,
-                    "--config-dir",
-                    temp_config_dir,
-                    "--api-url",
-                    "http://test-api.com",
-                    "--api-key",
-                    "test-api-key",
-                    "--non-interactive",  # Prevent prompting for input
-                ],
-            )
+    ):
+        # Run the deploy command
+        result = runner.invoke(
+            app,
+            [
+                "deploy",
+                MOCK_APP_NAME,
+                "--config-dir",
+                temp_config_dir,
+                "--api-url",
+                "http://test-api.com",
+                "--api-key",
+                "test-api-key",
+                "--non-interactive",  # Prevent prompting for input
+            ],
+        )
 
     # Check command exit code
     assert result.exit_code == 0, f"Deploy command failed: {result.stdout}"

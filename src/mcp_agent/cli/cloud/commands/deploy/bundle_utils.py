@@ -14,7 +14,9 @@ from typing import Optional, Set
 import pathspec
 
 
-def create_pathspec_from_gitignore(ignore_file_path: Path) -> Optional[pathspec.PathSpec]:
+def create_pathspec_from_gitignore(
+    ignore_file_path: Path,
+) -> Optional[pathspec.PathSpec]:
     """Create and return a `PathSpec` from an ignore file.
 
     The file is parsed using the `gitwildmatch` (gitignore) syntax. If the file
@@ -34,7 +36,6 @@ def create_pathspec_from_gitignore(ignore_file_path: Path) -> Optional[pathspec.
         spec = pathspec.PathSpec.from_lines("gitwildmatch", f)
 
     return spec
-    
 
 
 def should_ignore_by_gitignore(
@@ -75,6 +76,5 @@ def should_ignore_by_gitignore(
             ignored.add(name)
         elif full_path.is_dir() and spec.match_file(rel_path_str + "/"):
             ignored.add(name)
-
 
     return ignored
