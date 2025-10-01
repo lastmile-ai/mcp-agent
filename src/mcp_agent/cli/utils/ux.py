@@ -34,6 +34,7 @@ def print_info(
     *args: Any,
     log: bool = True,
     console_output: bool = True,
+    console_override: Optional[Console] = None,
     **kwargs: Any,
 ) -> None:
     """Print an informational message.
@@ -44,7 +45,8 @@ def print_info(
         console_output: Whether to print to console
     """
     if console_output:
-        console.print(f"[info]INFO:[/info] {message}", *args, **kwargs)
+        target_console = console_override or console
+        target_console.print(f"[info]INFO:[/info] {message}", *args, **kwargs)
     if log:
         logger.info(message)
 
@@ -54,11 +56,13 @@ def print_success(
     *args: Any,
     log: bool = True,
     console_output: bool = True,
+    console_override: Optional[Console] = None,
     **kwargs: Any,
 ) -> None:
     """Print a success message."""
     if console_output:
-        console.print(f"[success]SUCCESS:[/success] {message}", *args, **kwargs)
+        target_console = console_override or console
+        target_console.print(f"[success]SUCCESS:[/success] {message}", *args, **kwargs)
     if log:
         logger.info(f"SUCCESS: {message}")
 
@@ -68,11 +72,13 @@ def print_warning(
     *args: Any,
     log: bool = True,
     console_output: bool = True,
+    console_override: Optional[Console] = None,
     **kwargs: Any,
 ) -> None:
     """Print a warning message."""
     if console_output:
-        console.print(f"[warning]WARNING:[/warning] {message}", *args, **kwargs)
+        target_console = console_override or console
+        target_console.print(f"[warning]WARNING:[/warning] {message}", *args, **kwargs)
     if log:
         logger.warning(message)
 
@@ -82,11 +88,13 @@ def print_error(
     *args: Any,
     log: bool = True,
     console_output: bool = True,
+    console_override: Optional[Console] = None,
     **kwargs: Any,
 ) -> None:
     """Print an error message."""
     if console_output:
-        console.print(f"[error]ERROR:[/error] {message}", *args, **kwargs)
+        target_console = console_override or console
+        target_console.print(f"[error]ERROR:[/error] {message}", *args, **kwargs)
     if log:
         logger.error(message, exc_info=True)
 

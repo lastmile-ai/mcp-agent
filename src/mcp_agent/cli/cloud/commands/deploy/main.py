@@ -11,6 +11,7 @@ from typing import Optional
 
 import httpx
 import typer
+from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
@@ -433,7 +434,9 @@ async def _deploy_with_retry(
     # Step 3: Deployment API call with retries if needed
     attempt = 0
 
-    async def _check_deployment_status():
+    async def _check_deployment_status(
+        log_console: Optional[Console] = None,
+    ):
         """Check if deployment succeeded remotely despite connection failure."""
         try:
             current_app = await mcp_app_client.get_app(app_id=app_id)
@@ -456,17 +459,22 @@ async def _deploy_with_retry(
 
                     if current_updated > baseline_updated or baseline_url != current_url:
                         print_success(
-                            "✅ Deployment succeeded! App is ONLINE (detected via status check)"
+                            "✅ Deployment succeeded! App is ONLINE (detected via status check)",
+                            console_override=log_console,
                         )
                         return current_app
                 else:
                     # No baseline, just check if ONLINE
                     print_success(
-                        "✅ Deployment succeeded! App is ONLINE (detected via status check)"
+                        "✅ Deployment succeeded! App is ONLINE (detected via status check)",
+                        console_override=log_console,
                     )
                     return current_app
         except Exception as check_error:
-            print_warning(f"Status check failed: {str(check_error)}")
+            print_warning(
+                f"Status check failed: {str(check_error)}",
+                console_override=log_console,
+            )
         return None
 
     async def _perform_api_deployment():
@@ -478,7 +486,9 @@ async def _deploy_with_retry(
         with Progress(
             SpinnerColumn(spinner_name="arrow3"),
             TextColumn("[progress.description]{task.description}"),
+            console=console,
         ) as progress:
+            log_console: Console = progress.console
             deploy_task = progress.add_task(
                 f"Deploying MCP App bundle{attempt_suffix}...", total=None
             )
@@ -521,14 +531,23 @@ async def _deploy_with_retry(
                 error_type = type(e).__name__
                 print_warning(
                     f"Lost connection to deployment API ({error_type}). "
-                    f"The deployment may still be in progress on the server."
+                    f"The deployment may still be in progress on the server.",
+                    console_override=log_console,
                 )
 
                 # Check deployment status 3 times with 2-second intervals
-                print_info("Checking deployment status (3 attempts with 2s intervals)...")
+                print_info(
+                    "Checking deployment status (3 attempts with 2s intervals)...",
+                    console_override=log_console,
+                )
                 for check_attempt in range(1, 4):
-                    print_info(f"Status check {check_attempt}/3...")
-                    status_app = await _check_deployment_status()
+                    print_info(
+                        f"Status check {check_attempt}/3...",
+                        console_override=log_console,
+                    )
+                    status_app = await _check_deployment_status(
+                        log_console=log_console
+                    )
                     if status_app:
                         return status_app
 
@@ -536,7 +555,10 @@ async def _deploy_with_retry(
                         await asyncio.sleep(2.0)
 
                 # After status checks, raise error to trigger retry
-                print_info("Deployment not confirmed as ONLINE. Will retry deployment...")
+                print_info(
+                    "Deployment not confirmed as ONLINE. Will retry deployment...",
+                    console_override=log_console,
+                )
                 raise CLIError(
                     f"Lost connection to deployment API ({error_type}). "
                     f"Deployment status could not be confirmed after 3 checks."
