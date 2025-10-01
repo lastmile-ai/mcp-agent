@@ -1,7 +1,5 @@
-import base64
 import datetime as dt
 import os
-import re
 from contextlib import asynccontextmanager
 from typing import Any, Dict, Optional
 
@@ -40,7 +38,7 @@ def _build_github_app_jwt(app_id: str, pem: str, ttl: int = 540) -> str:
 async def issue_github_installation_token(installation_id: int, permissions: Optional[Dict[str, str]] = None, repositories: Optional[list[str]] = None, ttl_seconds: int = 900, http: Optional[httpx.AsyncClient] = None) -> dict:
     app_id, pem = _load_github_app_creds()
     app_jwt = _build_github_app_jwt(app_id, pem)
-    ttl = _clamp_ttl(ttl_seconds, default=900, max_seconds=3600)
+    _clamp_ttl(ttl_seconds, default=900, max_seconds=3600)
     client = http or httpx.AsyncClient(timeout=5.0)
     close_client = http is None
     try:
