@@ -1,11 +1,11 @@
 import json
 import httpx
-import pytest
-from mcp_agent.secrets.bridge import issue_github_installation_token, _clamp_ttl
+from mcp_agent.secrets.bridge import _clamp_ttl
 
 class GHMock(httpx.AsyncBaseTransport):
     def __init__(self):
         self.last_request = None
+
     def handle_async_request(self, request):
         self.last_request = request
         assert request.url.path.endswith("/access_tokens")
