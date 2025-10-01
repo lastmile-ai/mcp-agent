@@ -1,8 +1,5 @@
-import asyncio
-import json
 import httpx
 import pytest
-
 from mcp_agent.registry.loader import discover
 
 class OK(httpx.AsyncBaseTransport):
@@ -28,7 +25,6 @@ async def test_discovery_populates_registry_with_retries(monkeypatch):
         async def __aexit__(self_inner, exc_type, exc, tb):
             pass
     monkeypatch.setattr(L.httpx, "AsyncClient", lambda *a, **k: Dummy())
-
     entries = [{"name":"t1","base_url":"http://tool1:123"}]
     out = await discover(entries, retries=1, backoff_ms=1)
     assert out and out[0]["alive"] is True
