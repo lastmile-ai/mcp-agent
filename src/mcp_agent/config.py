@@ -641,6 +641,17 @@ class Settings(BaseSettings):
 
     usage_telemetry: UsageTelemetrySettings | None = UsageTelemetrySettings()
     """Usage tracking settings for the MCP Agent application"""
+# Sentinel authorization settings
+sentinel_url: str | None = None
+"""Base URL for Sentinel auth service"""
+
+sentinel_signing_key: str | None = None
+"""HMAC key used to sign registration and authorize requests"""
+
+auth_enforce: bool = False
+"""If false, audit-only mode. If true, deny on unauthorized runs"""
+
+
 
     agents: SubagentSettings | None = SubagentSettings()
     """Settings for defining and loading subagents for the MCP Agent application"""
