@@ -20,7 +20,6 @@ capabilities_total = Counter(
 
 DEFAULT_TOOLS_YAML = os.getenv("TOOLS_YAML_PATH", "tools/tools.yaml")
 
-
 def load_tools_yaml(path: Optional[str] = None) -> List[Dict[str, Any]]:
     """Parse tools.yaml. Returns list of entries with at least name and base_url."""
     p = path or DEFAULT_TOOLS_YAML
@@ -41,7 +40,6 @@ def load_tools_yaml(path: Optional[str] = None) -> List[Dict[str, Any]]:
         out.append({"name": str(name), "base_url": str(base), "version": version})
     return out
 
-
 async def _probe_one(client: httpx.AsyncClient, base_url: str) -> Tuple[bool, Dict[str, Any]]:
     """Probe /.well-known/mcp then /health. Returns (alive, info)."""
     info: Dict[str, Any] = {}
@@ -53,7 +51,6 @@ async def _probe_one(client: httpx.AsyncClient, base_url: str) -> Tuple[bool, Di
             j = r.json()
             # Accept either root fields or nested under 'mcp'
             meta = j.get("mcp", j)
-            name = meta.get("name") or j.get("name")
             version = meta.get("version") or j.get("version")
             caps = meta.get("capabilities") or j.get("capabilities") or {}
             if isinstance(caps, dict):
@@ -73,7 +70,6 @@ async def _probe_one(client: httpx.AsyncClient, base_url: str) -> Tuple[bool, Di
     except Exception:
         pass
     return False, info
-
 
 async def discover(entries: List[Dict[str, Any]], retries: int = 2, backoff_ms: int = 50) -> List[Dict[str, Any]]:
     """Probe all entries with limited retries. Returns registry records."""
