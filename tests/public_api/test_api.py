@@ -1,4 +1,6 @@
-import json, jwt, os
+import json
+import jwt
+
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
 from mcp_agent.api.routes import add_public_api
