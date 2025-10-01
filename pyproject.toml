@@ -23,7 +23,7 @@ dependencies = [
     "opentelemetry-exporter-otlp-proto-http>=1.29.0",
     "opentelemetry-instrumentation-anthropic>=0.39.3",
     "opentelemetry-instrumentation-openai>=0.39.3",
-    "prometheus_client",
+    "prometheus_client>=0.22.1",
     "prompt-toolkit>=3.0.50",
     "pydantic-settings>=2.7.0",
     "pydantic-yaml>=1.5.1",
