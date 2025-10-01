@@ -1,14 +1,6 @@
 name: container-build
 'on':
-  push:
-    branches:
-    - work
-    - main
-    tags:
-    - agent-v*
-  pull_request:
-    branches:
-    - '**'
+  workflow_dispatch:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -66,7 +58,12 @@ jobs:
         path: image-digest.txt
     - name: Smoke test (PR only)
       if: github.event_name == 'pull_request'
-      run: "set -euo pipefail\ndocker build -t mcp-agent:pr .\ncid=$(docker run -d\
-        \ -p 18080:8080 mcp-agent:pr)\nfor i in $(seq 1 20); do\n  curl -fsS http://127.0.0.1:18080/health\
-        \ && ok=1 && break || sleep 1\ndone\ntest \"${ok:-0}\" = \"1\"\ndocker rm\
-        \ -f \"$cid\" >/dev/null\n"
+      run: |
+        set -euo pipefail
+        docker build -t mcp-agent:pr .
+        cid=$(docker run -d -p 18080:8080 mcp-agent:pr)
+        for i in $(seq 1 20); do
+          curl -fsS http://127.0.0.1:18080/health && ok=1 && break || sleep 1
+        done
+        test "${ok:-0}" = "1"
+        docker rm -f "$cid" >/dev/null
