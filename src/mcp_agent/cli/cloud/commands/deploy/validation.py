@@ -44,6 +44,11 @@ def validate_project(project_dir: Path):
             "Invalid poetry project: poetry.lock found without corresponding pyproject.toml"
         )
 
+    if sum([has_pyproject, has_requirements, has_poetry_lock, has_uv_lock]) == 0:
+        raise ValueError(
+            "No Python project dependency management files found. Expected one of: pyproject.toml, requirements.txt, poetry.lock, uv.lock in the project directory."
+        )
+
 
 def validate_entrypoint(entrypoint_path: Path):
     """
