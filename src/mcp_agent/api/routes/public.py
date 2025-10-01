@@ -54,7 +54,6 @@ async def create_run(request: Request) -> JSONResponse:
 
     project_id = body.get("project_id")
     run_type = body.get("run_type")
-    payload = body.get("payload", {})
 
     if not isinstance(project_id, str) or not isinstance(run_type, str):
         return JSONResponse({"error": "invalid_schema"}, status_code=400)
