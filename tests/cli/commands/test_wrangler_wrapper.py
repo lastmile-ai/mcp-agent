@@ -42,6 +42,9 @@ app = MCPApp(
         main_py_path = project_path / "main.py"
         main_py_path.write_text(main_py_content)
 
+        # Create a requirements.txt to satisfy dependency file requirement
+        (project_path / "requirements.txt").write_text("mcp-agent")
+
         yield project_path
 
 
@@ -280,6 +283,25 @@ app = MCPApp(name="test-app")
         with pytest.raises(
             ValueError,
             match="Invalid poetry project: poetry.lock found without corresponding pyproject.toml",
+        ):
+            validate_project(project_path)
+
+
+def test_validate_project_no_dependency_files():
+    """Test validate_project when no dependency management files exist."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        project_path = Path(temp_dir)
+
+        # Create main.py only, no dependency files
+        main_py_content = """from mcp_agent_cloud import MCPApp
+
+app = MCPApp(name="test-app")
+"""
+        (project_path / "main.py").write_text(main_py_content)
+
+        with pytest.raises(
+            ValueError,
+            match="No Python project dependency management files found. Expected one of: pyproject.toml, requirements.txt, poetry.lock, uv.lock in the project directory.",
         ):
             validate_project(project_path)
 
@@ -634,6 +656,8 @@ def test_wrangler_deploy_complex_file_extensions():
 from mcp_agent_cloud import MCPApp
 app = MCPApp(name="test-app")
 """)
+        # Create requirements.txt to satisfy dependency file requirement
+        (project_path / "requirements.txt").write_text("mcp-agent")
 
         # Create files with complex extensions
         complex_files = {
@@ -906,10 +930,16 @@ def test_wrangler_deploy_no_requirements_txt():
     with tempfile.TemporaryDirectory() as temp_dir:
         project_path = Path(temp_dir)
 
-        # Create main.py only
+        # Create main.py
         (project_path / "main.py").write_text("""
 from mcp_agent_cloud import MCPApp
 app = MCPApp(name="test-app")
+""")
+        # Create pyproject.toml to satisfy dependency file requirement
+        (project_path / "pyproject.toml").write_text("""[project]
+name = "test-app"
+version = "0.1.0"
+dependencies = ["mcp-agent"]
 """)
 
         with patch("subprocess.run") as mock_subprocess:
@@ -932,6 +962,8 @@ def test_wrangler_deploy_secrets_file_exclusion():
 from mcp_agent_cloud import MCPApp
 app = MCPApp(name="test-app")
 """)
+        # Create requirements.txt to satisfy dependency file requirement
+        (project_path / "requirements.txt").write_text("mcp-agent")
 
         # Create secrets file
         secrets_content = """
@@ -1160,6 +1192,8 @@ def test_wrangler_deploy_with_ignore_file():
 from mcp_agent_cloud import MCPApp
 app = MCPApp(name="test-app")
 """)
+        # Create requirements.txt to satisfy dependency file requirement
+        (project_path / "requirements.txt").write_text("mcp-agent")
 
         # Create .mcpacignore
         ignore_content = """*.log
@@ -1223,6 +1257,8 @@ from mcp_agent_cloud import MCPApp
 app = MCPApp(name="test-app")
 """
         )
+        # Create requirements.txt to satisfy dependency file requirement
+        (project_path / "requirements.txt").write_text("mcp-agent")
         (project_path / "config.yaml").write_text("name: test-app\n")
         (project_path / "artifact.txt").write_text("artifact\n")
 
