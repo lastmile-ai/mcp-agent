@@ -311,11 +311,14 @@ class MCPAppClient(APIClient):
         self,
         app_id: str,
         deployment_metadata: Optional[Dict[str, Any]] = None,
+        timeout: float = 300.0,
     ) -> MCPApp:
         """Deploy an MCP App via the API.
 
         Args:
             app_id: The UUID of the app to deploy
+            deployment_metadata: Optional metadata about the deployment
+            timeout: HTTP timeout in seconds for the deployment request
 
         Returns:
             MCPApp: The deployed MCP App
@@ -333,10 +336,8 @@ class MCPAppClient(APIClient):
             # Tentative field; include only when requested
             payload["deploymentMetadata"] = deployment_metadata
 
-        # Use a longer timeout for deployments
-        deploy_timeout = 300.0
         response = await self.post(
-            "/mcp_app/deploy_app", payload, timeout=deploy_timeout
+            "/mcp_app/deploy_app", payload, timeout=timeout
         )
 
         res = response.json()

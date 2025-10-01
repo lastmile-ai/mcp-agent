@@ -4,10 +4,12 @@ This module provides the deploy_config function which processes configuration fi
 with secret tags and transforms them into deployment-ready configurations with secret handles.
 """
 
+import asyncio
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional
 
+import httpx
 import typer
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -35,6 +37,7 @@ from mcp_agent.cli.utils.ux import (
     print_error,
     print_info,
     print_success,
+    print_warning,
 )
 from mcp_agent.cli.utils.git_utils import (
     get_git_metadata,
@@ -115,6 +118,13 @@ def deploy_config(
         help="Number of retries on deployment failure.",
         min=1,
         max=10,
+    ),
+    deploy_timeout: float = typer.Option(
+        300.0,
+        "--deploy-timeout",
+        help="HTTP timeout in seconds for deployment API calls.",
+        min=30.0,
+        max=1200.0,
     ),
     ignore_file: Optional[Path] = typer.Option(
         None,
@@ -354,6 +364,7 @@ def deploy_config(
                 project_dir=config_dir,
                 mcp_app_client=mcp_app_client,
                 retry_count=retry_count,
+                deploy_timeout=deploy_timeout,
                 ignore=ignore_path,
             )
         )
@@ -383,6 +394,7 @@ async def _deploy_with_retry(
     project_dir: Path,
     mcp_app_client: MCPAppClient,
     retry_count: int,
+    deploy_timeout: float,
     ignore: Optional[Path],
 ):
     """Execute the deployment operations with retry logic.
@@ -393,6 +405,8 @@ async def _deploy_with_retry(
         project_dir: Directory containing the project files
         mcp_app_client: MCP App client for API calls
         retry_count: Number of retry attempts for deployment
+        deploy_timeout: HTTP timeout in seconds for deployment API calls
+        ignore: Optional path to ignore file
 
     Returns:
         Deployed app information
@@ -408,8 +422,52 @@ async def _deploy_with_retry(
     except Exception as e:
         raise CLIError(f"Bundling failed: {str(e)}") from e
 
-    # Step 2: Deployment API call with retries if needed
+    # Step 2: Capture baseline snapshot before deployment
+    baseline_app = None
+    try:
+        baseline_app = await mcp_app_client.get_app(app_id=app_id)
+    except Exception:
+        # If we can't get baseline, continue anyway
+        pass
+
+    # Step 3: Deployment API call with retries if needed
     attempt = 0
+
+    async def _check_deployment_status():
+        """Check if deployment succeeded remotely despite connection failure."""
+        try:
+            current_app = await mcp_app_client.get_app(app_id=app_id)
+
+            # Check if app is ONLINE
+            if (
+                current_app.appServerInfo
+                and current_app.appServerInfo.status == "APP_SERVER_STATUS_ONLINE"
+            ):
+                # Check if this is a new deployment (updatedAt changed or URL changed)
+                if baseline_app:
+                    baseline_updated = baseline_app.updatedAt
+                    current_updated = current_app.updatedAt
+                    baseline_url = (
+                        baseline_app.appServerInfo.serverUrl
+                        if baseline_app.appServerInfo
+                        else None
+                    )
+                    current_url = current_app.appServerInfo.serverUrl
+
+                    if current_updated > baseline_updated or baseline_url != current_url:
+                        print_success(
+                            "✅ Deployment succeeded! App is ONLINE (detected via status check)"
+                        )
+                        return current_app
+                else:
+                    # No baseline, just check if ONLINE
+                    print_success(
+                        "✅ Deployment succeeded! App is ONLINE (detected via status check)"
+                    )
+                    return current_app
+        except Exception as check_error:
+            print_warning(f"Status check failed: {str(check_error)}")
+        return None
 
     async def _perform_api_deployment():
         nonlocal attempt
@@ -441,21 +499,48 @@ async def _deploy_with_retry(
 
                 try:
                     app = await mcp_app_client.deploy_app(
-                        app_id=app_id, deployment_metadata=metadata
+                        app_id=app_id, deployment_metadata=metadata, timeout=deploy_timeout
                     )
-                except Exception as e:
+                except Exception as deploy_error:
                     # Fallback: if API rejects deploymentMetadata, retry once without it
                     try:
                         app = await mcp_app_client.deploy_app(
-                            app_id=app_id, deployment_metadata=None
+                            app_id=app_id, deployment_metadata=None, timeout=deploy_timeout
                         )
                     except Exception:
-                        raise e
+                        raise deploy_error
                 progress.update(
                     deploy_task,
                     description=f"✅ MCP App deployed successfully{attempt_suffix}!",
                 )
                 return app
+            except (httpx.ReadTimeout, httpx.RemoteProtocolError, httpx.ConnectError) as e:
+                progress.update(
+                    deploy_task, description=f"⚠️  Connection lost{attempt_suffix}"
+                )
+                error_type = type(e).__name__
+                print_warning(
+                    f"Lost connection to deployment API ({error_type}). "
+                    f"The deployment may still be in progress on the server."
+                )
+
+                # Check deployment status 3 times with 2-second intervals
+                print_info("Checking deployment status (3 attempts with 2s intervals)...")
+                for check_attempt in range(1, 4):
+                    print_info(f"Status check {check_attempt}/3...")
+                    status_app = await _check_deployment_status()
+                    if status_app:
+                        return status_app
+
+                    if check_attempt < 3:
+                        await asyncio.sleep(2.0)
+
+                # After status checks, raise error to trigger retry
+                print_info("Deployment not confirmed as ONLINE. Will retry deployment...")
+                raise CLIError(
+                    f"Lost connection to deployment API ({error_type}). "
+                    f"Deployment status could not be confirmed after 3 checks."
+                ) from e
             except Exception:
                 progress.update(
                     deploy_task, description=f"❌ Deployment failed{attempt_suffix}"
@@ -474,6 +559,12 @@ async def _deploy_with_retry(
             max_delay=30.0,
         )
     except RetryError as e:
+        # Before giving up, check if deployment actually succeeded
+        print_info("Checking final deployment status...")
+        final_app = await _check_deployment_status()
+        if final_app:
+            return final_app
+
         attempts_text = "attempts" if retry_count > 1 else "attempt"
         print_error(f"Deployment failed after {retry_count} {attempts_text}")
         raise CLIError(
