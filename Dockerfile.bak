@@ -10,21 +10,6 @@ RUN python -m pip install --no-cache-dir --upgrade pip==23.3.2 build==1.2.2 && p
 RUN python -m pip download --no-cache-dir --dest /wheelhouse /dist/*.whl
 
 FROM python:${PYTHON_VERSION} AS runtime
-# Build metadata for OCI labels
-ARG BUILD_DATE
-ARG VCS_REF
-ARG VERSION
-ARG REPO_URL
-
-LABEL org.opencontainers.image.title="mcp-agent" \
-      org.opencontainers.image.description="MCP Agent service" \
-      org.opencontainers.image.vendor="yourorg" \
-      org.opencontainers.image.licenses="Apache-2.0" \
-      org.opencontainers.image.url="${REPO_URL}" \
-      org.opencontainers.image.source="${REPO_URL}" \
-      org.opencontainers.image.revision="${VCS_REF}" \
-      org.opencontainers.image.created="${BUILD_DATE}" \
-      org.opencontainers.image.version="${VERSION}" 
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PORT=8080
 WORKDIR /app
 RUN useradd -m appuser && chown -R appuser:appuser /app

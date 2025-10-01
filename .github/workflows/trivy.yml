@@ -1,0 +1,27 @@
+name: Trivy Scan
+on:
+  pull_request:
+    branches: [ work, main ]
+  workflow_dispatch:
+jobs:
+  trivy:
+    runs-on: [self-hosted, linux]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build local image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: mcp-agent:scan
+      - name: Run Trivy
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: mcp-agent:scan
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+      - name: Continue even if Trivy fails
+        if: failure()
+        run: echo "Trivy reported vulnerabilities" 

@@ -1,0 +1,14 @@
+name: Dockerfile Lint
+on:
+  pull_request:
+    branches: [ work, main ]
+  workflow_dispatch:
+jobs:
+  hadolint:
+    runs-on: [self-hosted, linux]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          config: .hadolint.yaml
