@@ -1,5 +1,4 @@
 import httpx
-import pytest
 from mcp_agent.secrets.bridge import mount_github_token_for_run
 
 class GHMock(httpx.AsyncBaseTransport):
