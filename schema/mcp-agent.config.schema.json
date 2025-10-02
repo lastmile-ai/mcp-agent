@@ -33,7 +33,9 @@
           "type": "boolean"
         }
       },
-      "required": ["name"],
+      "required": [
+        "name"
+      ],
       "title": "AgentSpec",
       "type": "object"
     },
@@ -151,7 +153,11 @@
         },
         "provider": {
           "default": "anthropic",
-          "enum": ["anthropic", "bedrock", "vertexai"],
+          "enum": [
+            "anthropic",
+            "bedrock",
+            "vertexai"
+          ],
           "title": "Provider",
           "type": "string"
         },
@@ -211,7 +217,9 @@
               "type": "null"
             }
           ],
-          "default": ["https://cognitiveservices.azure.com/.default"],
+          "default": [
+            "https://cognitiveservices.azure.com/.default"
+          ],
           "title": "Credential Scopes"
         }
       },
@@ -427,7 +435,10 @@
         },
         "unique_id": {
           "default": "timestamp",
-          "enum": ["timestamp", "session_id"],
+          "enum": [
+            "timestamp",
+            "session_id"
+          ],
           "title": "Unique Id",
           "type": "string"
         },
@@ -446,14 +457,24 @@
       "properties": {
         "type": {
           "default": "console",
-          "enum": ["none", "console", "file", "http"],
+          "enum": [
+            "none",
+            "console",
+            "file",
+            "http"
+          ],
           "title": "Type",
           "type": "string"
         },
         "transports": {
           "default": [],
           "items": {
-            "enum": ["none", "console", "file", "http"],
+            "enum": [
+              "none",
+              "console",
+              "file",
+              "http"
+            ],
             "type": "string"
           },
           "title": "Transports",
@@ -462,7 +483,12 @@
         },
         "level": {
           "default": "info",
-          "enum": ["debug", "info", "warning", "error"],
+          "enum": [
+            "debug",
+            "info",
+            "warning",
+            "error"
+          ],
           "title": "Level",
           "type": "string",
           "description": "Minimum logging level"
@@ -583,7 +609,9 @@
           "description": "Optional URI alias for presentation to the server"
         }
       },
-      "required": ["uri"],
+      "required": [
+        "uri"
+      ],
       "title": "MCPRootSettings",
       "type": "object"
     },
@@ -639,7 +667,12 @@
         },
         "transport": {
           "default": "stdio",
-          "enum": ["stdio", "sse", "streamable_http", "websocket"],
+          "enum": [
+            "stdio",
+            "sse",
+            "streamable_http",
+            "websocket"
+          ],
           "title": "Transport",
           "type": "string",
           "description": "The transport mechanism."
@@ -860,7 +893,11 @@
         },
         "reasoning_effort": {
           "default": "medium",
-          "enum": ["low", "medium", "high"],
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
           "title": "Reasoning Effort",
           "type": "string"
         },
@@ -1125,7 +1162,10 @@
           "type": "string"
         }
       },
-      "required": ["host", "task_queue"],
+      "required": [
+        "host",
+        "task_queue"
+      ],
       "title": "TemporalSettings",
       "type": "object"
     },
@@ -1177,7 +1217,10 @@
         },
         "unique_id": {
           "default": "timestamp",
-          "enum": ["timestamp", "session_id"],
+          "enum": [
+            "timestamp",
+            "session_id"
+          ],
           "title": "Unique Id",
           "type": "string"
         },
@@ -1253,7 +1296,10 @@
     },
     "execution_engine": {
       "default": "asyncio",
-      "enum": ["asyncio", "temporal"],
+      "enum": [
+        "asyncio",
+        "temporal"
+      ],
       "title": "Execution Engine",
       "type": "string",
       "description": "Execution engine for the MCP Agent application"
