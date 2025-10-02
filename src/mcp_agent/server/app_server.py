@@ -10,15 +10,22 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Type, TYPE_CHECKING
 import os
 import secrets
 import asyncio
+from pydantic import BaseModel, Field
 
 from mcp.server.fastmcp import Context as MCPContext, FastMCP
+from mcp.server.fastmcp.server import AuthSettings
+from mcp.server.auth.middleware.auth_context import (
+    AuthenticatedUser,
+    auth_context_var,
+)
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import HTMLResponse, JSONResponse
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.fastmcp.tools import Tool as FastTool
 
 from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
+from mcp_agent.config import MCPOAuthClientSettings
 from mcp_agent.core.context_dependent import ContextDependent
 from mcp_agent.executor.workflow import Workflow
 from mcp_agent.executor.workflow_registry import (
@@ -30,7 +37,13 @@ from mcp_agent.executor.workflow_registry import (
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.logging.logger import LoggingConfig
 from mcp_agent.mcp.mcp_server_registry import ServerRegistry
-
+from mcp_agent.oauth.identity import OAuthUserIdentity
+from mcp_agent.oauth.callbacks import callback_registry
+from mcp_agent.oauth.errors import (
+    CallbackTimeoutError,
+)
+from mcp_agent.oauth.manager import create_default_user_for_preconfigured_tokens
+from mcp_agent.server.token_verifier import MCPAgentTokenVerifier
 if TYPE_CHECKING:
     from mcp_agent.core.context import Context
 
@@ -178,6 +191,40 @@ def _set_upstream_from_request_ctx_if_available(ctx: MCPContext) -> None:
         # ctx.session property might raise ValueError if context not available
         pass
 
+    # Capture authenticated user information if available
+    identity: OAuthUserIdentity | None = None
+    try:
+        auth_user = auth_context_var.get()
+    except LookupError:
+        auth_user = None
+
+    if isinstance(auth_user, AuthenticatedUser):
+        access_token = getattr(auth_user, "access_token", None)
+        if access_token is not None:
+            # Prefer enriched token instances but fall back to raw data if necessary
+            try:
+                from mcp_agent.oauth.access_token import MCPAccessToken
+
+                if isinstance(access_token, MCPAccessToken):
+                    identity = OAuthUserIdentity.from_access_token(access_token)
+                else:
+                    token_dict = getattr(access_token, "model_dump", None)
+                    if callable(token_dict):
+                        maybe_token = MCPAccessToken.model_validate(
+                            access_token.model_dump()
+                        )
+                        identity = OAuthUserIdentity.from_access_token(maybe_token)
+            except Exception:
+                identity = None
+
+    if not identity:
+        # Try create identity from session id
+        try:
+            session_id = ctx.request_context.request.query_params.get("session_id")
+            identity = create_default_user_for_preconfigured_tokens(session_id)
+        except Exception:
+            identity = None
+
     if session is not None:
         app: MCPApp | None = _get_attached_app(ctx.fastmcp)
         if app is not None and getattr(app, "context", None) is not None:
@@ -185,9 +232,15 @@ def _set_upstream_from_request_ctx_if_available(ctx: MCPContext) -> None:
             # Previously captured; no need to keep old value
             # Use direct assignment for Pydantic model
             app.context.upstream_session = session
+            app.context.current_user = identity
             return
         else:
             return
+    else:
+        # Update identity even if we failed to resolve a session
+        app: MCPApp | None = _get_attached_app(ctx.fastmcp)
+        if app is not None and getattr(app, "context", None) is not None:
+            app.context.current_user = identity
 
 
 def _resolve_workflows_and_context(
@@ -322,6 +375,34 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         A configured FastMCP server instance
     """
 
+    auth_settings_config = None
+    try:
+        if app.context and app.context.config:
+            auth_settings_config = app.context.config.authorization
+    except Exception:
+        auth_settings_config = None
+
+    effective_auth_settings: AuthSettings | None = None
+    token_verifier: MCPAgentTokenVerifier | None = None
+    owns_token_verifier = False
+    if auth_settings_config and auth_settings_config.enabled:
+        try:
+            effective_auth_settings = AuthSettings(
+                issuer_url=auth_settings_config.issuer_url,  # type: ignore[arg-type]
+                resource_server_url=auth_settings_config.resource_server_url,  # type: ignore[arg-type]
+                service_documentation_url=auth_settings_config.service_documentation_url,  # type: ignore[arg-type]
+                required_scopes=auth_settings_config.required_scopes or None,
+            )
+            token_verifier = MCPAgentTokenVerifier(auth_settings_config)
+        except Exception as exc:
+            logger.error(
+                "Failed to configure authorization server integration",
+                exc_info=True,
+                data={"error": str(exc)},
+            )
+            effective_auth_settings = None
+            token_verifier = None
+
     # Create a lifespan function specific to this app
     @asynccontextmanager
     async def app_specific_lifespan(mcp: FastMCP) -> AsyncIterator[ServerContext]:
@@ -341,7 +422,11 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             yield server_context
         finally:
             # Don't clean up the MCPApp here - let the caller handle that
-            pass
+            if owns_token_verifier and token_verifier is not None:
+                try:
+                    await token_verifier.aclose()
+                except Exception:
+                    pass
 
     # Helper: install internal HTTP routes (not MCP tools)
     def _install_internal_routes(mcp_server: FastMCP) -> None:
@@ -357,6 +442,41 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             except Exception:
                 return None
             return None
+
+        @mcp_server.custom_route(
+            "/internal/oauth/callback/{flow_id}",
+            methods=["GET", "POST"],
+            include_in_schema=False,
+        )
+        async def _oauth_callback(request: Request):
+            flow_id = request.path_params.get("flow_id")
+            if not flow_id:
+                return JSONResponse({"error": "missing_flow_id"}, status_code=400)
+
+            payload: Dict[str, Any] = {}
+            try:
+                payload.update({k: v for k, v in request.query_params.multi_items()})
+            except Exception:
+                payload.update(dict(request.query_params))
+
+            if request.method.upper() == "POST":
+                content_type = request.headers.get("content-type", "")
+                try:
+                    if "application/json" in content_type:
+                        body_data = await request.json()
+                    else:
+                        form = await request.form()
+                        body_data = {k: v for k, v in form.multi_items()}
+                except Exception:
+                    body_data = {}
+                payload.update(body_data)
+
+            delivered = await callback_registry.deliver(flow_id, payload)
+            if not delivered:
+                return JSONResponse({"error": "unknown_flow"}, status_code=404)
+
+            html = """<!DOCTYPE html><html><body><h3>Authorization complete.</h3><p>You may close this window and return to MCP Agent.</p></body></html>"""
+            return HTMLResponse(html)
 
         @mcp_server.custom_route(
             "/internal/session/by-run/{execution_id}/notify",
@@ -609,6 +729,37 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                     request=req, result_type=EmptyResult
                 )  # type: ignore[attr-defined]
                 return result.model_dump(by_alias=True, mode="json", exclude_none=True)
+            elif method == "auth/request":
+                # TODO: special handling of auth request, should be replaced by future URL elicitation
+                class AuthToken(BaseModel):
+                    confirmation: str = Field(description="Please press enter to confirm this message has been received")
+
+                flow_id = params["flow_id"]
+                callback_future = await callback_registry.create_handle(flow_id)
+
+                req = ElicitRequest(
+                    method="elicitation/create",
+                    params=ElicitRequestParams(
+                        message=params["message"] + "\n\n" + params["url"],
+                        requestedSchema=AuthToken.model_json_schema(),
+                    ),
+                )
+
+                result = await session.send_request(
+                    request=req, result_type=ElicitResult
+                )  # type: ignore[attr-defined]
+
+                timeout = 300
+                try:
+                    callback_data = await asyncio.wait_for(
+                        callback_future, timeout=timeout
+                    )
+                except asyncio.TimeoutError as exc:
+                    raise CallbackTimeoutError(
+                        f"Timed out waiting for OAuth callback after {timeout} seconds"
+                    ) from exc
+
+                return callback_data
             else:
                 raise ValueError(f"unsupported method: {method}")
 
@@ -1039,6 +1190,11 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         except Exception:
             pass
     else:
+        if "auth" not in kwargs and effective_auth_settings is not None:
+            kwargs["auth"] = effective_auth_settings
+        if "token_verifier" not in kwargs and token_verifier is not None:
+            kwargs["token_verifier"] = token_verifier
+            owns_token_verifier = True
         mcp = FastMCP(
             name=app.name or "mcp_agent_server",
             # TODO: saqadri (MAC) - create a much more detailed description
@@ -1380,6 +1536,162 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             )
 
         return result
+
+    @mcp.tool(name="workflows-pre-auth")
+    async def workflow_pre_auth(
+        ctx: MCPContext, workflow_name: str, tokens: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Pre-authorize OAuth tokens for a workflow to use with MCP servers.
+
+        Stores OAuth tokens that the workflow can use when connecting to various MCP servers.
+        This allows workflows to authenticate with external services without requiring
+        interactive OAuth flows during execution.
+
+        Args:
+            workflow_name: The name of the workflow that will use these tokens.
+            tokens: List of OAuth token objects, each containing:
+                - access_token (str): The OAuth access token
+                - refresh_token (str, optional): The OAuth refresh token
+                - server_name (str): Name/identifier of the MCP server
+                - scopes (List[str], optional): List of OAuth scopes
+                - expires_at (float, optional): Token expiration timestamp
+                - authorization_server (str, optional): Authorization server URL
+
+        Returns:
+            Dictionary with success status and count of stored tokens.
+        """
+        # Ensure upstream session is available for any logs
+        try:
+            _set_upstream_from_request_ctx_if_available(ctx)
+        except Exception:
+            pass
+
+        workflows_dict, app_context = _resolve_workflows_and_context(ctx)
+        if not workflows_dict or not app_context:
+            raise ToolError("Server context not available for MCPApp Server.")
+
+        if workflow_name not in workflows_dict:
+            raise ToolError(f"Workflow '{workflow_name}' not found.")
+
+        if not app_context.token_store:
+            raise ToolError("Token storage not available.")
+
+        if not tokens:
+            raise ToolError("At least one token must be provided.")
+
+        stored_count = 0
+        errors = []
+
+        try:
+            for i, token_data in enumerate(tokens):
+                try:
+                    # Validate required fields
+                    if not isinstance(token_data, dict):
+                        errors.append(f"Token {i}: must be a dictionary")
+                        continue
+
+                    access_token = token_data.get("access_token")
+                    server_name = token_data.get("server_name")
+
+                    if not access_token:
+                        errors.append(
+                            f"Token {i}: missing required 'access_token' field"
+                        )
+                        continue
+
+                    if not server_name:
+                        errors.append(
+                            f"Token {i}: missing required 'server_name' field"
+                        )
+                        continue
+
+                    server_config = app_context.server_registry.get_server_config(server_name)
+                    if not server_config:
+                        errors.append(
+                            f"Token {i}: server '{server_name}' not recognized"
+                        )
+                        continue
+
+                    oauth_config: MCPOAuthClientSettings | None = None
+                    if server_config and server_config.auth:
+                        oauth_config = getattr(server_config.auth, "oauth", None)
+                    if not oauth_config or not oauth_config.enabled:
+                        errors.append(
+                            f"Token {i}: Server '{server_name}' is not configured for OAuth authentication"
+                        )
+                        continue
+
+                    # Create TokenRecord
+                    from mcp_agent.oauth.records import TokenRecord
+                    from mcp_agent.oauth.store.base import (
+                        TokenStoreKey,
+                        scope_fingerprint,
+                    )
+
+                    resource_str = str(oauth_config.resource) if oauth_config.resource \
+                        else getattr(server_config, "url", None)
+                    auth_server_str = str(oauth_config.authorization_server) if oauth_config.authorization_server \
+                        else None
+                    scope_list = list(oauth_config.scopes or [])
+
+                    token_record = TokenRecord(
+                        access_token=access_token,
+                        refresh_token=token_data.get("refresh_token"),
+                        scopes=tuple(scope_list),
+                        expires_at=token_data.get("expires_at"),
+                        token_type=token_data.get("token_type", "Bearer"),
+                        resource=server_name,
+                        authorization_server=auth_server_str,
+                        metadata={"workflow_name": workflow_name},
+                    )
+
+                    str(oauth_config.resource) if oauth_config.resource else getattr(server_config, "url", None)
+                    # Create storage key using current user
+                    store_key = TokenStoreKey(
+                        user_key=app_context.current_user.cache_key,
+                        resource=resource_str,
+                        authorization_server=auth_server_str,
+                        scope_fingerprint=scope_fingerprint(scope_list),
+                    )
+
+                    # Store the token
+                    await app_context.token_store.set(store_key, token_record)
+                    stored_count += 1
+                except Exception as e:
+                    errors.append(f"Token {i}: {str(e)}")
+                    logger.error(
+                        f"Error storing token {i} for workflow '{workflow_name}': {e}"
+                    )
+
+            if errors and stored_count == 0:
+                raise ToolError(
+                    f"Failed to store any tokens. Errors: {'; '.join(errors)}"
+                )
+
+            result = {
+                "success": True,
+                "workflow_name": workflow_name,
+                "stored_tokens": stored_count,
+                "total_tokens": len(tokens),
+            }
+
+            if errors:
+                result["errors"] = errors
+                result["partial_success"] = True
+
+            logger.info(
+                f"Pre-authorization completed for workflow '{workflow_name}': "
+                f"{stored_count}/{len(tokens)} tokens stored"
+            )
+
+            return result
+
+        except Exception as e:
+            logger.error(
+                f"Error in workflow pre-authorization for '{workflow_name}': {e}"
+            )
+            raise ToolError(f"Failed to store tokens: {str(e)}")
 
     # endregion
 

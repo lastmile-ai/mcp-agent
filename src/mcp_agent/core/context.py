@@ -33,6 +33,7 @@ from mcp_agent.tracing.tracer import TracingConfig
 from mcp_agent.workflows.llm.llm_selector import ModelSelector
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.tracing.token_counter import TokenCounter
+from mcp_agent.oauth.identity import OAuthUserIdentity
 
 
 if TYPE_CHECKING:
@@ -42,6 +43,8 @@ if TYPE_CHECKING:
     from mcp_agent.executor.workflow_signal import SignalWaitCallback
     from mcp_agent.executor.workflow_registry import WorkflowRegistry
     from mcp_agent.app import MCPApp
+    from mcp_agent.oauth.manager import TokenManager
+    from mcp_agent.oauth.store import TokenStore
 else:
     # Runtime placeholders for the types
     AgentSpec = Any
@@ -50,6 +53,8 @@ else:
     SignalWaitCallback = Any
     WorkflowRegistry = Any
     MCPApp = Any
+    TokenManager = Any
+    TokenStore = Any
 
 logger = get_logger(__name__)
 
@@ -92,6 +97,13 @@ class Context(BaseModel):
     # Dynamic gateway configuration (per-run overrides via Temporal memo)
     gateway_url: str | None = None
     gateway_token: str | None = None
+
+    # Current authenticated user (set when acting as an MCP server)
+    current_user: Optional[OAuthUserIdentity] = None
+
+    # OAuth helpers for downstream servers
+    token_store: Optional[TokenStore] = None
+    token_manager: Optional[TokenManager] = None
 
     model_config = ConfigDict(
         extra="allow",
@@ -256,6 +268,14 @@ async def cleanup_context(shutdown_logger: bool = False):
         shutdown_logger: If True, completely shutdown OTEL infrastructure.
                       If False, just cleanup app-specific resources.
     """
+    global _global_context
+
+    if _global_context and getattr(_global_context, "token_manager", None):
+        try:
+            await _global_context.token_manager.aclose()  # type: ignore[call-arg]
+        except Exception:
+            pass
+
     if shutdown_logger:
         # Shutdown logging and telemetry completely
         await LoggingConfig.shutdown()
