@@ -72,7 +72,7 @@ uv run mcp-agent login
 
 ### `b.` Deploy your agent with a single command
 ```bash
-uv run mcp-agent deploy mcp-server-aggregator
+uv run mcp-agent deploy mcp-function-service
 ```
 
 ### `c.` Connect to your deployed agent as an MCP server through any MCP client

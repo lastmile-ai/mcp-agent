@@ -28,7 +28,9 @@ app = MCPApp(name="mcp_agent_using_functions")
 
 
 @app.async_tool
-async def calculate(sum: str, app_ctx: Optional[Context] = None) -> str:
+async def calculate(expr: str, app_ctx: Optional[Context] = None) -> str:
+    logger = app_ctx.app.logger
+
     math_agent = Agent(
         name="math_agent",
         instruction="""You are an expert in mathematics with access to some functions
@@ -41,10 +43,10 @@ async def calculate(sum: str, app_ctx: Optional[Context] = None) -> str:
     async with math_agent:
         llm = await math_agent.attach_llm(OpenAIAugmentedLLM)
         result = await llm.generate_str(
-            message=sum,
+            message=expr,
         )
 
-        app_ctx.app.logger.info(f"Expert math result: {result}")
+        logger.info(f"Expert math result: {result}")
 
         return result
 
@@ -54,7 +56,7 @@ async def example_usage():
         logger = agent_app.logger
         context = agent_app.context
 
-        outcome = await calculate("Add 2 and 3, then multiply the result by 4.)", context)
+        outcome = await calculate("Add 2 and 3, then multiply the result by 4.", context)
         logger.info(f"(2+3) * 4 equals {outcome}")
 
 
