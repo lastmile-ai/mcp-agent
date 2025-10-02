@@ -1,25 +1,87 @@
 ---
 title: "MCP Primitives"
-description: "Learn how to use MCP server primitives like resources, prompts, and tools in your agent applications"
+description: "Learn how to use MCP server primitives like tools, resources, prompts, roots, and elicitation in your agent applications"
 ---
 
 # MCP Primitives
 
-MCP (Model Context Protocol) primitives are standardized building blocks that enable agents to access structured data and functionality from MCP servers. This guide shows you how to use the three core MCP primitives: **resources**, **prompts**, and **tools**.
+MCP (Model Context Protocol) primitives are standardized building blocks that enable agents to access structured data and functionality from MCP servers. This guide shows you how to use all MCP primitives: **tools**, **resources**, **prompts**, **roots**, and **elicitation**.
 
 ## What are MCP Primitives?
 
 <CardGroup cols={3}>
+  <Card title="Tools" icon="wrench">
+    Functions that interact with external systems, such as querying databases, calling APIs, or performing computations
+  </Card>
   <Card title="Resources" icon="database">
     Data (files, database schemas, application-specific information) exposed by MCP servers, accessible via URIs
   </Card>
   <Card title="Prompts" icon="message-lines">
-    Messages and instructions that can be listed and invoked from MCP servers with parameters
+    Reusable messages and instructions that can be listed and invoked from MCP servers with parameters
   </Card>
-  <Card title="Tools" icon="wrench">
-    Interact with external systems, such as querying databases, calling APIs, or performing computations
+  <Card title="Roots" icon="folder-tree">
+    File system paths that MCP servers make accessible for browsing and operations
+  </Card>
+  <Card title="Elicitation" icon="question-circle">
+    Interactive input requests that allow servers to ask for structured user input during tool execution
+  </Card>
+  <Card title="Sampling" icon="sparkles">
+    Server-side LLM invocation capability for specialized reasoning (coming soon)
   </Card>
 </CardGroup>
+
+## Transport Types
+
+mcp-agent supports all MCP transport types:
+
+<AccordionGroup>
+  <Accordion title="STDIO (Standard Input/Output)">
+    Best for local development and subprocess-based servers:
+    ```yaml
+    mcp:
+      servers:
+        filesystem:
+          transport: "stdio"  # Default transport
+          command: "npx"
+          args: ["-y", "@modelcontextprotocol/server-filesystem"]
+    ```
+  </Accordion>
+  
+  <Accordion title="Server-Sent Events (SSE)">
+    Ideal for streaming responses and real-time data:
+    ```yaml
+    mcp:
+      servers:
+        sse_server:
+          transport: "sse"
+          url: "http://localhost:8000/sse"
+          headers:
+            Authorization: "Bearer token"
+    ```
+  </Accordion>
+  
+  <Accordion title="WebSocket">
+    For bidirectional, persistent connections:
+    ```yaml
+    mcp:
+      servers:
+        websocket_server:
+          transport: "websocket"
+          url: "ws://localhost:8001/ws"
+    ```
+  </Accordion>
+  
+  <Accordion title="Streamable HTTP">
+    For HTTP-based servers with streaming support:
+    ```yaml
+    mcp:
+      servers:
+        http_server:
+          transport: "streamable_http"
+          url: "http://localhost:8002/mcp"
+    ```
+  </Accordion>
+</AccordionGroup>
 
 ## Creating an MCP Server
 
@@ -171,10 +233,144 @@ combined_messages = await agent.create_prompt(
 </CodeGroup>
 
 
-## Complete Example
+## Elicitation Support
 
-You can find a complete working example in our GitHub repository:
+Elicitation allows MCP servers to request additional structured input from users during tool execution:
 
-<Card title="MCP Primitives Example" icon="github" href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp/mcp_prompts_and_resources">
-  View the complete example on GitHub
-</Card>
+<CodeGroup>
+```python Server with Elicitation
+from mcp.server.fastmcp import FastMCP, Context
+from mcp.server.elicitation import (
+    AcceptedElicitation,
+    DeclinedElicitation,
+    CancelledElicitation,
+)
+from pydantic import BaseModel, Field
+
+mcp = FastMCP("Interactive Server")
+
+@mcp.tool()
+async def deploy_application(
+    app_name: str,
+    environment: str,
+    ctx: Context
+) -> str:
+    """Deploy an application with confirmation."""
+    
+    # Request confirmation with structured input
+    class DeploymentConfirmation(BaseModel):
+        confirm: bool = Field(description="Confirm deployment?")
+        notify_team: bool = Field(default=False, description="Notify team via Slack?")
+        message: str = Field(default="", description="Optional deployment message")
+    
+    result = await ctx.elicit(
+        message=f"Confirm deployment of {app_name} to {environment}?",
+        schema=DeploymentConfirmation
+    )
+    
+    match result:
+        case AcceptedElicitation(data=data):
+            if data.confirm:
+                # Perform deployment
+                if data.notify_team:
+                    # Send notification with message
+                    pass
+                return f"Deployed {app_name} to {environment}"
+            return "Deployment cancelled by user"
+        case DeclinedElicitation():
+            return "Deployment declined"
+        case CancelledElicitation():
+            return "Deployment cancelled"
+```
+</CodeGroup>
+
+## Roots Support
+
+Roots define file system paths that MCP servers make accessible:
+
+<CodeGroup>
+```yaml Configuration with Roots
+mcp:
+  servers:
+    project_server:
+      command: "python"
+      args: ["-m", "my_mcp_server"]
+      roots:
+        - uri: "file:///workspace/project"
+          name: "Project Root"
+        - uri: "file:///shared/resources"
+          name: "Shared Resources"
+        - uri: "file:///tmp/scratch"
+          name: "Scratch Space"
+```
+
+```python Accessing Roots in Agent
+# List available roots from a server
+roots = await agent.list_roots("project_server")
+for root in roots:
+    print(f"Root: {root.name} -> {root.uri}")
+    
+# Roots provide base paths for file operations
+# Tools from the server can operate within these roots
+```
+</CodeGroup>
+
+## Authentication Support
+
+mcp-agent supports authentication for MCP servers:
+
+<AccordionGroup>
+  <Accordion title="API Key Authentication">
+    ```yaml
+    mcp:
+      servers:
+        secure_server:
+          transport: "streamable_http"
+          url: "https://api.example.com/mcp"
+          auth:
+            api_key: "${API_KEY}"
+    ```
+  </Accordion>
+  
+  <Accordion title="Custom Headers">
+    ```yaml
+    mcp:
+      servers:
+        custom_auth_server:
+          transport: "sse"
+          url: "https://api.example.com/sse"
+          headers:
+            Authorization: "Bearer ${TOKEN}"
+            X-API-Key: "${API_KEY}"
+            X-Client-ID: "${CLIENT_ID}"
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Primitive Support Matrix
+
+| Primitive | STDIO | SSE | WebSocket | HTTP | Status |
+|-----------|-------|-----|-----------|------|--------|
+| Tools | ✅ | ✅ | ✅ | ✅ | Fully Supported |
+| Resources | ✅ | ✅ | ✅ | ✅ | Fully Supported |
+| Prompts | ✅ | ✅ | ✅ | ✅ | Fully Supported |
+| Roots | ✅ | ✅ | ✅ | ✅ | Fully Supported |
+| Elicitation | ✅ | ✅ | ✅ | ✅ | Fully Supported |
+| Sampling | ✅ | ✅ | ✅ | ✅ | Coming Soon |
+
+## Complete Examples
+
+<CardGroup cols={2}>
+  <Card title="Prompts & Resources" icon="github" href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp/mcp_prompts_and_resources">
+    Complete example with prompts and resources
+  </Card>
+  <Card title="MCP Server Examples" icon="code" href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp">
+    All MCP primitive examples
+  </Card>
+  <Card title="Agent Server" icon="server" href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp_agent_server">
+    Agents as MCP servers with all primitives
+  </Card>
+  <Card title="MCP Specification" icon="book" href="https://modelcontextprotocol.io/specification">
+    Official MCP specification
+  </Card>
+</CardGroup>

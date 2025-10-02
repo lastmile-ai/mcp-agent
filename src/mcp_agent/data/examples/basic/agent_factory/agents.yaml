@@ -1,0 +1,9 @@
+agents:
+  - name: finder
+    instruction: You can read files and fetch URLs
+    server_names: [filesystem, fetch]
+
+  - name: coder
+    instruction: You can inspect and modify code files in the repository
+    server_names: [filesystem]
+

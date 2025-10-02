@@ -4,7 +4,17 @@ import sys
 import functools
 
 from types import MethodType
-from typing import Any, Dict, Optional, Type, TypeVar, Callable, TYPE_CHECKING
+from typing import (
+    Any,
+    Dict,
+    Optional,
+    Type,
+    TypeVar,
+    Callable,
+    TYPE_CHECKING,
+    ParamSpec,
+    overload,
+)
 from datetime import timedelta
 from contextlib import asynccontextmanager
 
@@ -15,6 +25,7 @@ from mcp_agent.config import Settings, get_settings
 from mcp_agent.executor.signal_registry import SignalRegistry
 from mcp_agent.logging.event_progress import ProgressAction
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.logging.logger import set_default_bound_context
 from mcp_agent.executor.decorator_registry import (
     DecoratorRegistry,
     register_asyncio_decorators,
@@ -25,15 +36,18 @@ from mcp_agent.executor.workflow_signal import SignalWaitCallback
 from mcp_agent.executor.workflow_task import GlobalWorkflowTaskRegistry
 from mcp_agent.human_input.types import HumanInputCallback
 from mcp_agent.elicitation.types import ElicitationCallback
+from mcp_agent.server.tool_adapter import validate_tool_schema
 from mcp_agent.tracing.telemetry import get_tracer
 from mcp_agent.utils.common import unwrap
 from mcp_agent.workflows.llm.llm_selector import ModelSelector
 from mcp_agent.workflows.factory import load_agent_specs_from_dir
 
+
 if TYPE_CHECKING:
     from mcp_agent.agents.agent_spec import AgentSpec
     from mcp_agent.executor.workflow import Workflow
 
+P = ParamSpec("P")
 R = TypeVar("R")
 
 
@@ -86,8 +100,6 @@ class MCPApp:
             upstream_session: Upstream session if the MCPApp is running as a server to an MCP client.
             initialize_model_selector: Initializes the built-in ModelSelector to help with model selection. Defaults to False.
         """
-        self.name = name
-        self.description = description or "MCP Agent Application"
         self.mcp = mcp
 
         # We use these to initialize the context in initialize()
@@ -97,6 +109,14 @@ class MCPApp:
             self._config = get_settings(config_path=settings)
         else:
             self._config = settings
+
+        self.name = name or self._config.name or (mcp.name if mcp else None)
+
+        self.description = (
+            description
+            or self._config.description
+            or (mcp.instructions if mcp else "MCP Agent Application")
+        )
 
         # We initialize the task and decorator registries at construction time
         # (prior to initializing the context) to ensure that they are available
@@ -195,12 +215,14 @@ class MCPApp:
             try:
                 if self._context is not None:
                     self._logger._bound_context = self._context  # type: ignore[attr-defined]
+
             except Exception:
                 pass
         else:
             # Update the logger's bound context in case upstream_session was set after logger creation
             if self._context and hasattr(self._logger, "_bound_context"):
                 self._logger._bound_context = self._context
+
         return self._logger
 
     async def initialize(self):
@@ -230,6 +252,12 @@ class MCPApp:
 
         # Store a reference to this app instance in the context for easier access
         self._context.app = self
+
+        # Provide a safe default bound context for loggers created after init without explicit context
+        try:
+            set_default_bound_context(self._context)
+        except Exception:
+            pass
 
         # Auto-load subagents if enabled in settings
         try:
@@ -436,6 +464,7 @@ class MCPApp:
             decorated_cls = workflow_defn_decorator(
                 cls, sandboxed=False, *args, **kwargs
             )
+
             self._workflows[workflow_id] = decorated_cls
             return decorated_cls
         else:
@@ -637,6 +666,8 @@ class MCPApp:
             return res
 
         async def _run(self, *args, **kwargs):  # type: ignore[no-redef]
+            # ensure initialization
+            await self.initialize()
             return await _invoke_target(self, *args, **kwargs)
 
         # Decorate run with engine-specific decorator
@@ -700,13 +731,25 @@ class MCPApp:
         self.workflow(auto_cls, workflow_id=workflow_name)
         return auto_cls
 
+    @overload
+    def tool(self, __fn: Callable[P, R]) -> Callable[P, R]: ...
+
+    @overload
     def tool(
         self,
         name: str | None = None,
         *,
         description: str | None = None,
         structured_output: bool | None = None,
-    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    ) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
+
+    def tool(
+        self,
+        name: str | None = None,
+        *,
+        description: str | None = None,
+        structured_output: bool | None = None,
+    ):
         """
         Decorator to declare a synchronous MCP tool that runs via an auto-generated
         Workflow and waits for completion before returning.
@@ -715,8 +758,14 @@ class MCPApp:
         endpoints are available.
         """
 
-        def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
+        def decorator(fn: Callable[P, R]) -> Callable[P, R]:
             tool_name = name or fn.__name__
+
+            # Early validation: Use the shared tool adapter logic to validate
+            # that the transformed function can be converted to JSON schema
+
+            validate_tool_schema(fn, tool_name)
+
             # Construct the workflow from function
             workflow_cls = self._create_workflow_from_function(
                 fn,
@@ -742,18 +791,29 @@ class MCPApp:
 
         # Support bare usage: @app.tool without parentheses
         if callable(name) and description is None and structured_output is None:
-            fn = name  # type: ignore[assignment]
+            _fn = name  # type: ignore[assignment]
             name = None
-            return decorator(fn)  # type: ignore[arg-type]
+            return decorator(_fn)  # type: ignore[arg-type]
 
         return decorator
+
+    @overload
+    def async_tool(self, __fn: Callable[P, R]) -> Callable[P, R]: ...
+
+    @overload
+    def async_tool(
+        self,
+        name: str | None = None,
+        *,
+        description: str | None = None,
+    ) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
 
     def async_tool(
         self,
         name: str | None = None,
         *,
         description: str | None = None,
-    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    ):
         """
         Decorator to declare an asynchronous MCP tool.
 
@@ -761,8 +821,15 @@ class MCPApp:
         the standard per-workflow tools (run/get_status) are exposed by the server.
         """
 
-        def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
+        def decorator(fn: Callable[P, R]) -> Callable[P, R]:
             workflow_name = name or fn.__name__
+
+            # Early validation: Use the shared tool adapter logic to validate
+            # that the transformed function can be converted to JSON schema
+            from mcp_agent.server.tool_adapter import validate_tool_schema
+
+            validate_tool_schema(fn, workflow_name)
+
             workflow_cls = self._create_workflow_from_function(
                 fn,
                 workflow_name=workflow_name,
@@ -785,9 +852,9 @@ class MCPApp:
 
         # Support bare usage: @app.async_tool without parentheses
         if callable(name) and description is None:
-            fn = name  # type: ignore[assignment]
+            _fn = name  # type: ignore[assignment]
             name = None
-            return decorator(fn)  # type: ignore[arg-type]
+            return decorator(_fn)  # type: ignore[arg-type]
 
         return decorator
 
@@ -840,7 +907,15 @@ class MCPApp:
             )
 
             if task_defn:
-                if isinstance(target, MethodType):
+                # Prevent re-decoration of an already temporal-decorated function,
+                # but still register it with the app.
+                if hasattr(target, "__temporal_activity_definition"):
+                    self.logger.debug(
+                        "Skipping redecorate for already-temporal activity",
+                        data={"activity_name": activity_name},
+                    )
+                    task_callable = target
+                elif isinstance(target, MethodType):
                     self_ref = target.__self__
 
                     @functools.wraps(func)
@@ -903,7 +978,15 @@ class MCPApp:
             )
 
             if task_defn:  # Engine-specific decorator available
-                if isinstance(target, MethodType):
+                # Prevent re-decoration of an already temporal-decorated function,
+                # but still register it with the app.
+                if hasattr(target, "__temporal_activity_definition"):
+                    self.logger.debug(
+                        "Skipping redecorate for already-temporal activity",
+                        data={"activity_name": activity_name},
+                    )
+                    task_callable = target
+                elif isinstance(target, MethodType):
                     self_ref = target.__self__
 
                     @functools.wraps(func)

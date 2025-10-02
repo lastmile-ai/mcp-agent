@@ -1,8 +1,9 @@
+import asyncio
 from contextvars import ContextVar
 from datetime import timedelta
 from typing import Any, Callable, Optional, TYPE_CHECKING
 
-from temporalio import exceptions, workflow
+from temporalio import workflow
 
 from mcp_agent.executor.workflow_signal import (
     BaseSignalHandler,
@@ -91,7 +92,7 @@ class TemporalSignalHandler(BaseSignalHandler[SignalValueT]):
             TimeoutError: If timeout is reached
             ValueError: If no value exists for the signal after waiting
         """
-        if not workflow._Runtime.current():
+        if not workflow.in_workflow():
             raise RuntimeError("wait_for_signal must be called from within a workflow")
 
         # Get the mailbox safely from ContextVar
@@ -122,7 +123,7 @@ class TemporalSignalHandler(BaseSignalHandler[SignalValueT]):
             )
 
             return mailbox.value(signal.name)
-        except exceptions.TimeoutError as e:
+        except asyncio.TimeoutError as e:
             raise TimeoutError(f"Timeout waiting for signal {signal.name}") from e
 
     def on_signal(self, signal_name: str):
@@ -156,7 +157,7 @@ class TemporalSignalHandler(BaseSignalHandler[SignalValueT]):
         # Validate the signal (already checks workflow_id is not None)
         self.validate_signal(signal)
 
-        if workflow._Runtime.current() is not None:
+        if workflow.in_workflow():
             workflow_info = workflow.info()
             if (
                 signal.workflow_id == workflow_info.workflow_id

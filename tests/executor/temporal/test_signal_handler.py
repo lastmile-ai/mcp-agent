@@ -1,5 +1,8 @@
-import pytest
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 from mcp_agent.executor.temporal.workflow_signal import TemporalSignalHandler
 from mcp_agent.executor.workflow_signal import Signal, SignalMailbox
 
@@ -53,8 +56,8 @@ def test_attach_to_workflow(handler, mock_workflow):
 
 
 @pytest.mark.asyncio
-@patch("temporalio.workflow._Runtime.current", return_value=MagicMock())
-async def test_wait_for_signal(mock_runtime, handler, mock_workflow):
+@patch("temporalio.workflow.in_workflow", return_value=True)
+async def test_wait_for_signal(_mock_in_wf, handler, mock_workflow):
     handler.attach_to_workflow(mock_workflow)
     # Patch the handler's ContextVar to point to the mock_workflow's mailbox
     handler._mailbox_ref.set(mock_workflow._signal_mailbox)
@@ -66,7 +69,22 @@ async def test_wait_for_signal(mock_runtime, handler, mock_workflow):
 
 
 @pytest.mark.asyncio
-@patch("temporalio.workflow._Runtime.current", return_value=None)
+@patch("temporalio.workflow.in_workflow", return_value=True)
+async def test_wait_for_signal_timeout(_mock_in_wf, handler, mock_workflow):
+    handler.attach_to_workflow(mock_workflow)
+    # Patch the handler's ContextVar to point to the mock_workflow's mailbox
+    handler._mailbox_ref.set(mock_workflow._signal_mailbox)
+    signal = Signal(name="test_signal", payload="test_value")
+    with patch(
+        "temporalio.workflow.wait_condition",
+        AsyncMock(side_effect=asyncio.TimeoutError),
+    ):
+        with pytest.raises(TimeoutError):
+            await handler.wait_for_signal(signal, timeout_seconds=1)
+
+
+@pytest.mark.asyncio
+@patch("temporalio.workflow.in_workflow", return_value=False)
 @patch(
     "temporalio.workflow.get_external_workflow_handle",
     side_effect=__import__("temporalio.workflow").workflow._NotInWorkflowEventLoopError(
@@ -74,7 +92,7 @@ async def test_wait_for_signal(mock_runtime, handler, mock_workflow):
     ),
 )
 async def test_signal_outside_workflow(
-    mock_get_external, mock_runtime, handler, mock_executor
+    mock_get_external, _mock_in_wf, handler, mock_executor
 ):
     signal = Signal(
         name="test_signal",

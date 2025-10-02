@@ -1,9 +1,13 @@
 import asyncio
+from datetime import timedelta
+
+from pydantic import BaseModel
 
 from abc import ABC, abstractmethod
 from typing import (
     Any,
     Dict,
+    Mapping,
     Optional,
     List,
     TYPE_CHECKING,
@@ -15,6 +19,11 @@ if TYPE_CHECKING:
     from mcp_agent.executor.workflow import Workflow
 
 logger = get_logger(__name__)
+
+
+class WorkflowRunsPage(BaseModel):
+    runs: List[Dict[str, Any]]
+    next_page_token: str | None
 
 
 class WorkflowRegistry(ABC):
@@ -58,14 +67,14 @@ class WorkflowRegistry(ABC):
 
     @abstractmethod
     async def get_workflow(
-        self, run_id: str, workflow_id: str | None = None
+        self, run_id: str | None = None, workflow_id: str | None = None
     ) -> Optional["Workflow"]:
         """
-        Get a workflow instance by run ID.
+        Get a workflow instance by run ID or workflow ID.
 
         Args:
-            run_id: The unique ID for this specific workflow run.
-            workflow_id: The ID of the workflow to retrieve
+            run_id: The unique ID for a specific workflow run to retrieve.
+            workflow_id: The ID of the workflow to retrieve.
 
         Returns:
             The workflow instance, or None if not found
@@ -75,7 +84,7 @@ class WorkflowRegistry(ABC):
     @abstractmethod
     async def resume_workflow(
         self,
-        run_id: str,
+        run_id: str | None = None,
         workflow_id: str | None = None,
         signal_name: str | None = "resume",
         payload: Any | None = None,
@@ -96,7 +105,7 @@ class WorkflowRegistry(ABC):
 
     @abstractmethod
     async def cancel_workflow(
-        self, run_id: str, workflow_id: str | None = None
+        self, run_id: str | None = None, workflow_id: str | None = None
     ) -> bool:
         """
         Cancel (terminate) a running workflow.
@@ -112,7 +121,7 @@ class WorkflowRegistry(ABC):
 
     @abstractmethod
     async def get_workflow_status(
-        self, run_id: str, workflow_id: str | None = None
+        self, run_id: str | None = None, workflow_id: str | None = None
     ) -> Optional[Dict[str, Any]]:
         """
         Get the status of a workflow run.
@@ -127,12 +136,34 @@ class WorkflowRegistry(ABC):
         pass
 
     @abstractmethod
-    async def list_workflow_statuses(self) -> List[Dict[str, Any]]:
+    async def list_workflow_statuses(
+        self,
+        *,
+        query: str | None = None,
+        limit: int | None = None,
+        page_size: int | None = None,
+        next_page_token: bytes | None = None,
+        rpc_metadata: Mapping[str, str] | None = None,
+        rpc_timeout: timedelta | None = None,
+    ) -> List[Dict[str, Any]] | WorkflowRunsPage:
         """
-        List all registered workflow instances with their status.
+        List workflow runs with their status.
+
+        Implementations may query an external backend (e.g., Temporal) or use local state.
+        The server tool defaults limit to 100 if not provided here.
+
+        Args:
+            query: Optional backend-specific visibility filter (advanced).
+            limit: Maximum number of results to return.
+            page_size: Page size for backends that support paging.
+            next_page_token: Opaque pagination token from a prior call.
+            rpc_metadata: Optional per-RPC headers for backends.
+            rpc_timeout: Optional per-RPC timeout for backends.
 
         Returns:
-            A list of dictionaries with workflow information
+            A list of dictionaries with workflow information.
+            Implementations should only return the WorkflowRunsPage when a next_page_token exists. The token
+            should be base64-encoded for JSON transport.
         """
         pass
 
@@ -182,7 +213,6 @@ class InMemoryWorkflowRegistry(WorkflowRegistry):
                 self._tasks[run_id] = task
 
             # Add run_id to the list for this workflow_id
-            self._workflow_ids.setdefault(workflow_id, []).append(run_id)
             if workflow_id not in self._workflow_ids:
                 self._workflow_ids[workflow_id] = []
             self._workflow_ids[workflow_id].append(run_id)
@@ -210,53 +240,91 @@ class InMemoryWorkflowRegistry(WorkflowRegistry):
                     del self._workflow_ids[workflow_id]
 
     async def get_workflow(
-        self, run_id: str, workflow_id: str | None = None
+        self, run_id: str | None = None, workflow_id: str | None = None
     ) -> Optional["Workflow"]:
-        return self._workflows.get(run_id)
+        if not (run_id or workflow_id):
+            raise ValueError("Either run_id or workflow_id must be provided.")
+        if run_id:
+            return self._workflows.get(run_id)
+        if workflow_id:
+            run_ids = self._workflow_ids.get(workflow_id, [])
+            if run_ids:
+                return self._workflows.get(run_ids[-1])
+        return None
 
     async def resume_workflow(
         self,
-        run_id: str,
+        run_id: str | None = None,
         workflow_id: str | None = None,
         signal_name: str | None = "resume",
         payload: Any | None = None,
     ) -> bool:
-        workflow = await self.get_workflow(run_id)
+        if not (run_id or workflow_id):
+            raise ValueError("Either run_id or workflow_id must be provided.")
+        workflow = await self.get_workflow(run_id, workflow_id)
         if not workflow:
             logger.error(
-                f"Cannot resume workflow run {run_id}: workflow not found in registry"
+                f"Cannot resume workflow with run ID {run_id or 'unknown'}, workflow ID {workflow_id or 'unknown'}: workflow not found in registry"
             )
             return False
 
         return await workflow.resume(signal_name, payload)
 
     async def cancel_workflow(
-        self, run_id: str, workflow_id: str | None = None
+        self, run_id: str | None = None, workflow_id: str | None = None
     ) -> bool:
-        workflow = await self.get_workflow(run_id)
+        if not (run_id or workflow_id):
+            raise ValueError("Either run_id or workflow_id must be provided.")
+        workflow = await self.get_workflow(run_id, workflow_id)
         if not workflow:
             logger.error(
-                f"Cannot cancel workflow run {run_id}: workflow not found in registry"
+                f"Cannot cancel workflow with run ID {run_id or 'unknown'}, workflow ID {workflow_id or 'unknown'}: workflow not found in registry"
             )
             return False
 
         return await workflow.cancel()
 
     async def get_workflow_status(
-        self, run_id: str, workflow_id: str | None = None
+        self, run_id: str | None = None, workflow_id: str | None = None
     ) -> Optional[Dict[str, Any]]:
-        workflow = await self.get_workflow(run_id)
+        if not (run_id or workflow_id):
+            raise ValueError("Either run_id or workflow_id must be provided.")
+        workflow = await self.get_workflow(run_id, workflow_id)
         if not workflow:
+            logger.error(
+                f"Cannot get status for workflow with run ID {run_id or 'unknown'}, workflow ID {workflow_id or 'unknown'}: workflow not found in registry"
+            )
             return None
 
         return await workflow.get_status()
 
-    async def list_workflow_statuses(self) -> List[Dict[str, Any]]:
-        result = []
-        for run_id, workflow in self._workflows.items():
-            # Get the workflow status directly to have consistent behavior
-            status = await workflow.get_status()
+    async def list_workflow_statuses(
+        self,
+        *,
+        query: str | None = None,
+        limit: int | None = None,
+        page_size: int | None = None,
+        next_page_token: bytes | None = None,
+        rpc_metadata: Mapping[str, str] | None = None,
+        rpc_timeout: timedelta | None = None,
+    ) -> List[Dict[str, Any]] | WorkflowRunsPage:
+        # For in-memory engine, ignore query/paging tokens; apply simple limit and recency sort
+        workflows = list(self._workflows.values()) if self._workflows else []
+        try:
+            workflows.sort(
+                key=lambda wf: (wf.state.updated_at if wf.state else None) or 0,
+                reverse=True,
+            )
+        except Exception:
+            pass
+
+        result: List[Dict[str, Any]] = []
+        max_count = limit if isinstance(limit, int) and limit > 0 else None
+        for wf in workflows:
+            status = await wf.get_status()
             result.append(status)
+            if max_count is not None and len(result) >= max_count:
+                break
 
         return result
 

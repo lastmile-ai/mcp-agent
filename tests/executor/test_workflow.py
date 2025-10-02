@@ -346,7 +346,10 @@ class TestWorkflowAsyncMethods:
 
         # Verify start_workflow was called with correct parameters
         workflow.executor.start_workflow.assert_called_once_with(
-            "TestWorkflow", workflow_id=custom_workflow_id, task_queue=custom_task_queue
+            "TestWorkflow",
+            workflow_id=custom_workflow_id,
+            task_queue=custom_task_queue,
+            workflow_memo=None,
         )
 
         # Verify execution uses the handle's ID

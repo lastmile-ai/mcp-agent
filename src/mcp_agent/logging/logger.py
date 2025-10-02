@@ -8,12 +8,14 @@ Logger module for the MCP Agent, which provides:
 """
 
 import asyncio
+from datetime import timedelta
 import threading
 import time
 
 from typing import Any, Dict, Final
 
 from contextlib import asynccontextmanager, contextmanager
+
 
 from mcp_agent.logging.events import (
     Event,
@@ -72,18 +74,127 @@ class Logger:
             asyncio.create_task(self.event_bus.emit(event))
         else:
             # If no loop is running, run it until the emit completes
+            # Detect Temporal workflow runtime without hard dependency
+            # If inside Temporal workflow sandbox, avoid run_until_complete and use workflow-safe forwarding
+            in_temporal_workflow = False
             try:
-                loop.run_until_complete(self.event_bus.emit(event))
-            except NotImplementedError:
-                # Handle Temporal workflow environment where run_until_complete() is not implemented
-                # In Temporal, we can't block on async operations, so we'll need to avoid this
-                # Simply log to stdout/stderr as a fallback
-                import sys
+                from temporalio import workflow as _wf  # type: ignore
 
-                print(
-                    f"[{event.type}] {event.namespace}: {event.message}",
-                    file=sys.stderr,
-                )
+                try:
+                    in_temporal_workflow = bool(_wf.in_workflow())
+                except Exception:
+                    in_temporal_workflow = False
+            except Exception:
+                in_temporal_workflow = False
+
+            if in_temporal_workflow:
+                # Prefer forwarding via the upstream session proxy using a workflow task, if available.
+                try:
+                    from mcp_agent.executor.temporal.temporal_context import (
+                        get_execution_id as _get_exec_id,
+                    )
+
+                    upstream = getattr(event, "upstream_session", None)
+                    if (
+                        upstream is None
+                        and getattr(self, "_bound_context", None) is not None
+                    ):
+                        try:
+                            upstream = getattr(
+                                self._bound_context, "upstream_session", None
+                            )
+                        except Exception:
+                            upstream = None
+
+                    # Construct payload
+                    async def _forward_via_proxy():
+                        # If we have an upstream session, use it first
+                        if upstream is not None:
+                            try:
+                                level_map = {
+                                    "debug": "debug",
+                                    "info": "info",
+                                    "warning": "warning",
+                                    "error": "error",
+                                    "progress": "info",
+                                }
+                                level = level_map.get(event.type, "info")
+                                logger_name = (
+                                    event.namespace
+                                    if not event.name
+                                    else f"{event.namespace}.{event.name}"
+                                )
+                                data = {
+                                    "message": event.message,
+                                    "namespace": event.namespace,
+                                    "name": event.name,
+                                    "timestamp": event.timestamp.isoformat(),
+                                }
+                                if event.data:
+                                    data["data"] = event.data
+                                if event.trace_id or event.span_id:
+                                    data["trace"] = {
+                                        "trace_id": event.trace_id,
+                                        "span_id": event.span_id,
+                                    }
+                                if event.context is not None:
+                                    data["context"] = event.context.model_dump()
+
+                                await upstream.send_log_message(  # type: ignore[attr-defined]
+                                    level=level, data=data, logger=logger_name
+                                )
+                                return
+                            except Exception:
+                                pass
+
+                        # Fallback: use activity gateway directly if execution_id is available
+                        try:
+                            exec_id = _get_exec_id()
+                            if exec_id:
+                                level = {
+                                    "debug": "debug",
+                                    "info": "info",
+                                    "warning": "warning",
+                                    "error": "error",
+                                    "progress": "info",
+                                }.get(event.type, "info")
+                                ns = event.namespace
+                                msg = event.message
+                                data = event.data or {}
+                                # Call by activity name to align with worker registration
+                                await _wf.execute_activity(
+                                    "mcp_forward_log",
+                                    exec_id,
+                                    level,
+                                    ns,
+                                    msg,
+                                    data,
+                                    schedule_to_close_timeout=timedelta(seconds=5),
+                                )
+                                return
+                        except Exception:
+                            pass
+
+                        # If all else fails, fall back to stderr transport
+                        self.event_bus.emit_with_stderr_transport(event)
+
+                    try:
+                        _wf.create_task(_forward_via_proxy())
+                        return
+                    except Exception:
+                        # Could not create workflow task, fall through to stderr transport
+                        pass
+                except Exception:
+                    # If Temporal workflow module unavailable or any error occurs, fall through
+                    pass
+
+                # As a last resort, log to stdout/stderr as a fallback
+                self.event_bus.emit_with_stderr_transport(event)
+            else:
+                try:
+                    loop.run_until_complete(self.event_bus.emit(event))
+                except NotImplementedError:
+                    pass
 
     def event(
         self,
@@ -107,6 +218,7 @@ class Logger:
         # can forward reliably, regardless of the current task context.
         # 1) Prefer logger-bound app context (set at creation or refreshed by caller)
         extra_event_fields: Dict[str, Any] = {}
+
         try:
             upstream = (
                 getattr(self._bound_context, "upstream_session", None)
@@ -117,6 +229,19 @@ class Logger:
                 extra_event_fields["upstream_session"] = upstream
         except Exception:
             pass
+        # Fallback to default bound context if logger wasn't explicitly bound
+        if (
+            "upstream_session" not in extra_event_fields
+            and _default_bound_context is not None
+        ):
+            try:
+                upstream = getattr(_default_bound_context, "upstream_session", None)
+                if upstream is not None:
+                    extra_event_fields["upstream_session"] = upstream
+            except Exception:
+                pass
+
+        # Do not use global context fallbacks here; they are unsafe under concurrency.
 
         # No further fallbacks; upstream forwarding must be enabled by passing
         # a bound context when creating the logger or by server code attaching
@@ -382,6 +507,7 @@ class LoggingConfig:
 
 _logger_lock = threading.Lock()
 _loggers: Dict[str, Logger] = {}
+_default_bound_context: Any | None = None
 
 
 def get_logger(namespace: str, session_id: str | None = None, context=None) -> Logger:
@@ -401,15 +527,20 @@ def get_logger(namespace: str, session_id: str | None = None, context=None) -> L
     with _logger_lock:
         existing = _loggers.get(namespace)
         if existing is None:
-            logger = Logger(namespace, session_id, bound_context=context)
+            bound_ctx = context if context is not None else _default_bound_context
+            logger = Logger(namespace, session_id, bound_ctx)
             _loggers[namespace] = logger
             return logger
+
         # Update session_id/bound context if caller provides them
         if session_id is not None:
             existing.session_id = session_id
         if context is not None:
-            try:
-                existing._bound_context = context
-            except Exception:
-                pass
+            existing._bound_context = context
+
         return existing
+
+
+def set_default_bound_context(ctx: Any | None) -> None:
+    global _default_bound_context
+    _default_bound_context = ctx

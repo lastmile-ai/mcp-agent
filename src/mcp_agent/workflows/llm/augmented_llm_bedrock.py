@@ -91,6 +91,10 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
             use_history=True,
         )
 
+    @classmethod
+    def get_provider_config(cls, context):
+        return getattr(getattr(context, "config", None), "bedrock", None)
+
     @track_tokens()
     async def generate(self, message, request_params: RequestParams | None = None):
         """
@@ -107,7 +111,7 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
 
         messages.extend(BedrockConverter.convert_mixed_messages_to_bedrock(message))
 
-        response = await self.agent.list_tools()
+        response = await self.agent.list_tools(tool_filter=params.tool_filter)
 
         tool_config: ToolConfigurationTypeDef = {
             "tools": [

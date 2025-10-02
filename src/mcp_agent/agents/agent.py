@@ -1,7 +1,8 @@
 import asyncio
 import json
 import uuid
-from typing import Callable, Dict, List, Optional, TypeVar, TYPE_CHECKING, Any
+from typing import Callable, Dict, List, Optional, Set, TypeVar, TYPE_CHECKING, Any
+from contextlib import asynccontextmanager
 
 from opentelemetry import trace
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field, PrivateAttr
@@ -458,7 +459,52 @@ class Agent(BaseModel):
 
             return result
 
-    async def list_tools(self, server_name: str | None = None) -> ListToolsResult:
+    def _should_include_non_namespaced_tool(
+        self, tool_name: str, tool_filter: Dict[str, Set[str]] | None
+    ) -> tuple[bool, str | None]:
+        """
+        Determine if a non-namespaced tool (function tool or human input) should be included.
+
+        Uses the special reserved key "non_namespaced_tools" to filter function tools and human input.
+
+        Returns: (should_include, filter_reason)
+        - filter_reason is None if tool should be included, otherwise explains why filtered
+        """
+        if tool_filter is None:
+            return True, None
+
+        # Priority 1: Check non_namespaced_tools key (explicitly for non-namespaced tools)
+        if "non_namespaced_tools" in tool_filter:
+            if tool_name in tool_filter["non_namespaced_tools"]:
+                return True, None
+            else:
+                return False, f"{tool_name} not in tool_filter[non_namespaced_tools]"
+
+        # Priority 2: Check wildcard filter
+        elif "*" in tool_filter:
+            if tool_name in tool_filter["*"]:
+                return True, None
+            else:
+                return False, f"{tool_name} not in tool_filter[*]"
+
+        # No non_namespaced_tools key and no wildcard - include by default (no filter for non-namespaced)
+        return True, None
+
+    async def list_tools(
+        self,
+        server_name: str | None = None,
+        tool_filter: Dict[str, Set[str]] | None = None,
+    ) -> ListToolsResult:
+        """
+        List available tools with optional filtering.
+
+        Args:
+            server_name: Optional specific server to list tools from
+            tool_filter: Optional dict mapping server names to sets of allowed tool names.
+                        Special reserved keys:
+                        - "*": Wildcard filter for servers without explicit filters
+                        - "non_namespaced_tools": Filter for non-namespaced tools (function tools, human input)
+        """
         if not self.initialized:
             await self.initialize()
 
@@ -472,37 +518,125 @@ class Agent(BaseModel):
                 "human_input_callback", self.human_input_callback is not None
             )
 
+            # Track filtered tools for debugging and telemetry
+            filtered_out_tools = []  # List of (tool_name, reason) tuples
+
             if server_name:
                 span.set_attribute("server_name", server_name)
-                result = ListToolsResult(
-                    tools=[
-                        namespaced_tool.tool.model_copy(
-                            update={"name": namespaced_tool.namespaced_tool_name}
-                        )
-                        for namespaced_tool in self._server_to_tool_map.get(
-                            server_name, []
-                        )
-                    ]
-                )
+                # Get tools for specific server
+                server_tools = self._server_to_tool_map.get(server_name, [])
+
+                # Check if we should apply filtering for this specific server
+                if tool_filter is not None and server_name in tool_filter:
+                    # Server is explicitly in filter dict - apply its filter rules
+                    # If tool_filter[server_name] is empty set, no tools will pass
+                    # If tool_filter[server_name] has tools, only those will pass
+                    allowed_tools = tool_filter[server_name]
+                    result_tools = []
+                    for namespaced_tool in server_tools:
+                        if namespaced_tool.tool.name in allowed_tools:
+                            result_tools.append(
+                                namespaced_tool.tool.model_copy(
+                                    update={
+                                        "name": namespaced_tool.namespaced_tool_name
+                                    }
+                                )
+                            )
+                        else:
+                            filtered_out_tools.append(
+                                (
+                                    namespaced_tool.namespaced_tool_name,
+                                    f"Not in tool_filter[{server_name}]",
+                                )
+                            )
+                    result = ListToolsResult(tools=result_tools)
+                else:
+                    # Either no filter at all (tool_filter is None) or
+                    # this server is not in the filter dict (no filtering for this server)
+                    # Include all tools from this server
+                    result = ListToolsResult(
+                        tools=[
+                            namespaced_tool.tool.model_copy(
+                                update={"name": namespaced_tool.namespaced_tool_name}
+                            )
+                            for namespaced_tool in server_tools
+                        ]
+                    )
             else:
-                result = ListToolsResult(
-                    tools=[
-                        namespaced_tool.tool.model_copy(
-                            update={"name": namespaced_tool_name}
-                        )
-                        for namespaced_tool_name, namespaced_tool in self._namespaced_tool_map.items()
-                    ]
+                # No specific server requested - get tools from all servers
+                if tool_filter is not None:
+                    # Filter is active - check each tool's server against filter rules
+                    filtered_tools = []
+                    for (
+                        namespaced_tool_name,
+                        namespaced_tool,
+                    ) in self._namespaced_tool_map.items():
+                        should_include = False
+
+                        # Priority 1: Check if tool's server has explicit filter rules
+                        if namespaced_tool.server_name in tool_filter:
+                            # Server has explicit filter - tool must be in the allowed set
+                            if (
+                                namespaced_tool.tool.name
+                                in tool_filter[namespaced_tool.server_name]
+                            ):
+                                should_include = True
+                            else:
+                                filtered_out_tools.append(
+                                    (
+                                        namespaced_tool_name,
+                                        f"Not in tool_filter[{namespaced_tool.server_name}]",
+                                    )
+                                )
+                        # Priority 2: If no server-specific filter, check wildcard
+                        elif "*" in tool_filter:
+                            # Wildcard filter applies to servers without explicit filters
+                            if namespaced_tool.tool.name in tool_filter["*"]:
+                                should_include = True
+                            else:
+                                filtered_out_tools.append(
+                                    (namespaced_tool_name, "Not in tool_filter[*]")
+                                )
+                        else:
+                            # No explicit filter for this server and no wildcard
+                            # Default behavior: include the tool (no filtering)
+                            should_include = True
+
+                        if should_include:
+                            filtered_tools.append(
+                                namespaced_tool.tool.model_copy(
+                                    update={"name": namespaced_tool_name}
+                                )
+                            )
+                    result = ListToolsResult(tools=filtered_tools)
+                else:
+                    # No filter at all - include everything
+                    result = ListToolsResult(
+                        tools=[
+                            namespaced_tool.tool.model_copy(
+                                update={"name": namespaced_tool_name}
+                            )
+                            for namespaced_tool_name, namespaced_tool in self._namespaced_tool_map.items()
+                        ]
+                    )
+
+            # Add function tools (non-namespaced) with filtering
+            # These use the special "non_namespaced_tools" key in tool_filter
+            for tool in self._function_tool_map.values():
+                should_include, filter_reason = (
+                    self._should_include_non_namespaced_tool(tool.name, tool_filter)
                 )
 
-            # Add function tools
-            for tool in self._function_tool_map.values():
-                result.tools.append(
-                    Tool(
-                        name=tool.name,
-                        description=tool.description,
-                        inputSchema=tool.parameters,
+                if should_include:
+                    result.tools.append(
+                        Tool(
+                            name=tool.name,
+                            description=tool.description,
+                            inputSchema=tool.parameters,
+                        )
                     )
-                )
+                elif filter_reason:
+                    filtered_out_tools.append((tool.name, filter_reason))
 
             def _annotate_span_for_tools_result(result: ListToolsResult):
                 if not self.context.tracing_enabled:
@@ -528,24 +662,61 @@ class Agent(BaseModel):
                                     f"tool.{tool.name}.annotations.{attr}", value
                                 )
 
-            # Add a human_input_callback as a tool
-            if not self.human_input_callback:
-                logger.debug("Human input callback not set")
-                _annotate_span_for_tools_result(result)
-
-                return result
-
-            # Add a human_input_callback as a tool
-            human_input_tool: FastTool = FastTool.from_function(
-                self.request_human_input
-            )
-            result.tools.append(
-                Tool(
-                    name=HUMAN_INPUT_TOOL_NAME,
-                    description=human_input_tool.description,
-                    inputSchema=human_input_tool.parameters,
+            # Add human_input_callback tool (non-namespaced) with filtering
+            # This uses the special "non_namespaced_tools" key in tool_filter
+            if self.human_input_callback:
+                should_include, filter_reason = (
+                    self._should_include_non_namespaced_tool(
+                        HUMAN_INPUT_TOOL_NAME, tool_filter
+                    )
                 )
-            )
+
+                if should_include:
+                    human_input_tool: FastTool = FastTool.from_function(
+                        self.request_human_input
+                    )
+                    result.tools.append(
+                        Tool(
+                            name=HUMAN_INPUT_TOOL_NAME,
+                            description=human_input_tool.description,
+                            inputSchema=human_input_tool.parameters,
+                        )
+                    )
+                elif filter_reason:
+                    filtered_out_tools.append((HUMAN_INPUT_TOOL_NAME, filter_reason))
+            else:
+                logger.debug("Human input callback not set")
+
+            # Log and track filtering metrics if filter was applied
+            if tool_filter is not None:
+                span.set_attribute("tool_filter_applied", True)
+                span.set_attribute("tools_included_count", len(result.tools))
+                span.set_attribute("tools_filtered_out_count", len(filtered_out_tools))
+
+                # Add telemetry for filtered tools (limit to first 20 to avoid span bloat)
+                if self.context.tracing_enabled:
+                    for i, (tool_name, reason) in enumerate(filtered_out_tools[:20]):
+                        span.set_attribute(f"filtered_tool.{i}.name", tool_name)
+                        span.set_attribute(f"filtered_tool.{i}.reason", reason)
+                    if len(filtered_out_tools) > 20:
+                        span.set_attribute("filtered_tools_truncated", True)
+
+                # Log filtered tools for debugging
+                if filtered_out_tools:
+                    logger.debug(
+                        f"Tool filter applied: {len(filtered_out_tools)} tools filtered out, "
+                        f"{len(result.tools)} tools remaining. "
+                        f"Filtered tools: {[name for name, _ in filtered_out_tools[:10]]}"
+                        + ("..." if len(filtered_out_tools) > 10 else "")
+                    )
+                    # Log detailed reasons at trace level (if trace logging is available)
+                    if logger.isEnabledFor(10):  # TRACE level is usually 10
+                        for tool_name, reason in filtered_out_tools:
+                            logger.log(10, f"Filtered out '{tool_name}': {reason}")
+                else:
+                    logger.debug(
+                        f"Tool filter applied: All {len(result.tools)} tools passed the filter"
+                    )
 
             _annotate_span_for_tools_result(result)
 
@@ -1125,6 +1296,91 @@ class AgentTasks:
         self.server_aggregators_for_agent: Dict[str, MCPAggregator] = {}
         self.server_aggregators_for_agent_lock: asyncio.Lock = asyncio.Lock()
         self.agent_refcounts: dict[str, int] = {}
+        # Track in-flight tasks per agent to avoid shutting down while calls are running
+        self.agent_task_counts: dict[str, int] = {}
+        # Track agents awaiting shutdown once in-flight tasks complete
+        self.agent_shutdown_pending: set[str] = set()
+        # Remember init params to allow lazy re-initialization if aggregator missing
+        self._agent_init_params: dict[str, tuple[List[str], bool]] = {}
+
+    @asynccontextmanager
+    async def _with_aggregator(self, agent_name: str):
+        """
+        Acquire an agent's aggregator for the duration of an operation, tracking in-flight usage
+        and performing lazy reinitialization if necessary.
+        """
+        aggregator: MCPAggregator | None = None
+        aggregator_to_close: MCPAggregator | None = None
+
+        # Acquire lock to read/create and increment in-flight count atomically
+        async with self.server_aggregators_for_agent_lock:
+            aggregator = self.server_aggregators_for_agent.get(agent_name)
+
+            # If aggregator missing, try lazy re-init from stored params
+            if aggregator is None:
+                params = self._agent_init_params.get(agent_name)
+                if params is not None:
+                    server_names, connection_persistence = params
+                    logger.debug(
+                        f"Reinitializing aggregator for agent '{agent_name}'",
+                        data={
+                            "server_names": server_names,
+                            "connection_persistence": connection_persistence,
+                        },
+                    )
+                    aggregator = MCPAggregator(
+                        server_names=server_names,
+                        connection_persistence=connection_persistence,
+                        context=self.context,
+                        name=agent_name,
+                    )
+                    self.server_aggregators_for_agent[agent_name] = aggregator
+                else:
+                    # No way to reconstruct aggregator, fail clearly
+                    raise ValueError(
+                        f"Server aggregator for agent '{agent_name}' not found"
+                    )
+
+            # Increment in-flight usage
+            self.agent_task_counts[agent_name] = (
+                self.agent_task_counts.get(agent_name, 0) + 1
+            )
+            logger.debug(
+                f"Agent '{agent_name}' in-flight +1",
+                data={"inflight": self.agent_task_counts[agent_name]},
+            )
+
+        try:
+            if not aggregator.initialized:
+                await aggregator.initialize()
+            yield aggregator
+        finally:
+            # Decrement and check for pending shutdown
+            async with self.server_aggregators_for_agent_lock:
+                remaining = self.agent_task_counts.get(agent_name, 0) - 1
+                if remaining > 0:
+                    self.agent_task_counts[agent_name] = remaining
+                else:
+                    self.agent_task_counts.pop(agent_name, None)
+                    if agent_name in self.agent_shutdown_pending:
+                        aggregator_to_close = self.server_aggregators_for_agent.pop(
+                            agent_name, None
+                        )
+                        self.agent_shutdown_pending.discard(agent_name)
+                logger.debug(
+                    f"Agent '{agent_name}' in-flight -1",
+                    data={
+                        "remaining": self.agent_task_counts.get(agent_name, 0),
+                        "pending_shutdown": agent_name in self.agent_shutdown_pending,
+                        "will_close": aggregator_to_close is not None,
+                    },
+                )
+
+            if aggregator_to_close is not None:
+                try:
+                    await aggregator_to_close.close()
+                except Exception:
+                    pass
 
     async def initialize_aggregator_task(
         self, request: InitAggregatorRequest
@@ -1151,6 +1407,19 @@ class AgentTasks:
 
             # Bump the reference counter
             self.agent_refcounts[agent_name] = refcount + 1
+            # Record init params for potential lazy re-initialization
+            self._agent_init_params[agent_name] = (
+                list(server_names) if isinstance(server_names, list) else [],
+                bool(connection_persistence),
+            )
+            logger.debug(
+                f"Initialized aggregator for agent '{agent_name}'",
+                data={
+                    "refcount": self.agent_refcounts[agent_name],
+                    "server_names": server_names,
+                    "connection_persistence": connection_persistence,
+                },
+            )
 
         # Initialize the servers
         aggregator = self.server_aggregators_for_agent[agent_name]
@@ -1180,9 +1449,24 @@ class AgentTasks:
             if refcount > 1:
                 # Still outstanding agent refs – just decrement and exit
                 self.agent_refcounts[agent_name] = refcount - 1
+                logger.debug(
+                    f"Shutdown aggregator for agent '{agent_name}' deferred (refcount)",
+                    data={"new_refcount": self.agent_refcounts[agent_name]},
+                )
                 return True
 
             # refcount is 1 – this is the last shutdown
+            inflight = self.agent_task_counts.get(agent_name, 0)
+            if inflight > 0:
+                # Defer shutdown until in-flight tasks complete
+                self.agent_refcounts.pop(agent_name, None)
+                self.agent_shutdown_pending.add(agent_name)
+                logger.debug(
+                    f"Shutdown aggregator for agent '{agent_name}' deferred (in-flight)",
+                    data={"inflight": inflight},
+                )
+                return True
+
             server_aggregator = self.server_aggregators_for_agent.pop(agent_name, None)
             self.agent_refcounts.pop(agent_name, None)
 
@@ -1199,12 +1483,8 @@ class AgentTasks:
         agent_name = request.agent_name
         server_name = request.server_name
 
-        # Get the MCPAggregator for the agent
-        aggregator = self.server_aggregators_for_agent.get(agent_name)
-        if not aggregator:
-            raise ValueError(f"Server aggregrator for agent '{agent_name}' not found")
-
-        return await aggregator.list_tools(server_name=server_name)
+        async with self._with_aggregator(agent_name) as aggregator:
+            return await aggregator.list_tools(server_name=server_name)
 
     async def call_tool_task(self, request: CallToolRequest) -> CallToolResult:
         """
@@ -1214,14 +1494,10 @@ class AgentTasks:
         agent_name = request.agent_name
         server_name = request.server_name
 
-        # Get the MCPAggregator for the agent
-        aggregator = self.server_aggregators_for_agent.get(agent_name)
-        if not aggregator:
-            raise ValueError(f"Server aggregrator for agent '{agent_name}' not found")
-
-        return await aggregator.call_tool(
-            name=request.name, arguments=request.arguments, server_name=server_name
-        )
+        async with self._with_aggregator(agent_name) as aggregator:
+            return await aggregator.call_tool(
+                name=request.name, arguments=request.arguments, server_name=server_name
+            )
 
     async def list_prompts_task(self, request: ListPromptsRequest) -> ListPromptsResult:
         """
@@ -1231,12 +1507,8 @@ class AgentTasks:
         agent_name = request.agent_name
         server_name = request.server_name
 
-        # Get the MCPAggregator for the agent
-        aggregator = self.server_aggregators_for_agent.get(agent_name)
-        if not aggregator:
-            raise ValueError(f"Server aggregrator for agent '{agent_name}' not found")
-
-        return await aggregator.list_prompts(server_name=server_name)
+        async with self._with_aggregator(agent_name) as aggregator:
+            return await aggregator.list_prompts(server_name=server_name)
 
     async def get_prompt_task(self, request: GetPromptRequest) -> GetPromptResult:
         """
@@ -1246,14 +1518,10 @@ class AgentTasks:
         agent_name = request.agent_name
         server_name = request.server_name
 
-        # Get the MCPAggregator for the agent
-        aggregator = self.server_aggregators_for_agent.get(agent_name)
-        if not aggregator:
-            raise ValueError(f"Server aggregrator for agent '{agent_name}' not found")
-
-        return await aggregator.get_prompt(
-            name=request.name, arguments=request.arguments, server_name=server_name
-        )
+        async with self._with_aggregator(agent_name) as aggregator:
+            return await aggregator.get_prompt(
+                name=request.name, arguments=request.arguments, server_name=server_name
+            )
 
     async def get_capabilities_task(
         self, request: GetCapabilitiesRequest
@@ -1265,30 +1533,24 @@ class AgentTasks:
         agent_name = request.agent_name
         server_name = request.server_name
 
-        # Get the MCPAggregator for the agent
-        aggregator = self.server_aggregators_for_agent.get(agent_name)
-        if not aggregator:
-            raise ValueError(f"Server aggregrator for agent '{agent_name}' not found")
+        async with self._with_aggregator(agent_name) as aggregator:
+            server_capabilities: Dict[str, ServerCapabilities] = {}
 
-        server_capabilities: Dict[str, ServerCapabilities] = {}
+            if not server_name:
+                # If no server name is provided, get capabilities for all servers
+                server_names: List[str] = aggregator.server_names
+                capabilities: List[ServerCapabilities] = await asyncio.gather(
+                    *[aggregator.get_capabilities(server_name=n) for n in server_names],
+                    return_exceptions=True,
+                )
+                server_capabilities = dict(zip(server_names, capabilities))
+            else:
+                # If a server name is provided, get capabilities for that server
+                server_capabilities[server_name] = await aggregator.get_capabilities(
+                    server_name=server_name
+                )
 
-        if not server_name:
-            # If no server name is provided, get capabilities for all servers
-            server_names: List[str] = aggregator.server_names
-            capabilities: List[ServerCapabilities] = await asyncio.gather(
-                *[aggregator.get_capabilities(server_name=n) for n in server_names],
-                return_exceptions=True,  # propagate exceptions – change if you want to swallow them
-            )
-
-            server_capabilities = dict(zip(server_names, capabilities))
-
-        else:
-            # If a server name is provided, get capabilities for that server
-            server_capabilities[server_name] = await aggregator.get_capabilities(
-                server_name=server_name
-            )
-
-        return server_capabilities
+            return server_capabilities
 
     async def get_server_session(
         self, request: GetServerSessionRequest
@@ -1299,20 +1561,20 @@ class AgentTasks:
         agent_name = request.agent_name
         server_name = request.server_name
 
-        # Get the MCPAggregator for the agent
-        aggregator = self.server_aggregators_for_agent.get(agent_name)
-        if not aggregator:
-            raise ValueError(f"Server aggregrator for agent '{agent_name}' not found")
+        async with self._with_aggregator(agent_name) as aggregator:
+            server_session: MCPAgentClientSession | None = await aggregator.get_server(
+                server_name=server_name
+            )
+            if server_session is None:
+                return GetServerSessionResponse(
+                    error=f"Session unavailable for '{server_name}'"
+                )
+            get_id = getattr(server_session, "get_session_id", None)
+            session_id = get_id() if callable(get_id) else None
 
-        server_session: MCPAgentClientSession = await aggregator.get_server(
-            server_name=server_name
-        )
-
-        session_id = server_session.get_session_id()
-
-        return GetServerSessionResponse(
-            session_id=session_id,
-        )
+            return GetServerSessionResponse(
+                session_id=session_id,
+            )
 
     async def list_resources_task(self, request: ListResourcesRequest):
         """
@@ -1321,11 +1583,8 @@ class AgentTasks:
         agent_name = request.agent_name
         server_name = request.server_name
 
-        aggregator = self.server_aggregators_for_agent.get(agent_name)
-        if not aggregator:
-            raise ValueError(f"Server aggregator for agent '{agent_name}' not found")
-
-        return await aggregator.list_resources(server_name=server_name)
+        async with self._with_aggregator(agent_name) as aggregator:
+            return await aggregator.list_resources(server_name=server_name)
 
     async def read_resource_task(self, request: ReadResourceRequest):
         """
@@ -1335,8 +1594,5 @@ class AgentTasks:
         uri = request.uri
         server_name = request.server_name
 
-        aggregator = self.server_aggregators_for_agent.get(agent_name)
-        if not aggregator:
-            raise ValueError(f"Server aggregator for agent '{agent_name}' not found")
-
-        return await aggregator.read_resource(uri=uri, server_name=server_name)
+        async with self._with_aggregator(agent_name) as aggregator:
+            return await aggregator.read_resource(uri=uri, server_name=server_name)

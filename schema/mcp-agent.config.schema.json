@@ -33,9 +33,7 @@
           "type": "boolean"
         }
       },
-      "required": [
-        "name"
-      ],
+      "required": ["name"],
       "title": "AgentSpec",
       "type": "object"
     },
@@ -153,13 +151,21 @@
         },
         "provider": {
           "default": "anthropic",
-          "enum": [
-            "anthropic",
-            "bedrock",
-            "vertexai"
-          ],
+          "enum": ["anthropic", "bedrock", "vertexai"],
           "title": "Provider",
           "type": "string"
+        },
+        "base_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Base Url"
         }
       },
       "title": "AnthropicSettings",
@@ -205,9 +211,7 @@
               "type": "null"
             }
           ],
-          "default": [
-            "https://cognitiveservices.azure.com/.default"
-          ],
+          "default": ["https://cognitiveservices.azure.com/.default"],
           "title": "Credential Scopes"
         }
       },
@@ -395,6 +399,18 @@
           "default": false,
           "title": "Vertexai",
           "type": "boolean"
+        },
+        "default_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Default Model"
         }
       },
       "title": "GoogleSettings",
@@ -411,10 +427,7 @@
         },
         "unique_id": {
           "default": "timestamp",
-          "enum": [
-            "timestamp",
-            "session_id"
-          ],
+          "enum": ["timestamp", "session_id"],
           "title": "Unique Id",
           "type": "string"
         },
@@ -433,24 +446,14 @@
       "properties": {
         "type": {
           "default": "console",
-          "enum": [
-            "none",
-            "console",
-            "file",
-            "http"
-          ],
+          "enum": ["none", "console", "file", "http"],
           "title": "Type",
           "type": "string"
         },
         "transports": {
           "default": [],
           "items": {
-            "enum": [
-              "none",
-              "console",
-              "file",
-              "http"
-            ],
+            "enum": ["none", "console", "file", "http"],
             "type": "string"
           },
           "title": "Transports",
@@ -459,12 +462,7 @@
         },
         "level": {
           "default": "info",
-          "enum": [
-            "debug",
-            "info",
-            "warning",
-            "error"
-          ],
+          "enum": ["debug", "info", "warning", "error"],
           "title": "Level",
           "type": "string",
           "description": "Minimum logging level"
@@ -585,9 +583,7 @@
           "description": "Optional URI alias for presentation to the server"
         }
       },
-      "required": [
-        "uri"
-      ],
+      "required": ["uri"],
       "title": "MCPRootSettings",
       "type": "object"
     },
@@ -643,12 +639,7 @@
         },
         "transport": {
           "default": "stdio",
-          "enum": [
-            "stdio",
-            "sse",
-            "streamable_http",
-            "websocket"
-          ],
+          "enum": ["stdio", "sse", "streamable_http", "websocket"],
           "title": "Transport",
           "type": "string",
           "description": "The transport mechanism."
@@ -775,6 +766,22 @@
           "default": null,
           "title": "Env",
           "description": "Environment variables to pass to the server process."
+        },
+        "allowed_tools": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "uniqueItems": true
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Allowed Tools"
         }
       },
       "title": "MCPServerSettings",
@@ -853,11 +860,7 @@
         },
         "reasoning_effort": {
           "default": "medium",
-          "enum": [
-            "low",
-            "medium",
-            "high"
-          ],
+          "enum": ["low", "medium", "high"],
           "title": "Reasoning Effort",
           "type": "string"
         },
@@ -1122,10 +1125,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "host",
-        "task_queue"
-      ],
+      "required": ["host", "task_queue"],
       "title": "TemporalSettings",
       "type": "object"
     },
@@ -1177,10 +1177,7 @@
         },
         "unique_id": {
           "default": "timestamp",
-          "enum": [
-            "timestamp",
-            "session_id"
-          ],
+          "enum": ["timestamp", "session_id"],
           "title": "Unique Id",
           "type": "string"
         },
@@ -1217,6 +1214,32 @@
   "additionalProperties": true,
   "description": "Configuration schema for MCP Agent applications",
   "properties": {
+    "name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Name",
+      "description": "The name of the MCP application"
+    },
+    "description": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Description",
+      "description": "The description of the MCP application"
+    },
     "mcp": {
       "anyOf": [
         {
@@ -1226,17 +1249,11 @@
           "type": "null"
         }
       ],
-      "default": {
-        "servers": {}
-      },
       "description": "MCP config, such as MCP servers"
     },
     "execution_engine": {
       "default": "asyncio",
-      "enum": [
-        "asyncio",
-        "temporal"
-      ],
+      "enum": ["asyncio", "temporal"],
       "title": "Execution Engine",
       "type": "string",
       "description": "Execution engine for the MCP Agent application"

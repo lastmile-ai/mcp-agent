@@ -51,7 +51,7 @@ from mcp_agent.tracing.semconv import (
 from mcp_agent.tracing.telemetry import is_otel_serializable
 from mcp_agent.utils.common import ensure_serializable, typed_dict_extras
 from mcp_agent.utils.mime_utils import image_url_to_mime_and_base64
-from mcp_agent.utils.pydantic_type_serializer import serialize_model, deserialize_model
+from mcp_agent.utils.pydantic_type_serializer import deserialize_model
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     MessageTypes,
@@ -135,6 +135,10 @@ class OpenAIAugmentedLLM(
         )
 
     @classmethod
+    def get_provider_config(cls, context):
+        return getattr(getattr(context, "config", None), "openai", None)
+
+    @classmethod
     def convert_message_to_message_param(
         cls, message: ChatCompletionMessage, **kwargs
     ) -> ChatCompletionMessageParam:
@@ -189,7 +193,9 @@ class OpenAIAugmentedLLM(
                 )
             messages.extend((OpenAIConverter.convert_mixed_messages_to_openai(message)))
 
-            response: ListToolsResult = await self.agent.list_tools()
+            response: ListToolsResult = await self.agent.list_tools(
+                tool_filter=params.tool_filter
+            )
             available_tools: List[ChatCompletionToolParam] = [
                 ChatCompletionToolParam(
                     type="function",
@@ -435,69 +441,129 @@ class OpenAIAugmentedLLM(
         response_model: Type[ModelT],
         request_params: RequestParams | None = None,
     ) -> ModelT:
-        # First we invoke the LLM to generate a string response
-        # We need to do this in a two-step process because Instructor doesn't
-        # know how to invoke MCP tools via call_tool, so we'll handle all the
-        # processing first and then pass the final response through Instructor
+        """
+        Use OpenAI native structured outputs via response_format (JSON schema).
+        """
+        import json
+
         tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.generate_structured"
         ) as span:
-            span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
-            self._annotate_span_for_generation_message(span, message)
+            if self.context.tracing_enabled:
+                span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
+                self._annotate_span_for_generation_message(span, message)
 
             params = self.get_request_params(request_params)
-
+            model = await self.select_model(params) or (
+                self.default_request_params.model or "gpt-4o"
+            )
             if self.context.tracing_enabled:
                 AugmentedLLM.annotate_span_with_request_params(span, params)
+                span.set_attribute(GEN_AI_REQUEST_MODEL, model)
+                span.set_attribute("response_model", response_model.__name__)
 
-            response = await self.generate_str(
-                message=message,
-                request_params=params,
-            )
+            # Prepare messages
+            messages: List[ChatCompletionMessageParam] = []
+            system_prompt = self.instruction or params.systemPrompt
+            if system_prompt:
+                messages.append(
+                    ChatCompletionSystemMessageParam(
+                        role="system", content=system_prompt
+                    )
+                )
+            if params.use_history:
+                messages.extend(self.history.get())
+            messages.extend(OpenAIConverter.convert_mixed_messages_to_openai(message))
 
-            model = await self.select_model(params) or "gpt-4o"
-            span.set_attribute(GEN_AI_REQUEST_MODEL, model)
+            # Build response_format
+            schema = response_model.model_json_schema()
 
-            span.set_attribute("response_model", response_model.__name__)
+            # Helpers for OpenAI strict JSON schema handling
+            # Strict requires `additionalProperties: false` and `required` include all keys
+            def _ensure_no_additional_props_and_require_all(node: dict):
+                if not isinstance(node, dict):
+                    return
+                node_type = node.get("type")
+                if node_type == "object":
+                    # Enforce no additional properties
+                    if "additionalProperties" not in node:
+                        node["additionalProperties"] = False
+                    # OpenAI strict mode expects 'required' to include every key in 'properties'
+                    props = node.get("properties")
+                    if isinstance(props, dict):
+                        node["required"] = list(props.keys())
 
-            serialized_response_model: str | None = None
+                # Recurse into common JSON Schema composition/containers
+                for key in ("properties", "$defs", "definitions"):
+                    sub = node.get(key)
+                    if isinstance(sub, dict):
+                        for v in sub.values():
+                            _ensure_no_additional_props_and_require_all(v)
+                if "items" in node:
+                    _ensure_no_additional_props_and_require_all(node["items"])
+                for key in ("oneOf", "anyOf", "allOf"):
+                    subs = node.get(key)
+                    if isinstance(subs, list):
+                        for v in subs:
+                            _ensure_no_additional_props_and_require_all(v)
 
-            if self.executor and self.executor.execution_engine == "temporal":
-                # Serialize the response model to a string
-                serialized_response_model = serialize_model(response_model)
+            if params.strict:
+                _ensure_no_additional_props_and_require_all(schema)
 
-            structured_response = await self.executor.execute(
-                OpenAICompletionTasks.request_structured_completion_task,
-                RequestStructuredCompletionRequest(
-                    config=self.context.config.openai,
-                    response_model=response_model
-                    if not serialized_response_model
-                    else None,
-                    serialized_response_model=serialized_response_model,
-                    response_str=response,
-                    model=model,
-                    user=params.user
-                    or getattr(self.context.config.openai, "user", None),
-                    strict=getattr(params, "strict", False),
+            response_format = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": getattr(response_model, "__name__", "StructuredOutput"),
+                    "schema": schema,
+                    "strict": params.strict,
+                },
+            }
+
+            # Build payload
+            payload = {
+                "model": model,
+                "messages": messages,
+                "response_format": response_format,
+            }
+
+            # Use max_completion_tokens for reasoning models, max_tokens for others
+            if self._reasoning(model):
+                # DEPRECATED: https://platform.openai.com/docs/api-reference/chat/create#chat-create-max_tokens
+                # "max_tokens": params.maxTokens,
+                payload["max_completion_tokens"] = params.maxTokens
+                payload["reasoning_effort"] = self._reasoning_effort
+            else:
+                payload["max_tokens"] = params.maxTokens
+            user = params.user or getattr(self.context.config.openai, "user", None)
+            if user:
+                payload["user"] = user
+            if params.stopSequences is not None:
+                payload["stop"] = params.stopSequences
+            if params.metadata:
+                payload.update(params.metadata)
+
+            completion: ChatCompletion = await self.executor.execute(
+                OpenAICompletionTasks.request_completion_task,
+                RequestCompletionRequest(
+                    config=self.context.config.openai, payload=payload
                 ),
             )
-            # TODO: saqadri (MAC) - fix request_structured_completion_task to return ensure_serializable
-            # Convert dict back to the proper model instance if needed
-            if isinstance(structured_response, dict):
-                structured_response = response_model.model_validate(structured_response)
 
-            if self.context.tracing_enabled:
-                try:
-                    span.set_attribute(
-                        "structured_response_json",
-                        structured_response.model_dump_json(),
-                    )
-                # pylint: disable=broad-exception-caught
-                except Exception:
-                    span.set_attribute("unstructured_response", response)
+            # If the workflow task surfaced an exception, surface it here
+            if isinstance(completion, BaseException):
+                raise completion
 
-            return structured_response
+            if not completion.choices or completion.choices[0].message.content is None:
+                raise ValueError("No structured content returned by model")
+
+            content = completion.choices[0].message.content
+            try:
+                data = json.loads(content)
+                return response_model.model_validate(data)
+            except Exception:
+                # Fallback to pydantic JSON parsing if already a JSON string-like
+                return response_model.model_validate_json(content)
 
     async def pre_tool_call(self, tool_call_id: str | None, request: CallToolRequest):
         return request
@@ -892,21 +958,29 @@ class OpenAICompletionTasks:
         request: RequestStructuredCompletionRequest,
     ) -> ModelT:
         """
-        Request a structured completion using Instructor's OpenAI API.
+        Request a structured completion using OpenAI's native structured outputs.
         """
-        import instructor
-        from instructor.exceptions import InstructorRetryException
-
-        if request.response_model:
+        # Resolve the response model
+        if request.response_model is not None:
             response_model = request.response_model
-        elif request.serialized_response_model:
+        elif request.serialized_response_model is not None:
             response_model = deserialize_model(request.serialized_response_model)
         else:
             raise ValueError(
                 "Either response_model or serialized_response_model must be provided for structured completion."
             )
 
-        # Next we pass the text through instructor to extract structured data
+        # Build response_format using JSON Schema
+        schema = response_model.model_json_schema()
+        response_format = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": getattr(response_model, "__name__", "StructuredOutput"),
+                "schema": schema,
+                "strict": request.strict,
+            },
+        }
+
         async with AsyncOpenAI(
             api_key=request.config.api_key,
             base_url=request.config.base_url,
@@ -916,41 +990,29 @@ class OpenAICompletionTasks:
             default_headers=request.config.default_headers
             if hasattr(request.config, "default_headers")
             else None,
-        ) as async_client:
-            client = instructor.from_openai(
-                async_client,
-                mode=instructor.Mode.TOOLS_STRICT
-                if request.strict
-                else instructor.Mode.TOOLS,
-            )
+        ) as async_openai_client:
+            payload = {
+                "model": request.model,
+                "messages": [{"role": "user", "content": request.response_str}],
+                "response_format": response_format,
+            }
+            if request.user:
+                payload["user"] = request.user
 
+            completion = await async_openai_client.chat.completions.create(**payload)
+
+            if not completion.choices or completion.choices[0].message.content is None:
+                raise ValueError("No structured content returned by model")
+
+            content = completion.choices[0].message.content
+            # message.content is expected to be JSON string
             try:
-                # Extract structured data from natural language
-                structured_response = await client.chat.completions.create(
-                    model=request.model,
-                    response_model=response_model,
-                    messages=[
-                        {"role": "user", "content": request.response_str},
-                    ],
-                    user=request.user,
-                )
-            except InstructorRetryException:
-                # Retry the request with JSON mode
-                client = instructor.from_openai(
-                    async_client,
-                    mode=instructor.Mode.JSON,
-                )
+                data = json.loads(content)
+            except Exception:
+                # Some models may already return a dict-like; fall back to string validation
+                return response_model.model_validate_json(content)
 
-                structured_response = await client.chat.completions.create(
-                    model=request.model,
-                    response_model=response_model,
-                    messages=[
-                        {"role": "user", "content": request.response_str},
-                    ],
-                    user=request.user,
-                )
-
-            return structured_response
+            return response_model.model_validate(data)
 
 
 class MCPOpenAITypeConverter(

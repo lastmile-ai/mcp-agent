@@ -56,8 +56,6 @@ flowchart LR
 
 Create two configuration files:
 
-<Tab>
-
 ```yaml mcp_agent.config.yaml
 execution_engine: asyncio
 logger:
@@ -83,8 +81,6 @@ openai:
 openai:
   api_key: "your-openai-api-key-here"
 ```
-
-</Tab>
 
 <Warning>
   Replace `"your-openai-api-key-here"` with your actual OpenAI API key. You can
@@ -157,18 +153,16 @@ if __name__ == "__main__":
 ## Step 4: Run Your Agent
 
 <Tabs>
-
-    <Tab title="uv">
-      ```bash
-      uv run main.py
-      ```
-    </Tab>
-    <Tab title="python">
-      ```bash
-      python main.py
-      ```
-    </Tab>
-
+  <Tab title="uv">
+    ```bash
+    uv run main.py
+    ```
+  </Tab>
+  <Tab title="python">
+    ```bash
+    python main.py
+    ```
+  </Tab>
 </Tabs>
 
 ## Expected Output
@@ -258,7 +252,7 @@ You should see output similar to this:
   >
     Use Anthropic Claude, Azure, or other LLM providers
   </Card>
-  <Card title="Build Integrations" icon="plug" href="/integrations/streamlit">
+  <Card title="Build Integrations" icon="plug" href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples">
     Create web apps, Claude Desktop integrations, and more
   </Card>
 </CardGroup>

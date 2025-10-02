@@ -1,0 +1,69 @@
+# MCP-Agent Configuration File
+# Config definition: https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/config.py
+$schema: https://raw.githubusercontent.com/lastmile-ai/mcp-agent/refs/heads/main/schema/mcp-agent.config.schema.json
+
+# Execution engine: asyncio or temporal
+# For temporal mode, see: https://github.com/lastmile-ai/mcp-agent/blob/main/examples/temporal/README.md
+execution_engine: asyncio
+
+logger:
+  transports: [console, file]
+  level: info
+  path: logs/mcp-agent.log
+
+# Configure MCP Servers connections (supports stdio, sse, streamable_http, and websockets)
+mcp:
+  servers:
+    # Filesystem access server
+    filesystem:
+      command: npx
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+
+    # Web fetch server
+    fetch:
+      command: uvx
+      args: ["mcp-server-fetch"]
+      #env:  # Environment variables passed to the stdio server
+      #  ROOT_PATH: "/workspace"
+
+    # sse_server:
+    #   transport: "sse"
+    #   url: "https://api.example.com/sse"
+    #   headers:
+    #     Authorization: "Bearer ${API_TOKEN}"
+
+    # streamable_http_server:
+    #   transport: streamable_http
+    #   url: "https://api.example.com/mcp"
+    #   headers:
+    #     Authorization: "Bearer ${API_TOKEN}"
+    #     Content-Type: "application/json"
+    #   http_timeout_seconds: 30
+    #   read_timeout_seconds: 120
+    #   terminate_on_close: true
+
+# Optional: Define Agent definitions in config
+agents:
+  definitions:
+    - name: filesystem_helper
+      instruction: "You can read files and summarize their contents."
+      server_names: [filesystem]
+    - name: web_helper
+      instruction: "You can fetch web pages and summarize their content."
+      server_names: [fetch]
+
+# Model provider defaults (API keys go in mcp_agent.secrets.yaml)
+openai:
+  default_model: gpt-4o-mini
+
+anthropic:
+  default_model: claude-sonnet-4-0
+# google:
+#   default_model: "gemini-1.5-pro"
+
+# OpenTelemetry configuration (optional)
+# otel:
+#   enabled: true
+#   exporters: ["file", "otlp"]
+#   otlp_settings:
+#     endpoint: "http://localhost:4318/v1/traces"

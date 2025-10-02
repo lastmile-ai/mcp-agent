@@ -19,6 +19,7 @@ from mcp_agent.cli.core.constants import (
     ENV_API_KEY,
 )
 from mcp_agent.cli.core.utils import run_async
+from ...utils import resolve_server
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.mcp_app.api_client import AppServerInfo, MCPAppClient
 from mcp_agent.cli.mcp_app.mcp_client import (
@@ -27,6 +28,7 @@ from mcp_agent.cli.mcp_app.mcp_client import (
 )
 from mcp_agent.cli.utils.ux import (
     console,
+    print_error,
 )
 
 
@@ -35,7 +37,7 @@ def get_app_status(
         None,
         "--id",
         "-i",
-        help="ID or server URL of the app or app configuration to get details for.",
+        help="ID, server URL, or name of the app to get details for.",
     ),
     api_url: Optional[str] = typer.Option(
         settings.API_BASE_URL,
@@ -55,7 +57,8 @@ def get_app_status(
 
     if not effective_api_key:
         raise CLIError(
-            "Must be logged in to get app status. Run 'mcp-agent login', set MCP_API_KEY environment variable or specify --api-key option."
+            "Must be logged in to get app status. Run 'mcp-agent login', set MCP_API_KEY environment variable or specify --api-key option.",
+            retriable=False,
         )
 
     client = MCPAppClient(
@@ -66,7 +69,7 @@ def get_app_status(
         raise CLIError("You must provide an app ID or server URL to get its status.")
 
     try:
-        app_or_config = run_async(client.get_app_or_config(app_id_or_url))
+        app_or_config = resolve_server(client, app_id_or_url)
 
         if not app_or_config:
             raise CLIError(f"App or config with ID or URL '{app_id_or_url}' not found.")
@@ -90,7 +93,8 @@ def get_app_status(
 
     except UnauthenticatedError as e:
         raise CLIError(
-            "Invalid API key. Run 'mcp-agent login' or set MCP_API_KEY environment variable with new API key."
+            "Invalid API key. Run 'mcp-agent login' or set MCP_API_KEY environment variable with new API key.",
+            retriable=False,
         ) from e
     except Exception as e:
         # Re-raise with more context - top-level CLI handler will show clean message
@@ -138,12 +142,15 @@ async def print_mcp_server_details(server_url: str, api_key: str) -> None:
                 console.print(f"[cyan]{key}[/cyan]: {description}")
 
             if sys.stdout.isatty():
-                choice = Prompt.ask(
-                    "\nWhat would you like to display?",
-                    choices=list(choices.keys()),
-                    default="0",
-                    show_choices=False,
-                )
+                try:
+                    choice = Prompt.ask(
+                        "\nWhat would you like to display?",
+                        choices=list(choices.keys()),
+                        default="0",
+                        show_choices=False,
+                    )
+                except (EOFError, KeyboardInterrupt):
+                    return
             else:
                 console.print("Choosing 0 (Show All)")
                 choice = "0"
@@ -159,7 +166,7 @@ async def print_mcp_server_details(server_url: str, api_key: str) -> None:
 
     except Exception as e:
         raise CLIError(
-            f"Error connecting to MCP server at {server_url}: {str(e)}"
+            f"Error obtaining details from MCP server at {server_url}: {str(e)}"
         ) from e
 
 
@@ -210,13 +217,7 @@ async def print_server_tools(session: MCPClientSession) -> None:
         console.print(Panel(Group(*panels), title="Server Tools", border_style="blue"))
 
     except Exception as e:
-        console.print(
-            Panel(
-                f"[red]Error fetching tools: {str(e)}[/red]",
-                title="Server Tools",
-                border_style="red",
-            )
-        )
+        print_error(f"Error fetching tools: {str(e)}")
 
 
 async def print_server_prompts(session: MCPClientSession) -> None:
@@ -263,13 +264,7 @@ async def print_server_prompts(session: MCPClientSession) -> None:
             Panel(Group(*panels), title="Server Prompts", border_style="blue")
         )
     except Exception as e:
-        console.print(
-            Panel(
-                f"[red]Error fetching prompts: {str(e)}[/red]",
-                title="Server Prompts",
-                border_style="red",
-            )
-        )
+        print_error(f"Error fetching prompts: {str(e)}")
 
 
 async def print_server_resources(session: MCPClientSession) -> None:
@@ -304,13 +299,7 @@ async def print_server_resources(session: MCPClientSession) -> None:
             )
         console.print(Panel(table, title="Server Resources", border_style="blue"))
     except Exception as e:
-        console.print(
-            Panel(
-                f"[red]Error fetching resources: {str(e)}[/red]",
-                title="Server Resources",
-                border_style="red",
-            )
-        )
+        print_error(f"Error fetching resources: {str(e)}")
 
 
 async def print_server_workflows(session: MCPClientSession) -> None:
@@ -347,10 +336,4 @@ async def print_server_workflows(session: MCPClientSession) -> None:
             Panel(Group(*panels), title="Server Workflows", border_style="blue")
         )
     except Exception as e:
-        console.print(
-            Panel(
-                f"[red]Error fetching workflows: {str(e)}[/red]",
-                title="Server Workflows",
-                border_style="red",
-            )
-        )
+        print_error(f"Error fetching workflows: {str(e)}")

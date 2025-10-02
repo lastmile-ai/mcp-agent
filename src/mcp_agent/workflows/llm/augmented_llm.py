@@ -2,10 +2,12 @@ from abc import abstractmethod
 
 from typing import (
     Any,
+    Dict,
     Generic,
     List,
     Optional,
     Protocol,
+    Set,
     Type,
     TypeVar,
     Union,
@@ -168,6 +170,31 @@ class RequestParams(CreateMessageRequestParams):
     This is used to stably identify the user in the LLM provider's logs.
     """
 
+    strict: bool = False
+    """
+    Whether models that support strict mode should strictly enforce the response schema.
+    """
+
+    tool_filter: Dict[str, Set[str]] | None = None
+    """
+    Mapping of server names to sets of allowed tool names for this request.
+    If specified, only these tools will be exposed to the LLM for each server.
+    This overrides the server-level allowed_tools configuration.
+
+    Special reserved keys:
+        - "*": Wildcard filter for servers without explicit filters
+        - "non_namespaced_tools": Filter for non-namespaced tools (function tools, human input)
+
+    Examples:
+        - {"server1": {"tool1", "tool2"}} - Allow specific tools from server1
+        - {"*": {"tool1"}} - Allow tool1 from all servers without explicit filters
+        - {"non_namespaced_tools": {"human_input", "func1"}} - Allow specific non-namespaced tools
+        - {} - No tools allowed from any server
+        - None - No filtering applied (default behavior)
+
+    Tool names should match exactly as they appear in the server's tool list.
+    """
+
 
 class AugmentedLLMProtocol(Protocol, Generic[MessageParamT, MessageT]):
     """Protocol defining the interface for augmented LLMs"""
@@ -326,6 +353,12 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         request_params: RequestParams | None = None,
     ) -> ModelT:
         """Request a structured LLM generation and return the result as a Pydantic model."""
+
+    # Provider configuration access
+    @classmethod
+    def get_provider_config(cls, context: Optional["Context"]):
+        """Return the provider-specific settings object from the app context, or None."""
+        return None
 
     async def select_model(
         self, request_params: RequestParams | None = None
@@ -533,9 +566,15 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
                     ],
                 )
 
-    async def list_tools(self, server_name: str | None = None) -> ListToolsResult:
+    async def list_tools(
+        self,
+        server_name: str | None = None,
+        tool_filter: Dict[str, Set[str]] | None = None,
+    ) -> ListToolsResult:
         """Call the underlying agent's list_tools method for a given server."""
-        return await self.agent.list_tools(server_name=server_name)
+        return await self.agent.list_tools(
+            server_name=server_name, tool_filter=tool_filter
+        )
 
     async def list_resources(
         self, server_name: str | None = None

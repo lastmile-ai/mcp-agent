@@ -32,10 +32,13 @@ from temporalio.worker import Worker
 
 from mcp_agent.config import TemporalSettings
 from mcp_agent.executor.executor import Executor, ExecutorConfig, R
+
 from mcp_agent.executor.temporal.workflow_signal import TemporalSignalHandler
 from mcp_agent.executor.workflow_signal import SignalHandler
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.utils.common import unwrap
+from mcp_agent.executor.temporal.interceptor import ContextPropagationInterceptor
+from mcp_agent.executor.temporal.system_activities import SystemActivities
 
 if TYPE_CHECKING:
     from mcp_agent.app import MCPApp
@@ -95,15 +98,31 @@ class TemporalExecutor(Executor):
 
         @activity.defn(name=activity_name)
         async def wrapped_activity(*args, **local_kwargs):
+            """
+            Temporal activity wrapper that supports both payload styles:
+            - Single dict payload: wrapped_activity({"k": v, ...}) -> func(**payload)
+            - Varargs/kwargs payload: wrapped_activity(a, b, c, x=1) -> func(a, b, c, x=1)
+            """
             try:
-                if asyncio.iscoroutinefunction(func):
-                    return await func(**args[0])
-                elif asyncio.iscoroutine(func):
-                    return await func
+                # Prefer the legacy single-dict payload convention when applicable
+                if len(args) == 1 and isinstance(args[0], dict) and not local_kwargs:
+                    payload = args[0]
+                    if asyncio.iscoroutinefunction(func):
+                        return await func(**payload)
+                    elif asyncio.iscoroutine(func):
+                        return await func
+                    else:
+                        return func(**payload)
                 else:
-                    return func(**args[0])
+                    # Fall back to passing through varargs/kwargs directly
+                    if asyncio.iscoroutinefunction(func):
+                        return await func(*args, **local_kwargs)
+                    elif asyncio.iscoroutine(func):
+                        return await func
+                    else:
+                        return func(*args, **local_kwargs)
             except Exception as e:
-                # Handle exceptions gracefully
+                # Properly surface activity exceptions
                 raise e
 
         return wrapped_activity
@@ -119,7 +138,7 @@ class TemporalExecutor(Executor):
                     return await task(*args, **kwargs)
                 else:
                     # Check if we're in a Temporal workflow context
-                    if workflow._Runtime.current():
+                    if workflow.in_workflow():
                         wrapped_task = functools.partial(task, *args, **kwargs)
                         result = wrapped_task()
                     else:
@@ -160,6 +179,7 @@ class TemporalExecutor(Executor):
         activity_registry = self.context.task_registry
         activity_task = activity_registry.get_activity(activity_name)
 
+        # Config timeout takes priority over metadata timeout (per tests).
         schedule_to_close = self.config.timeout_seconds or execution_metadata.get(
             "schedule_to_close_timeout"
         )
@@ -167,15 +187,17 @@ class TemporalExecutor(Executor):
         if schedule_to_close is not None and not isinstance(
             schedule_to_close, timedelta
         ):
-            # Convert to timedelta if it's not already
+            # Convert numeric seconds to timedelta if needed
             schedule_to_close = timedelta(seconds=schedule_to_close)
 
         retry_policy = execution_metadata.get("retry_policy", None)
 
         try:
+            # Temporal's execute_activity accepts at most one positional arg;
+            # pass user args via the keyword-only 'args' to support multiple
             result = await workflow.execute_activity(
                 activity_task,
-                *args,
+                args=list(args) if args else None,
                 task_queue=self.config.task_queue,
                 schedule_to_close_timeout=schedule_to_close,
                 retry_policy=retry_policy,
@@ -196,7 +218,7 @@ class TemporalExecutor(Executor):
         """Execute multiple tasks (activities) in parallel."""
 
         # Must be called from within a workflow
-        if not workflow._Runtime.current():
+        if not workflow.in_workflow():
             raise RuntimeError(
                 "TemporalExecutor.execute must be called from within a workflow"
             )
@@ -214,7 +236,7 @@ class TemporalExecutor(Executor):
         """Execute multiple tasks (activities) in parallel."""
 
         # Must be called from within a workflow
-        if not workflow._Runtime.current():
+        if not workflow.in_workflow():
             raise RuntimeError(
                 "TemporalExecutor.execute must be called from within a workflow"
             )
@@ -232,7 +254,7 @@ class TemporalExecutor(Executor):
         *args,
         **kwargs,
     ) -> AsyncIterator[R | BaseException]:
-        if not workflow._Runtime.current():
+        if not workflow.in_workflow():
             raise RuntimeError(
                 "TemporalExecutor.execute_streaming must be called from within a workflow"
             )
@@ -263,9 +285,9 @@ class TemporalExecutor(Executor):
                 api_key=self.config.api_key,
                 tls=self.config.tls,
                 data_converter=pydantic_data_converter,
-                interceptors=[TracingInterceptor()]
+                interceptors=[TracingInterceptor(), ContextPropagationInterceptor()]
                 if self.context.tracing_enabled
-                else [],
+                else [ContextPropagationInterceptor()],
                 rpc_metadata=self.config.rpc_metadata or {},
             )
 
@@ -278,6 +300,7 @@ class TemporalExecutor(Executor):
         wait_for_result: bool = False,
         workflow_id: str | None = None,
         task_queue: str | None = None,
+        workflow_memo: Dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> WorkflowHandle:
         """
@@ -369,6 +392,7 @@ class TemporalExecutor(Executor):
                 task_queue=task_queue,
                 id_reuse_policy=id_reuse_policy,
                 rpc_metadata=self.config.rpc_metadata or {},
+                memo=workflow_memo or {},
             )
         else:
             handle: WorkflowHandle = await self.client.start_workflow(
@@ -377,6 +401,7 @@ class TemporalExecutor(Executor):
                 task_queue=task_queue,
                 id_reuse_policy=id_reuse_policy,
                 rpc_metadata=self.config.rpc_metadata or {},
+                memo=workflow_memo or {},
             )
 
         # Wait for the result if requested
@@ -497,6 +522,15 @@ async def create_temporal_worker_for_app(app: "MCPApp"):
         # Collect activities from the global registry
         activity_registry = running_app.context.task_registry
 
+        # Register system activities (logging, human input proxy, generic relays)
+        system_activities = SystemActivities(context=running_app.context)
+        app.workflow_task(name="mcp_forward_log")(system_activities.forward_log)
+        app.workflow_task(name="mcp_request_user_input")(
+            system_activities.request_user_input
+        )
+        app.workflow_task(name="mcp_relay_notify")(system_activities.relay_notify)
+        app.workflow_task(name="mcp_relay_request")(system_activities.relay_request)
+
         for name in activity_registry.list_activities():
             activities.append(activity_registry.get_activity(name))
 
@@ -508,6 +542,7 @@ async def create_temporal_worker_for_app(app: "MCPApp"):
             task_queue=running_app.executor.config.task_queue,
             activities=activities,
             workflows=workflows,
+            interceptors=[ContextPropagationInterceptor()],
         )
 
         try:

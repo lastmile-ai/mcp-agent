@@ -125,7 +125,7 @@ uv run client.py
 
 This will:
 
-1. Start the basic_agent_server.py as a subprocess
+1. Start the agent server (main.py) as a subprocess
 2. Connect to the server
 3. Run the BasicAgentWorkflow
 4. Monitor and display the workflow status
@@ -137,10 +137,10 @@ You can also run the server and client separately:
 1. In one terminal, start the server:
 
 ```
-uv run basic_agent_server.py
+uv run main.py
 
 # Optionally, run with the example custom FastMCP settings
-uv run basic_agent_server.py --custom-fastmcp-settings
+uv run main.py --custom-fastmcp-settings
 ```
 
 2. In another terminal, run the client:
@@ -150,6 +150,74 @@ uv run client.py
 
 # Optionally, run with the example custom FastMCP settings
 uv run client.py --custom-fastmcp-settings
+```
+
+### [Beta] Deploying to mcp-agent cloud
+
+You can deploy your MCP-Agent app as a hosted mcp-agent app in the Cloud.
+
+1. In your terminal, authenticate into mcp-agent cloud by running:
+
+```
+uv run mcp-agent login
+```
+
+2. You will be redirected to the login page, create an mcp-agent cloud account through Google or Github
+
+3. Set up your mcp-agent cloud API Key and copy & paste it into your terminal
+
+```
+andrew_lm@Mac sdk-cloud % uv run mcp-agent login
+INFO: Directing to MCP Agent Cloud API login...
+Please enter your API key 🔑:
+```
+
+4. In your terminal, deploy the MCP app:
+
+```
+uv run mcp-agent deploy mcp_agent_server -c /absolute/path/to/your/project
+```
+
+5. In the terminal, you will then be prompted to specify your OpenAI and/or Anthropic keys:
+
+Once the deployment is successful, you should see the following:
+
+```
+andrew_lm@Mac sdk-cloud % uv run mcp-agent deploy basic_agent_server -c /Users/andrew_lm/Documents/GitHub/mcp-agent/examples/mcp_agent_server/asyncio/
+╭─────────────────────────────────────────────────── MCP Agent Deployment ────────────────────────────────────────────────────╮
+│ Configuration: /Users/andrew_lm/Documents/GitHub/mcp-agent/examples/mcp_agent_server/asyncio/mcp_agent.config.yaml │
+│ Secrets file: /Users/andrew_lm/Documents/GitHub/mcp-agent/examples/mcp_agent_server/asyncio/mcp_agent.secrets.yaml │
+│ Mode: DEPLOY                                                                                                                │
+╰──────────────────────────────────────────────────────── LastMile AI ────────────────────────────────────────────────────────╯
+INFO: Using API at https://mcp-agent.com/api
+INFO: Checking for existing app ID for 'basic_agent_server'...
+SUCCESS: Found existing app with ID: app_dd3a033d-4f4b-4e33-b82c-aad9ec43c52f for name 'basic_agent_server'
+INFO: Processing secrets file...
+INFO: Found existing transformed secrets to use where applicable:
+/Users/andrew_lm/Documents/GitHub/mcp-agent/examples/mcp_agent_server/asyncio/mcp_agent.deployed.secrets.yaml
+INFO: Loaded existing secrets configuration for reuse
+INFO: Reusing existing developer secret handle at 'openai.api_key': mcpac_sc_83d412fd-083e-4174-89b4-ecebb1e4cae9
+INFO: Transformed config written to /Users/andrew_lm/Documents/GitHub/mcp-agent/examples/mcp_agent_server/asyncio/mcp_agent.deployed.secrets.yaml
+
+                  Secrets Processing Summary
+┏━━━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━┓
+┃   Type    ┃ Path           ┃ Handle/Status       ┃  Source  ┃
+┡━━━━━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━┩
+│ Developer │ openai.api_key │ mcpac_sc...b1e4qwe9 │ ♻️ Reused │
+└───────────┴────────────────┴─────────────────────┴──────────┘
+
+Summary: 0 new secrets created, 1 existing secrets reused
+SUCCESS: Secrets file processed successfully
+INFO: Transformed secrets file written to /Users/andrew_lm/Documents/GitHub/mcp-agent/examples/mcp_agent_server/asyncio/mcp_agent.deployed.secrets.yaml
+╭───────────────────────────────────────── Deployment Ready ───────────────────────────────────────────────╮
+│ Ready to deploy MCP Agent with processed configuration                                                   │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+WARNING: Found a __main__ entrypoint in main.py. This will be ignored in the deployment.
+▰▰▰▰▰▰▱ ✅ Bundled successfully
+▹▹▹▹▹ Deploying MCP App bundle...INFO: App ID: app_ddde033d-21as-fe3s-b82c-aaae4243c52f
+INFO: App URL: https://770xdsp22y321prwv9rasdfasd9l5zj5.deployments.mcp-agent.com
+INFO: App Status: OFFLINE
+▹▹▹▹▹ ✅ MCP App deployed successfully!
 ```
 
 ## Receiving Server Logs in the Client
@@ -183,6 +251,40 @@ def make_session(read_stream: MemoryObjectReceiveStream,
 
 The example client (`client.py`) demonstrates this end-to-end: it registers a logging callback and calls `set_logging_level("info")` so logs from the server appear in the client's console.
 
+## Testing Specific Features
+
+The client supports feature flags to exercise subsets of functionality. Available flags: `workflows`, `tools`, `sampling`, `elicitation`, `notifications`, or `all`.
+
+Examples:
+
+```
+# Default (all features)
+uv run client.py
+
+# Only workflows
+uv run client.py --features workflows
+
+# Only tools
+uv run client.py --features tools
+
+# Sampling + elicitation demos
+uv run client.py --features sampling elicitation
+
+# Only notifications (server logs + other notifications)
+uv run client.py --features notifications
+
+# Increase server logging verbosity
+uv run client.py --server-log-level debug
+
+# Use custom FastMCP settings when launching the server
+uv run client.py --custom-fastmcp-settings
+```
+
+Console output:
+
+- Server logs appear as lines prefixed with `[SERVER LOG] ...`.
+- Other server-originated notifications (e.g., `notifications/progress`, `notifications/resources/list_changed`) appear as `[SERVER NOTIFY] <method>: ...`.
+
 ## MCP Clients
 
 Since the mcp-agent app is exposed as an MCP server, it can be used in any MCP client just
@@ -197,7 +299,7 @@ npx @modelcontextprotocol/inspector \
   uv \
   --directory /path/to/mcp-agent/examples/mcp_agent_server/asyncio \
   run \
-  basic_agent_server.py
+  main.py
 ```
 
 This will launch the MCP Inspector UI where you can:
@@ -221,7 +323,7 @@ To use this server with Claude Desktop:
     "--directory",
     "/path/to/mcp-agent/examples/mcp_agent_server/asyncio",
     "run",
-    "basic_agent_server.py"
+    "main.py"
   ]
 }
 ```
@@ -252,7 +354,7 @@ mcp:
 
 ## Code Structure
 
-- `basic_agent_server.py` - Defines the workflows and creates the MCP server
+- `main.py` - Defines the workflows and creates the MCP server
 - `client.py` - Example client that connects to the server and runs workflows
 - `mcp_agent.config.yaml` - Configuration for MCP servers and execution engine
 - `mcp_agent.secrets.yaml` - Contains API keys (not included in repository)

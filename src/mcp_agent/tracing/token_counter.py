@@ -827,7 +827,7 @@ class TokenCounter:
                 try:
                     from temporalio import workflow as _twf  # type: ignore
 
-                    if _twf._Runtime.current():  # type: ignore[attr-defined]
+                    if _twf.in_workflow():
                         if _twf.unsafe.is_replaying():  # type: ignore[attr-defined]
                             return
                 except Exception:

@@ -568,16 +568,16 @@ orchestrator = Orchestrator(
 The [Swarm example](examples/workflows/workflow_swarm/main.py) shows this in action.
 
 ```python
-from mcp_agent.human_input.handler import console_input_callback
+from mcp_agent.human_input.console_handler import console_input_callback
 
 lost_baggage = SwarmAgent(
     name="Lost baggage traversal",
     instruction=lambda context_variables: f"""
         {
-        FLY_AIR_AGENT_PROMPT.format(
-            customer_context=context_variables.get("customer_context", "None"),
-            flight_context=context_variables.get("flight_context", "None"),
-        )
+    FLY_AIR_AGENT_PROMPT.format(
+        customer_context=context_variables.get("customer_context", "None"),
+        flight_context=context_variables.get("flight_context", "None"),
+    )
     }\n Lost baggage policy: policies/lost_baggage_policy.md""",
     functions=[
         escalate_to_agent,
@@ -586,7 +586,7 @@ lost_baggage = SwarmAgent(
         case_resolved,
     ],
     server_names=["fetch", "filesystem"],
-    human_input_callback=console_input_callback, # Request input from the console
+    human_input_callback=console_input_callback,  # Request input from the console
 )
 ```
 

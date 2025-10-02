@@ -1,0 +1,329 @@
+---
+title: Agent Servers
+description: "Exposing agents as MCP servers"
+---
+
+## Overview
+
+mcp-agent allows you to expose your agents and workflows as MCP servers. This enables any MCP-compatible client (Claude Desktop, VS Code, custom applications) to interact with your agents through the standard MCP protocol.
+
+{/* TODO: Add video demonstration of agent server in action */}
+
+## How It Works
+
+When you expose an agent as an MCP server, the framework:
+1. Creates an MCP server using FastMCP
+2. Registers workflows as MCP tools
+3. Provides standard workflow management tools
+4. Handles protocol communication
+
+## Tools via Decorators
+
+### @app.tool - Synchronous Tools
+
+Synchronous tools execute immediately and return results:
+
+```python
+@app.tool
+def calculate_sum(a: int, b: int) -> int:
+    """Add two numbers together."""
+    return a + b
+```
+
+This creates a single MCP tool `calculate_sum` that executes synchronously.
+
+### @app.async_tool - Asynchronous Tools
+
+Asynchronous tools run as durable workflows:
+
+```python
+@app.async_tool
+async def research_topic(topic: str) -> str:
+    """Research a topic using multiple sources."""
+    # Long-running research operation
+    results = await gather_information(topic)
+    return results
+```
+
+This creates:
+- `research_topic`: Starts the workflow
+- Status tracking via `workflows-get_status`
+- Cancellation via `workflows-cancel`
+
+
+## Built-in MCP Tools
+
+Every agent server automatically provides these workflow management tools:
+
+### workflows-list
+Lists all available workflow types with their parameters and capabilities.
+
+**Returns:**
+- Workflow names and descriptions
+- Parameter schemas
+- Available operations (run, resume, cancel, get_status)
+- Tool endpoints
+
+### workflows-runs-list
+Lists all running workflow instances with their current status.
+
+**Returns:**
+- Workflow instance IDs
+- Current state (running, paused, completed, failed)
+- Workflow type name
+- Execution metadata
+
+### workflows-run
+Executes a workflow with specified parameters.
+
+**Parameters:**
+- `workflow_name`: Name of the workflow to run
+- `run_parameters`: Arguments for the workflow
+
+**Returns:**
+- `workflow_id`: Workflow identifier
+- `run_id`: Unique run instance ID
+
+### workflows-get_status
+Retrieves the current status of a workflow instance.
+
+**Parameters:**
+- `run_id`: The run instance ID
+- `workflow_id`: Optional workflow identifier
+
+**Returns:**
+- Current state
+- Results (if completed)
+- Error details (if failed)
+- Execution progress
+
+### workflows-resume
+Resumes a paused workflow, optionally with input data.
+
+**Parameters:**
+- `run_id`: The run instance ID
+- `workflow_name`: Workflow identifier
+- `signal_name`: Signal to send (default: "resume")
+- `payload`: Optional data to provide
+
+### workflows-cancel
+Cancels a running workflow instance.
+
+**Parameters:**
+- `run_id`: The run instance ID
+- `workflow_name`: Workflow identifier
+
+## Server Configuration
+
+### Basic Setup
+
+```python
+from mcp_agent.app import MCPApp
+from mcp_agent.server import create_mcp_server_for_app
+
+app = MCPApp(name="my_agent_server")
+
+# Register workflows
+@app.workflow
+class ResearchWorkflow:
+    async def run(self, query: str):
+        # Workflow implementation
+        pass
+
+# Create MCP server
+mcp_server = create_mcp_server_for_app(app)
+```
+
+### Running the Server
+
+#### Using stdio
+```bash
+uv run mcp-agent serve --app my_agent:app
+```
+
+#### Using SSE
+```bash
+uv run mcp-agent serve --app my_agent:app --transport sse
+```
+
+#### Deploying to **mcp-agent cloud**
+
+```bash
+uv run mcp-agent login
+uv run mcp-agent deploy my_agent
+```
+
+## Client Configuration
+
+### Claude Desktop
+
+For local mcp servers, add to `claude_desktop_config.json`:
+
+```json claude_desktop_config.json
+{
+  "mcpServers": {
+    "my-agent": {
+      "command": "uv",
+      "args": ["run", "mcp-agent", "serve", "--app", "my_agent:app"]
+    }
+  }
+}
+```
+
+For **mcp-agent cloud**, add to `claude_desktop_config.json`:
+
+```json claude_desktop_config.json
+"my_agent": {
+  "command": "/path/to/npx",
+  "args": [
+    "mcp-remote",
+    "https://[your-agent-server-id].deployments.mcp-agent.com/sse",
+    "--header",
+    "Authorization: Bearer ${BEARER_TOKEN}"
+  ],
+  "env": {
+        "BEARER_TOKEN": "your-mcp-agent-cloud-api-token"
+      }
+}
+```
+
+### Programmatic Access
+
+```python
+from mcp import ClientSession
+
+async with ClientSession(server_params) as session:
+    # List available workflows
+    result = await session.call_tool("workflows-list", {})
+    
+    # Run a workflow
+    run_info = await session.call_tool("workflows-run", {
+        "workflow_name": "research",
+        "run_parameters": {"query": "quantum computing"}
+    })
+    
+    # Check status
+    status = await session.call_tool("workflows-get_status", {
+        "run_id": run_info["run_id"]
+    })
+```
+
+## Workflow Registration
+
+Workflows are automatically discovered and registered as MCP tools:
+
+```python
+@app.workflow
+class DataProcessingWorkflow:
+    """Process and analyze data files."""
+    
+    async def run(self, file_path: str, options: dict):
+        # Processing logic
+        return processed_data
+```
+
+This creates tools:
+- `workflows-data_processing-run`: Execute the workflow
+- `workflows-data_processing-get_status`: Check execution status
+
+## Human-in-the-Loop Patterns
+
+Agent servers support human interaction through pause/resume:
+
+```python
+@app.workflow
+class ApprovalWorkflow:
+    async def run(self, ctx: WorkflowContext, request: dict):
+        # Process initial request
+        analysis = await analyze_request(request)
+        
+        # Pause for human approval
+        approval = await ctx.wait_for_signal("approval")
+        
+        if approval["approved"]:
+            return await execute_action(request)
+        else:
+            return {"status": "rejected", "reason": approval["reason"]}
+```
+
+Clients can resume with:
+```python
+await session.call_tool("workflows-resume", {
+    "run_id": run_id,
+    "signal_name": "approval",
+    "payload": '{"approved": true}'
+})
+```
+
+## Monitoring and Logging
+
+Agent servers provide real-time logging through MCP's logging capability:
+
+```python
+# Client can set logging level
+await session.set_logging_level("debug")
+
+# Server logs are forwarded to client
+logger.info("Processing request", extra={"request_id": "123"})
+```
+
+## Advanced Features
+
+### Custom Tool Names
+
+Override default tool names:
+
+```python
+@app.tool(name="custom_calculator")
+def add_numbers(a: int, b: int) -> int:
+    return a + b
+```
+
+### Tool Descriptions
+
+Provide detailed descriptions for better discoverability:
+
+```python
+@app.workflow
+class AnalysisWorkflow:
+    """
+    Perform comprehensive data analysis.
+    
+    This workflow processes datasets, generates visualizations,
+    and produces detailed statistical reports.
+    """
+    async def run(self, data: dict):
+        pass
+```
+
+### Parameter Validation
+
+Parameters are automatically validated based on type hints:
+
+```python
+from typing import Literal
+
+@app.tool
+def process_data(
+    format: Literal["json", "csv", "xml"],
+    validate: bool = True
+) -> dict:
+    """Process data in specified format."""
+    pass
+```
+
+## Best Practices
+
+1. **Tool Naming**: Use clear, descriptive names for workflows and tools
+2. **Documentation**: Always include docstrings for workflows and tools
+3. **Error Handling**: Implement proper error handling in workflows
+4. **State Management**: Use workflow context for persistent state
+5. **Resource Cleanup**: Ensure proper cleanup in workflow finally blocks
+6. **Type Hints**: Use type hints for automatic parameter validation
+
+
+## Next Steps
+
+- [Configuration Guide](/configuration)
+- [Workflow Patterns](/workflows/overview)
+- [Cloud Deployment](/cloud/getting-started)

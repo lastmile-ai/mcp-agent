@@ -12,16 +12,16 @@ logger:
 mcp:
   servers:
     github:
-      command: "docker"
-      args: [
-        "run",
-        "-i",
-        "--rm",
-        "-e",
-        "GITHUB_PERSONAL_ACCESS_TOKEN",
-        "ghcr.io/github/github-mcp-server"
-      ]
+      transport: "streamable_http"
+      url: "https://api.githubcopilot.com/mcp/x/pull_requests/readonly"
+      headers:
+        Content-Type: "application/json"
+      http_timeout_seconds: 30
+      read_timeout_seconds: 60
       description: "Access GitHub API operations"
+      allowed_tools:
+        - "list_pull_requests"
+        - "get_pull_request"
     slack:
       command: "npx"
       args: ["-y",
@@ -29,6 +29,8 @@ mcp:
         "--transport",
         "stdio"]
       env:
-        SLACK_MCP_XOXP_TOKEN: "ADD_YOUR_TOKEN_HERE"
+        SLACK_TEAM_ID: "T0123213213"
         SLACK_MCP_ADD_MESSAGE_TOOL: "true"
-      description: "Access Slack API operations"]
+      description: "Access Slack API operations"
+      allowed_tools:
+        - "conversations_add_message"

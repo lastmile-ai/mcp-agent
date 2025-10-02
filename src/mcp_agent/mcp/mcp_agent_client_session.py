@@ -40,12 +40,12 @@ from mcp.types import (
     Implementation,
     JSONRPCMessage,
     ServerRequest,
-    TextContent,
     ListRootsResult,
     NotificationParams,
     RequestParams,
     Root,
     ElicitRequestParams as MCPElicitRequestParams,
+    ElicitRequest,
     ElicitResult,
     PaginatedRequestParams,
 )
@@ -62,6 +62,7 @@ from mcp_agent.tracing.semconv import (
     MCP_TOOL_NAME,
 )
 from mcp_agent.tracing.telemetry import get_tracer, record_attributes
+from mcp_agent.mcp.sampling_handler import SamplingHandler
 
 if TYPE_CHECKING:
     from mcp_agent.core.context import Context
@@ -116,6 +117,7 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
         )
 
         self.server_config: Optional[MCPServerSettings] = None
+        self._sampling_handler = SamplingHandler(context=self.context)
 
         # Session ID handling for Streamable HTTP transport
         self._get_session_id_callback: Optional[Callable[[], str | None]] = None
@@ -334,46 +336,9 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
         context: RequestContext["ClientSession", Any],
         params: CreateMessageRequestParams,
     ) -> CreateMessageResult | ErrorData:
-        logger.info("Handling sampling request: %s", params)
-        config = self.context.config
+        logger.debug(f"Handling sampling request: {params}")
         server_session = self.context.upstream_session
-        if server_session is None:
-            # TODO: saqadri - consider whether we should be handling the sampling request here as a client
-            logger.warning(
-                "Error: No upstream client available for sampling requests. Request:",
-                data=params,
-            )
-            try:
-                from anthropic import AsyncAnthropic
-
-                client = AsyncAnthropic(api_key=config.anthropic.api_key)
-
-                response = await client.messages.create(
-                    model="claude-3-sonnet-20240229",
-                    max_tokens=params.maxTokens,
-                    messages=[
-                        {
-                            "role": m.role,
-                            "content": m.content.text
-                            if hasattr(m.content, "text")
-                            else m.content.data,
-                        }
-                        for m in params.messages
-                    ],
-                    system=getattr(params, "systemPrompt", None),
-                    temperature=getattr(params, "temperature", 0.7),
-                    stop_sequences=getattr(params, "stopSequences", None),
-                )
-
-                return CreateMessageResult(
-                    model="claude-3-sonnet-20240229",
-                    role="assistant",
-                    content=TextContent(type="text", text=response.content[0].text),
-                )
-            except Exception as e:
-                logger.error(f"Error handling sampling request: {e}")
-                return ErrorData(code=-32603, message=str(e))
-        else:
+        if server_session is not None:
             try:
                 # If a server_session is available, we'll pass-through the sampling request to the upstream client
                 result = await server_session.send_request(
@@ -384,11 +349,13 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
                     ),
                     result_type=CreateMessageResult,
                 )
-
                 # Pass the result from the upstream client back to the server. We just act as a pass-through client here.
                 return result
             except Exception as e:
                 return ErrorData(code=-32603, message=str(e))
+        else:
+            # No upstream session: handle locally via SamplingHandler
+            return await self._sampling_handler.handle_sampling(params=params)
 
     async def _handle_elicitation_callback(
         self,
@@ -399,6 +366,22 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
         logger.info("Handling elicitation request", data=params.model_dump())
 
         try:
+            # Prefer upstream pass-through when an upstream session exists
+            server_session = self.context.upstream_session
+            if server_session is not None:
+                try:
+                    result = await server_session.send_request(
+                        request=ServerRequest(
+                            ElicitRequest(method="elicitation/create", params=params)
+                        ),
+                        result_type=ElicitResult,
+                    )
+                    return result
+                except Exception as e:
+                    logger.warning(
+                        f"Upstream elicitation forwarding failed; falling back locally: {e}"
+                    )
+
             if not self.context.elicitation_handler:
                 logger.error(
                     "No elicitation handler configured for elicitation. Rejecting elicitation."

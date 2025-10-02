@@ -141,13 +141,44 @@ To run this example, you'll need to:
 4. In another terminal, start the MCP server:
 
    ```bash
-   uv run basic_agent_server.py
+   uv run main.py
    ```
 
 5. In a fourth terminal, run the client:
    ```bash
    uv run client.py
    ```
+
+### Testing Specific Features
+
+The Temporal client supports feature flags to exercise subsets of functionality. Available flags: `workflows`, `tools`, `sampling`, `elicitation`, `notifications`, or `all`.
+
+Examples:
+
+```bash
+# Default (all features)
+uv run client.py
+
+# Only workflows
+uv run client.py --features workflows
+
+# Only tools
+uv run client.py --features tools
+
+# Sampling + elicitation workflows
+uv run client.py --features sampling elicitation
+
+# Only notifications-related workflow
+uv run client.py --features notifications
+
+# Increase server logging verbosity seen by the client
+uv run client.py --server-log-level debug
+```
+
+Console output:
+
+- Server logs appear as lines prefixed with `[SERVER LOG] ...`.
+- Other server-originated notifications (e.g., `notifications/progress`, `notifications/resources/list_changed`) appear as `[SERVER NOTIFY] <method>: ...`.
 
 ## Advanced Features with Temporal
 
@@ -184,7 +215,7 @@ npx @modelcontextprotocol/inspector \
   uv \
   --directory /path/to/mcp-agent/examples/mcp_agent_server/temporal \
   run \
-  basic_agent_server.py
+  main.py
 ```
 
 This will launch the MCP Inspector UI where you can:
@@ -208,7 +239,7 @@ To use this server with Claude Desktop:
        "--directory",
        "/path/to/mcp-agent/examples/mcp_agent_server/temporal",
        "run",
-       "basic_agent_server.py"
+       "main.py"
      ]
    }
    ```
@@ -219,7 +250,7 @@ To use this server with Claude Desktop:
 
 ## Code Structure
 
-- `basic_agent_server.py` - Defines the workflows and creates the MCP server
+- `main.py` - Defines the workflows and creates the MCP server
 - `basic_agent_server_worker.py` - Sets up the Temporal worker to process workflow tasks
 - `client.py` - Example client that connects to the server and runs workflows
 - `mcp_agent.config.yaml` - Configuration for MCP servers and the Temporal execution engine
@@ -240,8 +271,8 @@ class PauseResumeWorkflow(Workflow[str]):
         print(f"Workflow is pausing, workflow_id: {self.id}, run_id: {self.run_id}")
 
         # Wait for the resume signal - this will pause the workflow
-        await app.context.executor.signal_bus.wait_for_signal(
-            Signal(name="resume", workflow_id=self.id, run_id=self.run_id),
+        await app.context.executor.wait_for_signal(
+            signal_name="resume", workflow_id=self.id, run_id=self.run_id,
         )
 
         print("Signal received, workflow is resuming...")
@@ -287,10 +318,16 @@ async with gen_client("basic_agent_server", context.server_registry) as server:
     )
 
     # The workflow will pause - to resume it, send the resume signal
-    run_id = pause_result.content[0].text
+    execution = WorkflowExecution(
+      **json.loads(pause_result.content[0].text)
+   )
+
+   run_id = execution.run_id
+   workflow_id = execution.workflow_id
+
     await server.call_tool(
         "workflows-resume",
-        arguments={"workflow_id": "PauseResumeWorkflow", "run_id": run_id}
+        arguments={"workflow_id": workflow_id, "run_id": run_id}
     )
 ```
 

@@ -1,161 +1,204 @@
 ---
 title: Introduction
-description: "Build effective agents with Model Context Protocol using simple, composable patterns."
+description: "Framework for building AI agents using Model Context Protocol"
 ---
 
-**mcp-agent** is a simple, composable framework for building AI agents using the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction). It implements [Anthropic's Building Effective Agents](https://www.anthropic.com/research/building-effective-agents) patterns in a model-agnostic way, allowing you to create robust agent applications that can leverage any MCP-compatible tools and services.
+<video controls width="100%">
+  <source src="https://github.com/user-attachments/assets/f651af86-222d-4df0-8241-616414df66e4" type="video/mp4" />
+  Your browser does not support the video tag.
+</video>
 
-## What is mcp-agent?
+## Overview
 
-mcp-agent bridges the gap between the low-level [Model Context Protocol](https://modelcontextprotocol.io/introduction) and high-level agent patterns. It handles the complex mechanics of managing MCP server connections, tool orchestration, and workflow patterns so you can focus on building your application logic.
+mcp-agent is a Python framework for building AI agents using the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction). It implements patterns from [Anthropic's Building Effective Agents](https://www.anthropic.com/research/building-effective-agents) guide and provides integration with any MCP-compatible server.
 
-<CardGroup cols={2}>
-  <Card title="MCP Integration" icon="link">
-    Seamless connection to any MCP server with tools, resources, prompts, and
-    file system roots
-  </Card>
-  <Card title="Agent Patterns" icon="diagram-project">
-    Pre-built implementations of proven agent workflow patterns
-  </Card>
-  <Card title="Model Agnostic" icon="brain">
-    Works with OpenAI, Anthropic, Azure, AWS Bedrock, Google, and Ollama
-  </Card>
-  <Card title="Composable" icon="puzzle-piece">
-    Chain workflow patterns together for complex behaviors
-  </Card>
-  <Card title="Human-in-the-Loop" icon="hand">
-    Built-in support for human input and workflow signaling
-  </Card>
-  <Card title="Observable" icon="chart-line">
-    Comprehensive logging and telemetry support
-  </Card>
-</CardGroup>
+The framework handles:
+- MCP server lifecycle management and connections
+- Agent workflow patterns (parallel, routing, orchestration, etc.)
+- Multi-agent coordination
+- Integration with multiple LLM providers
+- Deployment as MCP servers
 
-## Why mcp-agent?
+## Key Features
 
-### The MCP Ecosystem
+### MCP Protocol Support
+- Connect to any MCP server via stdio, SSE, WebSocket, or HTTP
+- Access tools, resources, prompts, and file system roots
+- Automatic tool discovery and integration
+- Sampling, elicitation, and notifications
 
-As [more services become MCP-aware](https://github.com/punkpeye/awesome-mcp-servers), you can use mcp-agent to build agents that leverage these tools out-of-the-box. mcp-agent is the only framework purpose-built for the MCP protocol, making it the simplest way to build robust agent applications.
+### Agent Patterns
+Implementation of all patterns from Anthropic's research:
+- [Parallel Processing](/workflows/parallel) - Fan-out tasks to multiple agents
+- [Routing](/workflows/router) - Intelligent request routing
+- [Orchestrator-Workers](/workflows/orchestrator) - Plan and execute complex tasks
+- [Evaluator-Optimizer](/workflows/evaluator-optimizer) - Iterative improvement
+- [Intent Classification](/workflows/intent-classifier) - Understand user intent
+- [Swarm](/workflows/swarm) - Multi-agent collaboration
+- [Deep Orchestrator](/workflows/deep-orchestrator) - Adaptive planning with knowledge extraction
 
-### Proven Patterns
+### Execution Engines
+- **asyncio** - In-memory execution for development and simple deployments
+- **Temporal** - Durable execution with automatic retries, pause/resume, and workflow history
 
-mcp-agent implements every pattern from Anthropic's research on building effective agents:
-
-<CardGroup cols={3}>
-  <Card
-    title="Parallel Workflow"
-    icon="arrows-split-up-and-left"
-    href="/workflows/parallel"
-  >
-    Fan-out tasks to multiple agents
-  </Card>
-  <Card title="Router Pattern" icon="route" href="/workflows/router">
-    Route inputs to appropriate handlers
-  </Card>
-  <Card
-    title="Intent Classifier"
-    href="/workflows/intent-classifier"
-    icon="brain"
-  >
-    Intent classification with confidence scoring
-  </Card>
-  <Card
-    title="Evaluator-Optimizer"
-    icon="arrows-rotate"
-    href="/workflows/evaluator-optimizer"
-  >
-    Iteratively improve responses
-  </Card>
-  <Card title="Orchestrator" icon="users" href="/workflows/orchestrator">
-    Plan and execute complex tasks
-  </Card>
-  <Card title="Swarm" icon="hexagon" href="/workflows/swarm">
-    Multi-agent collaboration
-  </Card>
-</CardGroup>
+### LLM Support
+Works with:
+- OpenAI (GPT-4, GPT-4o)
+- Anthropic (Claude 3, Claude 3.5)
+- Google (Gemini)
+- Azure OpenAI
+- AWS Bedrock
+- Local models via Ollama
 
 ## Quick Example
 
-Here's a simple agent that can read files and fetch web content:
-
-```python
+```python main.py
 import asyncio
 from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 
-app = MCPApp(name="finder_agent")
+app = MCPApp(name="example_agent")
 
-async def main():
+@app.tool
+async def research()->str:
+    '''
+    Research quatum computing function / tool call
+    '''
+    result=""
     async with app.run() as mcp_agent_app:
-        # Create an agent with access to fetch and filesystem servers
-        finder_agent = Agent(
-            name="finder",
-            instruction="You can read local files or fetch URLs. Return the requested information when asked.",
+
+        # Create agent with MCP server access
+        agent = Agent(
+            name="researcher",
+            instruction="Research topics using available tools",
             server_names=["fetch", "filesystem"]
         )
-
-        async with finder_agent:
-            # Attach an LLM to the agent
-            llm = await finder_agent.attach_llm(OpenAIAugmentedLLM)
-
-            # Ask the agent to read a file
-            result = await llm.generate_str("Show me what's in README.md")
+        
+        async with agent:
+            # List available tools from MCP servers
+            tools = await agent.list_tools()
+            print(f"Available tools: {[t.name for t in tools.tools]}")
+            
+            # Attach LLM for interaction
+            llm = await agent.attach_llm(OpenAIAugmentedLLM)
+            
+            # Agent can now use MCP server tools
+            result = await llm.generate_str("Research quantum computing")
             print(result)
-
-            # Multi-turn conversation
-            result = await llm.generate_str("Summarize that in a tweet")
-            print(result)
+    return result
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(research())
 ```
 
-## What You'll Learn
+## Example Applications
+Explore working examples in the [examples directory](https://github.com/lastmile-ai/mcp-agent/tree/main/examples):
 
-<Steps>
-  <Step title="Get Started">Install mcp-agent and create your first agent</Step>
-  <Step title="Core Concepts">
-    Understand agents, MCP servers, and Augmented LLMs
-  </Step>
-  <Step title="MCP Servers">
-    Work with tools, resources, prompts, and roots
-  </Step>
-  <Step title="Workflow Patterns">Implement sophisticated agent behaviors</Step>
-  <Step title="Integrations">
-    Build applications with Streamlit, Claude Desktop, and more
-  </Step>
-  <Step title="Advanced Features">
-    Composition, Monitoring and Temporal
-  </Step>
-</Steps>
+- **Agent as MCP Server**: Deploy agents as MCP servers for Claude Desktop integration ([examples/mcp_agent_server](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp_agent_server))
+- **Workflow Patterns**: All patterns from Anthropic's Building Effective Agents guide ([examples/workflows](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows))
+- **Basic Agents**: Simple agent examples with various MCP servers ([examples/basic](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/basic))
+- **Temporal Integration**: Durable workflow execution examples ([examples/temporal](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/temporal))
+- **Model Providers**: Examples for OpenAI, Anthropic, Google, Azure, Bedrock ([examples/model_providers](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/model_providers))
 
-## Community and Support
+## Installation
 
-<CardGroup cols={3}>
-  <Card
-    title="GitHub"
-    icon="github"
-    href="https://github.com/lastmile-ai/mcp-agent"
-  >
-    Source code, issues, and contributions
-  </Card>
-  <Card
-    title="Discord"
-    icon="discord"
-    href="https://lmai.link/discord/mcp-agent"
-  >
-    Join our community for support
-  </Card>
-  <Card
-    title="Examples"
-    icon="code"
-    href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples"
-  >
-    30+ working examples to learn from
-  </Card>
-</CardGroup>
+Using uv (recommended):
+```bash
+uv add mcp-agent
+```
 
-<Card title="Ready to Get Started?" icon="rocket" href="/installation">
-  Let's install mcp-agent and build your first agent!
-</Card>
+Using pip:
+```bash
+pip install mcp-agent
+```
+
+Install with specific LLM provider:
+```bash
+# OpenAI
+uv add "mcp-agent[openai]"
+
+# Anthropic
+uv add "mcp-agent[anthropic]"
+
+# All providers
+uv add "mcp-agent[openai,anthropic,azure,bedrock,google]"
+```
+
+## Configuration
+
+mcp-agent uses two configuration files:
+
+**mcp_agent.config.yaml** - Application configuration:
+```yaml mcp_agent.config.yaml
+execution_engine: asyncio  # or temporal
+logger:
+  transports: [console]
+  level: info
+
+mcp:
+  servers:
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+    filesystem:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+
+openai:
+  default_model: gpt-4o
+```
+
+**mcp_agent.secrets.yaml** - API keys and secrets:
+```yaml mcp_agent.secrets.yaml
+openai:
+  api_key: "sk-..."
+```
+
+## Project Structure
+
+```
+your-project/
+├── agent.py               # Your agent code
+├── mcp_agent.config.yaml  # Configuration
+├── mcp_agent.secrets.yaml # API keys (gitignored)
+└── logs/                  # Execution logs
+```
+
+## Deployment Options
+
+### Local Development
+Run agents locally with asyncio execution engine for rapid development.
+
+### [Production with Temporal](advanced/temporal)
+Use Temporal for durable execution, automatic retries, and workflow management.
+
+### [As a MCP Server](cloud/agent-server)
+Expose your agents as MCP servers that can be used by Claude Desktop, VS Code, or other MCP clients.
+
+### [mcp-agent cloud](cloud/overview)
+Deploy agents to managed cloud infrastructure with one command.
+
+## Examples
+
+The [examples directory](https://github.com/lastmile-ai/mcp-agent/tree/main/examples) contains 30+ working examples:
+
+- **Basic agents** - Simple patterns and MCP server usage
+- **Workflow patterns** - All patterns from Anthropic's guide
+- **Integrations** - Claude Desktop, Streamlit, Jupyter
+- **MCP servers** - Agents exposed as MCP servers
+- **Temporal** - Durable execution examples
+
+## Next Steps
+
+- [Installation](/installation) - Set up your development environment
+- [Quick Start](/quickstart) - Build your first agent
+- [Core Concepts](/concepts/agents) - Understand agents, workflows, and MCP
+- [Examples](https://github.com/lastmile-ai/mcp-agent/tree/main/examples) - Learn from working code
+
+## Resources
+
+- [Model Context Protocol](https://modelcontextprotocol.io) - MCP specification
+- [Building Effective Agents](https://www.anthropic.com/research/building-effective-agents) - Anthropic's guide
+- [GitHub Repository](https://github.com/lastmile-ai/mcp-agent) - Source code
+- [Discord Community](https://lmai.link/discord/mcp-agent) - Get help and discuss
