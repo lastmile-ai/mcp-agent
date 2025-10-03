@@ -968,23 +968,35 @@
         "exporters": {
           "default": [],
           "items": {
-            "discriminator": {
-              "mapping": {
-                "console": "#/$defs/ConsoleExporterSettings",
-                "file": "#/$defs/FileExporterSettings",
-                "otlp": "#/$defs/OTLPExporterSettings"
-              },
-              "propertyName": "type"
-            },
-            "oneOf": [
+            "anyOf": [
               {
-                "$ref": "#/$defs/ConsoleExporterSettings"
+                "enum": [
+                  "console",
+                  "file",
+                  "otlp"
+                ],
+                "type": "string"
               },
               {
-                "$ref": "#/$defs/FileExporterSettings"
-              },
-              {
-                "$ref": "#/$defs/OTLPExporterSettings"
+                "discriminator": {
+                  "mapping": {
+                    "console": "#/$defs/ConsoleExporterSettings",
+                    "file": "#/$defs/FileExporterSettings",
+                    "otlp": "#/$defs/OTLPExporterSettings"
+                  },
+                  "propertyName": "type"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/ConsoleExporterSettings"
+                  },
+                  {
+                    "$ref": "#/$defs/FileExporterSettings"
+                  },
+                  {
+                    "$ref": "#/$defs/OTLPExporterSettings"
+                  }
+                ]
               }
             ]
           },
@@ -1174,16 +1186,8 @@
       "description": "Settings for OTLP exporter in OpenTelemetry.",
       "properties": {
         "endpoint": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
           "title": "Endpoint",
+          "type": "string",
           "description": "OTLP endpoint for exporting traces."
         },
         "headers": {
@@ -1203,6 +1207,9 @@
           "description": "Optional headers for OTLP exporter."
         }
       },
+      "required": [
+        "endpoint"
+      ],
       "title": "TraceOTLPSettings",
       "type": "object"
     },

@@ -530,7 +530,9 @@ class OpenTelemetrySettings(BaseModel):
 
     enabled: bool = False
 
-    exporters: List[OpenTelemetryExporterSettings] = []
+    exporters: List[
+        Union[Literal["console", "file", "otlp"], OpenTelemetryExporterSettings]
+    ] = []
     """
     Exporters to use (can enable multiple simultaneously). Each exporter has
     its own typed configuration.
