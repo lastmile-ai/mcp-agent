@@ -2,7 +2,7 @@ import json
 import httpx
 import pytest
 
-from mcp_agent.secrets.bridge import issue_github_installation_token, _clamp_ttl, _build_github_app_jwt
+from mcp_agent.secrets.bridge import issue_github_installation_token, _clamp_ttl
 
 class GHMock(httpx.AsyncBaseTransport):
     def __init__(self):
@@ -22,8 +22,10 @@ async def test_issue_token_scopes_ttl_and_headers(monkeypatch):
     monkeypatch.setenv("GITHUB_PRIVATE_KEY","PEM_PLACEHOLDER")
     monkeypatch.setenv("GITHUB_API","https://api.github.com")
     monkeypatch.setattr("mcp_agent.secrets.bridge._build_github_app_jwt", lambda *a, **k: "app.jwt")
+
     t = GHMock()
     client = httpx.AsyncClient(transport=t)
+
     data = await issue_github_installation_token(
         installation_id=42,
         permissions={"contents":"read"},
@@ -31,6 +33,7 @@ async def test_issue_token_scopes_ttl_and_headers(monkeypatch):
         ttl_seconds=99999,
         http=client,
     )
+
     assert data["token"].startswith("ghs_")
     # headers carried the app JWT
     assert t.last_request.headers.get("Authorization") == "Bearer app.jwt"
@@ -41,4 +44,5 @@ async def test_issue_token_scopes_ttl_and_headers(monkeypatch):
     # TTL clamped
     assert _clamp_ttl(0) == 900
     assert _clamp_ttl(999_999) in (900, 3600)
+
     await client.aclose()
