@@ -1,0 +1,3 @@
+mcp-agent>=0.0.14
+anthropic>=0.48.0
+instructor[anthropic]>=1.7.2

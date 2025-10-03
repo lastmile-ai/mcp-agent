@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  # HashiCorp Vault for secret storage
+  vault:
+    image: hashicorp/vault:latest
+    container_name: mcp-test-vault
+    ports:
+      - "8200:8200"
+    cap_add:
+      - IPC_LOCK
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: "dev-token"
+      VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
+    command: server -dev
+    healthcheck:
+      test: ["CMD", "vault", "status"]
+      interval: 2s
+      timeout: 2s
+      retries: 5
+
+  # Mock Secrets API Server (placeholder for future implementation)
+  # This will be implemented when the Secrets API service lands
+  secrets-api:
+    image: node:18-alpine
+    container_name: mcp-test-secrets-api
+    ports:
+      - "3000:3000"
+    environment:
+      VAULT_ADDR: "http://vault:8200"
+      VAULT_TOKEN: "dev-token"
+      NODE_ENV: "test"
+    volumes:
+      # This will be updated when the actual service is available
+      - ./mock-secrets-api:/app
+    working_dir: /app
+    command: >
+      sh -c "echo 'Mock Secrets API - will be replaced with actual service' && 
+             sleep infinity"
+    depends_on:
+      vault:
+        condition: service_healthy
+
+# Add a named volume for persistence if needed
+volumes:
+  vault-data:

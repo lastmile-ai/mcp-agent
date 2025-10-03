@@ -1,0 +1,16 @@
+$schema: ../../../schema/mcp-agent.config.schema.json
+
+execution_engine: asyncio
+logger:
+  type: file
+  level: debug
+
+mcp:
+  servers:
+    mcp_test_server_sse:
+      transport: sse
+      url: http://localhost:8000/sse
+
+openai:
+  # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored
+  default_model: gpt-4o

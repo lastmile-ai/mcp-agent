@@ -1,0 +1,98 @@
+# Company Configuration - Marketing Content AI Agent
+# Replace placeholder values with your actual company details
+
+company:
+  name: "Your Company Name"
+  industry: "Technology"  # e.g., AI, SaaS, HealthTech, Fintech
+  target_audience:
+    - "Primary Audience"
+    - "Secondary Audience" 
+    - "Decision Makers"
+    - "Technical Users"
+    - "End Customers"
+
+brand:
+  voice:
+    personality: "Professional yet approachable"  # Describe your brand voice in 1-2 sentences
+    tone_keywords:
+      - "clear"
+      - "helpful"
+      - "authentic"
+      - "professional"
+      - "engaging"
+    avoid:
+      - "buzzwords"
+      - "jargon"
+      - "overly promotional"
+      - "sales-heavy language"
+      - "robotic tone"
+  
+  messaging_pillars:
+    - "Quality solutions"
+    - "Customer focused"
+    - "Innovation driven"
+    - "Reliable and trustworthy"
+    - "Results oriented"
+
+platforms:
+  linkedin:
+    max_word_count: 150
+    tone: "Professional but conversational"
+    guidelines: "Be human. Avoid startup buzz. Focus on impact and value."
+  
+  twitter:
+    max_word_count: 50
+    tone: "Sharp, witty, to-the-point"
+    guidelines: "Write like you're texting a peer. Start with a punchline."
+  
+  email:
+    max_word_count: 300
+    tone: "Friendly, clear, no-nonsense"
+    guidelines: "Use plain English. Add a helpful CTA. Be personal."
+  
+  instagram:
+    max_word_count: 100
+    tone: "Visual, engaging, authentic"
+    guidelines: "Focus on storytelling. Use emojis. Be relatable."
+
+quality_standards:
+  excellence_criteria:
+    - "Sounds human, not robotic"
+    - "Specific names, dates, numbers, or examples"
+    - "Zero filler or fluff"
+    - "Matches brand personality and tone"
+    - "Actionable or insightful content"
+    - "Clear value proposition"
+  
+  poor_criteria:
+    - "Generic or overused marketing phrases"
+    - "Vague descriptions"
+    - "Corporate filler, AI-sounding sentences"
+    - "Overly promotional language"
+    - "Buzzword heavy content"
+  
+  banned_phrases:
+    - "Unlock potential"
+    - "Revolutionary"
+    - "Excited to announce"
+    - "Game-changing"
+    - "Scale effortlessly"
+    - "Don't miss out"
+    - "Cutting-edge"
+    - "Next-level"
+    - "Disruptive"
+
+prompt_variables:
+  instructions: "Create authentic, engaging content that reflects our brand voice and values. Pull from content samples when available. Be clear, natural, and useful."
+  
+  good_examples:
+    - "Clear, specific communication with real examples"
+    - "Helpful, actionable insights that provide value"
+    - "Personal stories that connect with audience"
+    - "Data-driven statements with specific numbers"
+  
+  bad_examples:
+    - "Vague promotional language without substance"
+    - "Generic industry buzzwords and jargon"
+    - "Overly hypey claims without backing"
+    - "Corporate speak that sounds robotic"

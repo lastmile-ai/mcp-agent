@@ -1,0 +1,171 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "name": "mcp-agent",
+  "theme": "willow",
+  "colors": {
+    "primary": "#3B82F6",
+    "light": "#60A5FA",
+    "dark": "#1E40AF"
+  },
+  "background": {
+    "color": {
+      "light": "#FFFFFF",
+      "dark": "#0F172A"
+    },
+    "decoration": "grid"
+  },
+  "favicon": "/favicon.png",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "icon": "book",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "index",
+              "installation",
+              "quickstart",
+              "configuration"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/agents",
+              "concepts/workflows",
+              "concepts/execution-engines",
+              "concepts/mcp-servers",
+              "concepts/augmented-llms",
+              "concepts/mcp-primitives"
+            ]
+          },
+          {
+            "group": "Workflow Patterns",
+            "pages": [
+              "workflows/overview",
+              "workflows/parallel",
+              "workflows/router",
+              "workflows/intent-classifier",
+              "workflows/orchestrator",
+              "workflows/deep-orchestrator",
+              "workflows/evaluator-optimizer",
+              "workflows/swarm"
+            ]
+          },
+          {
+            "group": "MCP Protocol",
+            "pages": [
+              "mcp/overview",
+              "concepts/mcp-primitives"
+            ]
+          },
+          {
+            "group": "Agent as MCP Server",
+            "pages": [
+              "cloud/agent-server"
+            ]
+          },
+          {
+            "group": "mcp-agent cloud",
+            "pages": [
+              "cloud/overview",
+              "cloud/getting-started",
+              "cloud/deploying-mcp-servers"
+            ]
+          },
+          {
+            "group": "Advanced Topics",
+            "pages": [
+              "advanced/temporal",
+              "advanced/composition",
+              "advanced/monitoring"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "cli-reference",
+              "configuration",
+              "roadmap"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Examples",
+        "icon": "code",
+        "href": "https://github.com/lastmile-ai/mcp-agent/tree/main/examples"
+      },
+      {
+        "tab": "GitHub",
+        "icon": "github",
+        "href": "https://github.com/lastmile-ai/mcp-agent"
+      },
+      {
+        "tab": "Discord",
+        "icon": "discord",
+        "href": "https://lmai.link/discord/mcp-agent"
+      }
+    ]
+  },
+  "styling": {
+    "eyebrows": "breadcrumbs"
+  },
+  "contextual": {
+    "options": [
+      "copy",
+      "view",
+      "chatgpt",
+      "claude"
+    ]
+  },
+  "feedback": {
+    "thumbsRating": true,
+    "suggestEdit": true
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/lastmile-ai/mcp-agent",
+      "discord": "https://lmai.link/discord/mcp-agent",
+      "x": "https://x.com/lastmileai"
+    },
+    "links": [
+      {
+        "header": "Resources",
+        "items": [
+          {
+            "label": "Examples",
+            "href": "https://github.com/lastmile-ai/mcp-agent/tree/main/examples"
+          },
+          {
+            "label": "Model Context Protocol",
+            "href": "https://modelcontextprotocol.io"
+          },
+          {
+            "label": "Building Effective Agents",
+            "href": "https://www.anthropic.com/research/building-effective-agents"
+          }
+        ]
+      },
+      {
+        "header": "Community",
+        "items": [
+          {
+            "label": "Discord",
+            "href": "https://lmai.link/discord/mcp-agent"
+          },
+          {
+            "label": "GitHub Issues",
+            "href": "https://github.com/lastmile-ai/mcp-agent/issues"
+          },
+          {
+            "label": "Email",
+            "href": "mailto:team@lastmileai.dev"
+          }
+        ]
+      }
+    ]
+  }
+}

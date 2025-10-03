@@ -1,0 +1,43 @@
+$schema: ../../../schema/mcp-agent.config.schema.json
+
+execution_engine: asyncio # Change to temporal later
+
+logger:
+  transports: [file] # Only file logging - we have custom console output
+  level: debug
+  progress_display: false # Disable progress display for clean output
+  path_settings:
+    path_pattern: "logs/rcm-{unique_id}.jsonl"
+    unique_id: "timestamp"
+    timestamp_format: "%Y%m%d_%H%M%S"
+
+mcp:
+  servers:
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+    filesystem:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-filesystem"]
+
+openai:
+  default_model: "gpt-4"
+
+anthropic:
+  default_model: "claude-3-sonnet-20240229"
+
+rcm:
+  # Quality control settings
+  quality_threshold: 0.8
+  max_refinement_attempts: 3
+  consolidation_interval: 3
+  evaluator_model_provider: "openai" # or anthropic
+
+  # Display and UX settings
+  verbosity: "normal" # minimal, normal, verbose
+  show_internal_messages: true # Show LLM interactions and workflow steps
+  verbose_metrics: false # Show detailed quality metrics after each response
+  show_timing: false # Show execution timing information
+
+  # Feature flags
+  use_claude_code: false

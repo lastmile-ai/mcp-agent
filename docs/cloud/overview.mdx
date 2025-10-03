@@ -1,0 +1,108 @@
+---
+title: mcp-agent cloud
+description: "[In beta] Deploy and manage AI agents as MCP servers"
+---
+
+## Overview
+
+**mcp-agent cloud** deploys your agents as MCP servers, where agent workflows become long-running MCP tools executed in a durable workflow orchestration engine (Temporal). This architecture enables:
+
+- **Agents as MCP Servers**: Your agents are exposed as standard MCP servers that any MCP client can connect to
+- **Workflows as Durable Tools**: Agent workflows are exposed as MCP tools that run durably via Temporal
+- **Production-Ready Infrastructure**: Built-in retry logic, fault tolerance, and state persistence
+
+## Key Features
+
+- **Agent Deployment**: Deploy agents as MCP servers accessible via HTTP/WebSocket
+- **Temporal Integration**: Durable workflow execution with automatic retries
+- **Secrets Management**: Secure storage and injection of API keys
+- **Monitoring**: Real-time logs, metrics, and workflow tracking
+
+## Preparing your mcp-agent app as a server
+
+1. Double check that your entrypoint python file is named `main.py`
+
+<Note>When packaging your mcp-agent app for the cloud, our CLI will be searching for `main.py`. The entire directory will be deployed, so you can reference other files and upload other assets.</Note>
+
+2. Make sure you have either a `pyproject.toml` or a `requirements.txt` file in your app directory.
+
+3. Mark your functions that you'd like to be tool calls with the `@app.tool` decorators
+
+```python main.py
+# Your agent definition
+@app.tool
+async def research(query) -> str:
+  # this is where your agent logic exists (functions and calls)
+  return results
+
+# Becomes an MCP tool when deployed:
+# Tool: "research"
+```
+
+## Deploying your mcp-agent app
+
+1. Login into mcp-agent cloud to get your `api key`
+
+```bash
+uv run mcp-agent login
+```
+
+2. Deploy your app
+
+```bash
+uv run mcp-agent deploy my-first-agent
+```
+
+<Note>During the deployment flow, you will be guided through how you'd like your secrets to be managed.</Note>
+
+## Connect to your deployed mcp-agent server
+
+### Claude Desktop integration
+
+Configure Claude Desktop to access your agent server
+
+```json .claude-desktop/config.json
+"my-agent-server": {
+  "command": "/path/to/npx",
+  "args": [
+    "mcp-remote",
+    "https://[your-agent-server-id].deployments.mcp-agent.com/sse",
+    "--header",
+    "Authorization: Bearer ${BEARER_TOKEN}"
+  ],
+  "env": {
+        "BEARER_TOKEN": "your-mcp-agent-cloud-api-token"
+      }
+}
+```
+
+### MCP Inspector
+
+Run your local MCP Inspector
+```bash
+npx @modelcontextprotocol/inspector 
+```
+
+Connect with the following settings
+| Setting | Value | 
+|---|---|
+| *Transport Type* | *SSE* |
+| *SSE* | *https://[your-agent-server-id].deployments.mcp-agent.com/sse* |
+| *Header Name* | *Authorization* | 
+| *Bearer Token* | *your-mcp-agent-cloud-api-token* |
+
+
+## Example Use Cases
+
+Explore use cases in the [examples directory](https://github.com/lastmile-ai/mcp-agent/tree/main/examples):
+- [**Github to Slack agent**](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/usecases/mcp_github_to_slack_agent): Deploy an agent that will give you and your team a daily report of high-pri PRs and issues from github.
+- [**Research agent**](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/usecases/mcp_researcher): Deploy a research agent server to do a LLM-based research across the internet.
+- [**Financial analyzer agent**](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/usecases/mcp_financial_analyzer): Deploy a financial analyzer agent to research information about a specific company
+
+
+## Next Steps
+
+- [Getting Started Guide](/cloud/getting-started)
+- [CLI Reference](/cloud/cli-reference)
+- [Agent Server Documentation](/cloud/agent-server)
+- [Examples](https://github.com/lastmile-ai/mcp-agent/tree/main/examples)

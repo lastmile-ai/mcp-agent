@@ -1,0 +1,8 @@
+name: Pull Request Checks
+
+on:
+  pull_request:
+
+jobs:
+  checks:
+    uses: ./.github/workflows/checks.yml

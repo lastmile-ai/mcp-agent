@@ -1,0 +1,48 @@
+$schema: ../../../schema/mcp-agent.config.schema.json
+
+# Execution engine configuration
+execution_engine: asyncio
+
+# [cloud deployment] if you want to change default 60s timeout for each agent task run, uncomment temporal section below
+#temporal:
+#  timeout_seconds: 600      # timeout in seconds
+#  host: placeholder         # placeholder for schema validation
+#  task_queue: placeholder   # placeholder for schema validation
+
+# Logging configuration
+logger:
+  type: console          # Log output type (console, file, or http)
+  level: debug          # Logging level (debug, info, warning, error)
+  batch_size: 100       # Number of logs to batch before sending
+  flush_interval: 2     # Interval in seconds to flush logs
+  max_queue_size: 2048  # Maximum queue size for buffered logs
+  http_endpoint:        # Optional: HTTP endpoint for remote logging
+  http_headers:         # Optional: Headers for HTTP logging
+  http_timeout: 5       # Timeout for HTTP logging requests
+
+# MCP (Model Context Protocol) server configuration
+mcp:
+  servers:
+    # Fetch server: Enables web content fetching capabilities
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+
+    # Filesystem server: Provides file system access capabilities
+    filesystem:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-filesystem"]
+
+# OpenAI configuration
+openai:
+  # API keys are stored in mcp_agent.secrets.yaml (gitignored for security)
+  default_model: gpt-5  # Default model for OpenAI API calls
+
+# OpenTelemetry (OTEL) configuration for distributed tracing
+otel:
+  enabled: false                    # Set to true to enable tracing
+  exporters: ["console"]            # Trace exporters (console, otlp)
+  # Uncomment below to export traces to Jaeger running locally
+  # otlp_settings:
+  #   endpoint: "http://localhost:4318/v1/traces"
+  service_name: "WorkflowEvaluatorOptimizerExample"  # Service name in traces

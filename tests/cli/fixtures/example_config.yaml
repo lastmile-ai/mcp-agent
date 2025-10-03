@@ -1,0 +1,16 @@
+$schema: ../../../../../mcp-agent/schema/mcp-agent.config.schema.json
+
+# Main configuration file (no secrets)
+server:
+  host: localhost
+  port: 8000
+  
+database:
+  url: mongodb://localhost:27017
+  name: myapp
+
+logging:
+  level: info
+  format: json
+
+# Note: Secrets are stored in a separate mcp_agent.secrets.yaml file

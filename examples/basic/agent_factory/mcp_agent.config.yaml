@@ -1,0 +1,46 @@
+$schema: ../../../schema/mcp-agent.config.schema.json
+
+execution_engine: asyncio
+
+logger:
+  type: console
+  level: debug
+
+mcp:
+  servers:
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+    filesystem:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+
+openai:
+  # API keys and secrets go in mcp_agent.secrets.yaml; this file is safe to check in.
+  default_model: gpt-4o-mini
+
+google:
+  default_model: gemini-2_5-pro
+
+agents:
+  enabled: true
+  # Search paths are evaluated in order of precedence: earlier entries have higher precedence
+  # Project-level examples first, then user-level defaults
+  search_paths:
+    - "." # i.e. "examples/basic/agent_factory" -- demo local agents (e.g., agents.yaml, markdown agents)
+    - ".claude/agents"
+    - "~/.claude/agents"
+    - ".mcp-agent/agents"
+    - "~/.mcp-agent/agents"
+  pattern: "**/*.*"
+  # Inline agents (highest precedence). These can coexist with file-based agents.
+  definitions:
+    - name: inline-coder
+      instruction: |
+        Senior software engineer. Proactively reads and edits files.
+        Prefer small, safe changes and explain your reasoning briefly.
+      servers: [filesystem]
+    - name: inline-researcher
+      instruction: |
+        Web research specialist. Use fetch tools to gather and summarize information.
+      servers: [fetch]

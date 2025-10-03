@@ -1,0 +1,1274 @@
+# Configuration
+
+Learn how to configure mcp-agent using configuration files to control logging, execution, model providers, and MCP server connections.
+
+## Configuration Files
+
+mcp-agent uses two configuration files:
+
+<CardGroup cols={2}>
+  <Card title="mcp_agent.config.yaml" icon="gear">
+    Application settings, logging, and server configurations
+  </Card>
+  <Card title="mcp_agent.secrets.yaml" icon="key">
+    API keys and sensitive information (should be gitignored)
+  </Card>
+</CardGroup>
+
+## Basic Configuration
+
+<Tabs>
+  <Tab title="YAML Configuration (Recommended)">
+    <Steps>
+      <Step title="Create config file">
+        Create `mcp_agent.config.yaml` in your project root:
+
+        ```yaml
+        execution_engine: asyncio
+        logger:
+          transports: [console]
+          level: info
+
+        mcp:
+          servers:
+            fetch:
+              command: "uvx"
+              args: ["mcp-server-fetch"]
+            
+            filesystem:
+              command: "npx"
+              args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+
+        openai:
+          default_model: gpt-4o
+        ```
+      </Step>
+
+      <Step title="Create secrets file">
+        Create `mcp_agent.secrets.yaml` for sensitive data:
+
+        ```yaml
+        openai:
+          api_key: "your-openai-api-key"
+        ```
+
+        <Warning>
+          Add `mcp_agent.secrets.yaml` to your `.gitignore` file to avoid committing API keys.
+        </Warning>
+      </Step>
+
+      <Step title="Load configuration">
+        mcp-agent automatically loads these files when you create an `MCPApp`:
+
+        ```python
+        from mcp_agent.app import MCPApp
+
+        # Configuration is loaded automatically
+        app = MCPApp(name="my_agent")
+        ```
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="Programmatic Configuration">
+    <Steps>
+      <Step title="Create settings object">
+        Configure mcp-agent programmatically using the `Settings` class:
+
+        ```python
+        from mcp_agent.app import MCPApp
+        from mcp_agent.settings import (
+            Settings,
+            LoggerSettings,
+            MCPSettings,
+            MCPServerSettings,
+            OpenAISettings
+        )
+
+        settings = Settings(
+            execution_engine="asyncio",
+            logger=LoggerSettings(type="console", level="info"),
+            mcp=MCPSettings(
+                servers={
+                    "fetch": MCPServerSettings(
+                        command="uvx",
+                        args=["mcp-server-fetch"],
+                    ),
+                    "filesystem": MCPServerSettings(
+                        command="npx",
+                        args=["-y", "@modelcontextprotocol/server-filesystem", "."],
+                    ),
+                }
+            ),
+            openai=OpenAISettings(
+                api_key="your-openai-api-key",
+                default_model="gpt-4o",
+            ),
+        )
+        ```
+      </Step>
+
+      <Step title="Initialize with settings">
+        Pass the settings object to `MCPApp`:
+
+        ```python
+        app = MCPApp(name="my_agent", settings=settings)
+        ```
+      </Step>
+    </Steps>
+
+    <Note>
+      Programmatic configuration is useful for dynamic configuration, testing, or when you need to compute settings at runtime.
+    </Note>
+  </Tab>
+</Tabs>
+
+## Configuration Reference
+
+### Execution Engine
+
+Controls how mcp-agent executes workflows:
+
+<Tabs>
+  <Tab title="asyncio (Default)">
+    ```yaml
+    execution_engine: asyncio
+    ```
+    Standard async execution for most use cases.
+  </Tab>
+  
+  <Tab title="temporal">
+    ```yaml
+    execution_engine: temporal
+    temporal:
+      host: "localhost"
+      port: 7233
+      namespace: "default"
+      task_queue: "mcp-agent"
+    ```
+    Durable execution with workflow persistence and recovery.
+  </Tab>
+</Tabs>
+
+### Logging Configuration
+
+<AccordionGroup>
+  <Accordion title="Console Logging">
+    ```yaml
+    logger:
+      transports: [console]
+      level: debug  # debug, info, warning, error
+    ```
+  </Accordion>
+
+  <Accordion title="File Logging">
+    ```yaml
+    logger:
+      transports: [file]
+      level: info
+      path: "logs/mcp-agent.jsonl"
+    ```
+  </Accordion>
+
+  <Accordion title="Both Console and File">
+    ```yaml
+    logger:
+      transports: [console, file]
+      level: info
+      path: "logs/mcp-agent.jsonl"
+    ```
+  </Accordion>
+
+  <Accordion title="Dynamic Log Files">
+    ```yaml
+    logger:
+      transports: [file]
+      level: info
+      path_settings:
+        path_pattern: "logs/mcp-agent-{unique_id}.jsonl"
+        unique_id: "timestamp"  # or "session_id"
+        timestamp_format: "%Y%m%d_%H%M%S"
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### MCP Server Configuration
+
+Define MCP servers your agents can connect to:
+
+<CodeGroup>
+```yaml Basic Server
+mcp:
+  servers:
+    server_name:
+      command: "command_to_run"
+      args: ["arg1", "arg2"]
+      description: "Optional description"
+```
+
+```yaml Server with Environment
+mcp:
+  servers:
+    postgres:
+      command: "uvx"
+      args: ["mcp-server-postgres"]
+      env:
+        POSTGRES_CONNECTION_STRING: "postgresql://user:pass@localhost/db"
+```
+
+```yaml Server with Working Directory
+mcp:
+  servers:
+    git:
+      command: "uvx"
+      args: ["mcp-server-git", "--repository", "."]
+```
+</CodeGroup>
+
+### Common MCP Servers
+
+<CardGroup cols={2}>
+  <Card title="Fetch Server" icon="globe">
+    ```yaml
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+    ```
+  </Card>
+  
+  <Card title="Filesystem Server" icon="folder">
+    ```yaml
+    filesystem:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+    ```
+  </Card>
+  
+  <Card title="SQLite Server" icon="database">
+    ```yaml
+    sqlite:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-sqlite", "database.db"]
+    ```
+  </Card>
+  
+  <Card title="Git Server" icon="code-branch">
+    ```yaml
+    git:
+      command: "uvx"
+      args: ["mcp-server-git", "--repository", "."]
+    ```
+  </Card>
+</CardGroup>
+
+## Model Provider Configuration
+
+### OpenAI
+
+<CodeGroup>
+```yaml Config File
+openai:
+  default_model: gpt-4o
+  max_tokens: 4096
+  temperature: 0.7
+```
+
+```yaml Secrets File
+openai:
+  api_key: "sk-..."
+  organization: "org-..."  # Optional
+```
+</CodeGroup>
+
+### Anthropic
+
+<CodeGroup>
+```yaml Config File
+anthropic:
+  default_model: claude-3-5-sonnet-20241022
+  max_tokens: 4096
+  temperature: 0.7
+```
+
+```yaml Secrets File
+anthropic:
+  api_key: "sk-ant-..."
+```
+</CodeGroup>
+
+### Azure OpenAI
+
+Configure Azure OpenAI with different endpoint types:
+
+<Tabs>
+  <Tab title="Azure OpenAI Endpoint">
+    <CodeGroup>
+    ```yaml Config File
+    azure:
+      default_model: gpt-4o-mini
+      api_version: "2025-01-01-preview"
+    ```
+
+    ```yaml Secrets File
+    azure:
+      api_key: "your-azure-key"
+      endpoint: "https://<your-resource-name>.cognitiveservices.azure.com/openai/deployments/<your-deployment-name>"
+    ```
+    </CodeGroup>
+
+    <Note>
+      Use `api_version: "2025-01-01-preview"` for structured outputs support.
+    </Note>
+  </Tab>
+
+  <Tab title="Azure AI Inference Endpoint">
+    <CodeGroup>
+    ```yaml Config File
+    azure:
+      default_model: DeepSeek-V3
+    ```
+
+    ```yaml Secrets File
+    azure:
+      api_key: "your-azure-key"
+      endpoint: "https://<your-resource-name>.services.ai.azure.com/models"
+    ```
+    </CodeGroup>
+
+    <Note>
+      Azure AI inference endpoints support various models beyond OpenAI.
+    </Note>
+  </Tab>
+</Tabs>
+
+### AWS Bedrock
+
+<CodeGroup>
+```yaml Config File
+bedrock:
+  default_model: anthropic.claude-3-5-sonnet-20241022-v2:0
+  region: us-east-1
+```
+
+```yaml Secrets File
+bedrock:
+  aws_access_key_id: "AKIA..."
+  aws_secret_access_key: "..."
+  aws_session_token: "..."  # Optional
+```
+</CodeGroup>
+
+### Google Gemini
+
+Configure Google Gemini with different authentication methods:
+
+<Tabs>
+  <Tab title="Gemini API">
+    <CodeGroup>
+    ```yaml Config File
+    google:
+      default_model: gemini-2.0-flash
+      temperature: 0.7
+      vertexai: false
+    ```
+
+    ```yaml Secrets File
+    google:
+      api_key: "AI..."
+    ```
+    </CodeGroup>
+
+    <Note>
+      Use the Gemini Developer API with your API key. Set `vertexai: false` (default).
+    </Note>
+  </Tab>
+
+  <Tab title="Vertex AI">
+    <CodeGroup>
+    ```yaml Config File
+    google:
+      default_model: gemini-2.0-flash
+      temperature: 0.7
+      vertexai: true
+      project: "your-google-cloud-project"
+      location: "us-central1"
+    ```
+
+    ```yaml Secrets File
+    # Authentication handled via Google Cloud credentials
+    # Set GOOGLE_APPLICATION_CREDENTIALS environment variable
+    # or use gcloud auth application-default login
+    ```
+    </CodeGroup>
+
+    <Note>
+      Use Vertex AI for enterprise workloads. Requires Google Cloud project setup and authentication.
+    </Note>
+  </Tab>
+</Tabs>
+
+### Groq
+
+Groq provides fast inference for open-source models through an OpenAI-compatible API:
+
+<CodeGroup>
+```yaml Config File
+openai:
+  base_url: "https://api.groq.com/openai/v1"
+  default_model: llama-3.3-70b-versatile
+```
+
+```yaml Secrets File
+openai:
+  api_key: "gsk_..."
+```
+</CodeGroup>
+
+<Note>
+  Groq uses OpenAI-compatible endpoints. Popular models include `llama-3.3-70b-versatile`, `llama-4-maverick-17b-128e-instruct`, and `kimi-k2-instruct`.
+</Note>
+
+### Together AI
+
+Together AI provides access to various open-source models through an OpenAI-compatible API:
+
+<CodeGroup>
+```yaml Config File
+openai:
+  base_url: "https://api.together.xyz/v1"
+  default_model: meta-llama/Llama-3.3-70B-Instruct-Turbo
+```
+
+```yaml Secrets File
+openai:
+  api_key: "..."
+```
+</CodeGroup>
+
+### Ollama
+
+Ollama provides local model inference with OpenAI-compatible endpoints:
+
+<CodeGroup>
+```yaml Config File
+openai:
+  base_url: "http://localhost:11434/v1"
+  api_key: "ollama"  # Required but can be any value
+  default_model: llama3.2:3b
+```
+</CodeGroup>
+
+<Note>
+  Ollama runs locally and doesn't require a real API key. The framework includes specialized `OllamaAugmentedLLM` for better integration.
+</Note>
+
+## Advanced Configuration
+
+### Temporal Configuration
+
+Configure Temporal for durable workflow execution:
+
+```yaml
+execution_engine: temporal
+temporal:
+  host: "localhost:7233"  # Temporal server host
+  namespace: "default"
+  task_queue: "mcp-agent"
+  max_concurrent_activities: 20
+  timeout_seconds: 60
+  tls: false  # Enable TLS for production
+  api_key: "${TEMPORAL_API_KEY}"  # Optional API key
+  id_reuse_policy: "allow_duplicate"  # Options: allow_duplicate, allow_duplicate_failed_only, reject_duplicate, terminate_if_running
+  rpc_metadata:  # Optional metadata for RPC calls
+    custom-header: "value"
+```
+
+### Observability Configuration
+
+Enable tracing with OpenTelemetry:
+
+```yaml
+otel:
+  enabled: true
+  service_name: "mcp-agent"
+  service_version: "1.0.0"
+  service_instance_id: "instance-1"
+  sample_rate: 1.0  # Sample all traces
+  
+  # Multiple exporters can be configured
+  exporters:
+    - type: "console"  # Print to console
+    - type: "file"
+      path: "traces/mcp-agent.jsonl"
+      path_settings:
+        path_pattern: "traces/mcp-agent-{unique_id}.jsonl"
+        unique_id: "timestamp"  # or "session_id"
+        timestamp_format: "%Y%m%d_%H%M%S"
+    - type: "otlp"
+      endpoint: "http://localhost:4317"
+      headers:
+        Authorization: "Bearer ${OTEL_TOKEN}"
+```
+
+### MCP Server Transport Options
+
+mcp-agent supports multiple MCP server transport mechanisms:
+
+<Tabs>
+  <Tab title="stdio (Default)">
+    ```yaml
+    mcp:
+      servers:
+        filesystem:
+          transport: stdio  # Default, can be omitted
+          command: "npx"
+          args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+          env:
+            DEBUG: "true"
+    ```
+    
+    Standard input/output transport for local server processes.
+  </Tab>
+
+  <Tab title="Server-Sent Events (SSE)">
+    ```yaml
+    mcp:
+      servers:
+        remote_server:
+          transport: sse
+          url: "https://api.example.com/mcp/sse"
+          headers:
+            Authorization: "Bearer ${API_TOKEN}"
+          http_timeout_seconds: 30
+          read_timeout_seconds: 120
+    ```
+    
+    Server-sent events for streaming communication with remote servers.
+  </Tab>
+
+  <Tab title="Streamable HTTP">
+    ```yaml
+    mcp:
+      servers:
+        api_server:
+          transport: streamable_http
+          url: "https://api.example.com/mcp"
+          headers:
+            Authorization: "Bearer ${API_TOKEN}"
+            Content-Type: "application/json"
+          http_timeout_seconds: 30
+          read_timeout_seconds: 120
+          terminate_on_close: true
+    ```
+    
+    HTTP-based streaming transport for API-based MCP servers.
+  </Tab>
+
+  <Tab title="WebSocket">
+    ```yaml
+    mcp:
+      servers:
+        ws_server:
+          transport: websocket
+          url: "wss://api.example.com/mcp/ws"
+          headers:
+            Authorization: "Bearer ${API_TOKEN}"
+          read_timeout_seconds: 120
+    ```
+    
+    WebSocket transport for real-time bidirectional communication.
+  </Tab>
+</Tabs>
+
+### MCP Server Advanced Configuration
+
+Complete configuration options for MCP servers:
+
+```yaml
+mcp:
+  servers:
+    advanced_server:
+      # Basic configuration
+      name: "Advanced Server"
+      description: "Server with all options configured"
+      
+      # Transport configuration
+      transport: "streamable_http"  # Options: stdio, sse, streamable_http, websocket
+      url: "https://api.example.com/mcp"
+      
+      # Authentication (simple structure)
+      auth:
+        api_key: "${API_KEY}"
+      
+      # Timeout settings
+      http_timeout_seconds: 30  # HTTP request timeout
+      read_timeout_seconds: 120  # Event read timeout
+      terminate_on_close: true  # For streamable HTTP
+      
+      # Headers for HTTP-based transports
+      headers:
+        Authorization: "Bearer ${API_TOKEN}"
+        User-Agent: "mcp-agent/1.0"
+      
+      # Roots configuration (file system access)
+      roots:
+        - uri: "file:///workspace"
+          name: "Workspace"
+          server_uri_alias: "file:///data"  # Optional alias
+        - uri: "file:///shared/resources"
+          name: "Shared Resources"
+      
+      # Environment variables for stdio transport
+      env:
+        DEBUG: "true"
+        LOG_LEVEL: "info"
+```
+
+### Environment Variable Substitution
+
+mcp-agent supports environment variable substitution using `${VARIABLE_NAME}` syntax:
+
+```yaml
+# Config file
+openai:
+  api_key: "${OPENAI_API_KEY}"  # Resolved from environment
+  base_url: "${OPENAI_BASE_URL:-https://api.openai.com/v1}"  # With default
+
+mcp:
+  servers:
+    database:
+      url: "${DATABASE_URL}"
+      headers:
+        Authorization: "Bearer ${DB_TOKEN}"
+
+temporal:
+  host: "${TEMPORAL_SERVER_URL:-localhost:7233}"
+  api_key: "${TEMPORAL_API_KEY}"
+```
+
+<Note>
+  Use `${VAR:-default}` syntax to provide fallback values when environment variables are not set.
+</Note>
+
+### Secrets Management
+
+Keep sensitive configuration in separate secrets files:
+
+<Tabs>
+  <Tab title="Separate Secrets File">
+    Create `mcp_agent.secrets.yaml` alongside your config:
+    
+    ```yaml
+    # mcp_agent.secrets.yaml
+    openai:
+      api_key: "sk-..."
+    
+    anthropic:
+      api_key: "sk-ant-..."
+    
+    temporal:
+      api_key: "..."
+    ```
+    
+    <Warning>
+      Always add `mcp_agent.secrets.yaml` to your `.gitignore` file.
+    </Warning>
+  </Tab>
+
+  <Tab title="Environment Variables Only">
+    Store all secrets as environment variables:
+    
+    ```bash
+    export OPENAI_API_KEY="sk-..."
+    export ANTHROPIC_API_KEY="sk-ant-..."
+    export TEMPORAL_API_KEY="..."
+    ```
+    
+    Config file references them:
+    ```yaml
+    openai:
+      api_key: "${OPENAI_API_KEY}"
+    ```
+  </Tab>
+  
+  <Tab title="Cloud Secrets">
+    For mcp-agent cloud deployments, only raw secrets (not environment variables) are supported:
+    
+    ```yaml
+    openai:
+      api_key: "sk-..."
+    ```
+
+    During deployment, you will be prompted to specify which secrets should be used for the deployed app and which
+    secrets will be excluded (and require a subsequent 'configure' command to configure with user secrets).
+  </Tab>
+</Tabs>
+
+### Subagent Configuration
+
+Load subagents from Claude Code format or other sources:
+
+```yaml
+agents:
+  enabled: true
+  search_paths:
+    - ".claude/agents"      # Project-level agents
+    - "~/.claude/agents"    # User-level agents
+    - ".mcp-agent/agents"   # MCP Agent specific
+    - "~/.mcp-agent/agents"
+  pattern: "**/*.*"  # Glob pattern for agent files
+  definitions:  # Inline agent definitions
+    - name: "code-reviewer"
+      description: "Reviews code for best practices"
+      instruction: "Review code and provide feedback"
+```
+
+### Schema Validation
+
+mcp-agent validates configuration against a schema. Check the [configuration schema](https://github.com/lastmile-ai/mcp-agent/blob/main/schema/mcp-agent.config.schema.json) for all available options.
+
+## Deployment Scenarios
+
+### Development Environment
+
+Local development configuration:
+
+```yaml
+# mcp_agent.config.yaml
+execution_engine: asyncio
+logger:
+  transports: [console]
+  level: debug
+  progress_display: true  # Show progress indicators
+
+mcp:
+  servers:
+    filesystem:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+      env:
+        DEBUG: "true"
+
+openai:
+  default_model: gpt-4o-mini  # Use cheaper model for dev
+  api_key: "${OPENAI_API_KEY}"
+
+# Enable telemetry for debugging
+usage_telemetry:
+  enabled: true
+  enable_detailed_telemetry: false  # Set to true for detailed debugging
+```
+
+### Production Environment
+
+Production deployment with Temporal and monitoring:
+
+```yaml
+# mcp_agent.config.yaml
+execution_engine: temporal
+temporal:
+  host: "${TEMPORAL_SERVER_URL}"
+  namespace: "production"
+  task_queue: "mcp-agent-prod"
+  max_concurrent_activities: 50
+  timeout_seconds: 300
+  tls: true
+  api_key: "${TEMPORAL_API_KEY}"
+
+logger:
+  transports: [file]
+  level: info
+  path: "/var/log/mcp-agent/app.jsonl"
+  path_settings:
+    path_pattern: "logs/mcp-agent-{unique_id}.jsonl"
+    unique_id: "timestamp"
+    timestamp_format: "%Y%m%d"
+
+otel:
+  enabled: true
+  service_name: "mcp-agent-prod"
+  exporters:
+    - type: "otlp"
+      endpoint: "${OTEL_ENDPOINT}"
+      headers:
+        Authorization: "Bearer ${OTEL_TOKEN}"
+  
+mcp:
+  servers:
+    database:
+      transport: "streamable_http"
+      url: "${DATABASE_SERVER_URL}"
+      headers:
+        Authorization: "Bearer ${DATABASE_API_TOKEN}"
+      http_timeout_seconds: 30
+      read_timeout_seconds: 120
+
+anthropic:
+  default_model: claude-3-5-sonnet-20241022
+  api_key: "${ANTHROPIC_API_KEY}"
+```
+
+### Testing Environment
+
+Configuration for automated testing:
+
+```yaml
+# mcp_agent.config.test.yaml
+execution_engine: asyncio
+logger:
+  transports: [file]
+  level: debug
+  path: "test-logs/test-run.jsonl"
+
+# Mock servers for testing
+mcp:
+  servers:
+    mock_fetch:
+      command: "python"
+      args: ["-m", "tests.mock_servers.fetch"]
+    mock_filesystem:
+      command: "python"
+      args: ["-m", "tests.mock_servers.filesystem"]
+
+# Use test models with deterministic outputs
+openai:
+  default_model: gpt-3.5-turbo
+  temperature: 0  # Deterministic outputs
+  seed: 42
+```
+
+
+## Configuration Examples
+
+### Basic Web Agent
+
+```yaml
+execution_engine: asyncio
+logger:
+  transports: [console]
+  level: info
+
+mcp:
+  servers:
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+
+openai:
+  default_model: gpt-4o
+  reasoning_effort: "medium"  # For o-series models: low, medium, high
+  api_key: "${OPENAI_API_KEY}"
+```
+
+### File Processing Agent
+
+```yaml
+execution_engine: asyncio
+logger:
+  transports: [file]
+  level: info
+  path: "logs/file-processor.jsonl"
+
+mcp:
+  servers:
+    filesystem:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "/data"]
+    
+    sqlite:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-sqlite", "results.db"]
+
+anthropic:
+  default_model: claude-3-5-sonnet-20241022
+```
+
+### Multi-Provider Agent
+
+```yaml
+execution_engine: asyncio
+logger:
+  transports: [console, file]
+  level: info
+  path: "logs/multi-provider.jsonl"
+
+mcp:
+  servers:
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+    
+    filesystem:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+
+# Configure multiple providers
+openai:
+  default_model: gpt-4o
+  api_key: "${OPENAI_API_KEY}"
+
+anthropic:
+  default_model: claude-3-5-sonnet-20241022
+  api_key: "${ANTHROPIC_API_KEY}"
+  provider: "anthropic"  # Options: anthropic, bedrock, vertexai
+
+azure:
+  endpoint: "${AZURE_OPENAI_ENDPOINT}"
+  api_key: "${AZURE_OPENAI_API_KEY}"
+  credential_scopes:
+    - "https://cognitiveservices.azure.com/.default"
+
+google:
+  api_key: "${GOOGLE_API_KEY}"  # For Gemini API
+  vertexai: false  # Set to true for Vertex AI
+  project: "${GOOGLE_CLOUD_PROJECT}"  # For Vertex AI
+  location: "us-central1"  # For Vertex AI
+
+bedrock:
+  aws_access_key_id: "${AWS_ACCESS_KEY_ID}"
+  aws_secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+  aws_region: "us-east-1"
+  profile: "default"  # AWS profile to use
+
+cohere:
+  api_key: "${COHERE_API_KEY}"
+```
+
+### Enterprise Configuration with Authentication
+
+```yaml
+execution_engine: temporal
+temporal:
+  host: "${TEMPORAL_SERVER_URL}"
+  namespace: "enterprise"
+  tls: true
+  task_queue: "enterprise-agents"
+  max_concurrent_activities: 50
+  api_key: "${TEMPORAL_API_KEY}"
+  rpc_metadata:
+    tenant-id: "${TENANT_ID}"
+
+logger:
+  transports: [file]
+  level: info
+  path: "/var/log/mcp-agent/enterprise.jsonl"
+  path_settings:
+    path_pattern: "/var/log/mcp-agent/mcp-agent-{unique_id}.jsonl"
+    unique_id: "timestamp"
+    timestamp_format: "%Y%m%d"
+
+# Enterprise observability
+otel:
+  enabled: true
+  service_name: "mcp-agent-enterprise"
+  service_version: "${APP_VERSION}"
+  service_instance_id: "${INSTANCE_ID}"
+  exporters:
+    - type: "otlp"
+      endpoint: "${OTEL_ENDPOINT}"
+      headers:
+        Authorization: "Bearer ${OTEL_TOKEN}"
+
+mcp:
+  servers:
+    corporate_db:
+      transport: "streamable_http"
+      url: "${CORPORATE_DB_URL}"
+      headers:
+        X-Tenant-ID: "${TENANT_ID}"
+        Authorization: "Bearer ${API_TOKEN}"
+      http_timeout_seconds: 30
+      read_timeout_seconds: 120
+
+    secure_files:
+      transport: "stdio"
+      command: "corporate-file-server"
+      args: ["--tenant", "${TENANT_ID}"]
+      env:
+        CORPORATE_AUTH_TOKEN: "${CORPORATE_AUTH_TOKEN}"
+        
+# Use organization's Azure OpenAI deployment
+azure:
+  endpoint: "${AZURE_OPENAI_ENDPOINT}"
+  api_key: "${AZURE_OPENAI_KEY}"
+  credential_scopes:
+    - "https://cognitiveservices.azure.com/.default"
+
+# Disable telemetry in enterprise environments
+usage_telemetry:
+  enabled: false
+```
+
+### Multi-Environment Configuration
+
+Use different configurations for different environments:
+
+<Tabs>
+  <Tab title="Development">
+    ```yaml
+    # mcp_agent.config.dev.yaml
+    execution_engine: asyncio
+    logger:
+      transports: [console]
+      level: debug
+      progress_display: true
+
+    mcp:
+      servers:
+        filesystem:
+          command: "npx"
+          args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+
+    openai:
+      default_model: gpt-4o-mini  # Cheaper for dev
+    ```
+  </Tab>
+
+  <Tab title="Staging">
+    ```yaml
+    # mcp_agent.config.staging.yaml
+    execution_engine: temporal
+    temporal:
+      host: "staging-temporal.company.com:7233"
+      namespace: "staging"
+      task_queue: "mcp-agent-staging"
+      tls: true
+
+    logger:
+      transports: [file, console]
+      level: info
+      path: "/var/log/mcp-agent/staging.jsonl"
+
+    mcp:
+      servers:
+        staging_db:
+          transport: "streamable_http"
+          url: "https://staging-api.company.com/mcp"
+
+    anthropic:
+      default_model: claude-3-5-haiku-20241022  # Faster for staging
+    ```
+  </Tab>
+
+  <Tab title="Production">
+    ```yaml
+    # mcp_agent.config.prod.yaml
+    execution_engine: temporal
+    temporal:
+      host: "prod-temporal.company.com:7233"
+      namespace: "production"
+      task_queue: "mcp-agent-prod"
+      tls: true
+      max_concurrent_activities: 100
+      api_key: "${TEMPORAL_PROD_API_KEY}"
+
+    logger:
+      transports: [file]
+      level: info
+      path: "/var/log/mcp-agent/prod.jsonl"
+      path_settings:
+        path_pattern: "/var/log/mcp-agent/prod-{unique_id}.jsonl"
+        unique_id: "timestamp"
+        timestamp_format: "%Y%m%d_%H"
+
+    otel:
+      enabled: true
+      service_name: "mcp-agent-production"
+      exporters:
+        - type: "otlp"
+          endpoint: "https://otel.company.com:4317"
+
+    mcp:
+      servers:
+        prod_db:
+          transport: "streamable_http"
+          url: "https://prod-api.company.com/mcp"
+          http_timeout_seconds: 60
+          read_timeout_seconds: 300
+
+    anthropic:
+      default_model: claude-3-5-sonnet-20241022
+      provider: "anthropic"
+    ```
+  </Tab>
+</Tabs>
+
+## Configuration Schema Reference
+
+The complete configuration schema is available at [mcp-agent.config.schema.json](https://github.com/lastmile-ai/mcp-agent/blob/main/schema/mcp-agent.config.schema.json).
+
+### Core Settings Structure
+
+```yaml
+# Top-level configuration options
+execution_engine: "asyncio" | "temporal"  # Default: asyncio
+
+# Provider configurations (all optional)
+openai: OpenAISettings
+anthropic: AnthropicSettings
+azure: AzureSettings
+google: GoogleSettings
+bedrock: BedrockSettings
+cohere: CohereSettings
+
+# Infrastructure
+mcp: MCPSettings
+temporal: TemporalSettings
+logger: LoggerSettings
+otel: OpenTelemetrySettings
+
+# Application
+agents: SubagentSettings
+usage_telemetry: UsageTelemetrySettings
+```
+
+### Provider Settings Reference
+
+<AccordionGroup>
+  <Accordion title="OpenAI Settings">
+    ```yaml
+    openai:
+      api_key: string                    # API key
+      base_url: string                   # Custom base URL
+      default_model: string              # Default model name
+      reasoning_effort: "low" | "medium" | "high"  # For o1 models
+      user: string                       # User identifier
+      default_headers: dict              # Custom headers
+    ```
+  </Accordion>
+
+  <Accordion title="Anthropic Settings">
+    ```yaml
+    anthropic:
+      api_key: string                              # API key
+      default_model: string                        # Default model name
+      provider: "anthropic" | "bedrock" | "vertexai"  # Provider type
+      
+      # For bedrock provider
+      aws_access_key_id: string
+      aws_secret_access_key: string
+      aws_session_token: string
+      aws_region: string
+      profile: string
+      
+      # For vertexai provider
+      project: string
+      location: string
+    ```
+  </Accordion>
+
+  <Accordion title="Azure Settings">
+    ```yaml
+    azure:
+      api_key: string                  # API key
+      endpoint: string                 # Azure endpoint URL
+      credential_scopes: list[string]  # OAuth scopes
+    ```
+  </Accordion>
+
+  <Accordion title="Google Settings">
+    ```yaml
+    google:
+      api_key: string     # For Gemini API
+      vertexai: boolean   # Use Vertex AI (default: false)
+      project: string     # GCP project (for Vertex AI)
+      location: string    # GCP location (for Vertex AI)
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Configuration Not Found">
+    **Issue**: `mcp_agent.config.yaml` not found
+    
+    **Solutions**:
+    - Ensure configuration files are in your project directory
+    - Check search paths: current directory, `.mcp-agent/` subdirectory, home directory `~/.mcp-agent/`
+    - Use absolute path with `MCPApp(config_path="/path/to/config.yaml")`
+  </Accordion>
+
+  <Accordion title="Schema Validation Errors">
+    **Issue**: YAML validation or parsing errors
+    
+    **Solutions**:
+    - Validate YAML syntax using online validators
+    - Check indentation (use spaces, not tabs)
+    - Verify all required fields are present
+    - Check the [configuration schema](https://github.com/lastmile-ai/mcp-agent/blob/main/schema/mcp-agent.config.schema.json)
+    - Use quotes around string values with special characters
+  </Accordion>
+
+  <Accordion title="Environment Variable Substitution Errors">
+    **Issue**: Variables like `${API_KEY}` not resolved
+    
+    **Solutions**:
+    - Verify environment variables are set: `echo $API_KEY`
+    - Use defaults: `${API_KEY:-default_value}`
+    - Check variable names match exactly (case-sensitive)
+    - Escape literal `$` with `$$` if needed
+  </Accordion>
+
+  <Accordion title="MCP Server Connection Errors">
+    **Issue**: Cannot connect to MCP servers
+    
+    **Solutions**:
+    - Verify server commands are installed and accessible
+    - Check command arguments and paths
+    - Test server manually: `npx @modelcontextprotocol/server-filesystem .`
+    - Verify environment variables for servers are set
+    - Check file permissions for stdio transport
+    - For HTTP transports, verify URL accessibility
+  </Accordion>
+
+  <Accordion title="Model Provider Authentication">
+    **Issue**: API key or authentication errors
+    
+    **Solutions**:
+    - Verify API keys are correct and active
+    - Check rate limits and quotas
+    - For Azure: ensure endpoint URL format is correct
+    - For Bedrock: verify AWS credentials and permissions
+    - For Google: check authentication method (API key vs service account)
+  </Accordion>
+
+  <Accordion title="Temporal Connection Issues">
+    **Issue**: Cannot connect to Temporal server
+    
+    **Solutions**:
+    - Verify Temporal server is running: `temporal server start-dev`
+    - Check host and port configuration
+    - For production: verify TLS settings and certificates
+    - Check namespace exists and is accessible
+    - Verify API key if using Temporal Cloud
+  </Accordion>
+
+  <Accordion title="Performance Issues">
+    **Issue**: Slow responses or timeouts
+    
+    **Solutions**:
+    - Increase timeout values in MCP server configurations
+    - Check network connectivity for remote servers
+    - Monitor resource usage (CPU, memory)
+    - Enable logging to debug bottlenecks
+    - Consider using connection pooling for HTTP transports
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Core Concepts" icon="book" href="/concepts/agents">
+    Learn about agents, MCP servers, and augmented LLMs
+  </Card>
+  <Card title="MCP Protocol" icon="link" href="/mcp/overview">
+    Understand tools, resources, prompts, and roots
+  </Card>
+  <Card title="CLI Reference" icon="terminal" href="/cli-reference">
+    Complete command line documentation
+  </Card>
+  <Card title="Examples" icon="code" href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples">
+    See real configuration examples
+  </Card>
+</CardGroup>

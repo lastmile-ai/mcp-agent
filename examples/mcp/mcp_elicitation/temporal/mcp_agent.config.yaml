@@ -1,0 +1,22 @@
+$schema: ../../../../schema/mcp-agent.config.schema.json
+
+execution_engine: temporal
+
+temporal:
+  host: "localhost:7233" # Default Temporal server address
+  namespace: "default" # Default Temporal namespace
+  task_queue: "mcp-agent" # Task queue for workflows and activities
+  max_concurrent_activities: 10 # Maximum number of concurrent activities
+
+logger:
+  transports: [file]
+  level: debug
+  path_settings:
+    path_pattern: "logs/mcp-agent-{unique_id}.jsonl"
+    unique_id: "timestamp" # Options: "timestamp" or "session_id"
+    timestamp_format: "%Y%m%d_%H%M%S"
+
+openai:
+  # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored
+  #  default_model: "o3-mini"
+  default_model: "gpt-4o-mini"

@@ -1,0 +1,32 @@
+# workflow_parallel
+$schema: ../../../schema/mcp-agent.config.schema.json
+
+execution_engine: asyncio
+logger:
+  type: console
+  level: debug
+  path: "./workflow_parallel.jsonl"
+  batch_size: 100
+  flush_interval: 2
+  max_queue_size: 2048
+  http_endpoint:
+  http_headers:
+  http_timeout: 5
+
+mcp:
+  servers:
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+
+openai:
+  # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored
+  default_model: "gpt-4o"
+
+otel:
+  enabled: false
+  exporters: ["console"]
+  # If running jaeger locally, uncomment the following lines and add "otlp" to the exporters list
+  # otlp_settings:
+  #   endpoint: "http://localhost:4318/v1/traces"
+  service_name: "WorkflowParallelExample"

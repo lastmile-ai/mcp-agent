@@ -1,0 +1,258 @@
+---
+title: "Deploying MCP Servers"
+description: "Deploy standard MCP servers to MCP Agent Cloud infrastructure"
+---
+
+## Overview
+
+**mcp-agent cloud** can deploy both AI agents **and** standard MCP servers. Since agents deployed to **mcp-agent cloud** are exposed as MCP servers themselves, the platform naturally supports deploying any MCP-compatible server implementation.
+
+This means you can use **mcp-agent cloud** to:
+- Deploy regular MCP servers built with FastMCP or other frameworks
+- Host tool servers that don't use AI workflows
+- Deploy resource servers for data access
+- Run any MCP-compliant server implementation
+
+## Key Concept
+
+**Deploying an MCP agent is a superset of deploying an MCP server.** When you deploy an agent, you get:
+- All standard MCP server capabilities (tools, resources, prompts)
+- Plus: Durable workflow execution via Temporal
+- Plus: Built-in workflow management tools
+- Plus: Human-in-the-loop support
+
+If you only need basic MCP server functionality without workflows, you can still benefit from MCP Agent Cloud's infrastructure.
+
+## Deploying Standard MCP Servers
+
+### Using FastMCP
+
+```python
+# main.py
+from fastmcp import FastMCP
+
+mcp = FastMCP("my-server")
+
+@mcp.tool()
+async def get_weather(city: str) -> str:
+    """Get current weather for a city."""
+    # Simple tool implementation
+    return f"Weather for {city}: Sunny, 72°F"
+
+@mcp.resource("weather://current")
+async def current_weather_resource():
+    """Provide current weather data."""
+    return {"temperature": 72, "condition": "sunny"}
+
+# Deploy with mcp-agent cloud
+# mcp-agent deploy my-weather-server
+```
+
+### Using mcp-agent Without Workflows
+
+```python
+# main.py
+from mcp_agent.app import MCPApp
+
+app = MCPApp(name="simple_tools")
+
+@app.tool
+async def calculate(expression: str) -> str:
+    """Evaluate a mathematical expression."""
+    result = eval(expression)  # Note: Use safe evaluation in production
+    return str(result)
+
+@app.tool
+async def format_text(text: str, style: str) -> str:
+    """Format text in different styles."""
+    if style == "upper":
+        return text.upper()
+    elif style == "lower":
+        return text.lower()
+    elif style == "title":
+        return text.title()
+    return text
+
+# No workflows defined - just tools
+# Deploy: mcp-agent deploy simple-tools-server
+```
+
+## Comparison: MCP Server vs MCP Agent
+
+| Feature | Standard MCP Server | MCP Agent |
+|---------|-------------------|-----------|
+| **Tools** | ✅ Synchronous tools | ✅ Sync + async tools |
+| **Resources** | ✅ Static resources | ✅ Static + dynamic resources |
+| **Prompts** | ✅ Template prompts | ✅ Template + context-aware prompts |
+| **Execution** | ❌ In-memory only | ✅ Durable via Temporal |
+| **Long-running tasks** | ❌ Limited by timeout | ✅ Hours/days/weeks |
+| **Pause/Resume** | ❌ Not supported | ✅ Built-in support |
+| **Human-in-the-loop** | ❌ Manual implementation | ✅ Native support |
+| **Workflow management** | ❌ Not available | ✅ Full lifecycle control |
+| **State persistence** | ❌ Application manages | ✅ Automatic via Temporal |
+| **Retry logic** | ❌ Manual implementation | ✅ Automatic with backoff |
+| **Monitoring** | ⚠️ Basic logging | ✅ Full observability |
+
+## Use Cases for MCP Server Deployment
+
+### Tool Servers
+Deploy servers that provide utility tools without needing AI:
+
+```python
+from fastmcp import FastMCP
+
+mcp = FastMCP("utilities")
+
+@mcp.tool()
+async def hash_text(text: str, algorithm: str = "sha256") -> str:
+    """Generate hash of text."""
+    import hashlib
+    h = hashlib.new(algorithm)
+    h.update(text.encode())
+    return h.hexdigest()
+
+@mcp.tool()
+async def encode_base64(text: str) -> str:
+    """Encode text to base64."""
+    import base64
+    return base64.b64encode(text.encode()).decode()
+
+# Deploy: mcp-agent deploy utilities-server
+```
+
+### Resource Servers
+Expose data and APIs as MCP resources:
+
+```python
+from fastmcp import FastMCP
+
+mcp = FastMCP("data_server")
+
+@mcp.resource("db://users/list")
+async def list_users():
+    """List all users from database."""
+    # Connect to database and fetch users
+    return {"users": [...]}
+
+@mcp.resource("api://status")
+async def api_status():
+    """Get API status information."""
+    return {"status": "healthy", "version": "1.0.0"}
+
+# Deploy: mcp-agent deploy data-server
+```
+
+### Integration Servers
+Bridge existing services to MCP:
+
+```python
+from fastmcp import FastMCP
+import httpx
+
+mcp = FastMCP("jira_bridge")
+
+@mcp.tool()
+async def create_ticket(title: str, description: str) -> dict:
+    """Create a Jira ticket."""
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            "https://your-instance.atlassian.net/rest/api/3/issue",
+            json={"fields": {"summary": title, "description": description}},
+            headers={"Authorization": f"Bearer {API_TOKEN}"}
+        )
+        return response.json()
+```
+
+## Deployment Process
+
+The deployment process is identical whether you're deploying a simple MCP server or a full agent:
+
+```bash
+# 1. Authenticate with mcp-agent cloud
+mcp-agent cloud auth login
+
+# 2. Deploy your server
+mcp-agent deploy --app your_module:app_instance
+
+# 3. Get deployment details
+mcp-agent cloud servers describe <deployment-id>
+
+# 4. Configure clients to connect
+mcp-agent configure <server-url> --client claude
+```
+
+## Benefits of Using **mcp-agent cloud**
+
+Even for simple MCP servers, **mcp-agent cloud** provides:
+
+### Infrastructure Management
+- Automatic SSL/TLS termination
+- Load balancing and auto-scaling
+- High availability
+
+### Security
+- Secure secrets management
+- Authentication and authorization
+- End-to-end encryption
+- Audit logging
+
+### Operations
+- Zero-downtime deployments
+- Automatic health checks
+- Structured logging
+- Monitoring and alerting
+
+### Developer Experience
+- One-command deployment
+- Automatic versioning
+- Preview environments
+- CLI and web management
+
+## Migration Path
+
+Start with a simple MCP server and gradually add agent capabilities:
+
+```python
+# Step 1: Basic MCP server
+from fastmcp import FastMCP
+mcp = FastMCP("my-server")
+
+@mcp.tool()
+async def my_tool(input: str) -> str:
+    return f"Processed: {input}"
+
+# Step 2: Add mcp-agent for workflows (when needed)
+from mcp_agent.app import MCPApp
+app = MCPApp(name="my-agent")
+
+# Keep existing tools
+@app.tool
+async def my_tool(input: str) -> str:
+    return f"Processed: {input}"
+
+# Add workflows when you need durability
+@app.workflow
+class ProcessingWorkflow:
+    @app.workflow_run
+    async def run(self, data: str):
+        # Long-running, durable processing
+        pass
+```
+
+## Best Practices
+
+1. **Start Simple**: Begin with basic MCP server functionality
+2. **Add Workflows When Needed**: Introduce workflows for long-running tasks
+3. **Use Appropriate Execution**: 
+   - Synchronous tools for quick operations
+   - Async tools for I/O-bound operations
+   - Workflows for complex, multi-step processes
+4. **Monitor Usage**: Track which tools are called most frequently
+5. **Version Your Deployments**: Use semantic versioning for your servers
+
+## Next Steps
+
+- [Getting Started with Deployment](/cloud/getting-started)
+- [MCP Server Examples](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp)
+- [Agent Server Documentation](/cloud/agent-server)
+- [FastMCP Documentation](https://github.com/jlowin/fastmcp)

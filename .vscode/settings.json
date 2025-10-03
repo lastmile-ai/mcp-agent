@@ -1,0 +1,17 @@
+{
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true,
+    "editor.rulers": []
+  },
+  "yaml.schemas": {
+    "https://raw.githubusercontent.com/lastmile-ai/mcp-agent/main/schema/mcp-agent.config.schema.json": [
+      "mcp-agent.config.yaml",
+      "mcp_agent.config.yaml",
+      "mcp-agent.secrets.yaml",
+      "mcp_agent.secrets.yaml"
+    ]
+  }
+}

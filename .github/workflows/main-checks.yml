@@ -1,0 +1,14 @@
+name: Main Checks
+
+on:
+  push:
+    branches:
+      - main
+      - "v*.*.*"
+      - work
+    tags:
+      - "v*.*.*"
+
+jobs:
+  checks:
+    uses: ./.github/workflows/checks.yml

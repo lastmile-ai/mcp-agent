@@ -1,0 +1,8 @@
+# Core framework dependency
+mcp-agent @ file://../../../  # Link to the local mcp-agent project root
+
+# Additional dependencies specific to this example
+openai
+streamlit
+qdrant-client
+fastembed

@@ -1,0 +1,7 @@
+# Core framework dependency
+mcp-agent @ file://../../  # Link to the local mcp-agent project root. Remove @ file://../../ for cloud deployment
+
+# Additional dependencies specific to this example
+anthropic
+openai
+temporalio

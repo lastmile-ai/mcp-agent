@@ -1,0 +1,11 @@
+$schema: ../../../../mcp-agent/schema/mcp-agent.config.schema.json
+
+server:
+  bedrock:
+    default_model: anthropic.claude-3-haiku-20240307-v1:0
+    
+    # Dev secret sourced from env var, tagged for secret processing
+    api_key: !developer_secret MCP_BEDROCK_API_KEY
+    
+    # User secret, requires runtime collection, tagged for handle generation
+    user_access_key: !user_secret

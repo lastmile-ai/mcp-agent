@@ -1,0 +1,492 @@
+---
+title: CLI Reference
+description: "Complete reference for mcp-agent command-line interface"
+---
+
+# CLI Reference
+
+> Complete reference for mcp-agent command-line interface, including commands for local development, configuration management, and cloud deployment.
+
+## Installation
+
+Install mcp-agent CLI:
+
+```bash
+# Using uv (recommended)
+uv tool install mcp-agent
+
+# Using pip
+pip install mcp-agent
+```
+
+## Global Options
+
+Available for all commands:
+
+| Option | Description |
+| :----- | :---------- |
+| `--verbose, -v` | Enable verbose output |
+| `--quiet, -q` | Minimize output |
+| `--format <type>` | Output format (`text`, `json`, `yaml`) |
+| `--color/--no-color` | Enable/disable colored output |
+| `--version` | Show version and exit |
+| `--help, -h` | Show help |
+
+## Project Commands
+
+### mcp-agent init
+
+Initialize a new mcp-agent project with templates and boilerplate.
+
+```bash
+mcp-agent init [OPTIONS]
+```
+
+**Options:**
+
+| Option | Description | Default |
+| :----- | :---------- | :------ |
+| `--name <name>` | Project name | Current directory name |
+| `--template <type>` | Project template | `basic` |
+| `--path <dir>` | Target directory | Current directory |
+| `--force` | Overwrite existing files | `false` |
+
+**Examples:**
+```bash
+# Interactive initialization
+mcp-agent init
+
+# With specific template
+mcp-agent init --template temporal --name research-agent
+```
+
+### mcp-agent quickstart
+
+Create example projects with pre-built patterns.
+
+```bash
+mcp-agent quickstart <TYPE> [OPTIONS]
+```
+
+**Available types:**
+- `workflow` - All workflow pattern examples
+- `researcher` - MCP researcher use case
+- `elicitations` - MCP elicitation patterns
+- `state-transfer` - Workflow router example
+- `data-analysis` - Financial analyzer use case
+- `mcp-basic-agent` - Basic MCP agent example
+- `token-counter` - Token counting example
+- `agent-factory` - Agent factory pattern
+- `basic-agent-server` - Basic agent server (asyncio)
+
+**Examples:**
+```bash
+# Create workflow examples
+mcp-agent quickstart workflow
+
+# Create researcher example with force overwrite
+mcp-agent quickstart researcher --force
+```
+
+### mcp-agent go
+
+Quick interactive agent for immediate testing.
+
+```bash
+mcp-agent go [OPTIONS]
+```
+
+**Options:**
+
+| Option | Description | Default |
+| :----- | :---------- | :------ |
+| `--model <name>` | Model to use | Default model |
+| `--servers <list>` | MCP servers to connect | None |
+
+### mcp-agent check
+
+Check configuration and environment.
+
+```bash
+mcp-agent check [OPTIONS]
+```
+
+Validates:
+- Configuration file syntax
+- API key availability
+- MCP server connectivity
+- Temporal connection (if configured)
+
+## Configuration Commands
+
+### mcp-agent config
+
+Manage mcp-agent configuration files.
+
+```bash
+mcp-agent config <COMMAND>
+```
+
+**Commands:**
+
+| Command | Description | Example |
+| :------ | :---------- | :------ |
+| `show` | Display configuration | `mcp-agent config show` |
+| `check` | Validate configuration | `mcp-agent config check` |
+| `edit` | Open in editor | `mcp-agent config edit` |
+| `path` | Show file paths | `mcp-agent config path` |
+
+### mcp-agent keys
+
+Manage API keys and secrets securely.
+
+```bash
+mcp-agent keys <COMMAND> [OPTIONS]
+```
+
+**Commands:**
+
+| Command | Description | Example |
+| :------ | :---------- | :------ |
+| `show` | Display keys (masked) | `mcp-agent keys show` |
+| `set <provider>` | Set API key | `mcp-agent keys set openai` |
+| `unset <provider>` | Remove API key | `mcp-agent keys unset openai` |
+| `test <provider>` | Test connectivity | `mcp-agent keys test anthropic` |
+
+**Supported providers:**
+- `openai` - OpenAI API
+- `anthropic` - Anthropic Claude
+- `google` - Google AI
+- `azure` - Azure OpenAI
+- `bedrock` - AWS Bedrock
+- `cohere` - Cohere
+- `groq` - Groq Cloud
+- `together` - Together AI
+- `ollama` - Local Ollama
+
+**Examples:**
+```bash
+# Set key interactively
+mcp-agent keys set openai
+
+# Set key directly
+mcp-agent keys set anthropic --key "sk-ant-..."
+
+# Test connectivity
+mcp-agent keys test openai
+```
+
+### mcp-agent models
+
+List and configure AI models.
+
+```bash
+mcp-agent models <COMMAND> [OPTIONS]
+```
+
+**Commands:**
+
+| Command | Description | Example |
+| :------ | :---------- | :------ |
+| `list` | List available models | `mcp-agent models list` |
+| `set-default <model>` | Set default model | `mcp-agent models set-default gpt-4o` |
+
+**Examples:**
+```bash
+# List all models
+mcp-agent models list
+
+# Filter by provider
+mcp-agent models list --provider anthropic
+
+# Set default
+mcp-agent models set-default claude-3-5-sonnet-20241022
+```
+
+## Cloud Commands
+
+### Top-level Aliases
+
+These commands are available at the top level for convenience:
+- `mcp-agent deploy` - Deploy to cloud (alias for `cloud deploy`)
+- `mcp-agent login` - Authenticate (alias for `cloud auth login`)
+- `mcp-agent logout` - Sign out (alias for `cloud auth logout`)
+- `mcp-agent whoami` - Show current identity (alias for `cloud auth whoami`)
+
+### mcp-agent login/logout/whoami
+
+Authenticate with MCP Agent Cloud.
+
+```bash
+mcp-agent login    # Authenticate
+mcp-agent whoami   # Show current user
+mcp-agent logout   # Sign out
+
+# Also available under cloud auth:
+mcp-agent cloud auth login
+mcp-agent cloud auth whoami
+mcp-agent cloud auth logout
+```
+
+### mcp-agent deploy
+
+Deploy agent to MCP Agent Cloud.
+
+```bash
+mcp-agent deploy <APP_NAME> [OPTIONS]
+# Also available as: mcp-agent cloud deploy <APP_NAME> [OPTIONS]
+```
+
+**Arguments:**
+- `APP_NAME` - Name of the MCP App to deploy (required)
+
+**Options:**
+
+| Option | Description | Default |
+| :----- | :---------- | :------ |
+| `--app-description, -d` | App description | None |
+| `--config-dir, -c` | Config directory | Current directory |
+| `--no-secrets` | Skip secrets processing | `false` |
+| `--non-interactive` | Fail if prompting needed | `false` |
+| `--dry-run` | Validate without deploying | `false` |
+| `--api-url` | API base URL | `https://deployments.mcp-agent.com` |
+| `--api-key` | API key | From env or config |
+
+**Examples:**
+```bash
+# Simple deployment
+mcp-agent deploy my-agent
+
+# With description and custom config
+mcp-agent deploy my-agent \
+  --app-description "Research assistant" \
+  --config-dir ./config
+
+# Dry run
+mcp-agent deploy my-agent --dry-run
+```
+
+### mcp-agent cloud configure
+
+Configure access to a deployed MCP app.
+
+```bash
+mcp-agent cloud configure --id <SERVER_URL> [OPTIONS]
+```
+
+**Options:**
+
+| Option | Description | Default |
+| :----- | :---------- | :------ |
+| `--id, -i` | Server URL to configure | Required |
+| `--secrets-file, -s` | Path to secrets file | None |
+| `--secrets-output-file, -o` | Output for configured secrets | `mcp_agent.configured.secrets.yaml` |
+| `--params` | Show required params and exit | `false` |
+| `--dry-run` | Validate without storing | `false` |
+
+**Examples:**
+```bash
+# Configure access to an app
+mcp-agent cloud configure --id https://api.mcp-agent.cloud/servers/my-agent
+
+# Show required parameters
+mcp-agent cloud configure --id https://api.mcp-agent.cloud/servers/my-agent --params
+
+# Use existing secrets file
+mcp-agent cloud configure --id <url> --secrets-file ./my-secrets.yaml
+```
+
+### mcp-agent cloud servers
+
+Manage deployed servers.
+
+```bash
+mcp-agent cloud servers <COMMAND>
+```
+
+**Commands:**
+
+| Command | Description | Example |
+| :------ | :---------- | :------ |
+| `list` | List servers | `mcp-agent cloud servers list` |
+| `describe <id>` | Show details | `mcp-agent cloud servers describe srv_123` |
+| `delete <id>` | Delete server | `mcp-agent cloud servers delete srv_123` |
+| `workflows <id>` | List workflows for server | `mcp-agent cloud servers workflows srv_123` |
+
+**Note:** `mcp-agent cloud apps` is an alias for `mcp-agent cloud servers`.
+
+### mcp-agent cloud app
+
+Manage a single MCP App.
+
+```bash
+mcp-agent cloud app <COMMAND>
+```
+
+**Commands:**
+
+| Command | Description | Example |
+| :------ | :---------- | :------ |
+| `delete <id>` | Delete app | `mcp-agent cloud app delete app_123` |
+| `status <id>` | Get app status | `mcp-agent cloud app status app_123` |
+| `workflows <id>` | List app workflows | `mcp-agent cloud app workflows app_123` |
+
+### mcp-agent cloud workflows
+
+Manage workflow executions.
+
+```bash
+mcp-agent cloud workflows <COMMAND>
+```
+
+**Commands:**
+
+| Command | Description | Example |
+| :------ | :---------- | :------ |
+| `list` | List workflow definitions | `mcp-agent cloud workflows list` |
+| `runs` | List workflow runs | `mcp-agent cloud workflows runs` |
+| `describe <id> <run>` | Get workflow status | `mcp-agent cloud workflows describe srv_123 run_456` |
+| `status <id> <run>` | Alias for describe | `mcp-agent cloud workflows status srv_123 run_456` |
+| `suspend <id> <run>` | Pause workflow | `mcp-agent cloud workflows suspend srv_123 run_456` |
+| `resume <id> <run>` | Resume workflow | `mcp-agent cloud workflows resume srv_123 run_456` |
+| `cancel <id> <run>` | Cancel workflow | `mcp-agent cloud workflows cancel srv_123 run_456` |
+
+### mcp-agent cloud logger
+
+View and manage logs.
+
+```bash
+mcp-agent cloud logger <COMMAND>
+```
+
+**Commands:**
+
+| Command | Description | Example |
+| :------ | :---------- | :------ |
+| `tail <id>` | View logs | `mcp-agent cloud logger tail srv_123` |
+| `configure <id>` | Setup logging | `mcp-agent cloud logger configure srv_123` |
+
+**Options for `tail`:**
+- `--follow` - Stream logs in real-time
+- `--since <duration>` - Time range (e.g., `1h`, `30m`)
+- `--from <RFC3339>` - Start time
+- `--to <RFC3339>` - End time
+- `--grep <pattern>` - Filter logs
+- `--limit <n>` - Maximum entries
+- `--orderby <field>` - Sort by field (`time`, `severity`, `tokens`)
+- `--desc/--asc` - Sort order
+
+**Examples:**
+```bash
+# Stream logs
+mcp-agent cloud logger tail srv_123 --follow
+
+# Filter errors from last hour
+mcp-agent cloud logger tail srv_123 --since 1h --grep "ERROR"
+
+# View logs with custom sorting
+mcp-agent cloud logger tail srv_123 --orderby severity --desc --limit 100
+```
+
+## Environment Variables
+
+Configure CLI behavior:
+
+| Variable | Description | Default |
+| :------- | :---------- | :------ |
+| `MCP_API_BASE_URL` | Cloud API endpoint | `https://deployments.mcp-agent.com` |
+| `MCP_API_KEY` | Authentication key | - |
+
+## Configuration Files
+
+mcp-agent uses these configuration files:
+
+| File | Purpose | Location |
+| :--- | :------ | :------- |
+| `mcp_agent.config.yaml` | Project configuration | Project root |
+| `mcp_agent.secrets.yaml` | API keys and secrets | Project root |
+| `credentials.json` | Cloud credentials | `~/.config/mcp-agent/` |
+
+### File Discovery
+
+The CLI searches for configuration files in this order:
+1. Current directory
+2. Parent directories (recursively)
+3. `.mcp-agent` subdirectory in each
+4. `~/.mcp-agent/` (home directory fallback)
+
+Both `mcp_agent.config.yaml` and `mcp-agent.config.yaml` are accepted filenames (same for secrets).
+
+## Complete Examples
+
+### Local Development
+
+```bash
+# Initialize project
+mcp-agent init --template temporal
+
+# Configure API keys
+mcp-agent keys set openai
+mcp-agent keys set anthropic
+
+# Check configuration
+mcp-agent check
+
+# Quick test
+mcp-agent go --model gpt-4o
+
+# Create examples
+mcp-agent quickstart workflow
+```
+
+### Cloud Deployment
+
+```bash
+# Authenticate
+mcp-agent login
+
+# Deploy to cloud
+mcp-agent deploy production-agent
+
+# Check deployment
+mcp-agent cloud servers list
+
+# Monitor logs - this is crucial for debugging!
+mcp-agent cloud logger tail srv_abc123 --follow
+
+# View workflows for a server
+mcp-agent cloud servers workflows srv_abc123
+
+# Check workflow status
+mcp-agent cloud workflows describe srv_abc123 run_456
+```
+
+### Debugging
+
+```bash
+# Check environment
+mcp-agent check
+
+# Test API keys
+mcp-agent keys test openai
+
+# Verbose deployment
+mcp-agent deploy my-agent --verbose
+
+# Check deployment logs with filtering
+mcp-agent cloud logger tail srv_123 \
+  --since 10m \
+  --grep "ERROR|WARN" \
+  --limit 50
+  
+# Dry run deployment
+mcp-agent deploy my-agent --dry-run
+```
+
+## See Also
+
+- [Getting Started](/quickstart)
+- [Configuration Guide](/configuration)
+- [Cloud Deployment](/cloud/getting-started)
+- [Workflow Patterns](/workflows/overview)
+- [Examples](https://github.com/lastmile-ai/mcp-agent/tree/main/examples)

@@ -1,0 +1,49 @@
+name: Create Version Tag from pyproject.toml
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "pyproject.toml"
+  workflow_dispatch: # Enables manual runs
+
+permissions:
+  contents: write
+
+jobs:
+  create-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: "Set up Python"
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+
+      - name: Install dependencies
+        run: pip install toml
+
+      - name: Extract version from pyproject.toml
+        id: get_version
+        run: |
+          version=$(python -c "import toml; print(toml.load('pyproject.toml')['project']['version'])")
+          echo "version=$version" >> $GITHUB_OUTPUT
+
+      - name: Create Git tag if not exists
+        run: |
+          git fetch --tags
+          tag="v${{ steps.get_version.outputs.version }}"
+          if ! git rev-parse "$tag" >/dev/null 2>&1; then
+            git tag "$tag"
+            git push origin "$tag"
+          else
+            echo "Tag $tag already exists."
+          fi

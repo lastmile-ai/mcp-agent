@@ -1,0 +1,256 @@
+---
+title: Installation
+description: "Learn how to install mcp-agent and set up your development environment."
+---
+
+## Prerequisites
+
+<CardGroup cols={2}>
+  <Card title="Python 3.10+" icon="python">
+    mcp-agent requires Python 3.10 or higher
+  </Card>
+  <Card title="Node.js" icon="node-js">
+    Required for some MCP servers like filesystem (optional)
+  </Card>
+</CardGroup>
+
+## Install mcp-agent
+
+<Tabs>
+  <Tab title="uv (Recommended)">
+    We recommend using [uv](https://docs.astral.sh/uv/) for Python project management:
+
+    ```bash
+    # Install uv if you don't have it
+    pip install uv
+
+    # Add mcp-agent to your project
+    uv add "mcp-agent"
+    ```
+
+  </Tab>
+  <Tab title="pip">
+    ```bash
+    pip install mcp-agent
+    ```
+  </Tab>
+</Tabs>
+
+## Install Model Provider Dependencies
+
+mcp-agent supports multiple LLM providers. Choose your preferred provider:
+
+<AccordionGroup>
+  <Accordion title="OpenAI">
+    ```bash
+    # With uv
+    uv add "mcp-agent[openai]"
+
+    # With pip
+    pip install "mcp-agent[openai]"
+    ```
+
+  </Accordion>
+
+  <Accordion title="Anthropic">
+    ```bash
+    # With uv
+    uv add "mcp-agent[anthropic]"
+
+    # Use Anthropic's Claude models via Amazon Bedrock
+    uv add "mcp-agent[anthropic_bedrock]"
+
+    # Use Anthropic's Claude models via Google's Vertex AI
+    uv add "mcp-agent[anthropic_vertex]"
+
+    # With pip
+    pip install "mcp-agent[anthropic]"
+    ```
+
+  </Accordion>
+
+  <Accordion title="Azure OpenAI">
+    ```bash
+    # With uv
+    uv add "mcp-agent[azure]"
+
+    # With pip
+    pip install "mcp-agent[azure]"
+    ```
+
+  </Accordion>
+
+  <Accordion title="AWS Bedrock">
+    ```bash
+    # With uv
+    uv add "mcp-agent[bedrock]"
+
+    # With pip
+    pip install "mcp-agent[bedrock]"
+    ```
+
+  </Accordion>
+
+  <Accordion title="Google Gemini">
+    ```bash
+    # With uv
+    uv add "mcp-agent[google]"
+
+    # With pip
+    pip install "mcp-agent[google]"
+    ```
+
+  </Accordion>
+
+  <Accordion title="All Providers">
+    You can also install dependencies for multiple providers. For example:
+    ```bash
+    # With uv
+    uv add "mcp-agent[openai,anthropic,azure,bedrock,google]"
+
+    # With pip
+    pip install "mcp-agent[openai,anthropic,azure,bedrock,google]"
+    ```
+
+  </Accordion>
+</AccordionGroup>
+
+## Install MCP Servers
+
+mcp-agent works with MCP servers that provide tools, resources, and other capabilities.
+
+<CardGroup cols={2}>
+  <Card
+    title="Fetch Server"
+    icon="globe"
+    href="https://github.com/modelcontextprotocol/servers/tree/main/src/fetch"
+  >
+    Web content fetching capabilities
+  </Card>
+
+<Card
+  title="Filesystem Server"
+  icon="folder"
+  href="https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem"
+>
+  Local file system access
+</Card>
+
+<Card
+  title="SQLite Server"
+  icon="database"
+  href="https://github.com/modelcontextprotocol/servers/tree/main/src/sqlite"
+>
+  SQLite database operations
+</Card>
+
+  <Card
+    title="Git Server"
+    icon="code-branch"
+    href="https://github.com/modelcontextprotocol/servers/tree/main/src/git"
+  >
+    Git repository operations
+  </Card>
+</CardGroup>
+
+<Info>
+  For more MCP servers, check out the [Awesome MCP
+  Servers](https://github.com/punkpeye/awesome-mcp-servers) repository.
+</Info>
+
+## Verify Installation
+
+Create a simple test file to verify your installation:
+
+<CodeGroup>
+
+```python test_mcp_agent.py
+import asyncio
+from mcp_agent.app import MCPApp
+
+async def test_installation():
+  app = MCPApp(name="test_app")
+
+  async with app.run() as mcp_agent_app:
+    logger = mcp_agent_app.logger
+    logger.info("mcp-agent installed successfully!")
+    print("✅ mcp-agent is working!")
+
+if __name__ == "__main__":
+asyncio.run(test_installation())
+
+```
+
+</CodeGroup>
+
+Run the test:
+
+```bash
+python test_mcp_agent.py
+```
+
+<Check>
+  You should see output confirming that mcp-agent is working correctly.
+</Check>
+
+## Development Setup
+
+<Steps>
+  <Step title="Clone the Repository">
+    ```bash
+    git clone https://github.com/lastmile-ai/mcp-agent.git
+    cd mcp-agent
+    ```
+  </Step>
+  
+  <Step title="Install Dependencies">
+    ```bash
+    # Sync project dependencies
+    uv sync --all-extras
+    ```
+
+  </Step>
+  
+  <Step title="Run Examples">
+    ```bash
+    # Navigate to any example
+    cd examples/basic/mcp_basic_agent
+
+    # Copy and configure secrets
+    cp mcp_agent.secrets.yaml.example mcp_agent.secrets.yaml
+    # Edit mcp_agent.secrets.yaml with your API keys
+
+    # Run the example
+    uv run main.py
+    ```
+
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Python Version Issues">
+    mcp-agent requires Python 3.10+. Check your Python version:
+
+    ```bash
+    python --version
+    ```
+
+    If you need to install a newer Python version, consider using [pyenv](https://github.com/pyenv/pyenv):
+
+    ```bash
+    # Install pyenv (macOS)
+    brew install pyenv
+
+    # Install Python 3.11
+    pyenv install 3.11.0
+    pyenv global 3.11.0
+    ```
+
+  </Accordion>
+</AccordionGroup>
+
+<Card title="Next Steps" icon="arrow-right" href="/quickstart">
+  Now that you have mcp-agent installed, let's create your first agent!
+</Card>

@@ -1,0 +1,204 @@
+---
+title: Introduction
+description: "Framework for building AI agents using Model Context Protocol"
+---
+
+<video controls width="100%">
+  <source src="https://github.com/user-attachments/assets/f651af86-222d-4df0-8241-616414df66e4" type="video/mp4" />
+  Your browser does not support the video tag.
+</video>
+
+## Overview
+
+mcp-agent is a Python framework for building AI agents using the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction). It implements patterns from [Anthropic's Building Effective Agents](https://www.anthropic.com/research/building-effective-agents) guide and provides integration with any MCP-compatible server.
+
+The framework handles:
+- MCP server lifecycle management and connections
+- Agent workflow patterns (parallel, routing, orchestration, etc.)
+- Multi-agent coordination
+- Integration with multiple LLM providers
+- Deployment as MCP servers
+
+## Key Features
+
+### MCP Protocol Support
+- Connect to any MCP server via stdio, SSE, WebSocket, or HTTP
+- Access tools, resources, prompts, and file system roots
+- Automatic tool discovery and integration
+- Sampling, elicitation, and notifications
+
+### Agent Patterns
+Implementation of all patterns from Anthropic's research:
+- [Parallel Processing](/workflows/parallel) - Fan-out tasks to multiple agents
+- [Routing](/workflows/router) - Intelligent request routing
+- [Orchestrator-Workers](/workflows/orchestrator) - Plan and execute complex tasks
+- [Evaluator-Optimizer](/workflows/evaluator-optimizer) - Iterative improvement
+- [Intent Classification](/workflows/intent-classifier) - Understand user intent
+- [Swarm](/workflows/swarm) - Multi-agent collaboration
+- [Deep Orchestrator](/workflows/deep-orchestrator) - Adaptive planning with knowledge extraction
+
+### Execution Engines
+- **asyncio** - In-memory execution for development and simple deployments
+- **Temporal** - Durable execution with automatic retries, pause/resume, and workflow history
+
+### LLM Support
+Works with:
+- OpenAI (GPT-4, GPT-4o)
+- Anthropic (Claude 3, Claude 3.5)
+- Google (Gemini)
+- Azure OpenAI
+- AWS Bedrock
+- Local models via Ollama
+
+## Quick Example
+
+```python main.py
+import asyncio
+from mcp_agent.app import MCPApp
+from mcp_agent.agents.agent import Agent
+from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
+
+app = MCPApp(name="example_agent")
+
+@app.tool
+async def research()->str:
+    '''
+    Research quatum computing function / tool call
+    '''
+    result=""
+    async with app.run() as mcp_agent_app:
+
+        # Create agent with MCP server access
+        agent = Agent(
+            name="researcher",
+            instruction="Research topics using available tools",
+            server_names=["fetch", "filesystem"]
+        )
+        
+        async with agent:
+            # List available tools from MCP servers
+            tools = await agent.list_tools()
+            print(f"Available tools: {[t.name for t in tools.tools]}")
+            
+            # Attach LLM for interaction
+            llm = await agent.attach_llm(OpenAIAugmentedLLM)
+            
+            # Agent can now use MCP server tools
+            result = await llm.generate_str("Research quantum computing")
+            print(result)
+    return result
+
+if __name__ == "__main__":
+    asyncio.run(research())
+```
+
+## Example Applications
+Explore working examples in the [examples directory](https://github.com/lastmile-ai/mcp-agent/tree/main/examples):
+
+- **Agent as MCP Server**: Deploy agents as MCP servers for Claude Desktop integration ([examples/mcp_agent_server](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp_agent_server))
+- **Workflow Patterns**: All patterns from Anthropic's Building Effective Agents guide ([examples/workflows](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows))
+- **Basic Agents**: Simple agent examples with various MCP servers ([examples/basic](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/basic))
+- **Temporal Integration**: Durable workflow execution examples ([examples/temporal](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/temporal))
+- **Model Providers**: Examples for OpenAI, Anthropic, Google, Azure, Bedrock ([examples/model_providers](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/model_providers))
+
+## Installation
+
+Using uv (recommended):
+```bash
+uv add mcp-agent
+```
+
+Using pip:
+```bash
+pip install mcp-agent
+```
+
+Install with specific LLM provider:
+```bash
+# OpenAI
+uv add "mcp-agent[openai]"
+
+# Anthropic
+uv add "mcp-agent[anthropic]"
+
+# All providers
+uv add "mcp-agent[openai,anthropic,azure,bedrock,google]"
+```
+
+## Configuration
+
+mcp-agent uses two configuration files:
+
+**mcp_agent.config.yaml** - Application configuration:
+```yaml mcp_agent.config.yaml
+execution_engine: asyncio  # or temporal
+logger:
+  transports: [console]
+  level: info
+
+mcp:
+  servers:
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+    filesystem:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+
+openai:
+  default_model: gpt-4o
+```
+
+**mcp_agent.secrets.yaml** - API keys and secrets:
+```yaml mcp_agent.secrets.yaml
+openai:
+  api_key: "sk-..."
+```
+
+## Project Structure
+
+```
+your-project/
+├── agent.py               # Your agent code
+├── mcp_agent.config.yaml  # Configuration
+├── mcp_agent.secrets.yaml # API keys (gitignored)
+└── logs/                  # Execution logs
+```
+
+## Deployment Options
+
+### Local Development
+Run agents locally with asyncio execution engine for rapid development.
+
+### [Production with Temporal](advanced/temporal)
+Use Temporal for durable execution, automatic retries, and workflow management.
+
+### [As a MCP Server](cloud/agent-server)
+Expose your agents as MCP servers that can be used by Claude Desktop, VS Code, or other MCP clients.
+
+### [mcp-agent cloud](cloud/overview)
+Deploy agents to managed cloud infrastructure with one command.
+
+## Examples
+
+The [examples directory](https://github.com/lastmile-ai/mcp-agent/tree/main/examples) contains 30+ working examples:
+
+- **Basic agents** - Simple patterns and MCP server usage
+- **Workflow patterns** - All patterns from Anthropic's guide
+- **Integrations** - Claude Desktop, Streamlit, Jupyter
+- **MCP servers** - Agents exposed as MCP servers
+- **Temporal** - Durable execution examples
+
+## Next Steps
+
+- [Installation](/installation) - Set up your development environment
+- [Quick Start](/quickstart) - Build your first agent
+- [Core Concepts](/concepts/agents) - Understand agents, workflows, and MCP
+- [Examples](https://github.com/lastmile-ai/mcp-agent/tree/main/examples) - Learn from working code
+
+## Resources
+
+- [Model Context Protocol](https://modelcontextprotocol.io) - MCP specification
+- [Building Effective Agents](https://www.anthropic.com/research/building-effective-agents) - Anthropic's guide
+- [GitHub Repository](https://github.com/lastmile-ai/mcp-agent) - Source code
+- [Discord Community](https://lmai.link/discord/mcp-agent) - Get help and discuss

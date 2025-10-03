@@ -1,0 +1,27 @@
+$schema: ../../../schema/mcp-agent.config.schema.json
+
+execution_engine: asyncio
+logger:
+  transports: [console, file]
+  level: debug
+  show_progress: true
+  path_settings:
+    path_pattern: "logs/mcp-agent-{unique_id}.jsonl"
+    unique_id: "timestamp" # Options: "timestamp" or "session_id"
+    timestamp_format: "%Y%m%d_%H%M%S"
+
+mcp:
+  servers:
+    smithery-github:
+      name: "@smithery/github"
+      description: "github server"
+      transport: "websocket"
+      # This URL needs to be constructed on Smithery. Smithery requires server json configSchema
+      # object to be passed in as base64. See details here:
+      # https://smithery.ai/docs/registry#connecting-to-websocket-servers
+      # url: "wss://server.smithery.ai/@smithery-ai/github/ws?config=ewogICJnaXRodWJQZXJzb25hbEFjY2Vzc1Rva2VuIjogImdpdGh1Yl9wYXRfMTFBR0RVSFRZMHY0aUM3eG5YaXZNc19NNkllUFZjcUZud1p4RWE5b2p4Qk9wNThla3ZXQk5IeWlLZDVUd3VPN3kyNDJLMkpKUkk0VThJZkdrZSIKfQ"
+
+openai:
+  # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored
+  #  default_model: "o3-mini"
+  default_model: "gpt-4o"
