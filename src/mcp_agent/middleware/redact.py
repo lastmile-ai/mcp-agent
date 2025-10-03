@@ -1,4 +1,5 @@
 import re
+from typing import Iterable
 
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
@@ -19,7 +20,6 @@ def redact_text(s: str) -> str:
 
 class RedactionMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        # Drop Authorization from request logs
         scope = request.scope
         headers = list(scope.get("headers", []))
         filtered = []
@@ -29,7 +29,6 @@ class RedactionMiddleware(BaseHTTPMiddleware):
             filtered.append((k, v))
         scope["headers"] = filtered
         resp = await call_next(request)
-        # Drop Authorization from response logs
         resp.headers.pop("authorization", None)
         resp.headers.pop("Authorization", None)
         return resp

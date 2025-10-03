@@ -22,4 +22,3 @@ async def test_mount_and_clear(monkeypatch):
     ) as tok:
         h = tok.as_header()
         assert "Authorization" in h and h["Authorization"].startswith("token ")
-    # Context exit should run cleanup without raising.
