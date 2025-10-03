@@ -92,16 +92,24 @@ class TracingConfig:
             }
         )
 
-        # Create provider with resource and sampler (respect sample_rate)
-        sample_rate = settings.sample_rate if settings.sample_rate is not None else 1.0
-        try:
-            sample_rate = max(0.0, min(1.0, float(sample_rate)))
-        except Exception:
-            sample_rate = 1.0
-        tracer_provider = TracerProvider(
-            resource=resource,
-            sampler=ParentBased(TraceIdRatioBased(sample_rate)),
-        )
+        # Create provider with resource and optional sampler (respect sample_rate when explicitly set)
+        sampler = None
+        if (
+            "sample_rate" in settings.model_fields_set
+            and settings.sample_rate is not None
+        ):
+            sample_rate = settings.sample_rate
+            try:
+                sample_rate = max(0.0, min(1.0, float(sample_rate)))
+            except Exception:  # If parsing fails, fall back to full sampling
+                sample_rate = 1.0
+            sampler = ParentBased(TraceIdRatioBased(sample_rate))
+
+        tracer_provider_kwargs = {"resource": resource}
+        if sampler is not None:
+            tracer_provider_kwargs["sampler"] = sampler
+
+        tracer_provider = TracerProvider(**tracer_provider_kwargs)
 
         for exporter in settings.exporters:
             # Exporter entries can be strings (legacy) or typed configs with a 'type' attribute

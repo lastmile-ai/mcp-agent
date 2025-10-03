@@ -10,7 +10,20 @@ The tracing implementation will log spans to the console for all AugmentedLLM me
 
 ### Exporting to Collector
 
-If desired, [install Jaeger locally](https://www.jaegertracing.io/docs/2.5/getting-started/) and then update the `mcp_agent.config.yaml` to include a typed OTLP exporter with the collector endpoint (e.g. `http://localhost:4318/v1/traces`):
+If desired, [install Jaeger locally](https://www.jaegertracing.io/docs/2.5/getting-started/):
+
+```
+docker run
+ --rm --name jaeger \
+  -p 16686:16686 \
+  -p 4317:4317 \
+  -p 4318:4318 \
+  -p 5778:5778 \
+  -p 9411:9411 \
+  jaegertracing/jaeger:2.5.0
+```
+
+Then update the `mcp_agent.config.yaml` to include a typed OTLP exporter with the collector endpoint (e.g. `http://localhost:4318/v1/traces`):
 
 ```yaml
 otel:

@@ -476,7 +476,7 @@ class TraceOTLPSettings(BaseModel):
     Settings for OTLP exporter in OpenTelemetry.
     """
 
-    endpoint: str | None = None
+    endpoint: str
     """OTLP endpoint for exporting traces."""
 
     headers: Dict[str, str] | None = None
@@ -575,10 +575,20 @@ class OpenTelemetrySettings(BaseModel):
         # If exporters are literal strings, up-convert to typed configs
         if isinstance(exporters, list) and all(isinstance(e, str) for e in exporters):
             typed_exporters: List[Dict] = []
-            # Legacy helpers
-            legacy_otlp = data.get("otlp_settings") or {}
+
+            # Legacy helpers (can arrive as dicts or BaseModel instances)
+            legacy_otlp = data.get("otlp_settings")
+            if isinstance(legacy_otlp, BaseModel):
+                legacy_otlp = legacy_otlp.model_dump(exclude_none=True)
+            elif not isinstance(legacy_otlp, dict):
+                legacy_otlp = {}
+
             legacy_path = data.get("path")
             legacy_path_settings = data.get("path_settings")
+            if isinstance(legacy_path_settings, BaseModel):
+                legacy_path_settings = legacy_path_settings.model_dump(
+                    exclude_none=True
+                )
 
             for name in exporters:
                 if name == "console":
@@ -599,6 +609,12 @@ class OpenTelemetrySettings(BaseModel):
                             "headers": (legacy_otlp or {}).get("headers"),
                         }
                     )
+                else:
+                    raise ValueError(
+                        f"Unsupported OpenTelemetry exporter '{name}'. "
+                        "Supported exporters: console, file, otlp."
+                    )
+
             # Overwrite with transformed list
             data["exporters"] = typed_exporters
 
