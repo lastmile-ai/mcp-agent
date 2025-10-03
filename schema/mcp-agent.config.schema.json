@@ -314,6 +314,55 @@
       "title": "CohereSettings",
       "type": "object"
     },
+    "ConsoleExporterSettings": {
+      "additionalProperties": true,
+      "properties": {
+        "type": {
+          "const": "console",
+          "default": "console",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "title": "ConsoleExporterSettings",
+      "type": "object"
+    },
+    "FileExporterSettings": {
+      "additionalProperties": true,
+      "properties": {
+        "type": {
+          "const": "file",
+          "default": "file",
+          "title": "Type",
+          "type": "string"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Path"
+        },
+        "path_settings": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TracePathSettings"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "FileExporterSettings",
+      "type": "object"
+    },
     "GoogleSettings": {
       "additionalProperties": true,
       "description": "Settings for using Google models in the MCP Agent application.",
@@ -786,6 +835,46 @@
       "title": "MCPSettings",
       "type": "object"
     },
+    "OTLPExporterSettings": {
+      "additionalProperties": true,
+      "properties": {
+        "type": {
+          "const": "otlp",
+          "default": "otlp",
+          "title": "Type",
+          "type": "string"
+        },
+        "endpoint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Endpoint"
+        },
+        "headers": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Headers"
+        }
+      },
+      "title": "OTLPExporterSettings",
+      "type": "object"
+    },
     "OpenAISettings": {
       "additionalProperties": true,
       "description": "Settings for using OpenAI models in the MCP Agent application.",
@@ -879,16 +968,40 @@
         "exporters": {
           "default": [],
           "items": {
-            "enum": [
-              "console",
-              "file",
-              "otlp"
-            ],
-            "type": "string"
+            "anyOf": [
+              {
+                "enum": [
+                  "console",
+                  "file",
+                  "otlp"
+                ],
+                "type": "string"
+              },
+              {
+                "discriminator": {
+                  "mapping": {
+                    "console": "#/$defs/ConsoleExporterSettings",
+                    "file": "#/$defs/FileExporterSettings",
+                    "otlp": "#/$defs/OTLPExporterSettings"
+                  },
+                  "propertyName": "type"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/ConsoleExporterSettings"
+                  },
+                  {
+                    "$ref": "#/$defs/FileExporterSettings"
+                  },
+                  {
+                    "$ref": "#/$defs/OTLPExporterSettings"
+                  }
+                ]
+              }
+            ]
           },
           "title": "Exporters",
-          "type": "array",
-          "description": "List of exporters to use (can enable multiple simultaneously)"
+          "type": "array"
         },
         "service_name": {
           "default": "mcp-agent",
@@ -935,30 +1048,7 @@
             }
           ],
           "default": null,
-          "description": "OTLP settings for OpenTelemetry tracing. Required if using otlp exporter."
-        },
-        "path": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Path"
-        },
-        "path_settings": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/TracePathSettings"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
+          "description": "Deprecated single OTLP settings. Prefer exporters list with type \"otlp\"."
         }
       },
       "title": "OpenTelemetrySettings",
@@ -1096,16 +1186,8 @@
       "description": "Settings for OTLP exporter in OpenTelemetry.",
       "properties": {
         "endpoint": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
           "title": "Endpoint",
+          "type": "string",
           "description": "OTLP endpoint for exporting traces."
         },
         "headers": {
@@ -1125,6 +1207,9 @@
           "description": "Optional headers for OTLP exporter."
         }
       },
+      "required": [
+        "endpoint"
+      ],
       "title": "TraceOTLPSettings",
       "type": "object"
     },
@@ -1320,9 +1405,7 @@
         "service_instance_id": null,
         "service_version": null,
         "sample_rate": 1.0,
-        "otlp_settings": null,
-        "path": null,
-        "path_settings": null
+        "otlp_settings": null
       },
       "description": "OpenTelemetry logging settings for the MCP Agent application"
     },

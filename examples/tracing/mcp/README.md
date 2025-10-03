@@ -48,7 +48,15 @@ Then open `mcp_agent.secrets.yaml` and add your api key for your preferred LLM f
 
 ## `3` Configure Jaeger Collector
 
-[Run Jaeger locally](https://www.jaegertracing.io/docs/2.5/getting-started/) and then update the `mcp_agent.config.yaml` for this example to have `otel.otlp_settings.endpoint` point to the collector endpoint (e.g. `http://localhost:4318/v1/traces` is the default for Jaeger via HTTP).
+[Run Jaeger locally](https://www.jaegertracing.io/docs/2.5/getting-started/) and then update the `mcp_agent.config.yaml` to include a typed OTLP exporter with the collector endpoint (e.g. `http://localhost:4318/v1/traces`):
+
+```yaml
+otel:
+  enabled: true
+  exporters:
+    - type: otlp
+      endpoint: "http://localhost:4318/v1/traces"
+```
 
 ## `4` Run locally
 
