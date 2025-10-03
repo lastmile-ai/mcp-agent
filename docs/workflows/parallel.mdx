@@ -7,19 +7,23 @@ description: "Execute multiple tasks simultaneously with intelligent result aggr
 <img src="https://www.anthropic.com/_next/image?url=https%3A%2F%2Fwww-cdn.anthropic.com%2Fimages%2F4zrzovbb%2Fwebsite%2F406bb032ca007fd1624f261af717d70e6ca86286-2401x1000.png&w=3840&q=75" alt="Parallel Workflow Pattern" />
 
 {/* TODO: Add ASCII diagram from examples/workflows/workflow_parallel/README.md */}
-```plaintext
-                ┌────────────────┐
-            ┌──▶│ Proofreader    ├───┐
-            │   │ Agent          │   │
-            │   └────────────────┘   │
-┌─────────────┐ │   ┌────────────────┐   │     ┌─────────┐
-│ ParallelLLM ├─┼──▶│ Fact Checker   ├───┼────▶│ Grader  │
-└─────────────┘ │   │ Agent          │   │     │ Agent   │
-            │   └────────────────┘   │     └─────────┘
-            │   ┌────────────────┐   │
-            └──▶│ Style Enforcer ├───┘
-                │ Agent          │
-                └────────────────┘
+```mermaid
+---
+title: Parallel Workflow Pattern - Fan-Out/Fan-In Architecture
+---
+graph LR
+    A[ParallelLLM] --> B[Proofreader Agent]
+    A --> C[Fact Checker Agent]
+    A --> D[Style Enforcer Agent]
+    B --> E[Grader Agent]
+    C --> E
+    D --> E
+
+    style A fill:#e1f5fe
+    style B fill:#f3e5f5
+    style C fill:#f3e5f5
+    style D fill:#f3e5f5
+    style E fill:#e8f5e8
 ```
 
 ## Overview
