@@ -1,5 +1,0 @@
-ignored:
-  - DL3018  # pin apk add packages (not used in slim Python)
-  - DL3059  # multiple consecutive RUN (OK in readability context)
-  - DL3008  # pin apt-get packages (not applicable here)
-failure-threshold: warning

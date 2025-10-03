@@ -1,6 +1,0 @@
-name: Main Checks
-on:
-  workflow_dispatch:
-jobs:
-  checks:
-    uses: ./.github/workflows/checks.yml
