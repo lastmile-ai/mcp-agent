@@ -89,3 +89,16 @@ def test_legacy_exporters_with_base_models():
 def test_legacy_unknown_exporter_raises():
     with pytest.raises(ValueError, match="Unsupported OpenTelemetry exporter"):
         OpenTelemetrySettings(exporters=["console", "bogus"])
+
+
+def test_literal_exporters_become_typed_configs():
+    settings = OpenTelemetrySettings(exporters=["console", "file", "otlp"])
+
+    assert len(settings.exporters) == 3
+    assert [
+        type(exporter) for exporter in settings.exporters
+    ] == [
+        ConsoleExporterSettings,
+        FileExporterSettings,
+        OTLPExporterSettings,
+    ]

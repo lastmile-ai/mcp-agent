@@ -622,6 +622,56 @@ class OpenTelemetrySettings(BaseModel):
 
         return data
 
+    @model_validator(mode="after")
+    def _finalize_exporters(cls, values: "OpenTelemetrySettings"):
+        """Ensure exporters are instantiated as typed configs even if literals were provided."""
+
+        typed_exporters: List[OpenTelemetryExporterSettings] = []
+
+        legacy_path = getattr(values, "path", None)
+        legacy_path_settings = getattr(values, "path_settings", None)
+        if isinstance(legacy_path_settings, dict):
+            legacy_path_settings = TracePathSettings.model_validate(legacy_path_settings)
+
+        for exporter in values.exporters:
+            if isinstance(exporter, OpenTelemetryExporterBase):
+                typed_exporters.append(exporter)  # Already typed
+                continue
+
+            if exporter == "console":
+                typed_exporters.append(ConsoleExporterSettings())
+            elif exporter == "file":
+                typed_exporters.append(
+                    FileExporterSettings(
+                        path=legacy_path,
+                        path_settings=legacy_path_settings,
+                    )
+                )
+            elif exporter == "otlp":
+                endpoint = None
+                headers = None
+                if values.otlp_settings:
+                    endpoint = getattr(values.otlp_settings, "endpoint", None)
+                    headers = getattr(values.otlp_settings, "headers", None)
+                typed_exporters.append(
+                    OTLPExporterSettings(endpoint=endpoint, headers=headers)
+                )
+            else:  # pragma: no cover - safeguarded by pre-validator, but keep defensive path
+                raise ValueError(
+                    f"Unsupported OpenTelemetry exporter '{exporter}'. "
+                    "Supported exporters: console, file, otlp."
+                )
+
+        values.exporters = typed_exporters
+
+        # Remove legacy extras once we've consumed them to avoid leaking into dumps
+        if hasattr(values, "path"):
+            delattr(values, "path")
+        if hasattr(values, "path_settings"):
+            delattr(values, "path_settings")
+
+        return values
+
 
 class LogPathSettings(BaseModel):
     """
