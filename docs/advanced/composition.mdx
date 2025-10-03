@@ -34,9 +34,10 @@ Chain different workflow patterns together:
 
 ```python
 from mcp_agent.app import MCPApp
-from mcp_agent.workflows import Workflow, WorkflowResult
+from mcp_agent.executor.workflow import Workflow, WorkflowResult
 from mcp_agent.agents.agent import Agent
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
+from datetime import datetime
 
 app = MCPApp(name="composed_agent")
 

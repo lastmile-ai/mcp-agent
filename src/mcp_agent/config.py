@@ -4,16 +4,23 @@ for the application configuration.
 """
 
 import sys
+from httpx import URL
 from io import StringIO
 from pathlib import Path
-from typing import Dict, List, Literal, Optional, Set
+from typing import Annotated, Dict, List, Literal, Optional, Set, Union
 import threading
 import warnings
 
-from httpx import URL
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
+import yaml
 
 from mcp_agent.agents.agent_spec import AgentSpec
 
@@ -107,8 +114,11 @@ class MCPServerSettings(BaseModel):
     """Environment variables to pass to the server process."""
 
     allowed_tools: Set[str] | None = None
-    """Set of tool names to allow from this server. If specified, only these tools will be exposed to agents. 
-    Tool names should match exactly. [WARNING] Empty list will result LLM have no access to tools."""
+    """
+    Set of tool names to allow from this server. If specified, only these tools will be exposed to agents. 
+    Tool names should match exactly. 
+    Note: Empty list will result in the agent having no access to tools.
+    """
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
@@ -466,13 +476,51 @@ class TraceOTLPSettings(BaseModel):
     Settings for OTLP exporter in OpenTelemetry.
     """
 
-    endpoint: str | None = None
+    endpoint: str
     """OTLP endpoint for exporting traces."""
 
     headers: Dict[str, str] | None = None
     """Optional headers for OTLP exporter."""
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
+
+class OpenTelemetryExporterBase(BaseModel):
+    """
+    Base class for OpenTelemetry exporter configuration.
+
+    This is used as the discriminated base for exporter-specific configs.
+    """
+
+    type: Literal["console", "file", "otlp"]
+
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
+
+class ConsoleExporterSettings(OpenTelemetryExporterBase):
+    type: Literal["console"] = "console"
+
+
+class FileExporterSettings(OpenTelemetryExporterBase):
+    type: Literal["file"] = "file"
+    path: str | None = None
+    path_settings: TracePathSettings | None = None
+
+
+class OTLPExporterSettings(OpenTelemetryExporterBase):
+    type: Literal["otlp"] = "otlp"
+    endpoint: str | None = None
+    headers: Dict[str, str] | None = None
+
+
+OpenTelemetryExporterSettings = Annotated[
+    Union[
+        ConsoleExporterSettings,
+        FileExporterSettings,
+        OTLPExporterSettings,
+    ],
+    Field(discriminator="type"),
+]
 
 
 class OpenTelemetrySettings(BaseModel):
@@ -482,8 +530,17 @@ class OpenTelemetrySettings(BaseModel):
 
     enabled: bool = False
 
-    exporters: List[Literal["console", "file", "otlp"]] = []
-    """List of exporters to use (can enable multiple simultaneously)"""
+    exporters: List[
+        Union[Literal["console", "file", "otlp"], OpenTelemetryExporterSettings]
+    ] = []
+    """
+    Exporters to use (can enable multiple simultaneously). Each exporter has
+    its own typed configuration.
+
+    Backward compatible: a YAML list of literal strings (e.g. ["console", "otlp"]) is
+    accepted and will be transformed, sourcing settings from legacy fields
+    like `otlp_settings`, `path` and `path_settings` if present.
+    """
 
     service_name: str = "mcp-agent"
     service_instance_id: str | None = None
@@ -492,23 +549,128 @@ class OpenTelemetrySettings(BaseModel):
     sample_rate: float = 1.0
     """Sample rate for tracing (1.0 = sample everything)"""
 
+    # Deprecated: use exporters: [{ type: "otlp", ... }]
     otlp_settings: TraceOTLPSettings | None = None
-    """OTLP settings for OpenTelemetry tracing. Required if using otlp exporter."""
-
-    path: str | None = None
-    """
-    Direct path for trace file. If specified, this takes precedence over path_settings.
-    Useful for test scenarios where you want full control over the trace file location.
-    """
-
-    # Settings for advanced trace path configuration for file exporter
-    path_settings: TracePathSettings | None = None
-    """
-    Save trace files with more advanced path semantics, like having timestamps or session id in the trace name.
-    Ignored if 'path' is specified.
-    """
+    """Deprecated single OTLP settings. Prefer exporters list with type "otlp"."""
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_exporters_schema(cls, data: Dict) -> Dict:
+        """
+        Backward compatibility shim to allow:
+          - exporters: ["console", "file", "otlp"] with legacy per-exporter fields
+          - exporters already in discriminated-union form
+        """
+        if not isinstance(data, dict):
+            return data
+
+        exporters = data.get("exporters")
+
+        # If exporters are already objects with a 'type', leave as-is
+        if isinstance(exporters, list) and all(
+            isinstance(e, dict) and "type" in e for e in exporters
+        ):
+            return data
+
+        # If exporters are literal strings, up-convert to typed configs
+        if isinstance(exporters, list) and all(isinstance(e, str) for e in exporters):
+            typed_exporters: List[Dict] = []
+
+            # Legacy helpers (can arrive as dicts or BaseModel instances)
+            legacy_otlp = data.get("otlp_settings")
+            if isinstance(legacy_otlp, BaseModel):
+                legacy_otlp = legacy_otlp.model_dump(exclude_none=True)
+            elif not isinstance(legacy_otlp, dict):
+                legacy_otlp = {}
+
+            legacy_path = data.get("path")
+            legacy_path_settings = data.get("path_settings")
+            if isinstance(legacy_path_settings, BaseModel):
+                legacy_path_settings = legacy_path_settings.model_dump(
+                    exclude_none=True
+                )
+
+            for name in exporters:
+                if name == "console":
+                    typed_exporters.append({"type": "console"})
+                elif name == "file":
+                    typed_exporters.append(
+                        {
+                            "type": "file",
+                            "path": legacy_path,
+                            "path_settings": legacy_path_settings,
+                        }
+                    )
+                elif name == "otlp":
+                    typed_exporters.append(
+                        {
+                            "type": "otlp",
+                            "endpoint": (legacy_otlp or {}).get("endpoint"),
+                            "headers": (legacy_otlp or {}).get("headers"),
+                        }
+                    )
+                else:
+                    raise ValueError(
+                        f"Unsupported OpenTelemetry exporter '{name}'. "
+                        "Supported exporters: console, file, otlp."
+                    )
+
+            # Overwrite with transformed list
+            data["exporters"] = typed_exporters
+
+        return data
+
+    @model_validator(mode="after")
+    def _finalize_exporters(cls, values: "OpenTelemetrySettings"):
+        """Ensure exporters are instantiated as typed configs even if literals were provided."""
+
+        typed_exporters: List[OpenTelemetryExporterSettings] = []
+
+        legacy_path = getattr(values, "path", None)
+        legacy_path_settings = getattr(values, "path_settings", None)
+        if isinstance(legacy_path_settings, dict):
+            legacy_path_settings = TracePathSettings.model_validate(legacy_path_settings)
+
+        for exporter in values.exporters:
+            if isinstance(exporter, OpenTelemetryExporterBase):
+                typed_exporters.append(exporter)  # Already typed
+                continue
+
+            if exporter == "console":
+                typed_exporters.append(ConsoleExporterSettings())
+            elif exporter == "file":
+                typed_exporters.append(
+                    FileExporterSettings(
+                        path=legacy_path,
+                        path_settings=legacy_path_settings,
+                    )
+                )
+            elif exporter == "otlp":
+                endpoint = None
+                headers = None
+                if values.otlp_settings:
+                    endpoint = getattr(values.otlp_settings, "endpoint", None)
+                    headers = getattr(values.otlp_settings, "headers", None)
+                typed_exporters.append(
+                    OTLPExporterSettings(endpoint=endpoint, headers=headers)
+                )
+            else:  # pragma: no cover - safeguarded by pre-validator, but keep defensive path
+                raise ValueError(
+                    f"Unsupported OpenTelemetry exporter '{exporter}'. "
+                    "Supported exporters: console, file, otlp."
+                )
+
+        values.exporters = typed_exporters
+
+        # Remove legacy extras once we've consumed them to avoid leaking into dumps
+        if hasattr(values, "path"):
+            delattr(values, "path")
+        if hasattr(values, "path_settings"):
+            delattr(values, "path_settings")
+
+        return values
 
 
 class LogPathSettings(BaseModel):
@@ -599,6 +761,12 @@ class Settings(BaseSettings):
         extra="allow",
         nested_model_default_partial_update=True,
     )  # Customize the behavior of settings here
+
+    name: str | None = None
+    """The name of the MCP application"""
+
+    description: str | None = None
+    """The description of the MCP application"""
 
     mcp: MCPSettings | None = Field(default_factory=MCPSettings)
     """MCP config, such as MCP servers"""
@@ -731,8 +899,47 @@ def _clear_global_settings():
     _settings = None
 
 
-def get_settings(config_path: str | None = None) -> Settings:
-    """Get settings instance, automatically loading from config file if available."""
+def _set_and_warn_global_settings(settings: Settings) -> None:
+    """Set global settings and warn if called from non-main thread."""
+    global _settings
+    _settings = settings
+    # Thread-safety advisory: warn when setting global singleton from non-main thread
+    if threading.current_thread() is not threading.main_thread():
+        warnings.warn(
+            "get_settings() is setting the global Settings singleton from a non-main thread. "
+            "In multithreaded environments, use get_settings(set_global=False) to avoid "
+            "global state modification, or pass the Settings instance explicitly to MCPApp(settings=...).",
+            stacklevel=3,  # Adjusted stacklevel since we're now in a helper function
+        )
+
+
+def _check_file_exists(file_path: (str | Path)) -> bool:
+    """Check if a file exists at the given path."""
+    return Path(file_path).exists()
+
+
+def _read_file_content(file_path: (str | Path)) -> str:
+    """Read and return the contents of a file."""
+    with open(file_path, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+def _load_yaml_from_string(yaml_content: str) -> dict:
+    """Load YAML content from a string."""
+    return yaml.safe_load(yaml_content) or {}
+
+
+def get_settings(config_path: str | None = None, set_global: bool = True) -> Settings:
+    """Get settings instance, automatically loading from config file if available.
+
+    Args:
+        config_path: Optional path to config file. If None, searches for config automatically.
+        set_global: Whether to set the loaded settings as the global singleton. Default is True for backward
+                    compatibility. Set to False for multi-threaded environments to avoid global state modification.
+
+    Returns:
+        Settings instance with loaded configuration.
+    """
 
     def deep_merge(base: dict, update: dict) -> dict:
         """Recursively merge two dictionaries, preserving nested structures."""
@@ -748,11 +955,11 @@ def get_settings(config_path: str | None = None) -> Settings:
                 merged[key] = value
         return merged
 
-    global _settings
-    if _settings:
-        return _settings
-
-    import yaml  # pylint: disable=C0415
+    # Only return cached global settings if we're in set_global mode
+    if set_global:
+        global _settings
+        if _settings:
+            return _settings
 
     merged_settings = {}
 
@@ -782,52 +989,44 @@ def get_settings(config_path: str | None = None) -> Settings:
     # Determine the config file to use
     if config_path:
         config_file = Path(config_path)
-        if not config_file.exists():
+        if not _check_file_exists(config_file):
             raise FileNotFoundError(f"Config file not found: {config_path}")
     else:
         config_file = Settings.find_config()
 
     # If we found a config file, load it
-    if config_file and config_file.exists():
-        with open(config_file, "r", encoding="utf-8") as f:
-            yaml_settings = yaml.safe_load(f) or {}
-            merged_settings = yaml_settings
+    if config_file and _check_file_exists(config_file):
+        file_content = _read_file_content(config_file)
+        yaml_settings = _load_yaml_from_string(file_content)
+        merged_settings = yaml_settings
 
         # Try to find secrets in the same directory as the config file
         config_dir = config_file.parent
         secrets_found = False
         for secrets_filename in ["mcp-agent.secrets.yaml", "mcp_agent.secrets.yaml"]:
             secrets_file = config_dir / secrets_filename
-            if secrets_file.exists():
-                with open(secrets_file, "r", encoding="utf-8") as f:
-                    yaml_secrets = yaml.safe_load(f) or {}
-                    merged_settings = deep_merge(merged_settings, yaml_secrets)
+            if _check_file_exists(secrets_file):
+                secrets_content = _read_file_content(secrets_file)
+                yaml_secrets = _load_yaml_from_string(secrets_content)
+                merged_settings = deep_merge(merged_settings, yaml_secrets)
                 secrets_found = True
                 break
 
         # If no secrets were found in the config directory, fall back to discovery
         if not secrets_found:
             secrets_file = Settings.find_secrets()
-            if secrets_file and secrets_file.exists():
-                with open(secrets_file, "r", encoding="utf-8") as f:
-                    yaml_secrets = yaml.safe_load(f) or {}
-                    merged_settings = deep_merge(merged_settings, yaml_secrets)
+            if secrets_file and _check_file_exists(secrets_file):
+                secrets_content = _read_file_content(secrets_file)
+                yaml_secrets = _load_yaml_from_string(secrets_content)
+                merged_settings = deep_merge(merged_settings, yaml_secrets)
 
-        _settings = Settings(**merged_settings)
-        return _settings
+        settings = Settings(**merged_settings)
+        if set_global:
+            _set_and_warn_global_settings(settings)
+        return settings
 
     # No valid config found anywhere
-    _settings = Settings()
-
-    # Thread-safety advisory: warn when using global singleton from non-main thread
-    if (
-        threading.current_thread() is not threading.main_thread()
-        and config_path is None
-    ):
-        warnings.warn(
-            "get_settings() returned the global Settings singleton on a non-main thread. "
-            "In multithreaded environments, prefer passing a Settings instance explicitly to MCPApp("
-            "settings=...) or provide a per-thread config_path to avoid cross-thread coupling.",
-            stacklevel=2,
-        )
-    return _settings
+    settings = Settings()
+    if set_global:
+        _set_and_warn_global_settings(settings)
+    return settings

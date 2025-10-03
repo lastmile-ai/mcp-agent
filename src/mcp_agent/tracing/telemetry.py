@@ -9,7 +9,7 @@ import functools
 import inspect
 from typing import Any, Dict, Callable, Optional, TYPE_CHECKING
 
-from opentelemetry import trace
+from opentelemetry import trace, metrics
 from opentelemetry.trace import SpanKind, Status, StatusCode
 
 from mcp_agent.core.context_dependent import ContextDependent
@@ -173,6 +173,13 @@ def get_tracer(context: "Context") -> trace.Tracer:
     Get the OpenTelemetry tracer for the context.
     """
     return getattr(context, "tracer", None) or trace.get_tracer("mcp-agent")
+
+
+def get_meter(context: "Context") -> metrics.Meter:
+    """
+    Get the OpenTelemetry meter for the context.
+    """
+    return getattr(context, "meter", None) or metrics.get_meter("mcp-agent")
 
 
 def annotate_span_for_call_tool_result(span: trace.Span, result: CallToolResult):

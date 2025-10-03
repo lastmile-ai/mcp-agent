@@ -30,6 +30,16 @@ Before you begin, make sure you have:
 ## Quick Start
 
 <Steps>
+  <Step title="Initialize Project">
+    Create a new mcp-agent project:
+
+    ```bash
+    mcp-agent init
+    ```
+
+    This will initialize a mcp-agent project for you and create all the necessary files.
+  </Step>
+
   <Step title="Authenticate">
     Log in to **mcp-agent cloud**:
     
@@ -120,7 +130,7 @@ Let's create and deploy a simple agent that can fetch web content and summarize 
 import asyncio
 from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
-from mcp_agent.workflows import Workflow, WorkflowResult
+from mcp_agent.executor.workflow import Workflow, WorkflowResult
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 
 app = MCPApp(name="web_summarizer")

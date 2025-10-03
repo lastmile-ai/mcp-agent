@@ -1,6 +1,6 @@
 [project]
 name = "mcp-agent"
-version = "0.1.27"
+version = "0.1.29"
 description = "Build effective agents with Model Context Protocol (MCP) using simple, composable patterns."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -76,6 +76,7 @@ crewai = [
 cli = [
     "hvac>=1.1.1",
     "httpx>=0.28.1",
+    "pathspec>=0.12.1",
     "pyjwt>=2.10.1",
     "typer[all]>=0.15.3",
     "watchdog>=6.0.0"

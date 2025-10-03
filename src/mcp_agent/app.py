@@ -101,10 +101,6 @@ class MCPApp:
             initialize_model_selector: Initializes the built-in ModelSelector to help with model selection. Defaults to False.
         """
         self.mcp = mcp
-        self.name = name or (mcp.name if mcp else None)
-        self.description = description or (
-            mcp.instructions if mcp else "MCP Agent Application"
-        )
 
         # We use these to initialize the context in initialize()
         if settings is None:
@@ -113,6 +109,14 @@ class MCPApp:
             self._config = get_settings(config_path=settings)
         else:
             self._config = settings
+
+        self.name = name or self._config.name or (mcp.name if mcp else None)
+
+        self.description = (
+            description
+            or self._config.description
+            or (mcp.instructions if mcp else "MCP Agent Application")
+        )
 
         # We initialize the task and decorator registries at construction time
         # (prior to initializing the context) to ensure that they are available
