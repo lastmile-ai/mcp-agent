@@ -8,7 +8,9 @@ from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 app = MCPApp(name="mcp_basic_agent")
 
 
-async def example_usage():
+@app.tool
+async def fetch_latest_slack_message() -> str:
+    """Get the latest message from general channel and provide a summary."""
     async with app.run() as agent_app:
         logger = agent_app.logger
         context = agent_app.context
@@ -31,22 +33,25 @@ async def example_usage():
 
             llm = await slack_agent.attach_llm(OpenAIAugmentedLLM)
             result = await llm.generate_str(
-                message="What was the last message in the general channel?",
+                message="What was the latest message in the bot-commits channel?",
             )
             logger.info(f"Result: {result}")
 
             # Multi-turn conversations
-            result = await llm.generate_str(
-                message="Summarize it for me so I can understand it better.",
+            summary = await llm.generate_str(
+                message="Can you summarize what that commit was about?",
             )
-            logger.info(f"Result: {result}")
+            logger.info(f"Result: {summary}")
+
+            final_result = f"Latest message: {result}\n\nSummary: {summary}"
+            return final_result
 
 
 if __name__ == "__main__":
     import time
 
     start = time.time()
-    asyncio.run(example_usage())
+    asyncio.run(fetch_latest_slack_message())
     end = time.time()
     t = end - start
 
