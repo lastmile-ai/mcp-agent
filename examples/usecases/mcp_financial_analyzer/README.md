@@ -62,12 +62,6 @@ Install requirements specific to this example:
 uv pip install -r requirements.txt
 ```
 
-Install the g-search-mcp server (from https://github.com/jae-jae/g-search-mcp):
-
-```bash
-npm install -g g-search-mcp
-```
-
 ## `2` Set up secrets and environment variables
 
 Copy and configure your secrets:
@@ -96,3 +90,102 @@ Or run with a different company:
 ```bash
 uv run main.py "Microsoft"
 ```
+
+## `4` [Beta] Deploy to MCP Agent Cloud
+
+### Prerequisites
+This agent is already cloud-compatible with the `@app.tool` decorator and uses only the `fetch` server for web data collection.
+
+### Step 1: Login to MCP Agent Cloud
+
+```bash
+uv run mcp-agent login
+```
+
+### Step 2: Deploy your agent
+
+```bash
+uv run mcp-agent deploy financial-analyzer
+```
+
+During deployment, you'll be prompted to configure secrets. You'll see two options for the OpenAI API key:
+
+#### For OpenAI API Key:
+```
+Select secret type for 'openai.api_key'
+1: Deployment Secret: The secret value will be stored securely and accessible to the deployed application runtime.
+2: User Secret: No secret value will be stored. The 'configure' command must be used to create a configured application with this secret.
+```
+
+**Recommendation:**
+- Choose **Option 1** if you're deploying for personal use and want immediate functionality
+- Choose **Option 2** if you're sharing this agent publicly and want users to provide their own OpenAI API keys
+
+### Step 3: Connect to your deployed agent
+
+Once deployed, you'll receive a deployment URL like: `https://[your-agent-server-id].deployments.mcp-agent.com`
+
+#### Claude Desktop Integration
+
+Configure Claude Desktop to access your agent by updating your `~/.claude-desktop/config.json`:
+
+```json
+{
+  "mcpServers": {
+    "financial-analyzer": {
+      "command": "/path/to/npx",
+      "args": [
+        "mcp-remote",
+        "https://[your-agent-server-id].deployments.mcp-agent.com/sse",
+        "--header",
+        "Authorization: Bearer ${BEARER_TOKEN}"
+      ],
+      "env": {
+        "BEARER_TOKEN": "your-mcp-agent-cloud-api-token"
+      }
+    }
+  }
+}
+```
+
+#### MCP Inspector
+
+Test your deployed agent using MCP Inspector:
+
+```bash
+npx @modelcontextprotocol/inspector
+```
+
+Configure the inspector with these settings:
+
+| Setting | Value |
+|---------|-------|
+| Transport Type | SSE |
+| SSE URL | `https://[your-agent-server-id].deployments.mcp-agent.com/sse` |
+| Header Name | Authorization |
+| Bearer Token | your-mcp-agent-cloud-api-token |
+
+**💡 Tip:** Increase the request timeout in the Configuration since LLM calls take longer than simple API calls.
+
+### Available Tools
+
+Once deployed, your agent will expose the `analyze_stock` tool, which:
+- Takes a company name as input (e.g., "Apple", "Microsoft")
+- Conducts comprehensive financial research using web search
+- Performs quality evaluation and improvement loops to ensure data accuracy
+- Generates professional investment analysis with bull/bear cases
+- Returns a complete financial report as formatted text
+
+### Example Usage
+
+After deployment, you can use the agent through Claude Desktop or MCP Inspector:
+
+```
+Please analyze Meta's financial performance and investment outlook.
+```
+
+The agent will automatically:
+1. Research Tesla's current stock price, earnings, and recent news
+2. Evaluate data quality and improve if needed
+3. Analyze the financial data for investment insights
+4. Generate a comprehensive report with recommendations
