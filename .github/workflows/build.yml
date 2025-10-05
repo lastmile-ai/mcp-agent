@@ -1,69 +1,88 @@
-name: container-build
-'on':
-  workflow_dispatch:
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+name: Build and Publish (Hardened)
+on:
+  pull_request:
+  push:
+    branches: [ "work" ]
+    tags: [ "agent-v*.*.*" ]
+
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: [self-hosted, linux]
     permissions:
       contents: read
       packages: write
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-    - name: Set up QEMU
-      uses: docker/setup-qemu-action@v3
-    - name: Set up Buildx
-      uses: docker/setup-buildx-action@v3
-    - name: Hadolint
-      uses: hadolint/hadolint-action@v3.1.0
-      with:
-        dockerfile: Dockerfile
-    - name: Trivy scan (optional)
-      uses: aquasecurity/trivy-action@0.24.0
-      with:
-        scan-type: config
-        format: table
-      continue-on-error: true
-    - name: Docker meta
-      id: meta
-      uses: docker/metadata-action@v5
-      with:
-        images: ghcr.io/${{ github.repository_owner }}/mcp-agent
-        tags: type=ref,event=tag
-    - name: Login to GHCR
-      if: startsWith(github.ref, 'refs/tags/agent-v')
-      uses: docker/login-action@v3
-      with:
-        registry: ghcr.io
-        username: ${{ secrets.GHCR_USERNAME }}
-        password: ${{ secrets.GHCR_TOKEN }}
-    - name: Build and maybe push
-      id: build
-      uses: docker/build-push-action@v6
-      with:
-        context: .
-        push: ${{ startsWith(github.ref, 'refs/tags/agent-v') }}
-        provenance: 'false'
-        labels: ${{ steps.meta.outputs.labels }}
-        tags: ${{ steps.meta.outputs.tags }}
-    - name: Write digest
-      run: echo ${{ steps.build.outputs.digest }} > image-digest.txt
-    - name: Upload digest artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: image-digest
-        path: image-digest.txt
-    - name: Smoke test (PR only)
-      if: github.event_name == 'pull_request'
-      run: |
-        set -euo pipefail
-        docker build -t mcp-agent:pr .
-        cid=$(docker run -d -p 18080:8080 mcp-agent:pr)
-        for i in $(seq 1 20); do
-          curl -fsS http://127.0.0.1:18080/health && ok=1 && break || sleep 1
-        done
-        test "${ok:-0}" = "1"
-        docker rm -f "$cid" >/dev/null
+      - uses: actions/checkout@v4
+      - uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          failure-threshold: warning
+          config: .hadolint.yaml
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GHCR_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/mcp-agent
+          tags: |
+            type=raw,value=sha-${{ github.sha }}
+            type=ref,event=tag
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/agent-v') }}
+          platforms: linux/amd64
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BUILD_DATE=${{ steps.meta.outputs.created }}
+            VCS_REF=${{ github.sha }}
+            VERSION=${{ github.ref_name }}
+          outputs: type=image,name=target,dest=/tmp/image.tar
+      - if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/agent-v') }}
+        run: echo "${{ steps.build.outputs.digest }}" | tee digest.txt
+      - if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/agent-v') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-digest
+          path: digest.txt
+      - uses: anchore/sbom-action@v0
+        with:
+          image: docker-archive:/tmp/image.tar
+          format: spdx-json
+          output-file: sbom.spdx.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom-spdx
+          path: sbom.spdx.json
+
+  runtime-test:
+    runs-on: [self-hosted, linux]
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t local/mcp-agent:test .
+      - name: Verify non-root
+        run: |
+          uid=$(docker run --rm local/mcp-agent:test id -u)
+          test "$uid" != "0"
+      - name: Verify health
+        run: |
+          cid=$(docker run -d -p 3002:3002 local/mcp-agent:test)
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3002/health >/dev/null; then
+              docker rm -f "$cid" >/dev/null; exit 0
+            fi
+            sleep 1
+          done
+          docker logs "$cid" || true
+          docker rm -f "$cid" || true
+          exit 1

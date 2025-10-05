@@ -1,0 +1,12 @@
+# CODEOWNERS for mcp-agent
+# Default owners
+* @yourorg/platform @yourorg/agents-core
+
+# Specific paths
+/.github/ @yourorg/devops
+/Dockerfile @yourorg/devops
+/.dockerignore @yourorg/devops
+/schemas/ @yourorg/platform
+/src/ @yourorg/agents-core
+/tests/ @yourorg/agents-core
+/scripts/ @yourorg/devops
