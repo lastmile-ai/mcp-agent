@@ -86,6 +86,7 @@ class ServerRegistry:
 
         self.registry = mcp_servers
         self.init_hooks: Dict[str, InitHookCallable] = {}
+        self.pre_init_hooks: Dict[str, Callable] = {}
         self.connection_manager = MCPConnectionManager(self)
 
     def load_registry_from_file(
@@ -137,6 +138,7 @@ class ServerRegistry:
 
         config = self.registry[server_name]
 
+        await self.execute_pre_init_hook(server_name, config, context)
         read_timeout_seconds = (
             timedelta(config.read_timeout_seconds)
             if config.read_timeout_seconds
@@ -178,6 +180,8 @@ class ServerRegistry:
                         yield session
                     finally:
                         logger.debug(f"{server_name}: Closed session to server")
+        
+                        self._purge_github_secrets(config)
         elif config.transport in ["streamable_http", "streamable-http", "http"]:
             if not config.url:
                 raise ValueError(
@@ -384,6 +388,7 @@ class ServerRegistry:
                 yield session
             finally:
                 logger.info(f"{server_name}: Ending server session.")
+                self._purge_github_secrets(config)
 
     def register_init_hook(self, server_name: str, hook: InitHookCallable) -> None:
         """
@@ -432,3 +437,43 @@ class ServerRegistry:
         elif server_config.name is None:
             server_config.name = server_name
         return server_config
+
+
+    def register_pre_init_hook(self, server_name: str, hook: Callable) -> None:
+        """
+        Register a pre-initialization hook for a specific server.
+        Hook may be sync or async. It can mutate the provided config in-place.
+        """
+        # Allow registering even if server not yet in registry; user may add later
+        self.pre_init_hooks[server_name] = hook
+
+    async def execute_pre_init_hook(self, server_name: str, config: MCPServerSettings, context: Optional["Context"] = None) -> None:
+        """
+        Execute the pre-initialization hook if registered.
+        Fallback: if none for the server, but command contains 'server-github' and a 'github' hook exists, run that.
+        """
+        hook = self.pre_init_hooks.get(server_name)
+        if hook is None and getattr(config, "command", None):
+            cmd = config.command or ""
+            if isinstance(cmd, str) and "server-github" in cmd and "github" in self.pre_init_hooks:
+                hook = self.pre_init_hooks["github"]
+        if hook is None:
+            return
+        res = hook(server_name, config, context)
+        if inspect.isawaitable(res):
+            await res
+
+
+    @staticmethod
+    def _purge_github_secrets(config: MCPServerSettings):
+        try:
+            if getattr(config, "env", None):
+                config.env.pop("GITHUB_TOKEN", None)
+                config.env.pop("GITHUB_PERSONAL_ACCESS_TOKEN", None)
+            if getattr(config, "headers", None):
+                # Avoid deleting unrelated headers
+                if isinstance(config.headers, dict):
+                    if "Authorization" in config.headers:
+                        del config.headers["Authorization"]
+        except Exception:
+            pass

@@ -116,3 +116,88 @@ class SentinelClient:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit - closes HTTP client."""
         await self.close()
+
+
+# === PR-05A: GitHub token issuing via Sentinel (consumer) ===
+from os import getenv
+from typing import Dict, Any
+from opentelemetry import metrics
+
+# OTel counter for observability
+_meter = metrics.get_meter(__name__)
+try:
+    _sentinel_token_counter = _meter.create_counter("sentinel_token_requests_total")
+except Exception:  # defensive: older OTel APIs
+    _sentinel_token_counter = None
+
+class _ResponseLike:
+    """Minimal shim for typing clarity."""
+    def __init__(self, r: httpx.Response): self.r = r
+    def json(self) -> Dict[str, Any]: return self.r.json()
+    def raise_for_status(self): return self.r.raise_for_status()
+
+async def issue_github_token(
+    repo: str,
+    permissions: dict | None = None,
+    ttl_seconds: int | None = None,
+    trace_id: str | None = None,
+) -> dict:
+    """
+    Issue a short-lived GitHub token from Sentinel.
+    Reads SENTINEL_URL and SENTINEL_HMAC_KEY from environment.
+    Optional guard: GITHUB_ALLOWED_REPO must match if set.
+    """
+    base_url = getenv("SENTINEL_URL")
+    signing_key = getenv("SENTINEL_HMAC_KEY")
+    if not base_url or not signing_key:
+        raise RuntimeError("SENTINEL_URL and SENTINEL_HMAC_KEY are required")
+
+    allowed = getenv("GITHUB_ALLOWED_REPO")
+    if allowed and allowed != repo:
+        raise ValueError("Repo not allowed by GITHUB_ALLOWED_REPO")
+
+    payload: Dict[str, Any] = {"repo": repo}
+    if permissions:
+        payload["permissions"] = permissions
+    if ttl_seconds:
+        payload["ttl_seconds"] = ttl_seconds
+    if trace_id:
+        payload["trace_id"] = trace_id
+    # Sign with same HMAC pattern as register/authorize
+    client = SentinelClient(base_url=base_url, signing_key=signing_key)
+    try:
+        sig = client._sign(payload)  # reuse internal signer
+        r = await client.http.post(
+            f"{client.base_url}/v1/github/token",
+            json=payload,
+            headers={"X-Signature": sig},
+        )
+        r.raise_for_status()
+        data = r.json()
+        # no token bytes in logs; record only outcome
+        try:
+            if _sentinel_token_counter:
+                _sentinel_token_counter.add(1, {"outcome": "ok"})
+        except Exception:
+            pass
+        # Expected {token, expires_at, granted_permissions}
+        return data
+    except Exception as e:
+        try:
+            if _sentinel_token_counter:
+                _sentinel_token_counter.add(1, {"outcome": "error"})
+        except Exception:
+            pass
+        raise
+    finally:
+        await client.close()
+
+# Optional: method on SentinelClient for direct usage
+async def _client_issue_github_token(self, repo: str, permissions: dict | None = None, ttl_seconds: int | None = None, trace_id: str | None = None) -> dict:
+    return await issue_github_token(repo=repo, permissions=permissions, ttl_seconds=ttl_seconds, trace_id=trace_id)
+
+# Bind method if class exists
+try:
+    setattr(SentinelClient, "issue_github_token", _client_issue_github_token)
+except Exception:
+    pass

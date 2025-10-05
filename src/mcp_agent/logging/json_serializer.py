@@ -23,6 +23,9 @@ class JSONSerializer:
 
     # Fields that are likely to contain sensitive information
     SENSITIVE_FIELDS = {
+        "github_token",
+        "github_personal_access_token",
+        "authorization",
         "api_key",
         "secret",
         "password",

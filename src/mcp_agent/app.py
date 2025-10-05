@@ -239,6 +239,55 @@ class MCPApp:
             store_globally=True,
         )
 
+
+        # PR-05A: register GitHub token pre-init hook
+        from mcp_agent.sentinel.client import issue_github_token
+        async def _github_pre_init(server_name, config, context):
+            # Guard: only for GitHub servers
+            try:
+                is_github = server_name == "github"
+                cmd = getattr(config, "command", None)
+                if not is_github and cmd and isinstance(cmd, str):
+                    if "server-github" in cmd:
+                        is_github = True
+                if not is_github:
+                    return
+                # Resolve allowed repo: prefer config.auth.repo if present, else environment
+                repo = None
+                try:
+                    auth = getattr(config, "auth", None)
+                    if auth and isinstance(auth, dict):
+                        repo = auth.get("repo")
+                except Exception:
+                    pass
+                if not repo:
+                    repo = os.getenv("GITHUB_ALLOWED_REPO") or ""
+                if not repo:
+                    # Cannot issue without a repo
+                    return
+                # Fetch short-lived token
+                data = await issue_github_token(repo=repo)
+                token = data.get("token")
+                if not token:
+                    return
+                # stdio: inject env
+                env = dict(getattr(config, "env", {}) or {})
+                env["GITHUB_TOKEN"] = token
+                env["GITHUB_PERSONAL_ACCESS_TOKEN"] = token
+                config.env = env
+                # http/sse/ws: inject Authorization header
+                headers = dict(getattr(config, "headers", {}) or {})
+                headers["Authorization"] = f"Bearer {token}"
+                config.headers = headers
+            except Exception:
+                # Do not surface token or details
+                pass
+
+        if self._context and self._context.server_registry:
+            try:
+                self._context.server_registry.register_pre_init_hook("github", _github_pre_init)
+            except Exception:
+                pass
         # Store the app-specific tracer provider
         if self._context.tracing_enabled and self._context.tracing_config:
             self._tracer_provider = self._context.tracing_config._tracer_provider
