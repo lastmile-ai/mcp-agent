@@ -202,6 +202,12 @@ async def initialize_context(
     context = Context()
     context.config = config
     context.server_registry = ServerRegistry(config=config)
+    # Register GitHub pre-init token injector
+    try:
+        from mcp_agent.integrations.github_sentinel import register_github_preinit
+        register_github_preinit(context.server_registry, config)
+    except Exception:
+        logger.exception("Failed to register GitHub pre-init hook")
 
     # Configure the executor
     context.executor = await configure_executor(config)

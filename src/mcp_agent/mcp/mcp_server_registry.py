@@ -9,7 +9,7 @@ server initialization.
 
 from contextlib import asynccontextmanager
 from datetime import timedelta
-from typing import Callable, Dict, AsyncGenerator, Optional, TYPE_CHECKING
+from typing import Callable, Dict, AsyncGenerator, Optional, TYPE_CHECKING, Protocol
 
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from mcp import ClientSession
@@ -37,6 +37,11 @@ if TYPE_CHECKING:
     from mcp_agent.core.context import Context
 
 logger = get_logger(__name__)
+import inspect
+
+class PreInitHookCallable(Protocol):
+    def __call__(self, server_name: str, config: MCPServerSettings, context: Optional["Context"] = None) -> None: ...
+
 
 InitHookCallable = Callable[[ClientSession | None, MCPServerAuthSettings | None], bool]
 """
@@ -63,10 +68,12 @@ class ServerRegistry:
         config_path (str): Path to the YAML configuration file.
         registry (Dict[str, MCPServerSettings]): Loaded server configurations.
         init_hooks (Dict[str, InitHookCallable]): Registered initialization hooks.
+        pre_init_hooks (Dict[str, PreInitHookCallable]): Registered pre-initialization hooks.
     """
 
     def __init__(self, config: Settings | None = None, config_path: str | None = None):
         """
+        self.pre_init_hooks: Dict[str, PreInitHookCallable] = {}
         Initialize the ServerRegistry with a configuration file.
 
         Args:
@@ -136,6 +143,17 @@ class ServerRegistry:
             raise ValueError(f"Server '{server_name}' not found in registry.")
 
         config = self.registry[server_name]
+
+        # Execute pre-initialization hook if present
+        try:
+            hook = self.pre_init_hooks.get(server_name)
+            if hook is not None:
+                res = hook(server_name, config, context)
+                if inspect.isawaitable(res):
+                    await res
+        except Exception:
+            logger.exception(f"Pre-init hook failed for '{server_name}'")
+            raise
 
         read_timeout_seconds = (
             timedelta(config.read_timeout_seconds)
@@ -359,6 +377,17 @@ class ServerRegistry:
 
         config = self.registry[server_name]
 
+        # Execute pre-initialization hook if present
+        try:
+            hook = self.pre_init_hooks.get(server_name)
+            if hook is not None:
+                res = hook(server_name, config, context)
+                if inspect.isawaitable(res):
+                    await res
+        except Exception:
+            logger.exception(f"Pre-init hook failed for '{server_name}'")
+            raise
+
         async with self.start_server(
             server_name,
             client_session_factory=client_session_factory,
@@ -384,6 +413,12 @@ class ServerRegistry:
                 yield session
             finally:
                 logger.info(f"{server_name}: Ending server session.")
+
+    
+
+def register_pre_init_hook(self, server_name: str, hook: PreInitHookCallable) -> None:
+    """Register a pre-initialization hook for a server."""
+    self.pre_init_hooks[server_name] = hook
 
     def register_init_hook(self, server_name: str, hook: InitHookCallable) -> None:
         """
@@ -414,7 +449,6 @@ class ServerRegistry:
             return hook(session, config.auth)
         else:
             logger.info(f"No init hook registered for '{server_name}'")
-
     def get_server_config(self, server_name: str) -> MCPServerSettings | None:
         """
         Get the configuration for a specific server.
