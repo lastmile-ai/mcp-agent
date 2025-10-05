@@ -1,7 +1,16 @@
 import json, jwt, os
+import pytest
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
 from mcp_agent.api.routes import add_public_api
+from mcp_agent.api.routes import public as public_module
+
+@pytest.fixture(autouse=True)
+def teardown_public_api():
+    """Clear _RUNS and _QUEUES after every test to prevent hanging."""
+    yield
+    public_module._RUNS.clear()
+    public_module._QUEUES.clear()
 
 def app():
     a = Starlette()
