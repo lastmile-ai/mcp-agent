@@ -182,7 +182,7 @@ async def issue_github_token(
             pass
         # Expected {token, expires_at, granted_permissions}
         return data
-    except Exception as e:
+    except Exception:
         try:
             if _sentinel_token_counter:
                 _sentinel_token_counter.add(1, {"outcome": "error"})
