@@ -15,7 +15,8 @@ class PublicAPIState:
 
     def __init__(self):
         self.runs: Dict[str, Dict] = {}
-        self.queues: Dict[str, "asyncio.Queue[str]"] = {}
+        # Changed: queues now maps run_id to a set of consumer queues
+        self.queues: Dict[str, Set["asyncio.Queue[str]"]] = {}
         self.tasks: Set[asyncio.Task] = set()
 
     async def cancel_all_tasks(self):
@@ -81,25 +82,38 @@ async def create_run(request: Request) -> JSONResponse:
     run_type = body.get("run_type")
     if not isinstance(project_id, str) or not isinstance(run_type, str):
         return JSONResponse({"error": "invalid_schema"}, status_code=400)
-
     state = _get_state(request)
     run_id = str(uuid.uuid4())
     now = int(time.time())
     state.runs[run_id] = {"project_id": project_id, "run_type": run_type, "created": now, "status": "running"}
-    q: asyncio.Queue[str] = asyncio.Queue()
-    state.queues[run_id] = q
-    await q.put(json.dumps({"event": "started", "run_id": run_id, "ts": now}))
+    # Changed: Initialize the set of consumer queues for this run
+    state.queues[run_id] = set()
 
     async def _simulate():
         try:
             await asyncio.sleep(0.01)
-            await q.put(json.dumps({"event": "progress", "pct": 50, "ts": int(time.time())}))
+            # Broadcast progress event to all consumers
+            for q in list(state.queues.get(run_id, [])):
+                try:
+                    await q.put(json.dumps({"event": "progress", "pct": 50, "ts": int(time.time())}))
+                except Exception:
+                    pass
             await asyncio.sleep(0.01)
             state.runs[run_id]["status"] = "completed"
-            await q.put(json.dumps({"event": "completed", "ts": int(time.time())}))
-            await q.put("__EOF__")
+            # Broadcast completed event and EOF to all consumers
+            for q in list(state.queues.get(run_id, [])):
+                try:
+                    await q.put(json.dumps({"event": "completed", "ts": int(time.time())}))
+                    await q.put("__EOF__")
+                except Exception:
+                    pass
         except Exception:
-            await q.put("__EOF__")
+            # On error, send EOF to all consumers
+            for q in list(state.queues.get(run_id, [])):
+                try:
+                    await q.put("__EOF__")
+                except Exception:
+                    pass
 
     task = asyncio.create_task(_simulate())
     state.tasks.add(task)
@@ -116,12 +130,20 @@ async def stream_run(request: Request) -> StreamingResponse:
     if run_id not in state.queues:
         return JSONResponse({"error": "not_found"}, status_code=404)
 
+    # Changed: Create a new queue for this consumer and add it to the set
+    consumer_queue: asyncio.Queue[str] = asyncio.Queue()
+    state.queues[run_id].add(consumer_queue)
+
+    # Send initial started event to this consumer
+    run_data = state.runs.get(run_id)
+    if run_data:
+        await consumer_queue.put(json.dumps({"event": "started", "run_id": run_id, "ts": run_data.get("created", int(time.time()))}))
+
     async def event_source():
-        q = state.queues[run_id]
         try:
             while True:
                 try:
-                    data = await q.get()
+                    data = await consumer_queue.get()
                     if data == "__EOF__":
                         break
                     yield f"data: {data}\n\n"
@@ -130,11 +152,9 @@ async def stream_run(request: Request) -> StreamingResponse:
                 except Exception:
                     break
         finally:
-            # Guarantee __EOF__ is always sent on disconnect/error
-            try:
-                q.put_nowait("__EOF__")
-            except Exception:
-                pass
+            # Remove this consumer's queue from the set
+            if run_id in state.queues:
+                state.queues[run_id].discard(consumer_queue)
 
     headers = {"Cache-Control": "no-cache", "Content-Type": "text/event-stream"}
     return StreamingResponse(event_source(), headers=headers)
@@ -150,8 +170,8 @@ async def cancel_run(request: Request):
     if not run:
         return JSONResponse({"error": "not_found"}, status_code=404)
     run["status"] = "cancelled"
-    q = state.queues.get(run_id)
-    if q:
+    # Broadcast cancellation to all consumers
+    for q in list(state.queues.get(run_id, [])):
         try:
             await q.put(json.dumps({"event": "cancelled", "ts": int(time.time())}))
             await q.put("__EOF__")
@@ -173,5 +193,4 @@ routes = [
     Route("/runs/{id}/cancel", cancel_run, methods=["POST"]),
     Route("/artifacts/{id}", get_artifact, methods=["GET"]),
 ]
-
 router = Router(routes=routes)
