@@ -316,8 +316,11 @@ class MCPConnectionManager(ContextDependent):
                             await anyio.sleep(0.5)
                             if self._tg_active:
                                 self._tg_close_event.set()
-                                await self._tg_closed_event.wait()
-
+                                try:
+                                    with anyio.fail_after(5.0):
+                                        await self._tg_closed_event.wait()
+                                except TimeoutError:
+                                    logger.warning("MCPConnectionManager: Timeout waiting for TaskGroup owner to close (origin loop)")
                     try:
                         cfut = asyncio.run_coroutine_threadsafe(
                             _shutdown_and_close(), self._loop
@@ -551,8 +554,17 @@ class MCPConnectionManager(ContextDependent):
         )
 
         # Wait until it's fully initialized, or an error occurs
-        await server_conn.wait_for_initialized()
-
+        try:
+            with anyio.fail_after(5.0):
+                await server_conn.wait_for_initialized()
+        except TimeoutError:
+            logger.error(f"{server_name}: Initialization timed out")
+            # Request shutdown and remove from registry to avoid stale entries
+            server_conn.request_shutdown()
+            async with self._lock:
+                self.running_servers.pop(server_name, None)
+            raise ServerInitializationError(f"MCP Server: '{server_name}' timed out during initialization")
+        
         # Check if the server is healthy after initialization
         if not server_conn.is_healthy():
             error_msg = server_conn._error_message or "Unknown error"
