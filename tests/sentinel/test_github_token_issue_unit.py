@@ -1,5 +1,4 @@
 
-import asyncio
 import json
 import os
 import httpx
@@ -17,7 +16,7 @@ class FakeAsyncClient:
         # Return a minimal httpx.Response with JSON body
         req = httpx.Request("POST", url)
         body = {"token":"ghs_dummy", "expires_at":"2099-01-01T00:00:00Z", "granted_permissions":{"contents":"read"}}
-        return httpx.Response(200, request=req, content=jsonlib.dumps(body).encode())
+        return httpx.Response(200, request=req, content=json.dumps(body).encode())
 
 @pytest.mark.asyncio
 async def test_issue_github_token_request_shape(monkeypatch):
