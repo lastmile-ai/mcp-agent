@@ -3,10 +3,10 @@ import httpx
 from mcp_agent.sentinel.client import SentinelClient
 
 
-class MockAuthorizeTransport(httpx.BaseTransport):
+class MockAuthorizeTransport(httpx.AsyncBaseTransport):
     """Mock transport for testing authorization matrix."""
 
-    def handle_request(self, request):
+    async def handle_async_request(self, request):
         if request.url.path.endswith("/v1/authorize"):
             import json
 
@@ -18,15 +18,14 @@ class MockAuthorizeTransport(httpx.BaseTransport):
 
 
 @pytest.fixture
-def mock_sentinel_client():
+async def mock_sentinel_client():
     """Fixture providing a SentinelClient with mock transport."""
-    client = SentinelClient(
-        "http://sentinel", "k", http=httpx.Client(transport=MockAuthorizeTransport())
-    )
-    yield client
-    # Cleanup if needed
+    async with httpx.AsyncClient(transport=MockAuthorizeTransport()) as http:
+        client = SentinelClient("http://sentinel", "k", http=http)
+        yield client
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "project_id,run_type,expected",
     [
@@ -34,7 +33,7 @@ def mock_sentinel_client():
         ("p", "paid_run", False),
     ],
 )
-def test_authorize_matrix(mock_sentinel_client, project_id, run_type, expected):
+async def test_authorize_matrix(mock_sentinel_client, project_id, run_type, expected):
     """Test authorization matrix with parameterized inputs."""
-    result = mock_sentinel_client.authorize(project_id, run_type)
+    result = await mock_sentinel_client.authorize(project_id, run_type)
     assert result is expected
