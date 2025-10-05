@@ -1,66 +1,51 @@
 name: Linting, formatting and other checks on codebase
-
 on:
   workflow_call:
-
 jobs:
   format:
     runs-on: [self-hosted, Linux, X64]
     steps:
       - uses: actions/checkout@v4
-
       - name: Install uv
         uses: astral-sh/setup-uv@v3
         with:
           enable-cache: true
-
       - name: "Set up Python"
         uses: actions/setup-python@v5
         with:
           python-version-file: ".python-version"
-
       - name: Install the project
-        run: uv sync --frozen --all-extras --dev
-
+        run: uv sync --all-extras --dev
       - name: Run ruff format check
         run: uv run scripts/format.py
-
   lint:
     runs-on: [self-hosted, Linux, X64]
     steps:
       - uses: actions/checkout@v4
-
       - name: Install uv
         uses: astral-sh/setup-uv@v3
         with:
           enable-cache: true
-
       - name: "Set up Python"
         uses: actions/setup-python@v5
         with:
           python-version-file: ".python-version"
-
       - name: Install the project
-        run: uv sync --frozen --all-extras --dev
-
+        run: uv sync --all-extras --dev
       - name: Run pyright
         run: uv run scripts/lint.py
-
   test:
     runs-on: [self-hosted, Linux, X64]
     steps:
       - uses: actions/checkout@v4
-
       - name: Install uv
         uses: astral-sh/setup-uv@v3
         with:
           enable-cache: true
-
       - name: "Set up Python"
         uses: actions/setup-python@v5
         with:
           python-version-file: ".python-version"
-
       - name: Install dependencies
         run: make sync
       - name: Run tests with coverage
