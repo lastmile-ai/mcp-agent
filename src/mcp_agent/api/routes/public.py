@@ -3,8 +3,7 @@ import json
 import os
 import time
 import uuid
-from typing import Dict, List, Tuple
-
+from typing import Dict, List, Tuple, Set
 import jwt
 from starlette.responses import JSONResponse, StreamingResponse
 from starlette.requests import Request
@@ -12,6 +11,7 @@ from starlette.routing import Route, Router
 
 _RUNS: Dict[str, Dict] = {}
 _QUEUES: Dict[str, "asyncio.Queue[str]"] = {}
+_TASKS: Set[asyncio.Task] = set()
 
 def _env_list(name: str) -> List[str]:
     val = os.getenv(name, "")
@@ -22,7 +22,6 @@ def _authenticate(request: Request) -> Tuple[bool, str]:
     key = request.headers.get("x-api-key") or request.headers.get("X-API-Key")
     if key and key in api_keys:
         return True, "api_key"
-
     auth = request.headers.get("authorization") or request.headers.get("Authorization")
     if auth and auth.lower().startswith("bearer "):
         token = auth.split(" ", 1)[1]
@@ -46,25 +45,19 @@ async def create_run(request: Request) -> JSONResponse:
     ok, _ = _authenticate(request)
     if not ok:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
-
     try:
         body = await request.json()
     except Exception:
         return JSONResponse({"error": "invalid_json"}, status_code=400)
-
     project_id = body.get("project_id")
     run_type = body.get("run_type")
-    payload = body.get("payload", {})
-
     if not isinstance(project_id, str) or not isinstance(run_type, str):
         return JSONResponse({"error": "invalid_schema"}, status_code=400)
-
     run_id = str(uuid.uuid4())
     now = int(time.time())
     _RUNS[run_id] = {"project_id": project_id, "run_type": run_type, "created": now, "status": "running"}
     q: asyncio.Queue[str] = asyncio.Queue()
     _QUEUES[run_id] = q
-
     await q.put(json.dumps({"event": "started", "run_id": run_id, "ts": now}))
 
     async def _simulate():
@@ -78,15 +71,15 @@ async def create_run(request: Request) -> JSONResponse:
         except Exception:
             await q.put("__EOF__")
 
-    asyncio.create_task(_simulate())
-
+    task = asyncio.create_task(_simulate())
+    _TASKS.add(task)
+    task.add_done_callback(_TASKS.discard)
     return JSONResponse({"id": run_id, "status": "running"}, status_code=202)
 
 async def stream_run(request: Request) -> StreamingResponse:
     ok, _ = _authenticate(request)
     if not ok:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
-
     run_id = request.path_params.get("id")
     if run_id not in _QUEUES:
         return JSONResponse({"error": "not_found"}, status_code=404)
@@ -106,7 +99,6 @@ async def cancel_run(request: Request):
     ok, _ = _authenticate(request)
     if not ok:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
-
     run_id = request.path_params.get("id")
     run = _RUNS.get(run_id)
     if not run:
@@ -122,7 +114,6 @@ async def get_artifact(request: Request):
     ok, _ = _authenticate(request)
     if not ok:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
-
     return JSONResponse({"error": "not_found"}, status_code=404)
 
 routes = [
@@ -131,4 +122,5 @@ routes = [
     Route("/runs/{id}/cancel", cancel_run, methods=["POST"]),
     Route("/artifacts/{id}", get_artifact, methods=["GET"]),
 ]
+
 router = Router(routes=routes)
