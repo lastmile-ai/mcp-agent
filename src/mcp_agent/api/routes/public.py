@@ -9,13 +9,39 @@ from starlette.responses import JSONResponse, StreamingResponse
 from starlette.requests import Request
 from starlette.routing import Route, Router
 
-_RUNS: Dict[str, Dict] = {}
-_QUEUES: Dict[str, "asyncio.Queue[str]"] = {}
-_TASKS: Set[asyncio.Task] = set()
+
+class PublicAPIState:
+    """Encapsulates all mutable state for the public API."""
+
+    def __init__(self):
+        self.runs: Dict[str, Dict] = {}
+        self.queues: Dict[str, "asyncio.Queue[str]"] = {}
+        self.tasks: Set[asyncio.Task] = set()
+
+    async def cancel_all_tasks(self):
+        """Cancel all tracked background tasks."""
+        tasks = list(self.tasks)
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        self.tasks.clear()
+
+    def clear(self):
+        """Clear all state dictionaries."""
+        self.runs.clear()
+        self.queues.clear()
+
+
+# Global default state (can be overridden for testing)
+_DEFAULT_STATE = PublicAPIState()
+
 
 def _env_list(name: str) -> List[str]:
     val = os.getenv(name, "")
     return [s.strip() for s in val.split(",") if s.strip()]
+
 
 def _authenticate(request: Request) -> Tuple[bool, str]:
     api_keys = set(_env_list("STUDIO_API_KEYS"))
@@ -41,6 +67,12 @@ def _authenticate(request: Request) -> Tuple[bool, str]:
                 pass
     return False, "unauthorized"
 
+
+def _get_state(request: Request) -> PublicAPIState:
+    """Get state from request or use default."""
+    return getattr(request.state, "public_api_state", _DEFAULT_STATE)
+
+
 async def create_run(request: Request) -> JSONResponse:
     ok, _ = _authenticate(request)
     if not ok:
@@ -53,11 +85,13 @@ async def create_run(request: Request) -> JSONResponse:
     run_type = body.get("run_type")
     if not isinstance(project_id, str) or not isinstance(run_type, str):
         return JSONResponse({"error": "invalid_schema"}, status_code=400)
+
+    state = _get_state(request)
     run_id = str(uuid.uuid4())
     now = int(time.time())
-    _RUNS[run_id] = {"project_id": project_id, "run_type": run_type, "created": now, "status": "running"}
+    state.runs[run_id] = {"project_id": project_id, "run_type": run_type, "created": now, "status": "running"}
     q: asyncio.Queue[str] = asyncio.Queue()
-    _QUEUES[run_id] = q
+    state.queues[run_id] = q
     await q.put(json.dumps({"event": "started", "run_id": run_id, "ts": now}))
 
     async def _simulate():
@@ -65,50 +99,63 @@ async def create_run(request: Request) -> JSONResponse:
             await asyncio.sleep(0.01)
             await q.put(json.dumps({"event": "progress", "pct": 50, "ts": int(time.time())}))
             await asyncio.sleep(0.01)
-            _RUNS[run_id]["status"] = "completed"
+            state.runs[run_id]["status"] = "completed"
             await q.put(json.dumps({"event": "completed", "ts": int(time.time())}))
             await q.put("__EOF__")
         except Exception:
             await q.put("__EOF__")
 
     task = asyncio.create_task(_simulate())
-    _TASKS.add(task)
-    task.add_done_callback(_TASKS.discard)
+    state.tasks.add(task)
+    task.add_done_callback(state.tasks.discard)
     return JSONResponse({"id": run_id, "status": "running"}, status_code=202)
+
 
 async def stream_run(request: Request) -> StreamingResponse:
     ok, _ = _authenticate(request)
     if not ok:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     run_id = request.path_params.get("id")
-    if run_id not in _QUEUES:
+    state = _get_state(request)
+    if run_id not in state.queues:
         return JSONResponse({"error": "not_found"}, status_code=404)
 
     async def event_source():
-        q = _QUEUES[run_id]
+        q = state.queues[run_id]
         while True:
-            data = await q.get()
-            if data == "__EOF__":
+            try:
+                data = await q.get()
+                if data == "__EOF__":
+                    break
+                yield f"data: {data}\n\n"
+            except asyncio.CancelledError:
                 break
-            yield f"data: {data}\n\n"
+            except Exception:
+                break
 
     headers = {"Cache-Control": "no-cache", "Content-Type": "text/event-stream"}
     return StreamingResponse(event_source(), headers=headers)
+
 
 async def cancel_run(request: Request):
     ok, _ = _authenticate(request)
     if not ok:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     run_id = request.path_params.get("id")
-    run = _RUNS.get(run_id)
+    state = _get_state(request)
+    run = state.runs.get(run_id)
     if not run:
         return JSONResponse({"error": "not_found"}, status_code=404)
     run["status"] = "cancelled"
-    q = _QUEUES.get(run_id)
+    q = state.queues.get(run_id)
     if q:
-        await q.put(json.dumps({"event": "cancelled", "ts": int(time.time())}))
-        await q.put("__EOF__")
+        try:
+            await q.put(json.dumps({"event": "cancelled", "ts": int(time.time())}))
+            await q.put("__EOF__")
+        except Exception:
+            pass
     return JSONResponse({"id": run_id, "status": "cancelled"}, status_code=200)
+
 
 async def get_artifact(request: Request):
     ok, _ = _authenticate(request)
@@ -116,11 +163,11 @@ async def get_artifact(request: Request):
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     return JSONResponse({"error": "not_found"}, status_code=404)
 
+
 routes = [
     Route("/runs", create_run, methods=["POST"]),
     Route("/stream/{id}", stream_run, methods=["GET"]),
     Route("/runs/{id}/cancel", cancel_run, methods=["POST"]),
     Route("/artifacts/{id}", get_artifact, methods=["GET"]),
 ]
-
 router = Router(routes=routes)
