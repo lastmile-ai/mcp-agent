@@ -77,8 +77,6 @@ class ServerConnection:
         self._client_session_factory = client_session_factory
         self._init_hook = init_hook
         self._transport_context_factory = transport_context_factory
-        # Cancel scope for lifecycle task
-        self._cancel_scope = None
         # Signal that session is fully up and initialized
         self._initialized_event = Event()
 
@@ -103,12 +101,6 @@ class ServerConnection:
         Request the server to shut down. Signals the server lifecycle task to exit.
         """
         self._shutdown_event.set()
-        try:
-            # Preempt long waits by cancelling the lifecycle scope if present
-            if self._cancel_scope is not None:
-                self._cancel_scope.cancel()
-        except Exception:
-            pass
 
     # Back-compat helper to avoid tests reaching into Event internals across threads
     def _is_shutdown_requested_flag(self) -> bool:
@@ -177,10 +169,6 @@ async def _server_lifecycle_task(server_conn: ServerConnection) -> None:
     """
     server_name = server_conn.server_name
     try:
-        import anyio
-        # Provide a cancellation lever for shutdown
-        with anyio.CancelScope() as _cs:
-            server_conn._cancel_scope = _cs
         transport_context = server_conn._transport_context_factory()
 
         async with transport_context as (read_stream, write_stream, *extras):
@@ -198,42 +186,16 @@ async def _server_lifecycle_task(server_conn: ServerConnection) -> None:
 
             async with server_conn.session:
                 # Initialize the session
-                    import anyio
-                    try:
-                        with anyio.fail_after(5.0):
-                            await server_conn.initialize_session()
-                    except TimeoutError:
-                        server_conn._error = True
-                        server_conn._error_message = "Initialization timed out"
-                        server_conn._initialized_event.set()
-                        return
-    
-                    # Wait until we're asked to shut down
-                    try:
-                        with anyio.move_on_after(10.0):
-                            await server_conn.wait_for_shutdown_request()
-                    except TimeoutError:
-                        pass
+                await server_conn.initialize_session()
+
+                # Wait until we're asked to shut down
+                await server_conn.wait_for_shutdown_request()
     except Exception as exc:
         import traceback
-        import anyio
-        # Treat BrokenResourceError during shutdown as normal
-        if isinstance(exc, anyio.BrokenResourceError):
-            server_conn._initialized_event.set()
-            return
 
         if hasattr(
             exc, "exceptions"
         ):  # ExceptionGroup or BaseExceptionGroup in Python 3.11+
-            # If all subexceptions are BrokenResourceError, treat as normal shutdown
-            try:
-                import anyio as _anyio
-                _all_broken = all(isinstance(se, _anyio.BrokenResourceError) for se in exc.exceptions)
-            except Exception:
-                _all_broken = False
-            if _all_broken:
-                server_conn._initialized_event.set()
-                return
             for i, subexc in enumerate(exc.exceptions):
                 tb_lines = traceback.format_exception(
                     type(subexc), subexc, subexc.__traceback__
@@ -354,11 +316,8 @@ class MCPConnectionManager(ContextDependent):
                             await anyio.sleep(0.5)
                             if self._tg_active:
                                 self._tg_close_event.set()
-                                try:
-                                    with anyio.fail_after(5.0):
-                                        await self._tg_closed_event.wait()
-                                except TimeoutError:
-                                    logger.warning("MCPConnectionManager: Timeout waiting for TaskGroup owner to close (origin loop)")
+                                await self._tg_closed_event.wait()
+
                     try:
                         cfut = asyncio.run_coroutine_threadsafe(
                             _shutdown_and_close(), self._loop
@@ -592,17 +551,8 @@ class MCPConnectionManager(ContextDependent):
         )
 
         # Wait until it's fully initialized, or an error occurs
-        try:
-            with anyio.fail_after(5.0):
-                await server_conn.wait_for_initialized()
-        except TimeoutError:
-            logger.error(f"{server_name}: Initialization timed out")
-            # Request shutdown and remove from registry to avoid stale entries
-            server_conn.request_shutdown()
-            async with self._lock:
-                self.running_servers.pop(server_name, None)
-            raise ServerInitializationError(f"MCP Server: '{server_name}' timed out during initialization")
-        
+        await server_conn.wait_for_initialized()
+
         # Check if the server is healthy after initialization
         if not server_conn.is_healthy():
             error_msg = server_conn._error_message or "Unknown error"
