@@ -1,9 +1,6 @@
 name: Build and Publish (Hardened)
 on:
-  pull_request:
-  push:
-    branches: [ "work" ]
-    tags: [ "agent-v*.*.*" ]
+  workflow_call:
 
 jobs:
   build:
