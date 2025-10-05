@@ -44,7 +44,7 @@ def test_api_key_and_sse(monkeypatch, public_api_state):
             events = []
             with c.stream("GET", f"/v1/stream/{run_id}", headers={"X-API-Key": "k1"}) as s:
                 for line in s.iter_lines():
-                    if line and line.startswith(b"data: "):
+                    if line and line.startswith("data: "):
                         events.append(json.loads(line[6:].decode()))
                         if events[-1]["event"] in ("completed", "cancelled"):
                             break
