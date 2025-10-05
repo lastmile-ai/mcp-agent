@@ -34,10 +34,6 @@ class PublicAPIState:
         self.queues.clear()
 
 
-# Global default state (can be overridden for testing)
-_DEFAULT_STATE = PublicAPIState()
-
-
 def _env_list(name: str) -> List[str]:
     val = os.getenv(name, "")
     return [s.strip() for s in val.split(",") if s.strip()]
@@ -69,8 +65,8 @@ def _authenticate(request: Request) -> Tuple[bool, str]:
 
 
 def _get_state(request: Request) -> PublicAPIState:
-    """Get state from request or use default."""
-    return getattr(request.state, "public_api_state", _DEFAULT_STATE)
+    """Get state from request. Raises AttributeError if not injected."""
+    return request.state.public_api_state
 
 
 async def create_run(request: Request) -> JSONResponse:
@@ -122,16 +118,23 @@ async def stream_run(request: Request) -> StreamingResponse:
 
     async def event_source():
         q = state.queues[run_id]
-        while True:
-            try:
-                data = await q.get()
-                if data == "__EOF__":
+        try:
+            while True:
+                try:
+                    data = await q.get()
+                    if data == "__EOF__":
+                        break
+                    yield f"data: {data}\n\n"
+                except asyncio.CancelledError:
                     break
-                yield f"data: {data}\n\n"
-            except asyncio.CancelledError:
-                break
+                except Exception:
+                    break
+        finally:
+            # Guarantee __EOF__ is always sent on disconnect/error
+            try:
+                q.put_nowait("__EOF__")
             except Exception:
-                break
+                pass
 
     headers = {"Cache-Control": "no-cache", "Content-Type": "text/event-stream"}
     return StreamingResponse(event_source(), headers=headers)
@@ -170,4 +173,5 @@ routes = [
     Route("/runs/{id}/cancel", cancel_run, methods=["POST"]),
     Route("/artifacts/{id}", get_artifact, methods=["GET"]),
 ]
+
 router = Router(routes=routes)
