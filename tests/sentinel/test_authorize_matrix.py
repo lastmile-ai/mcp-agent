@@ -1,4 +1,5 @@
 import pytest
+import pytest_asyncio
 import httpx
 from mcp_agent.sentinel.client import SentinelClient
 
@@ -17,7 +18,7 @@ class MockAuthorizeTransport(httpx.AsyncBaseTransport):
         return httpx.Response(404)
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def mock_sentinel_client():
     """Fixture providing a SentinelClient with mock transport."""
     async with httpx.AsyncClient(transport=MockAuthorizeTransport()) as http:
