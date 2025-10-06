@@ -5,7 +5,7 @@ import time
 import os
 from typing import Optional, Dict, Any
 import httpx
-
+from opentelemetry import metrics
 
 class SentinelClient:
     """
@@ -118,9 +118,7 @@ class SentinelClient:
         """Async context manager exit - closes HTTP client."""
         await self.close()
 
-
 # === PR-05A: GitHub token issuing via Sentinel (consumer) ===
-
 # OTel counter for observability
 _meter = metrics.get_meter(__name__)
 try:
@@ -161,6 +159,7 @@ async def issue_github_token(
         payload["ttl_seconds"] = ttl_seconds
     if trace_id:
         payload["trace_id"] = trace_id
+
     # Sign with same HMAC pattern as register/authorize
     client = SentinelClient(base_url=base_url, signing_key=signing_key)
     try:
@@ -180,7 +179,7 @@ async def issue_github_token(
             pass
         # Expected {token, expires_at, granted_permissions}
         return data
-    except Exception as e:
+    except Exception:
         try:
             if _sentinel_token_counter:
                 _sentinel_token_counter.add(1, {"outcome": "error"})
