@@ -328,7 +328,7 @@ class AzureSettings(BaseSettings):
             "azure__api_version",
         ),
     )
-    """API version for AzureOpenAI client (e.g., '2023-07-01-preview')"""
+    """API version for AzureOpenAI client (e.g., '2025-04-01-preview')"""
 
     azure_deployment: str | None = Field(
         default=None,

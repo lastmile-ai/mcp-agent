@@ -26,7 +26,7 @@ settings = Settings(
         api_key="changethis",
         endpoint="https://<your-resource-name>.openai.azure.com",
         default_model="gpt-4o-mini",
-        api_version="2025-01-01-preview",
+        api_version="2025-04-01-preview",
     ),
 )
 

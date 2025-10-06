@@ -47,9 +47,9 @@ class TestAzureAugmentedLLM:
 
         azure_settings = AzureSettings(
             api_key="test_key",
-            endpoint="https://test-endpoint.cognitiveservices.azure.com/openai/deployments/gpt-4o-mini",
+            endpoint="https://test-endpoint.openai.azure.com",
             default_model="gpt-4o-mini",
-            api_version="2025-01-01-preview",
+            api_version="2025-04-01-preview",
             credential_scopes=["https://cognitiveservices.azure.com/.default"],
         )
         mock_context.config.azure = azure_settings

@@ -46,7 +46,7 @@ azure:
     default_model: gpt-4o-mini
     api_key: changethis
     endpoint: https://<your-resource-name>.openai.azure.com
-    api_version: "2024-12-01-preview" # Azure OpenAI api-version. See https://aka.ms/azsdk/azure-ai-inference/azure-openai-api-versions
+    api_version: "2025-04-01-preview" # Azure OpenAI api-version. See https://learn.microsoft.com/en-us/azure/ai-foundry/openai/api-version-lifecycle
 
 # Azure AI inference endpoint
 azure:
@@ -54,8 +54,6 @@ azure:
     api_key: changethis
     endpoint: https://<your-resource-name>.services.ai.azure.com/models
 ```
-
-To return structured outputs for Azure OpenAI endpoints, you might need to include `api_version` as '2025-01-01-preview'.
 
 Attach these values in `mcp_agent.secrets.yaml` or `mcp_agent.config.yaml`
 
