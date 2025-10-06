@@ -343,7 +343,7 @@ class AzureSettings(BaseSettings):
 
     azure_ad_token: str | None = Field(
         default=None,
-        validate_alias=AliasChoices(
+        validation_alias=AliasChoices(
             "azure_ad_token",
             "AZURE_AD_TOKEN",
             "AZURE_AI_AD_TOKEN",
