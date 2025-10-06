@@ -247,8 +247,12 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
                 self._annotate_span_for_completion_response(span, response, i)
 
                 # Per-iteration token counts
-                iteration_input = response.usage.prompt_tokens
-                iteration_output = response.usage.completion_tokens
+                if isinstance(response.usage, dict):
+                    iteration_input = response.usage["prompt_tokens"]
+                    iteration_output = response.usage["completion_tokens"]
+                else:
+                    iteration_input = response.usage.prompt_tokens
+                    iteration_output = response.usage.completion_tokens
 
                 total_input_tokens += iteration_input
                 total_output_tokens += iteration_output
