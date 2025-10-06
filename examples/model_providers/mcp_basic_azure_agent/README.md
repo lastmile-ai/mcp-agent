@@ -29,11 +29,11 @@ Install requirements specific to this example:
 uv pip install -r requirements.txt
 ```
 
-## `2` Set up Azure OpenAI
+## `2` Set up Azure settings
 
 Check out the [Azure Python SDK docs](https://learn.microsoft.com/en-us/python/api/overview/azure/ai-inference-readme?view=azure-python-preview#getting-started) to obtain the following values:
 
-- `endpoint`: E.g. `https://<your-resource-name>.services.ai.azure.com/models` or `https://<your-resource-name>.cognitiveservices.azure.com/openai/deployments/<your-deployment-name>`
+- `endpoint`: E.g. `https://<your-resource-name>.openai.azure.com` or `https://<your-resource-name>.services.ai.azure.com/models`
 - `api_key`
 
 Example configurations:
@@ -45,8 +45,8 @@ Example configurations:
 azure:
     default_model: gpt-4o-mini
     api_key: changethis
-    endpoint: https://<your-resource-name>.cognitiveservices.azure.com/openai/deployments/<your-deployment-name>
-    api_version: "2025-01-01-preview" # Azure OpenAI api-version. See https://aka.ms/azsdk/azure-ai-inference/azure-openai-api-versions
+    endpoint: https://<your-resource-name>.openai.azure.com
+    api_version: "2024-12-01-preview" # Azure OpenAI api-version. See https://aka.ms/azsdk/azure-ai-inference/azure-openai-api-versions
 
 # Azure AI inference endpoint
 azure:
