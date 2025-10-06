@@ -95,9 +95,7 @@ def test_literal_exporters_become_typed_configs():
     settings = OpenTelemetrySettings(exporters=["console", "file", "otlp"])
 
     assert len(settings.exporters) == 3
-    assert [
-        type(exporter) for exporter in settings.exporters
-    ] == [
+    assert [type(exporter) for exporter in settings.exporters] == [
         ConsoleExporterSettings,
         FileExporterSettings,
         OTLPExporterSettings,

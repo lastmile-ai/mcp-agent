@@ -56,7 +56,9 @@ async def example_usage():
         logger = agent_app.logger
         context = agent_app.context
 
-        outcome = await calculate("Add 2 and 3, then multiply the result by 4.", context)
+        outcome = await calculate(
+            "Add 2 and 3, then multiply the result by 4.", context
+        )
         logger.info(f"(2+3) * 4 equals {outcome}")
 
 
