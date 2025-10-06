@@ -7,7 +7,7 @@ import sys
 from httpx import URL
 from io import StringIO
 from pathlib import Path
-from typing import Annotated, Dict, List, Literal, Optional, Set, Union
+from typing import Annotated, Any, Dict, List, Literal, Optional, Set, Union
 import threading
 import warnings
 
@@ -319,8 +319,58 @@ class AzureSettings(BaseSettings):
         ),
     )
 
+    api_version: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "api_version",
+            "AZURE_OPENAI_API_VERSION",
+            "AZURE_AI_API_VERSION",
+            "azure__api_version",
+        ),
+    )
+    """API version for AzureOpenAI client (e.g., '2023-07-01-preview')"""
+
+    azure_deployment: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "azure_deployment",
+            "AZURE_OPENAI_DEPLOYMENT",
+            "AZURE_AI_DEPLOYMENT",
+            "azure__azure_deployment",
+        ),
+    )
+    """Azure deployment name (optional, defaults to model name if not specified)"""
+
+    azure_ad_token: str | None = Field(
+        default=None,
+        validate_alias=AliasChoices(
+            "azure_ad_token",
+            "AZURE_AD_TOKEN",
+            "AZURE_AI_AD_TOKEN",
+            "azure__azure_ad_token",
+        ),
+    )
+    """Azure AD token for Entra ID authentication"""
+
+    azure_ad_token_provider: Any | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "azure_ad_token_provider",
+            "AZURE_AD_TOKEN_PROVIDER",
+            "AZURE_AI_AD_TOKEN_PROVIDER",
+        ),
+    )
+    """Azure AD token provider for dynamic token generation"""
+
     credential_scopes: List[str] | None = Field(
         default=["https://cognitiveservices.azure.com/.default"]
+    )
+
+    default_model: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "default_model", "AZURE_OPENAI_DEFAULT_MODEL", "azure__default_model"
+        ),
     )
 
     model_config = SettingsConfigDict(
@@ -631,7 +681,9 @@ class OpenTelemetrySettings(BaseModel):
         legacy_path = getattr(values, "path", None)
         legacy_path_settings = getattr(values, "path_settings", None)
         if isinstance(legacy_path_settings, dict):
-            legacy_path_settings = TracePathSettings.model_validate(legacy_path_settings)
+            legacy_path_settings = TracePathSettings.model_validate(
+                legacy_path_settings
+            )
 
         for exporter in values.exporters:
             if isinstance(exporter, OpenTelemetryExporterBase):
