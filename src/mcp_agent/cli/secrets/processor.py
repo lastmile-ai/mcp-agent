@@ -278,7 +278,14 @@ async def get_validated_config_secrets(
 
                 if key in input_config:
                     if input_config[key] == secret_value:
-                        validated_config[key] = existing_value
+                        reprocess = not non_interactive and typer.confirm(
+                            f"Secret at '{current_path}' value in transformed secrets file matches raw secrets file. Do you want to reprocess it anyway?",
+                            default=False,
+                        )
+                        if reprocess:
+                            continue
+                        else:
+                            validated_config[key] = existing_value
                     else:
                         if non_interactive:
                             print_warning(
