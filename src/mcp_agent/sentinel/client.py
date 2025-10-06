@@ -2,7 +2,8 @@ import hashlib
 import hmac
 import json
 import time
-from typing import Optional
+import os
+from typing import Optional, Dict, Any
 import httpx
 
 
@@ -119,9 +120,6 @@ class SentinelClient:
 
 
 # === PR-05A: GitHub token issuing via Sentinel (consumer) ===
-from os import getenv
-from typing import Dict, Any
-from opentelemetry import metrics
 
 # OTel counter for observability
 _meter = metrics.get_meter(__name__)
@@ -147,12 +145,12 @@ async def issue_github_token(
     Reads SENTINEL_URL and SENTINEL_HMAC_KEY from environment.
     Optional guard: GITHUB_ALLOWED_REPO must match if set.
     """
-    base_url = getenv("SENTINEL_URL")
-    signing_key = getenv("SENTINEL_HMAC_KEY")
+    base_url = os.getenv("SENTINEL_URL")
+    signing_key = os.getenv("SENTINEL_HMAC_KEY")
     if not base_url or not signing_key:
         raise RuntimeError("SENTINEL_URL and SENTINEL_HMAC_KEY are required")
 
-    allowed = getenv("GITHUB_ALLOWED_REPO")
+    allowed = os.getenv("GITHUB_ALLOWED_REPO")
     if allowed and allowed != repo:
         raise ValueError("Repo not allowed by GITHUB_ALLOWED_REPO")
 
@@ -182,7 +180,7 @@ async def issue_github_token(
             pass
         # Expected {token, expires_at, granted_permissions}
         return data
-    except Exception:
+    except Exception as e:
         try:
             if _sentinel_token_counter:
                 _sentinel_token_counter.add(1, {"outcome": "error"})

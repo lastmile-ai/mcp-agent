@@ -8,6 +8,7 @@ server initialization.
 """
 
 from contextlib import asynccontextmanager
+import inspect
 from datetime import timedelta
 from typing import Callable, Dict, AsyncGenerator, Optional, TYPE_CHECKING
 
