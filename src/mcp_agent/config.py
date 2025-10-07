@@ -673,6 +673,7 @@ class OpenTelemetrySettings(BaseModel):
         return data
 
     @model_validator(mode="after")
+    @classmethod
     def _finalize_exporters(cls, values: "OpenTelemetrySettings"):
         """Ensure exporters are instantiated as typed configs even if literals were provided."""
 

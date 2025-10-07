@@ -7,6 +7,7 @@ from mcp_agent.config import (
     FileExporterSettings,
     OTLPExporterSettings,
     OpenTelemetrySettings,
+    Settings,
     TraceOTLPSettings,
     TracePathSettings,
 )
@@ -100,3 +101,11 @@ def test_literal_exporters_become_typed_configs():
         FileExporterSettings,
         OTLPExporterSettings,
     ]
+
+
+def test_settings_default_construction_uses_typed_exporters():
+    settings = Settings()
+
+    assert isinstance(settings.otel, OpenTelemetrySettings)
+    # Default exporters should still be a typed list instance
+    assert isinstance(settings.otel.exporters, list)
