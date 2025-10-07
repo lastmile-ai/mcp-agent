@@ -53,7 +53,6 @@ async def _probe_one(client: httpx.AsyncClient, base_url: str) -> Tuple[bool, Di
             j = r.json()
             # Accept either root fields or nested under 'mcp'
             meta = j.get("mcp", j)
-            name = meta.get("name") or j.get("name")
             version = meta.get("version") or j.get("version")
             caps = meta.get("capabilities") or j.get("capabilities") or {}
             if isinstance(caps, dict):
