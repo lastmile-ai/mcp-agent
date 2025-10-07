@@ -1,8 +1,8 @@
-import json
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from mcp_agent.tasks import bootstrap_repo
+
 
 async def bootstrap_repo_handler(request: Request):
     body = await request.json()
