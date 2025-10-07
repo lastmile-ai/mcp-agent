@@ -1,9 +1,9 @@
 import base64
-import json
 import os
 from typing import Optional, Tuple
 
 import httpx
+
 
 class GithubMCPClient:
     def __init__(self, base_url: Optional[str] = None, token: Optional[str] = None, timeout: float = 30.0):
