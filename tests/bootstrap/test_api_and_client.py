@@ -7,7 +7,7 @@ Follows best practices:
 - Test edge cases and error paths
 """
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, AsyncMock
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 import httpx
@@ -24,7 +24,7 @@ class TestBootstrapRepoHandler:
         """Test successful request returns 200 with expected structure."""
         # Arrange
         mock_request = Mock(spec=Request)
-        mock_request.json = Mock(return_value={
+        mock_request.json = AsyncMock(return_value={
             "owner": "test-owner",
             "repo": "test-repo",
             "trace_id": "trace-123",
@@ -47,7 +47,7 @@ class TestBootstrapRepoHandler:
         """Test request without owner returns 400 error."""
         # Arrange
         mock_request = Mock(spec=Request)
-        mock_request.json = Mock(return_value={"repo": "test-repo"})
+        mock_request.json = AsyncMock(return_value={"repo": "test-repo"})
         
         # Act
         response = await bootstrap_repo_handler(mock_request)
@@ -61,7 +61,7 @@ class TestBootstrapRepoHandler:
         """Test request without repo returns 400 error."""
         # Arrange
         mock_request = Mock(spec=Request)
-        mock_request.json = Mock(return_value={"owner": "test-owner"})
+        mock_request.json = AsyncMock(return_value={"owner": "test-owner"})
         
         # Act
         response = await bootstrap_repo_handler(mock_request)
@@ -75,7 +75,7 @@ class TestBootstrapRepoHandler:
         """Test handler uses sensible defaults for optional parameters."""
         # Arrange
         mock_request = Mock(spec=Request)
-        mock_request.json = Mock(return_value={
+        mock_request.json = AsyncMock(return_value={
             "owner": "test-owner",
             "repo": "test-repo"
         })
@@ -99,7 +99,7 @@ class TestBootstrapRepoHandler:
         """Test dry_run parameter is correctly passed through."""
         # Arrange
         mock_request = Mock(spec=Request)
-        mock_request.json = Mock(return_value={
+        mock_request.json = AsyncMock(return_value={
             "owner": "test-owner",
             "repo": "test-repo",
             "dry_run": True
