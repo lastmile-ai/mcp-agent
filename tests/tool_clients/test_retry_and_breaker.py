@@ -1,9 +1,9 @@
+# Tests for HTTPClient retry and circuit breaker logic
+# Note: http.py now uses OpenTelemetry metrics instead of prometheus_client
 import httpx
 import pytest
-
 from mcp_agent.client.http import HTTPClient
 from mcp_agent.errors.canonical import CanonicalError
-
 
 class Flaky(httpx.BaseTransport):
     def __init__(self, fail_times=3, status=500):
@@ -19,14 +19,12 @@ class Flaky(httpx.BaseTransport):
             raise httpx.ConnectError("boom", request=request)
         return httpx.Response(200, json={"ok": True}, request=request)
 
-
 def test_retries_then_succeeds(monkeypatch):
     monkeypatch.setenv("RETRY_MAX", "2")
     monkeypatch.setenv("BACKOFF_MS", "1")
     c = HTTPClient("test-tool", "http://x", transport=Flaky(fail_times=2))
     data = c.get_json("/ping")
     assert data["ok"] is True
-
 
 def test_breaker_opens(monkeypatch):
     monkeypatch.setenv("RETRY_MAX", "0")
