@@ -1,9 +1,7 @@
 from typing import Any, Dict, Optional
-
 from jsonschema import validate, ValidationError
-
 from ..client.http import HTTPClient
-from ..errors.canonical import CanonicalError, map_schema_error
+from ..errors.canonical import map_schema_error
 
 class BaseAdapter:
     def __init__(self, tool: str, base_url: str, schema: Optional[Dict[str, Any]] = None, client: Optional[HTTPClient] = None):
