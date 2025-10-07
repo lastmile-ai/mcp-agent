@@ -1,5 +1,4 @@
 """Tests for bootstrap API handler and GithubMCPClient.
-
 Follows best practices:
 - Arrange-Act-Assert pattern
 - Descriptive test names
@@ -8,7 +7,7 @@ Follows best practices:
 - Test edge cases and error paths
 """
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 import httpx
