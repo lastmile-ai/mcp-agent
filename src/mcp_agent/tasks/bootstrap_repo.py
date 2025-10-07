@@ -2,9 +2,7 @@ import os
 import textwrap
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
-
 from mcp_agent.services.github_mcp_client import GithubMCPClient
-
 @dataclass
 class Plan:
     owner: str
@@ -28,9 +26,12 @@ def _load_template(rel_path: str) -> str:
 def _detect_language(cli: GithubMCPClient, owner: str, repo: str, ref: str) -> str:
     node = cli.stat(owner, repo, ref, "package.json")
     py = cli.stat(owner, repo, ref, "pyproject.toml") or cli.stat(owner, repo, ref, "requirements.txt")
-    if node and not py: return "node"
-    if py and not node: return "python"
-    if node and py: return "node"
+    if node and not py:
+        return "node"
+    if py and not node:
+        return "python"
+    if node and py:
+        return "node"
     return "node"
 
 def _ci_exists(cli: GithubMCPClient, owner: str, repo: str, ref: str) -> bool:
@@ -44,15 +45,12 @@ def build_plan(cli: GithubMCPClient, owner: str, repo: str, default_branch: str,
     ci_tpl = "ci/node.yml" if lang == "node" else "ci/python.yml"
     body = textwrap.dedent(f"""
     Bootstrap minimal green-first CI and CODEOWNERS.
-
     Why
     - Baseline CI keeps changes green.
     - Add-only: existing workflows are not changed.
-
     What
     - Adds `.github/workflows/ci.yml` for **{lang}**.
     - Adds `CODEOWNERS` if missing.
-
     Notes
     - Required checks should include this job name.
     """ ).strip()
