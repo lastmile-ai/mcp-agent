@@ -1,48 +1,21 @@
 import time
 import os
 from typing import Any, Dict, Optional
-
 import httpx
+from opentelemetry import metrics
 
-# Try to import prometheus_client, provide dummy classes if unavailable
-try:
-    from prometheus_client import Histogram, Counter
-except ImportError:
-    # Dummy classes for test collection without prometheus_client
-    class _DummyHistogram:
-        def __init__(self, *args, **kwargs):
-            pass
-
-        def labels(self, *args, **kwargs):
-            return self
-
-        def observe(self, value):
-            pass
-    
-    class _DummyCounter:
-        def __init__(self, *args, **kwargs):
-            pass
-
-        def labels(self, *args, **kwargs):
-            return self
-
-        def inc(self):
-            pass
-    
-    Histogram = _DummyHistogram
-    Counter = _DummyCounter
+# Initialize OpenTelemetry Meter
+meter = metrics.get_meter(__name__)
 
 # Telemetry
-latency_ms = Histogram(
+latency_ms = meter.create_histogram(
     "latency_ms",
-    "HTTP latency by tool",
-    ["tool"],
-    buckets=(5,10,25,50,100,250,500,1000,2500,5000),
+    description="HTTP latency by tool",
+    unit="ms"
 )
-tool_errors_total = Counter(
+tool_errors_total = meter.create_counter(
     "tool_errors_total",
-    "Canonical tool errors by code",
-    ["code"],
+    description="Canonical tool errors by code"
 )
 
 # Config
@@ -95,7 +68,7 @@ class HTTPClient:
                 with httpx.Client(timeout=self._timeout, transport=self._transport) as c:
                     start = time.time()
                     r = c.request(method, url, **kwargs)
-                    latency_ms.labels(self.tool).observe((time.time() - start) * 1000.0)
+                    latency_ms.record((time.time() - start) * 1000.0, {"tool": self.tool})
                 if r.status_code >= 500:
                     raise httpx.HTTPStatusError("server error", request=r.request, response=r)
                 self.cb.record_ok()
@@ -110,7 +83,7 @@ class HTTPClient:
 
         from ..errors.canonical import map_httpx_error
         err = map_httpx_error(self.tool, last_exc)
-        tool_errors_total.labels(code=err.code).inc()
+        tool_errors_total.add(1, {"code": err.code})
         raise err
 
     def get_json(self, path: str, **kwargs) -> Dict[str, Any]:
