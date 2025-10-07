@@ -1,7 +1,7 @@
 import os
 import textwrap
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 from mcp_agent.services.github_mcp_client import GithubMCPClient
 
@@ -28,9 +28,12 @@ def _load_template(rel_path: str) -> str:
 def _detect_language(cli: GithubMCPClient, owner: str, repo: str, ref: str) -> str:
     node = cli.stat(owner, repo, ref, "package.json")
     py = cli.stat(owner, repo, ref, "pyproject.toml") or cli.stat(owner, repo, ref, "requirements.txt")
-    if node and not py: return "node"
-    if py and not node: return "python"
-    if node and py: return "node"
+    if node and not py:
+        return "node"
+    if py and not node:
+        return "python"
+    if node and py:
+        return "node"
     return "node"
 
 def _ci_exists(cli: GithubMCPClient, owner: str, repo: str, ref: str) -> bool:
