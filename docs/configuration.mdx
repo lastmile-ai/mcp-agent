@@ -349,19 +349,15 @@ Configure Azure OpenAI with different endpoint types:
     ```yaml Config File
     azure:
       default_model: gpt-4o-mini
-      api_version: "2025-01-01-preview"
+      api_version: "2025-04-01-preview"
     ```
 
     ```yaml Secrets File
     azure:
       api_key: "your-azure-key"
-      endpoint: "https://<your-resource-name>.cognitiveservices.azure.com/openai/deployments/<your-deployment-name>"
+      endpoint: "https://<your-resource-name>.openai.azure.com"
     ```
     </CodeGroup>
-
-    <Note>
-      Use `api_version: "2025-01-01-preview"` for structured outputs support.
-    </Note>
   </Tab>
 
   <Tab title="Azure AI Inference Endpoint">

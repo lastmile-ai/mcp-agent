@@ -17,6 +17,8 @@ class TestMCPApp:
         """Create a mock Context with necessary attributes."""
         mock_context = MagicMock(spec=Context)
         mock_context.config = MagicMock(spec=Settings)
+        mock_context.config.name = None
+        mock_context.config.description = None
         mock_context.server_registry = MagicMock()
         mock_context.task_registry = MagicMock()
         mock_context.decorator_registry = MagicMock()
@@ -116,6 +118,8 @@ class TestMCPApp:
     async def test_initialization_with_custom_settings(self):
         """Test initialization with custom settings."""
         mock_settings = MagicMock(spec=Settings)
+        mock_settings.name = None
+        mock_settings.description = None
         app = MCPApp(name="test_app", settings=mock_settings)
 
         assert app._config is mock_settings

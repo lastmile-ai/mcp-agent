@@ -475,8 +475,17 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                 client = AsyncAnthropic()
 
             async with client:
-                async with client.messages.stream(**args) as stream:
-                    final = await stream.get_final_message()
+                stream_method = client.messages.stream
+                if all(
+                    hasattr(stream_method, attr) for attr in ("__aenter__", "__aexit__")
+                ):
+                    async with stream_method(**args) as stream:
+                        final = await stream.get_final_message()
+                else:
+                    # The OpenTelemetry anthropic instrumentation wraps stream() and
+                    # returns an async generator that is not an async context manager.
+                    # Fallback to create() so the call succeeds while still emitting spans.
+                    final = await client.messages.create(**args)
 
             # Extract tool_use input and validate
             for block in final.content:

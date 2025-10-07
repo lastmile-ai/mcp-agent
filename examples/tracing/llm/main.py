@@ -1,5 +1,6 @@
 import asyncio
 import time
+from typing import Dict
 
 from pydantic import BaseModel
 
@@ -16,11 +17,23 @@ from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 app = MCPApp(name="llm_tracing_example")
 
 
-class CountryInfo(BaseModel):
-    """Model representing structured data for country information."""
+class CountryRecord(BaseModel):
+    """Single country's structured data."""
 
     capital: str
     population: int
+
+
+class CountryInfo(BaseModel):
+    """Structured response containing multiple countries."""
+
+    countries: Dict[str, CountryRecord]
+
+    def summary(self) -> str:
+        return ", ".join(
+            f"{country}: {info.capital} (pop {info.population:,})"
+            for country, info in self.countries.items()
+        )
 
 
 async def llm_tracing():
@@ -51,11 +64,18 @@ async def llm_tracing():
             result_structured = await openai_llm.generate_structured(
                 MessageParam(
                     role="user",
-                    content="Give JSON representing the the capitals and populations of the following countries: France, Ireland, Italy",
+                    content=(
+                        "Return JSON under a top-level `countries` object. "
+                        "Within `countries`, each key should be the country name (France, Ireland, Italy) "
+                        "with values containing `capital` and `population`."
+                    ),
                 ),
                 response_model=CountryInfo,
             )
-            logger.info(f"openai_llm structured result: {result_structured}")
+            logger.info(
+                "openai_llm structured result",
+                data=result_structured.model_dump(mode="json"),
+            )
 
         async def _trace_anthropic():
             # Agent-integrated LLM (Anthropic)
@@ -73,11 +93,18 @@ async def llm_tracing():
                 result_structured = await llm.generate_structured(
                     MessageParam(
                         role="user",
-                        content="Give JSON representing the the capitals and populations of the following countries: France, Germany, Belgium",
+                        content=(
+                            "Return JSON under a top-level `countries` object. "
+                            "Within `countries`, each key should be the country name (France, Germany, Belgium) "
+                            "with values containing `capital` and `population`."
+                        ),
                     ),
                     response_model=CountryInfo,
                 )
-                logger.info(f"llm_agent structured result: {result_structured}")
+                logger.info(
+                    "llm_agent structured result",
+                    data=result_structured.model_dump(mode="json"),
+                )
 
         async def _trace_azure():
             # Azure
@@ -93,11 +120,18 @@ async def llm_tracing():
             result_structured = await azure_llm.generate_structured(
                 MessageParam(
                     role="user",
-                    content="Give JSON representing the the capitals and populations of the following countries: Spain, Portugal, Italy",
+                    content=(
+                        "Return JSON under a top-level `countries` object. "
+                        "Within `countries`, each key should be the country name (Spain, Portugal, Italy) "
+                        "with values containing `capital` and `population`."
+                    ),
                 ),
                 response_model=CountryInfo,
             )
-            logger.info(f"azure_llm structured result: {result_structured}")
+            logger.info(
+                "azure_llm structured result",
+                data=result_structured.model_dump(mode="json"),
+            )
 
         await asyncio.gather(
             _trace_openai(),

@@ -47,7 +47,15 @@ To run any of these examples, you'll need to:
 
 3. Configure Jaeger Collector
 
-[Run Jaeger locally](https://www.jaegertracing.io/docs/2.5/getting-started/) and then ensure the `mcp_agent.config.yaml` for this example has `otel.otlp_settings.endpoint` point to the collector endpoint (e.g. `http://localhost:4318/v1/traces` is the default for Jaeger via HTTP).
+[Run Jaeger locally](https://www.jaegertracing.io/docs/2.5/getting-started/) and then ensure the `mcp_agent.config.yaml` for this example includes a typed OTLP exporter with the collector endpoint:
+
+```yaml
+otel:
+  enabled: true
+  exporters:
+    - type: otlp
+      endpoint: "http://localhost:4318/v1/traces"
+```
 
 4. In a separate terminal, start the worker:
 

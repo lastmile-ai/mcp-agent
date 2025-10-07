@@ -41,6 +41,7 @@ from mcp_agent.cli.utils.git_utils import (
     create_git_tag,
     sanitize_git_ref_component,
 )
+from mcp_agent.config import get_settings
 
 from .wrangler_wrapper import wrangler_deploy
 
@@ -57,11 +58,22 @@ def deploy_config(
         "-d",
         help="Description of the MCP App being deployed.",
     ),
-    config_dir: Path = typer.Option(
-        Path(""),
+    config_dir: Optional[Path] = typer.Option(
+        None,
         "--config-dir",
         "-c",
-        help="Path to the directory containing the app config and app files.",
+        help="Path to the directory containing the app config and app files."
+        " If relative, it is resolved against --working-dir.",
+        readable=True,
+        dir_okay=True,
+        file_okay=False,
+        resolve_path=False,
+    ),
+    working_dir: Path = typer.Option(
+        Path("."),
+        "--working-dir",
+        "-w",
+        help="Working directory to resolve config and bundle files from. Defaults to the current directory.",
         exists=True,
         readable=True,
         dir_okay=True,
@@ -104,6 +116,19 @@ def deploy_config(
         min=1,
         max=10,
     ),
+    ignore_file: Optional[Path] = typer.Option(
+        None,
+        "--ignore-file",
+        help=(
+            "Path to ignore file (gitignore syntax). Precedence: 1) --ignore-file <path>, "
+            "2) .mcpacignore in --config-dir, 3) .mcpacignore in working directory."
+        ),
+        exists=False,
+        readable=True,
+        dir_okay=False,
+        file_okay=True,
+        resolve_path=True,
+    ),
 ) -> str:
     """Deploy an MCP agent using the specified configuration.
 
@@ -126,12 +151,45 @@ def deploy_config(
     Returns:
         Newly-deployed MCP App ID
     """
-    # Show help if no app_name is provided
-    if app_name is None:
-        typer.echo(ctx.get_help())
-        raise typer.Exit()
-
     try:
+        if config_dir is None:
+            resolved_config_dir = working_dir
+        elif config_dir.is_absolute():
+            resolved_config_dir = config_dir
+        else:
+            resolved_config_dir = working_dir / config_dir
+
+        if not resolved_config_dir.exists() or not resolved_config_dir.is_dir():
+            raise CLIError(
+                f"Configuration directory '{resolved_config_dir}' does not exist or is not a directory.",
+                retriable=False,
+            )
+
+        config_dir = resolved_config_dir
+
+        config_file, secrets_file, deployed_secrets_file = get_config_files(config_dir)
+
+        default_app_name, default_app_description = _get_app_info_from_config(
+            config_file
+        )
+
+        if app_name is None:
+            if default_app_name:
+                print_info(
+                    f"No app name provided. Using '{default_app_name}' from configuration."
+                )
+                app_name = default_app_name
+            else:
+                app_name = "default"
+                print_info("No app name provided. Using 'default' as app name.")
+
+        if app_description is None:
+            if default_app_description:
+                print_info(
+                    "No app description provided. Using description from configuration."
+                )
+                app_description = default_app_description
+
         provided_key = api_key
         effective_api_url = api_url or settings.API_BASE_URL
         effective_api_key = (
@@ -174,7 +232,8 @@ def deploy_config(
                 )
                 if not non_interactive:
                     use_existing = typer.confirm(
-                        f"Do you want deploy an update to the existing app ID: {app_id}?"
+                        f"Do you want deploy an update to the existing app ID: {app_id}?",
+                        default=True,
                     )
                     if use_existing:
                         print_info(f"Will deploy an update to app ID: {app_id}")
@@ -195,9 +254,6 @@ def deploy_config(
         except Exception as e:
             raise CLIError(f"Error checking or creating app: {str(e)}") from e
 
-        # Validate config directory and required files
-        config_file, secrets_file, deployed_secrets_file = get_config_files(config_dir)
-
         # If a deployed secrets file already exists, determine if it should be used or overwritten
         if deployed_secrets_file:
             if secrets_file:
@@ -209,10 +265,11 @@ def deploy_config(
                         "--non-interactive specified, using existing deployed secrets file without changes."
                     )
                 else:
-                    update = typer.confirm(
-                        f"Do you want to update the existing '{MCP_DEPLOYED_SECRETS_FILENAME}' by re-processing '{MCP_SECRETS_FILENAME}'?"
+                    reuse = typer.confirm(
+                        f"Do you want to reuse the previously deployed secrets in '{MCP_DEPLOYED_SECRETS_FILENAME}'?",
+                        default=True,
                     )
-                    if update:
+                    if not reuse:
                         print_info(
                             f"Will update existing '{MCP_DEPLOYED_SECRETS_FILENAME}' by re-processing '{MCP_SECRETS_FILENAME}'."
                         )
@@ -231,9 +288,7 @@ def deploy_config(
         secrets_transformed_path = None
         if secrets_file and not deployed_secrets_file:
             print_info("Processing secrets file...")
-            secrets_transformed_path = Path(
-                f"{config_dir}/{MCP_DEPLOYED_SECRETS_FILENAME}"
-            )
+            secrets_transformed_path = config_dir / MCP_DEPLOYED_SECRETS_FILENAME
 
             run_async(
                 process_config_secrets(
@@ -282,6 +337,16 @@ def deploy_config(
             else:
                 print_info("Skipping git tag (not a git repository)")
 
+        # Determine effective ignore path
+        ignore_path: Optional[Path] = None
+        if ignore_file is not None:
+            ignore_path = ignore_file
+        else:
+            candidate = config_dir / ".mcpacignore"
+            if not candidate.exists():
+                candidate = Path.cwd() / ".mcpacignore"
+            ignore_path = candidate if candidate.exists() else None
+
         app = run_async(
             _deploy_with_retry(
                 app_id=app_id,
@@ -289,6 +354,7 @@ def deploy_config(
                 project_dir=config_dir,
                 mcp_app_client=mcp_app_client,
                 retry_count=retry_count,
+                ignore=ignore_path,
             )
         )
 
@@ -317,6 +383,7 @@ async def _deploy_with_retry(
     project_dir: Path,
     mcp_app_client: MCPAppClient,
     retry_count: int,
+    ignore: Optional[Path],
 ):
     """Execute the deployment operations with retry logic.
 
@@ -336,6 +403,7 @@ async def _deploy_with_retry(
             app_id=app_id,
             api_key=api_key,
             project_dir=project_dir,
+            ignore_file=ignore,
         )
     except Exception as e:
         raise CLIError(f"Bundling failed: {str(e)}") from e
@@ -443,3 +511,30 @@ def get_config_files(config_dir: Path) -> tuple[Path, Optional[Path], Optional[P
         deployed_secrets_file = deployed_secrets_path
 
     return config_file, secrets_file, deployed_secrets_file
+
+
+def _get_app_info_from_config(config_file: Path) -> Optional[tuple[str, str]]:
+    """Return a default deployment name sourced from configuration if available."""
+
+    try:
+        loaded_settings = get_settings(
+            config_path=str(config_file),
+            set_global=False,
+        )
+    except Exception:
+        return None, None
+
+    app_name = (
+        loaded_settings.name
+        if isinstance(loaded_settings.name, str) and loaded_settings.name.strip()
+        else None
+    )
+
+    app_description = (
+        loaded_settings.description
+        if isinstance(loaded_settings.description, str)
+        and loaded_settings.description.strip()
+        else None
+    )
+
+    return app_name, app_description
