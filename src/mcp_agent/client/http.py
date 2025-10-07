@@ -1,9 +1,31 @@
 import time
 import os
 from typing import Any, Dict, Optional
-
 import httpx
-from prometheus_client import Histogram, Counter
+
+# Try to import prometheus_client, provide dummy classes if unavailable
+try:
+    from prometheus_client import Histogram, Counter
+except ImportError:
+    # Dummy classes for test collection without prometheus_client
+    class _DummyHistogram:
+        def __init__(self, *args, **kwargs):
+            pass
+        def labels(self, **kwargs):
+            return self
+        def observe(self, value):
+            pass
+    
+    class _DummyCounter:
+        def __init__(self, *args, **kwargs):
+            pass
+        def labels(self, **kwargs):
+            return self
+        def inc(self):
+            pass
+    
+    Histogram = _DummyHistogram
+    Counter = _DummyCounter
 
 # Telemetry
 latency_ms = Histogram(
@@ -12,7 +34,6 @@ latency_ms = Histogram(
     ["tool"],
     buckets=(5,10,25,50,100,250,500,1000,2500,5000),
 )
-
 tool_errors_total = Counter(
     "tool_errors_total",
     "Canonical tool errors by code",
@@ -25,7 +46,6 @@ _RETRY_MAX = int(os.getenv("RETRY_MAX", "2"))
 _BREAKER_THRESH = int(os.getenv("BREAKER_THRESH", "5"))
 _BACKOFF_MS = int(os.getenv("BACKOFF_MS", "50"))
 _BREAKER_COOLDOWN_MS = int(os.getenv("BREAKER_COOLDOWN_MS", "30000"))
-
 
 class CircuitBreaker:
     def __init__(self, threshold: int = _BREAKER_THRESH, cooldown_ms: int = _BREAKER_COOLDOWN_MS):
