@@ -1,8 +1,11 @@
 import os
 import textwrap
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import Dict, List
+
 from mcp_agent.services.github_mcp_client import GithubMCPClient
+
+
 @dataclass
 class Plan:
     owner: str
@@ -16,12 +19,14 @@ class Plan:
     pr_body: str
     skipped: bool = False
 
+
 def _load_template(rel_path: str) -> str:
     # project root relative path
     base = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
     p = os.path.join(base, "templates", "repo", rel_path)
     with open(p, "r", encoding="utf-8") as f:
         return f.read()
+
 
 def _detect_language(cli: GithubMCPClient, owner: str, repo: str, ref: str) -> str:
     node = cli.stat(owner, repo, ref, "package.json")
@@ -34,8 +39,10 @@ def _detect_language(cli: GithubMCPClient, owner: str, repo: str, ref: str) -> s
         return "node"
     return "node"
 
+
 def _ci_exists(cli: GithubMCPClient, owner: str, repo: str, ref: str) -> bool:
     return cli.stat(owner, repo, ref, ".github/workflows/ci.yml") or cli.stat(owner, repo, ref, ".github/workflows/ci.yaml")
+
 
 def build_plan(cli: GithubMCPClient, owner: str, repo: str, default_branch: str, language_hint: str) -> Plan:
     ref = default_branch
@@ -45,12 +52,15 @@ def build_plan(cli: GithubMCPClient, owner: str, repo: str, default_branch: str,
     ci_tpl = "ci/node.yml" if lang == "node" else "ci/python.yml"
     body = textwrap.dedent(f"""
     Bootstrap minimal green-first CI and CODEOWNERS.
+
     Why
     - Baseline CI keeps changes green.
     - Add-only: existing workflows are not changed.
+
     What
     - Adds `.github/workflows/ci.yml` for **{lang}**.
     - Adds `CODEOWNERS` if missing.
+
     Notes
     - Required checks should include this job name.
     """ ).strip()
@@ -59,6 +69,7 @@ def build_plan(cli: GithubMCPClient, owner: str, repo: str, default_branch: str,
         ".github/CODEOWNERS": _load_template("CODEOWNERS"),
     }
     return Plan(owner, repo, default_branch, lang, "vibe/bootstrap", files, [], "Bootstrap CI + CODEOWNERS (green-first)", body)
+
 
 def run(owner: str, repo: str, trace_id: str, language: str = "auto", dry_run: bool = False) -> Dict:
     cli = GithubMCPClient()
