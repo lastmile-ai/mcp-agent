@@ -1,4 +1,4 @@
-"""Deploy command for MCP Agent Cloud CLI.
+"""Deploy command for mcp-agent cloud CLI.
 
 This module provides the deploy_config function which processes configuration files
 with secret tags and transforms them into deployment-ready configurations with secret handles.
@@ -130,7 +130,7 @@ def deploy_config(
         resolve_path=True,
     ),
 ) -> str:
-    """Deploy an MCP agent using the specified configuration.
+    """Deploy an mcp-agent using the specified configuration.
 
     An MCP App is deployed from bundling the code at the specified config directory.
     This directory must contain an 'mcp_agent.config.yaml' at its root. The process will look for an existing
@@ -176,19 +176,12 @@ def deploy_config(
         if app_name is None:
             if default_app_name:
                 print_info(
-                    f"No app name provided. Using '{default_app_name}' from configuration."
+                    f"Using app name from config.yaml: '{default_app_name}'"
                 )
                 app_name = default_app_name
             else:
                 app_name = "default"
-                print_info("No app name provided. Using 'default' as app name.")
-
-        if app_description is None:
-            if default_app_description:
-                print_info(
-                    "No app description provided. Using description from configuration."
-                )
-                app_description = default_app_description
+                print_info("Using app name: 'default'")
 
         provided_key = api_key
         effective_api_url = api_url or settings.API_BASE_URL
@@ -203,40 +196,50 @@ def deploy_config(
             )
         if not effective_api_key:
             raise CLIError(
-                "Must be logged in to deploy. Run 'mcp-agent login', set MCP_API_KEY environment variable or specify --api-key option.",
+                "You need to be logged in to deploy.\n\n"
+                "To continue, do one of the following:\n"
+                "  • Run: mcp-agent login\n"
+                "  • Or set the MCP_API_KEY environment variable\n"
+                "  • Or use the --api-key flag with your key",
                 retriable=False,
             )
-        print_info(f"Using API at {effective_api_url}")
+        
+        if settings.VERBOSE:
+            print_info(f"Using API at {effective_api_url}")
 
         mcp_app_client = MCPAppClient(
             api_url=effective_api_url, api_key=effective_api_key
         )
 
-        print_info(f"Checking for existing app ID for '{app_name}'...")
+        if settings.VERBOSE:
+            print_info(f"Checking for existing app ID for '{app_name}'...")
+
         try:
             app_id = run_async(mcp_app_client.get_app_id_by_name(app_name))
             if not app_id:
-                print_info(
-                    f"No existing app found with name '{app_name}'. Creating a new app..."
-                )
+                print_info(f"App '{app_name}' not found — creating a new one...")
                 app = run_async(
                     mcp_app_client.create_app(
                         name=app_name, description=app_description
                     )
                 )
                 app_id = app.appId
-                print_success(f"Created new app with ID: {app_id}")
+                print_success(f"Created new app '{app_name}'")
+                if settings.VERBOSE:
+                    print_info(f"New app id: `{app_id}`")
             else:
+                short_id = f"{app_id[:8]}…"
                 print_success(
-                    f"Found existing app with ID: {app_id} for name '{app_name}'"
+                    f"Found existing app '{app_name}' (ID: `{short_id}`)"
                 )
                 if not non_interactive:
                     use_existing = typer.confirm(
-                        f"Do you want deploy an update to the existing app ID: {app_id}?",
+                        f"Deploy an update to '{app_name}' (ID: `{short_id}`)?",
                         default=True,
                     )
                     if use_existing:
-                        print_info(f"Will deploy an update to app ID: {app_id}")
+                        if settings.VERBOSE:
+                            print_info(f"Will deploy an update to app ID: `{app_id}`")
                     else:
                         print_error(
                             "Cancelling deployment. Please choose a different app name."
@@ -257,25 +260,21 @@ def deploy_config(
         # If a deployed secrets file already exists, determine if it should be used or overwritten
         if deployed_secrets_file:
             if secrets_file:
-                print_info(
-                    f"Both '{MCP_SECRETS_FILENAME}' and '{MCP_DEPLOYED_SECRETS_FILENAME}' found in {config_dir}."
-                )
+                if settings.VERBOSE:
+                    print_info(
+                        f"Both '{MCP_SECRETS_FILENAME}' and '{MCP_DEPLOYED_SECRETS_FILENAME}' found in {config_dir}."
+                    )
                 if non_interactive:
                     print_info(
-                        "--non-interactive specified, using existing deployed secrets file without changes."
+                        "Running in non-interactive mode — reusing previously deployed secrets."
                     )
                 else:
                     reuse = typer.confirm(
-                        f"Do you want to reuse the previously deployed secrets in '{MCP_DEPLOYED_SECRETS_FILENAME}'?",
+                        f"Re-use the deployed secrets from '{MCP_DEPLOYED_SECRETS_FILENAME}'?",
                         default=True,
                     )
                     if not reuse:
-                        print_info(
-                            f"Will update existing '{MCP_DEPLOYED_SECRETS_FILENAME}' by re-processing '{MCP_SECRETS_FILENAME}'."
-                        )
-                        deployed_secrets_file = None  # Will trigger re-processing
-                    else:
-                        print_info(f"Using existing '{MCP_DEPLOYED_SECRETS_FILENAME}'.")
+                        deployed_secrets_file = None  # Will trigger re-processing)
             else:
                 print_info(
                     f"Found '{MCP_DEPLOYED_SECRETS_FILENAME}' in {config_dir}, but no '{MCP_SECRETS_FILENAME}' to re-process. Using existing deployed secrets file."
@@ -287,7 +286,7 @@ def deploy_config(
 
         secrets_transformed_path = None
         if secrets_file and not deployed_secrets_file:
-            print_info("Processing secrets file...")
+            # print_info("Processing secrets file...")
             secrets_transformed_path = config_dir / MCP_DEPLOYED_SECRETS_FILENAME
 
             run_async(
@@ -301,20 +300,13 @@ def deploy_config(
             )
 
             print_success("Secrets file processed successfully")
-            print_info(
-                f"Transformed secrets file written to {secrets_transformed_path}"
-            )
+            if settings.VERBOSE:
+                print_info(
+                    f"Transformed secrets file written to {secrets_transformed_path}"
+                )
 
         else:
             print_info("Skipping secrets processing...")
-
-        console.print(
-            Panel(
-                "Ready to deploy MCP Agent with processed configuration",
-                title="Deployment Ready",
-                border_style="green",
-            )
-        )
 
         # Optionally create a local git tag as a breadcrumb of this deployment
         if git_tag:
@@ -325,7 +317,7 @@ def deploy_config(
                 ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
                 tag_name = f"mcp-deploy/{safe_name}/{ts}-{git_meta.short_sha}"
                 msg = (
-                    f"MCP Agent deploy for app '{app_name}' (id {app_id})\n"
+                    f"mcp-agent deploy for app '{app_name}' (ID: `{app_id}`)\n"
                     f"Commit: {git_meta.commit_sha}\n"
                     f"Branch: {git_meta.branch or ''}\n"
                     f"Dirty: {git_meta.dirty}"
@@ -358,7 +350,7 @@ def deploy_config(
             )
         )
 
-        print_info(f"App ID: {app_id}")
+        print_info(f"App Name '{app_name}'")
         if app.appServerInfo:
             status = (
                 "ONLINE"
@@ -463,7 +455,8 @@ async def _deploy_with_retry(
                 raise
 
     if retry_count > 1:
-        print_info(f"Deployment API configured with up to {retry_count} attempts")
+        if settings.VERBOSE:
+            print_info(f"Deployment API configured with up to {retry_count} attempts")
 
     try:
         return await retry_async_with_exponential_backoff(
