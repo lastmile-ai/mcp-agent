@@ -1,16 +1,13 @@
 """Integration tests for bootstrap repo functionality.
-
 Tests the end-to-end flow including:
 - Template loading and validation
 - Full run() integration
 - Error handling paths
 - CODEOWNERS and CI template content
 """
-import os
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
-from mcp_agent.tasks import bootstrap_repo
 from mcp_agent.tasks.bootstrap_repo import _load_template, build_plan, run
 
 
