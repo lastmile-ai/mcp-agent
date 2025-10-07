@@ -2,6 +2,7 @@ import httpx
 import pytest
 from mcp_agent.registry.loader import discover
 
+
 class OK(httpx.AsyncBaseTransport):
     def __init__(self):
         self.calls = 0
@@ -14,21 +15,34 @@ class OK(httpx.AsyncBaseTransport):
             return httpx.Response(200, json={"ok":True})
         return httpx.Response(404)
 
+
 @pytest.mark.asyncio
 async def test_discovery_populates_registry_with_retries(monkeypatch):
     # Monkeypatch client creation to use our transport
     import mcp_agent.registry.loader as L
 
-    async def fake_client_ctx():
-        return httpx.AsyncClient(transport=OK())
+    # Create the transport instance that will be reused
+    ok_transport = OK()
 
-    class Dummy:
-        async def __aenter__(self_inner):
-            return httpx.AsyncClient(transport=OK())
-        async def __aexit__(self_inner, exc_type, exc, tb):
-            pass
+    class DummyAsyncClient:
+        """Mock AsyncClient that uses OK transport and works as a context manager."""
+        def __init__(self, *args, **kwargs):
+            # Create an actual httpx.AsyncClient with the OK transport
+            # We need to use the real AsyncClient class, not the mocked one
+            self._real_client = httpx.AsyncClient(transport=ok_transport)
 
-    monkeypatch.setattr(L.httpx, "AsyncClient", lambda *a, **k: Dummy())
+        async def __aenter__(self):
+            # Return the real client when entering the context
+            await self._real_client.__aenter__()
+            return self._real_client
+
+        async def __aexit__(self, exc_type, exc, tb):
+            # Properly exit the real client context
+            await self._real_client.__aexit__(exc_type, exc, tb)
+
+    # Patch httpx.AsyncClient in the loader module
+    monkeypatch.setattr(L.httpx, "AsyncClient", DummyAsyncClient)
+
     entries = [{"name":"t1","base_url":"http://tool1:123"}]
     out = await discover(entries, retries=1, backoff_ms=1)
     assert out and out[0]["alive"] is True
