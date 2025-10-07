@@ -3,46 +3,48 @@ import os
 from typing import Any, Dict, List, Optional, Tuple
 import httpx
 import yaml
+from contextlib import contextmanager
 
-# Try to import prometheus_client, provide dummy classes if unavailable
+# Try to import opentelemetry, provide dummy classes if unavailable
 try:
-    from prometheus_client import Histogram, Counter
+    from opentelemetry import metrics
+    from opentelemetry.metrics import get_meter
+    _meter = get_meter(__name__)
 except ImportError:
-    # Dummy classes for test collection without prometheus_client
+    # Dummy classes for test collection without opentelemetry
+    class _DummyMeter:
+        def create_histogram(self, *args, **kwargs):
+            return _DummyHistogram()
+        def create_counter(self, *args, **kwargs):
+            return _DummyCounter()
+    
     class _DummyHistogram:
-        def __init__(self, *args, **kwargs):
+        def record(self, value, attributes=None):
             pass
+        @contextmanager
         def time(self):
-            return self
-        def __enter__(self):
-            return self
-        def __exit__(self, *args):
-            pass
+            yield
     
     class _DummyCounter:
-        def __init__(self, *args, **kwargs):
-            pass
-        def labels(self, **kwargs):
-            return self
-        def inc(self):
+        def add(self, value, attributes=None):
             pass
     
-    Histogram = _DummyHistogram
-    Counter = _DummyCounter
+    _meter = _DummyMeter()
 
 # Telemetry
-discovery_latency_ms = Histogram(
-    "discovery_latency_ms",
-    "Latency of tool discovery probes in milliseconds",
-    buckets=(5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000),
+discovery_latency_ms = _meter.create_histogram(
+    name="discovery_latency_ms",
+    description="Latency of tool discovery probes in milliseconds",
+    unit="ms"
 )
-capabilities_total = Counter(
-    "capabilities_total",
-    "Total discovered capabilities by name",
-    ["capability"],
+
+capabilities_total = _meter.create_counter(
+    name="capabilities_total",
+    description="Total discovered capabilities by name"
 )
 
 DEFAULT_TOOLS_YAML = os.getenv("TOOLS_YAML_PATH", "tools/tools.yaml")
+
 
 def load_tools_yaml(path: Optional[str] = None) -> List[Dict[str, Any]]:
     """Parse tools.yaml. Returns list of entries with at least name and base_url."""
@@ -64,13 +66,18 @@ def load_tools_yaml(path: Optional[str] = None) -> List[Dict[str, Any]]:
         out.append({"name": str(name), "base_url": str(base), "version": version})
     return out
 
+
 async def _probe_one(client: httpx.AsyncClient, base_url: str) -> Tuple[bool, Dict[str, Any]]:
     """Probe /.well-known/mcp then /health. Returns (alive, info)."""
     info: Dict[str, Any] = {}
     # Try well-known MCP first
     try:
-        with discovery_latency_ms.time():
-            r = await client.get(f"{base_url.rstrip('/')}/.well-known/mcp", timeout=3.0)
+        import time
+        start_time = time.perf_counter()
+        r = await client.get(f"{base_url.rstrip('/')}/.well-known/mcp", timeout=3.0)
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        discovery_latency_ms.record(elapsed_ms)
+        
         if r.status_code == 200 and r.headers.get("content-type", "").startswith("application/json"):
             j = r.json()
             # Accept either root fields or nested under 'mcp'
@@ -79,21 +86,26 @@ async def _probe_one(client: httpx.AsyncClient, base_url: str) -> Tuple[bool, Di
             caps = meta.get("capabilities") or j.get("capabilities") or {}
             if isinstance(caps, dict):
                 for k in caps.keys():
-                    capabilities_total.labels(capability=str(k)).inc()
+                    capabilities_total.add(1, attributes={"capability": str(k)})
             info.update({"version": version, "capabilities": caps, "well_known": True})
             return True, info
     except Exception:
         pass
     # Fallback to /health
     try:
-        with discovery_latency_ms.time():
-            r = await client.get(f"{base_url.rstrip('/')}/health", timeout=2.0)
+        import time
+        start_time = time.perf_counter()
+        r = await client.get(f"{base_url.rstrip('/')}/health", timeout=2.0)
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        discovery_latency_ms.record(elapsed_ms)
+        
         if r.status_code == 200:
             info.update({"health": True})
             return True, info
     except Exception:
         pass
     return False, info
+
 
 async def discover(entries: List[Dict[str, Any]], retries: int = 2, backoff_ms: int = 50) -> List[Dict[str, Any]]:
     """Probe all entries with limited retries. Returns registry records."""
