@@ -2,7 +2,6 @@ import httpx
 import pytest
 from mcp_agent.registry.loader import discover
 
-
 class OK(httpx.AsyncBaseTransport):
     def __init__(self):
         self.calls = 0
@@ -15,7 +14,6 @@ class OK(httpx.AsyncBaseTransport):
             return httpx.Response(200, json={"ok":True})
         return httpx.Response(404)
 
-
 @pytest.mark.asyncio
 async def test_discovery_populates_registry_with_retries(monkeypatch):
     # Monkeypatch client creation to use our transport
@@ -23,13 +21,16 @@ async def test_discovery_populates_registry_with_retries(monkeypatch):
 
     # Create the transport instance that will be reused
     ok_transport = OK()
+    
+    # Save reference to the original AsyncClient before monkeypatching
+    OriginalAsyncClient = httpx.AsyncClient
 
     class DummyAsyncClient:
         """Mock AsyncClient that uses OK transport and works as a context manager."""
         def __init__(self, *args, **kwargs):
-            # Create an actual httpx.AsyncClient with the OK transport
-            # We need to use the real AsyncClient class, not the mocked one
-            self._real_client = httpx.AsyncClient(transport=ok_transport)
+            # Use the original httpx.AsyncClient class (before monkeypatching)
+            # to avoid infinite recursion
+            self._real_client = OriginalAsyncClient(transport=ok_transport)
 
         async def __aenter__(self):
             # Return the real client when entering the context
