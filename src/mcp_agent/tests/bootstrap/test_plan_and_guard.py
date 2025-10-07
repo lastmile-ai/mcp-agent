@@ -1,5 +1,4 @@
 from mcp_agent.tasks import bootstrap_repo as br
-from types import SimpleNamespace
 
 class FakeCli:
     def __init__(self, fs):
