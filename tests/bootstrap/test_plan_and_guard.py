@@ -1,13 +1,10 @@
 from mcp_agent.tasks import bootstrap_repo as br
-from types import SimpleNamespace
 
 class FakeCli:
     def __init__(self, fs):
         self.fs = set(fs)
-
     def stat(self, owner, repo, ref, path):
         return path in self.fs
-
     def get_default_branch(self, owner, repo):
         return "main"
 
