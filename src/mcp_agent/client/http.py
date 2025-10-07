@@ -1,6 +1,7 @@
 import time
 import os
 from typing import Any, Dict, Optional
+
 import httpx
 
 # Try to import prometheus_client, provide dummy classes if unavailable
@@ -11,16 +12,20 @@ except ImportError:
     class _DummyHistogram:
         def __init__(self, *args, **kwargs):
             pass
-        def labels(self, **kwargs):
+
+        def labels(self, *args, **kwargs):
             return self
+
         def observe(self, value):
             pass
     
     class _DummyCounter:
         def __init__(self, *args, **kwargs):
             pass
-        def labels(self, **kwargs):
+
+        def labels(self, *args, **kwargs):
             return self
+
         def inc(self):
             pass
     
@@ -81,6 +86,7 @@ class HTTPClient:
         if not self.cb.allow():
             from ..errors.canonical import CanonicalError
             raise CanonicalError(tool=self.tool, code="circuit_open", http=None, detail="breaker open", hint="cooldown")
+
         url = f"{self.base_url}{'' if path.startswith('/') else '/'}{path}"
         attempt = 0
         last_exc = None
@@ -101,6 +107,7 @@ class HTTPClient:
                     break
                 self._sleep(_BACKOFF_MS * (attempt + 1))
                 attempt += 1
+
         from ..errors.canonical import map_httpx_error
         err = map_httpx_error(self.tool, last_exc)
         tool_errors_total.labels(code=err.code).inc()
