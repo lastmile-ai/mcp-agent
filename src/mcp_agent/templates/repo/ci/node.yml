@@ -1,0 +1,38 @@
+name: ci / node
+
+on:
+  push:
+    branches: [ $default-branch ]
+  pull_request:
+
+jobs:
+  node:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          cache: 'npm'
+      - name: Install
+        run: |
+          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
+            npm ci
+          else
+            npm i
+          fi
+      - name: Lint
+        run: |
+          if npm run | grep -q "^ *lint"; then
+            npm run lint
+          else
+            echo "no lint script; skipping"
+          fi
+      - name: Test
+        run: |
+          if npm run | grep -q "^ *test"; then
+            npm test -- --ci || npm test --if-present -- --ci
+          else
+            echo "no test script; skipping"
+          fi

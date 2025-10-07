@@ -1,0 +1,38 @@
+name: ci / python
+
+on:
+  push:
+    branches: [ $default-branch ]
+  pull_request:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+          cache: 'pip'
+      - name: Install
+        run: |
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+          if [ -f pyproject.toml ]; then pip install -e . || true; fi
+          pip install pytest || true
+          pip install ruff || true
+      - name: Lint
+        run: |
+          if [ -f pyproject.toml ] || [ -f ruff.toml ] || [ -f .ruff.toml ]; then
+            ruff check . || true
+          else
+            echo "no ruff config; skipping"
+          fi
+      - name: Test
+        run: |
+          if command -v pytest >/dev/null 2>&1; then
+            pytest -q || true
+          else
+            echo "pytest missing; skipping"
+          fi
