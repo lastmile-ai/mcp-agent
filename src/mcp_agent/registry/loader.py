@@ -1,10 +1,34 @@
 import asyncio
 import os
 from typing import Any, Dict, List, Optional, Tuple
-
 import httpx
 import yaml
-from prometheus_client import Histogram, Counter
+
+# Try to import prometheus_client, provide dummy classes if unavailable
+try:
+    from prometheus_client import Histogram, Counter
+except ImportError:
+    # Dummy classes for test collection without prometheus_client
+    class _DummyHistogram:
+        def __init__(self, *args, **kwargs):
+            pass
+        def time(self):
+            return self
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+    
+    class _DummyCounter:
+        def __init__(self, *args, **kwargs):
+            pass
+        def labels(self, **kwargs):
+            return self
+        def inc(self):
+            pass
+    
+    Histogram = _DummyHistogram
+    Counter = _DummyCounter
 
 # Telemetry
 discovery_latency_ms = Histogram(
@@ -19,7 +43,6 @@ capabilities_total = Counter(
 )
 
 DEFAULT_TOOLS_YAML = os.getenv("TOOLS_YAML_PATH", "tools/tools.yaml")
-
 
 def load_tools_yaml(path: Optional[str] = None) -> List[Dict[str, Any]]:
     """Parse tools.yaml. Returns list of entries with at least name and base_url."""
@@ -40,7 +63,6 @@ def load_tools_yaml(path: Optional[str] = None) -> List[Dict[str, Any]]:
             continue
         out.append({"name": str(name), "base_url": str(base), "version": version})
     return out
-
 
 async def _probe_one(client: httpx.AsyncClient, base_url: str) -> Tuple[bool, Dict[str, Any]]:
     """Probe /.well-known/mcp then /health. Returns (alive, info)."""
@@ -72,7 +94,6 @@ async def _probe_one(client: httpx.AsyncClient, base_url: str) -> Tuple[bool, Di
     except Exception:
         pass
     return False, info
-
 
 async def discover(entries: List[Dict[str, Any]], retries: int = 2, backoff_ms: int = 50) -> List[Dict[str, Any]]:
     """Probe all entries with limited retries. Returns registry records."""
