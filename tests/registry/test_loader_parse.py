@@ -4,7 +4,6 @@ from mcp_agent.registry.loader import load_tools_yaml
 
 def test_parse_tools_yaml_list():
     data = {"tools": [{"name":"x","base_url":"http://x:1","version":"1.0.0"}]}
-    buf = io.StringIO(yaml.safe_dump(data))
     # emulate reading from file by writing to a temp file
     import tempfile, os, pathlib
     with tempfile.TemporaryDirectory() as d:
