@@ -34,146 +34,176 @@ except ImportError:
     
     _meter = _DummyMeter()
 
-# Telemetry
-discovery_latency_ms = _meter.create_histogram(
-    name="mcp_agent_discovery_latency_ms",
-    description="Time to perform tool discovery in milliseconds",
-    unit="ms",
-)
-discovery_errors = _meter.create_counter(
-    name="mcp_agent_discovery_errors",
-    description="Count of tool discovery errors",
-)
-
-
-def _load_config_from_file(path: str) -> List[Dict[str, Any]]:
-    """Load server configuration from a file (JSON or YAML)."""
-    with open(path, "r") as f:
-        content = f.read()
-        
-    if path.endswith(".json"):
-        import json
-        return json.loads(content)
-    elif path.endswith(".yaml") or path.endswith(".yml"):
-        return yaml.safe_load(content)
-    else:
-        raise ValueError(f"Unsupported config file format: {path}")
-
-
-def _load_mcp_transport(server_config: Dict[str, Any]):
-    """Load MCP transport from server config."""
-    from mcp.client.stdio import StdioServerParameters, stdio_client
-    
-    command = server_config.get("command")
-    args = server_config.get("args", [])
-    env = server_config.get("env")
-    
-    if not command:
-        raise ValueError("Server configuration must include 'command'")
-    
-    server_params = StdioServerParameters(
-        command=command,
-        args=args,
-        env=env,
-    )
-    
-    # Create read/write context for the transport
-    read, write = stdio_client(server_params)
-    
-    # Create a simple object to hold read/write
-    class Transport:
-        pass
-    
-    transport = Transport()
-    transport.read = read
-    transport.write = write
-    
-    return transport
-
 
 class ToolRegistryLoader:
-    """Loads tool definitions from MCP servers into the registry."""
-    
-    def __init__(self, store: ToolRegistryStore):
-        self.store = store
-    
+    """
+    A class responsible for loading and registering MCP tools from various sources.
+
+    This class handles:
+    - Discovering tools via .well-known/mcp.json
+    - Loading tool configurations from files
+    - Registering tools in the ToolRegistryStore
+    """
+
+    def __init__(self, store: Optional[ToolRegistryStore] = None):
+        """Initialize the ToolRegistryLoader.
+
+        Args:
+            store: Optional ToolRegistryStore instance. If not provided, creates a new one.
+        """
+        self.store = store or ToolRegistryStore()
+        self._discovery_duration_hist = _meter.create_histogram(
+            name="mcp_agent.registry.loader.discovery.duration",
+            unit="ms",
+            description="Discovery request duration in milliseconds"
+        )
+        self._discovery_counter = _meter.create_counter(
+            name="mcp_agent.registry.loader.discovery.count",
+            unit="1",
+            description="Number of discovery requests"
+        )
+
     async def discover_and_register_tools(
         self,
-        config_path: Optional[str] = None,
-        config_url: Optional[str] = None,
-    ) -> tuple[int, List[str]]:
-        """Discover tools from configured MCP servers and register them.
-        
-        Args:
-            config_path: Path to local config file
-            config_url: URL to remote config file
-            
-        Returns:
-            Tuple of (number of tools registered, list of error messages)
+        entries: List[Dict[str, Any]],
+        timeout: float = 5.0
+    ) -> List[Dict[str, Any]]:
         """
-        from mcp.client.session import ClientSession
+        Discover tools from a list of server entries and register them.
+
+        Args:
+            entries: List of server entries, each containing 'name' and 'base_url'.
+            timeout: Request timeout in seconds (default: 5.0).
+
+        Returns:
+            List of discovery results for each entry.
+        """
+        results = await discover(entries, timeout=timeout)
         
-        servers = []
-        
-        if config_url:
-            try:
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(config_url)
-                    response.raise_for_status()
-                    servers = yaml.safe_load(response.text)
-            except Exception as e:
-                error_msg = f"Failed to load config from {config_url}: {e}"
-                discovery_errors.add(1, {"error_type": "config_load"})
-                return 0, [error_msg]
-        elif config_path:
-            if not os.path.exists(config_path):
-                return 0, [f"Config file not found: {config_path}"]
-            
-            try:
-                servers = _load_config_from_file(config_path)
-            except Exception as e:
-                error_msg = f"Failed to load config from {config_path}: {e}"
-                discovery_errors.add(1, {"error_type": "config_load"})
-                return 0, [error_msg]
-        
-        if not servers:
-            return 0, ["No servers configured"]
-        
-        total_tools = 0
-        errors = []
-        
-        for server_config in servers:
-            server_name = server_config.get("name", "unknown")
-            
-            try:
-                with discovery_latency_ms.time():
-                    # Load transport
-                    transport = _load_mcp_transport(server_config)
-                    
-                    # Create client session and discover tools
-                    async with ClientSession(
-                        read=transport.read,
-                        write=transport.write,
-                    ) as session:
-                        # Initialize the session
-                        await session.initialize()
-                        
-                        # List available tools
-                        tools_response = await session.list_tools()
-                        
-                        # Register each tool
-                        for tool in tools_response.tools:
-                            self.store.register_tool(
-                                name=tool.name,
-                                description=tool.description or "",
-                                input_schema=tool.inputSchema,
-                                server=server_name,
-                            )
-                            total_tools += 1
-                            
-            except Exception as e:
-                error_msg = f"Failed to load tools from {server_name}: {e}"
-                errors.append(error_msg)
-                discovery_errors.add(1, {"error_type": "discovery", "server": server_name})
+        # Register discovered tools
+        for entry, result in zip(entries, results):
+            if result.get("alive") and result.get("capabilities"):
+                # Extract tools from capabilities if available
+                capabilities = result.get("capabilities", {})
+                tools = capabilities.get("tools", [])
                 
-        return total_tools, errors
+                for tool in tools:
+                    self.store.register_tool(
+                        name=tool.get("name"),
+                        server_name=entry["name"],
+                        description=tool.get("description", ""),
+                        input_schema=tool.get("inputSchema", {}),
+                        metadata={"base_url": entry["base_url"]}
+                    )
+        
+        return results
+
+
+def _load_config_from_file(path: str) -> Dict[str, Any]:
+    """Load configuration from a YAML file.
+
+    Args:
+        path: Path to the YAML configuration file.
+
+    Returns:
+        Parsed configuration as a dictionary.
+
+    Raises:
+        FileNotFoundError: If the file doesn't exist.
+        yaml.YAMLError: If the file is not valid YAML.
+    """
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Configuration file not found: {path}")
+    
+    with open(path, 'r') as f:
+        return yaml.safe_load(f)
+
+
+def _load_mcp_transport(base_url: str) -> Optional[Dict[str, Any]]:
+    """Load MCP transport configuration from a base URL.
+
+    Args:
+        base_url: Base URL of the MCP server.
+
+    Returns:
+        Transport configuration dictionary or None if unavailable.
+    """
+    # Placeholder implementation
+    return {"type": "http", "base_url": base_url}
+
+
+async def discover(
+    entries: List[Dict[str, Any]],
+    timeout: float = 5.0
+) -> List[Dict[str, Any]]:
+    """
+    Discover MCP servers by querying their .well-known/mcp.json endpoints.
+
+    Args:
+        entries: List of server entries, each containing 'name' and 'base_url'.
+        timeout: Request timeout in seconds (default: 5.0).
+
+    Returns:
+        List of discovery results, each containing:
+        - alive: bool indicating if server is reachable
+        - well_known: dict with server metadata (if available)
+        - capabilities: dict with server capabilities (if available)
+    """
+    results = []
+    
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        for entry in entries:
+            result = {
+                "alive": False,
+                "well_known": None,
+                "capabilities": None
+            }
+            
+            try:
+                base_url = entry.get("base_url", "")
+                if not base_url:
+                    results.append(result)
+                    continue
+                
+                # Ensure base_url doesn't end with /
+                base_url = base_url.rstrip("/")
+                well_known_url = f"{base_url}/.well-known/mcp.json"
+                
+                response = await client.get(well_known_url)
+                
+                if response.status_code == 200:
+                    result["alive"] = True
+                    data = response.json()
+                    result["well_known"] = data
+                    result["capabilities"] = data.get("capabilities", {})
+                
+            except Exception:
+                # Server not reachable or error occurred
+                pass
+            
+            results.append(result)
+    
+    return results
+
+
+def load_tools_yaml(file_path: str) -> Dict[str, Any]:
+    """
+    Load and parse a tools YAML configuration file.
+
+    Args:
+        file_path: Path to the YAML file containing tool definitions.
+
+    Returns:
+        Parsed YAML content as a dictionary containing tool definitions.
+
+    Raises:
+        FileNotFoundError: If the file doesn't exist.
+        yaml.YAMLError: If the file is not valid YAML.
+    """
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"Tools YAML file not found: {file_path}")
+    
+    with open(file_path, 'r') as f:
+        content = yaml.safe_load(f)
+    
+    return content if content is not None else {}
