@@ -605,6 +605,24 @@ class OpenTelemetrySettings(BaseModel):
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
+    @staticmethod
+    def _guess_exporter_type(entry: Dict[str, Any]) -> str | None:
+        """
+        Infer an exporter type when an entry is missing the explicit `type`.
+
+        This helps when secrets overlays include only secret-bearing fields and
+        rely on the base config to supply the exporter type.
+        """
+
+        otlp_keys = {"endpoint", "headers", "compression", "certificate_file"}
+        file_keys = {"path", "path_settings"}
+
+        if any(key in entry for key in otlp_keys):
+            return "otlp"
+        if any(key in entry for key in file_keys):
+            return "file"
+        return None
+
     @model_validator(mode="before")
     @classmethod
     def _coerce_exporters_schema(cls, data: Dict) -> Dict:
@@ -618,11 +636,34 @@ class OpenTelemetrySettings(BaseModel):
 
         exporters = data.get("exporters")
 
-        # If exporters are already objects with a 'type', leave as-is
-        if isinstance(exporters, list) and all(
-            isinstance(e, dict) and "type" in e for e in exporters
-        ):
-            return data
+        if isinstance(exporters, list):
+            normalized_exporters: List[Any] = []
+
+            for raw_entry in exporters:
+                entry = raw_entry
+                if isinstance(entry, BaseModel):
+                    entry = entry.model_dump(exclude_none=True)
+
+                if isinstance(entry, dict):
+                    entry_dict = dict(entry)
+                    exporter_type = entry_dict.get("type")
+                    if not exporter_type:
+                        inferred_type = cls._guess_exporter_type(entry_dict)
+                        if inferred_type:
+                            entry_dict = {"type": inferred_type, **entry_dict}
+                        else:
+                            raise ValueError(
+                                "OpenTelemetry exporter entries must include a 'type'. "
+                                "Unable to infer exporter type from fields "
+                                f"{sorted(entry_dict.keys())}. "
+                                "Ensure each exporter in secrets overlays sets `type`."
+                            )
+                    normalized_exporters.append(entry_dict)
+                else:
+                    normalized_exporters.append(entry)
+
+            data["exporters"] = normalized_exporters
+            exporters = data["exporters"]
 
         # If exporters are literal strings, up-convert to typed configs
         if isinstance(exporters, list) and all(isinstance(e, str) for e in exporters):
