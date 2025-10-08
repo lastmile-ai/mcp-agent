@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 
 _DEFAULT_TTL = int(os.getenv("REGISTRY_REFRESH_SEC", "300"))
 
-class RegistryStore:
+class ToolRegistryStore:
     def __init__(self, tools_yaml_path: Optional[str] = None, ttl_sec: Optional[int] = None):
         self._tools_yaml_path = tools_yaml_path
         self._ttl = _DEFAULT_TTL if ttl_sec is None else ttl_sec
@@ -32,4 +32,4 @@ class RegistryStore:
         return list(self._registry)
 
 # module-level singleton for convenience
-store = RegistryStore()
+store = ToolRegistryStore()
