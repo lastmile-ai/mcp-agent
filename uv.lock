@@ -1515,18 +1515,6 @@ wheels = [
 ]
 
 [[package]]
-name = "hvac"
-version = "2.3.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "requests" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/48/a4/c0b698a7250b7a5c2956427406560701862215c646e079a7907846608f44/hvac-2.3.0.tar.gz", hash = "sha256:1b85e3320e8642dd82f234db63253cda169a817589e823713dc5fca83119b1e2", size = 332660, upload-time = "2024-06-18T14:46:09.748Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/0b/34/56facf52e2ea14ce640f434ccf00311af6f3a1df0019d4682ba28ea09948/hvac-2.3.0-py3-none-any.whl", hash = "sha256:a3afc5710760b6ee9b3571769df87a0333da45da05a5f9f963e1d3925a84be7d", size = 155860, upload-time = "2024-06-18T14:46:05.399Z" },
-]
-
-[[package]]
 name = "identify"
 version = "2.6.12"
 source = { registry = "https://pypi.org/simple" }
@@ -2041,11 +2029,12 @@ wheels = [
 
 [[package]]
 name = "mcp-agent"
-version = "0.1.27"
+version = "0.1.32"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "jsonref" },
     { name = "mcp" },
     { name = "numpy" },
@@ -2053,6 +2042,7 @@ dependencies = [
     { name = "opentelemetry-exporter-otlp-proto-http" },
     { name = "opentelemetry-instrumentation-anthropic" },
     { name = "opentelemetry-instrumentation-openai" },
+    { name = "pathspec" },
     { name = "prompt-toolkit" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -2061,6 +2051,7 @@ dependencies = [
     { name = "rich" },
     { name = "scikit-learn" },
     { name = "typer" },
+    { name = "watchdog" },
     { name = "websockets" },
 ]
 
@@ -2081,13 +2072,6 @@ azure = [
 ]
 bedrock = [
     { name = "boto3" },
-]
-cli = [
-    { name = "httpx" },
-    { name = "hvac" },
-    { name = "pyjwt" },
-    { name = "typer" },
-    { name = "watchdog" },
 ]
 cohere = [
     { name = "cohere" },
@@ -2137,8 +2121,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115.6" },
     { name = "google-cloud-aiplatform", marker = "extra == 'anthropic-vertex'", specifier = ">=1.101.0" },
     { name = "google-genai", marker = "extra == 'google'", specifier = ">=1.10.0" },
-    { name = "httpx", marker = "extra == 'cli'", specifier = ">=0.28.1" },
-    { name = "hvac", marker = "extra == 'cli'", specifier = ">=1.1.1" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "jsonref", specifier = ">=1.1.0" },
     { name = "langchain-core", marker = "extra == 'langchain'", specifier = ">=0.3.64" },
     { name = "mcp", specifier = ">=1.13.1" },
@@ -2148,21 +2131,20 @@ requires-dist = [
     { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.29.0" },
     { name = "opentelemetry-instrumentation-anthropic", specifier = ">=0.39.3" },
     { name = "opentelemetry-instrumentation-openai", specifier = ">=0.39.3" },
+    { name = "pathspec", specifier = ">=0.12.1" },
     { name = "prompt-toolkit", specifier = ">=3.0.50" },
     { name = "pydantic", specifier = ">=2.10.4" },
     { name = "pydantic-settings", specifier = ">=2.7.0" },
     { name = "pydantic-yaml", specifier = ">=1.5.1" },
-    { name = "pyjwt", marker = "extra == 'cli'", specifier = ">=2.10.1" },
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "rich", specifier = ">=13.9.4" },
     { name = "scikit-learn", specifier = ">=1.6.0" },
     { name = "temporalio", extras = ["opentelemetry"], marker = "extra == 'temporal'", specifier = ">=1.10.0" },
     { name = "typer", specifier = ">=0.15.3" },
-    { name = "typer", extras = ["all"], marker = "extra == 'cli'", specifier = ">=0.15.3" },
-    { name = "watchdog", marker = "extra == 'cli'", specifier = ">=6.0.0" },
+    { name = "watchdog", specifier = ">=6.0.0" },
     { name = "websockets", specifier = ">=12.0" },
 ]
-provides-extras = ["temporal", "anthropic", "anthropic-bedrock", "anthropic-vertex", "bedrock", "openai", "azure", "google", "cohere", "langchain", "crewai", "cli"]
+provides-extras = ["temporal", "anthropic", "anthropic-bedrock", "anthropic-vertex", "bedrock", "openai", "azure", "google", "cohere", "langchain", "crewai"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -2897,6 +2879,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/66/94/68e2e17afaa9169cf6412ab0f28623903be73d1b32e208d9e8e541bb086d/parso-0.8.4.tar.gz", hash = "sha256:eb3a7b58240fb99099a345571deecc0f9540ea5f4dd2fe14c2a99d6b281ab92d", size = 400609, upload-time = "2024-04-05T09:43:55.897Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c6/ac/dac4a63f978e4dcb3c6d3a78c4d8e0192a113d288502a1216950c41b1027/parso-0.8.4-py2.py3-none-any.whl", hash = "sha256:a418670a20291dacd2dddc80c377c5c3791378ee1e8d12bffc35420643d43f18", size = 103650, upload-time = "2024-04-05T09:43:53.299Z" },
+]
+
+[[package]]
+name = "pathspec"
+version = "0.12.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ca/bc/f35b8446f4531a7cb215605d100cd88b7ac6f44ab3fc94870c120ab3adbf/pathspec-0.12.1.tar.gz", hash = "sha256:a482d51503a1ab33b1c67a6c3813a26953dbdc71c31dacaef9a838c4e29f5712", size = 51043, upload-time = "2023-12-10T22:30:45Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cc/20/ff623b09d963f88bfde16306a54e12ee5ea43e9b597108672ff3a408aad6/pathspec-0.12.1-py3-none-any.whl", hash = "sha256:a0d503e138a4c123b27490a4f7beda6a01c6f288df0e4a8b79c7eb0dc7b4cc08", size = 31191, upload-time = "2023-12-10T22:30:43.14Z" },
 ]
 
 [[package]]

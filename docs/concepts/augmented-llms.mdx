@@ -94,8 +94,8 @@ llm = await agent.attach_llm(AzureAugmentedLLM)
     # Configuration for Azure OpenAI inference endpoint
     azure:
       api_key: "your-azure-api-key"
-      endpoint: "https://your-resource-name.cognitiveservices.azure.com/openai/deployments/your-deployment-name"
-      api_version: "2025-01-01-preview"
+      endpoint: "https://<your-resource-name>.openai.azure.com"
+      api_version: "2025-04-01-preview"
       default_model: "gpt-4o-mini"
     ```
   </Tab>

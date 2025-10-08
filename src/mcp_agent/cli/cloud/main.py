@@ -175,11 +175,6 @@ def callback(
     ),
 ) -> None:
     """MCP Agent Cloud CLI."""
-    # Best-effort version check (5s timeout, non-fatal). Guard to run once.
-    try:
-        maybe_warn_newer_version()
-    except Exception:
-        pass
     if version:
         v = metadata_version("mcp-agent")
         typer.echo(f"MCP Agent Cloud CLI version: {v}")

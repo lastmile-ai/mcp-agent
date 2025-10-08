@@ -79,7 +79,7 @@ mcp-agent supports both `asyncio` and `temporal` execution engines. While asynci
     ```python worker.py
     import asyncio
     from mcp_agent.app import MCPApp
-    from mcp_agent.workflows import Workflow, WorkflowResult
+    from mcp_agent.executor.workflow import Workflow, WorkflowResult
     from mcp_agent.executor.temporal import create_temporal_worker_for_app
     
     app = MCPApp(name="my_agent")
@@ -484,7 +484,7 @@ Temporal workflows are defined the same way as asyncio workflows:
 
 ```python
 from mcp_agent.app import MCPApp
-from mcp_agent.workflows import Workflow, WorkflowResult
+from mcp_agent.executor.workflow import Workflow, WorkflowResult
 from mcp_agent.agents.agent import Agent
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 
