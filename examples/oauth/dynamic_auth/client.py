@@ -24,6 +24,7 @@ try:
 except Exception:  # pragma: no cover
     _BrokenResourceError = None  # type: ignore
 
+
 async def main():
     # Create MCPApp to get the server registry
     app = MCPApp(
@@ -104,7 +105,9 @@ async def main():
                     data={"tools": [tool.name for tool in tools_result.tools]},
                 )
 
-                print(await server.call_tool("github_org_search", {"query": "lastmileai"}))
+                print(
+                    await server.call_tool("github_org_search", {"query": "lastmileai"})
+                )
         except Exception as e:
             # Tolerate benign shutdown races from stdio client (BrokenResourceError within ExceptionGroup)
             if _ExceptionGroup is not None and isinstance(e, _ExceptionGroup):

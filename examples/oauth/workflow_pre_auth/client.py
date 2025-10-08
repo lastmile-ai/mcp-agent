@@ -27,7 +27,7 @@ except Exception:  # pragma: no cover
     _BrokenResourceError = None  # type: ignore
 
 # Get GitHub access token from environment or ask user
-access_token = os.getenv('GITHUB_ACCESS_TOKEN')
+access_token = os.getenv("GITHUB_ACCESS_TOKEN")
 
 if not access_token:
     print("\nGitHub access token not found in environment variable GITHUB_ACCESS_TOKEN")
@@ -39,8 +39,10 @@ if not access_token:
     print("export GITHUB_ACCESS_TOKEN='your_token_here'")
 
 # Verify token format
-if not access_token.startswith(('gho_', 'ghp_', 'github_pat_')):
-    print(f"Warning: Token doesn't look like a GitHub token (got: {access_token[:10]}...)")
+if not access_token.startswith(("gho_", "ghp_", "github_pat_")):
+    print(
+        f"Warning: Token doesn't look like a GitHub token (got: {access_token[:10]}...)"
+    )
     print("GitHub tokens usually start with 'gho_', 'ghp_', or 'github_pat_'")
 
 
@@ -128,18 +130,22 @@ async def main():
 
                 if len(sys.argv) < 2 or sys.argv[1] != "--skip-pre-auth":
                     print("Performing pre-auth")
-                    await server.call_tool("workflows-pre-auth",
-                                           arguments={
-                                               "workflow_name": "github_org_search",
-                                               "tokens": [
-                                                   {
-                                                       "access_token": access_token,
-                                                       "server_name": "github",
-                                                   }
-                                               ]
-                                           })
+                    await server.call_tool(
+                        "workflows-pre-auth",
+                        arguments={
+                            "workflow_name": "github_org_search",
+                            "tokens": [
+                                {
+                                    "access_token": access_token,
+                                    "server_name": "github",
+                                }
+                            ],
+                        },
+                    )
 
-                print(await server.call_tool("github_org_search", {"query": "lastmileai"}))
+                print(
+                    await server.call_tool("github_org_search", {"query": "lastmileai"})
+                )
         except Exception as e:
             # Tolerate benign shutdown races from stdio client (BrokenResourceError within ExceptionGroup)
             if _ExceptionGroup is not None and isinstance(e, _ExceptionGroup):

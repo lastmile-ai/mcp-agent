@@ -88,7 +88,11 @@ async def test_multiple_audiences_extraction():
     }
 
     audiences = _extract_all_audiences(payload)
-    expected = {"https://api1.example.com", "https://api2.example.com", "https://api3.example.com"}
+    expected = {
+        "https://api1.example.com",
+        "https://api2.example.com",
+        "https://api3.example.com",
+    }
     assert set(audiences) == expected
 
 
@@ -139,8 +143,6 @@ def test_configuration_validation():
         expected_audiences=["https://api.example.com"],
     )
     assert "https://api.example.com" in settings.expected_audiences
-
-
 
 
 @pytest.mark.asyncio
@@ -196,8 +198,6 @@ async def test_token_verifier_audience_validation_integration():
     assert token is None
 
 
-
-
 def test_audience_extraction_edge_cases():
     """Test audience extraction handles edge cases properly."""
     # Empty payload
@@ -209,7 +209,7 @@ def test_audience_extraction_edge_cases():
     # Mixed empty and valid values
     payload = {
         "aud": ["", "https://valid.com", None],
-        "resource": ["https://another.com", ""]
+        "resource": ["https://another.com", ""],
     }
     audiences = _extract_all_audiences(payload)
     expected = {"https://valid.com", "https://another.com"}
@@ -218,7 +218,7 @@ def test_audience_extraction_edge_cases():
     # Duplicate values should be removed
     payload = {
         "aud": ["https://api.com", "https://api.com"],
-        "resource": "https://api.com"
+        "resource": "https://api.com",
     }
     audiences = _extract_all_audiences(payload)
     assert audiences == ["https://api.com"]

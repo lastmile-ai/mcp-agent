@@ -44,6 +44,7 @@ from mcp_agent.oauth.errors import (
 )
 from mcp_agent.oauth.manager import create_default_user_for_preconfigured_tokens
 from mcp_agent.server.token_verifier import MCPAgentTokenVerifier
+
 if TYPE_CHECKING:
     from mcp_agent.core.context import Context
 
@@ -732,7 +733,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             elif method == "auth/request":
                 # TODO: special handling of auth request, should be replaced by future URL elicitation
                 class AuthToken(BaseModel):
-                    confirmation: str = Field(description="Please press enter to confirm this message has been received")
+                    confirmation: str = Field(
+                        description="Please press enter to confirm this message has been received"
+                    )
 
                 flow_id = params["flow_id"]
                 callback_future = await callback_registry.create_handle(flow_id)
@@ -1606,7 +1609,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         )
                         continue
 
-                    server_config = app_context.server_registry.get_server_config(server_name)
+                    server_config = app_context.server_registry.get_server_config(
+                        server_name
+                    )
                     if not server_config:
                         errors.append(
                             f"Token {i}: server '{server_name}' not recognized"
@@ -1629,10 +1634,16 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         scope_fingerprint,
                     )
 
-                    resource_str = str(oauth_config.resource) if oauth_config.resource \
+                    resource_str = (
+                        str(oauth_config.resource)
+                        if oauth_config.resource
                         else getattr(server_config, "url", None)
-                    auth_server_str = str(oauth_config.authorization_server) if oauth_config.authorization_server \
+                    )
+                    auth_server_str = (
+                        str(oauth_config.authorization_server)
+                        if oauth_config.authorization_server
                         else None
+                    )
                     scope_list = list(oauth_config.scopes or [])
 
                     token_record = TokenRecord(
@@ -1646,7 +1657,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         metadata={"workflow_name": workflow_name},
                     )
 
-                    str(oauth_config.resource) if oauth_config.resource else getattr(server_config, "url", None)
+                    str(oauth_config.resource) if oauth_config.resource else getattr(
+                        server_config, "url", None
+                    )
                     # Create storage key using current user
                     store_key = TokenStoreKey(
                         user_key=app_context.current_user.cache_key,

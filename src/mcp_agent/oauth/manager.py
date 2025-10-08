@@ -38,14 +38,21 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-def create_default_user_for_preconfigured_tokens(session_id: str | None = None) -> "OAuthUserIdentity":
+def create_default_user_for_preconfigured_tokens(
+    session_id: str | None = None,
+) -> "OAuthUserIdentity":
     """Create a synthetic user identity for pre-configured tokens."""
     from mcp_agent.oauth.identity import OAuthUserIdentity
 
     return OAuthUserIdentity(
         provider="mcp-agent",
-        subject=f"preconfigured-tokens-{session_id}" if session_id else "preconfigured-tokens",
-        claims={"token_source": "preconfigured", "description": "Synthetic user for pre-configured OAuth tokens"}
+        subject=f"preconfigured-tokens-{session_id}"
+        if session_id
+        else "preconfigured-tokens",
+        claims={
+            "token_source": "preconfigured",
+            "description": "Synthetic user for pre-configured OAuth tokens",
+        },
     )
 
 
@@ -71,19 +78,25 @@ class TokenManager:
         self._auth_metadata_cache: Dict[str, tuple[float, object]] = {}
 
     async def store_preconfigured_token(
-        self,
-        server_name: str,
-        server_config,
-        synthetic_user: "OAuthUserIdentity"
+        self, server_name: str, server_config, synthetic_user: "OAuthUserIdentity"
     ) -> None:
         """Store a pre-configured token in the token store."""
         oauth_config = server_config.auth.oauth
 
         # Create token record
-        resource_str = str(oauth_config.resource) if oauth_config.resource else getattr(server_config, "url", None)
-        auth_server_str = str(oauth_config.authorization_server) if oauth_config.authorization_server else None
+        resource_str = (
+            str(oauth_config.resource)
+            if oauth_config.resource
+            else getattr(server_config, "url", None)
+        )
+        auth_server_str = (
+            str(oauth_config.authorization_server)
+            if oauth_config.authorization_server
+            else None
+        )
 
         from datetime import datetime, timezone
+
         record = TokenRecord(
             access_token=oauth_config.access_token,
             refresh_token=oauth_config.refresh_token,
@@ -93,7 +106,7 @@ class TokenManager:
             resource=resource_str,
             authorization_server=auth_server_str,
             obtained_at=datetime.now(tz=timezone.utc).timestamp(),
-            metadata={"server_name": server_name, "pre_configured": True}
+            metadata={"server_name": server_name, "pre_configured": True},
         )
 
         # Create storage key
@@ -101,11 +114,13 @@ class TokenManager:
             user_key=synthetic_user.cache_key,
             resource=resource_str or "",
             authorization_server=auth_server_str,
-            scope_fingerprint=scope_fingerprint(oauth_config.scopes or [])
+            scope_fingerprint=scope_fingerprint(oauth_config.scopes or []),
         )
 
         # Store the token
-        logger.debug(f"Storing token with key: user_key={key.user_key}, resource={key.resource}, auth_server={key.authorization_server}, scope_fingerprint={key.scope_fingerprint}")
+        logger.debug(
+            f"Storing token with key: user_key={key.user_key}, resource={key.resource}, auth_server={key.authorization_server}, scope_fingerprint={key.scope_fingerprint}"
+        )
         await self._token_store.set(key, record)
 
     async def ensure_access_token(
@@ -127,16 +142,26 @@ class TokenManager:
         user = context.current_user
 
         # Use the same key construction logic as store_preconfigured_token to ensure consistency
-        resource_str = str(oauth_config.resource) if oauth_config.resource else getattr(server_config, "url", None)
-        auth_server_str = str(oauth_config.authorization_server) if oauth_config.authorization_server else None
-        scope_list = list(scopes) if scopes is not None else list(oauth_config.scopes or [])
+        resource_str = (
+            str(oauth_config.resource)
+            if oauth_config.resource
+            else getattr(server_config, "url", None)
+        )
+        auth_server_str = (
+            str(oauth_config.authorization_server)
+            if oauth_config.authorization_server
+            else None
+        )
+        scope_list = (
+            list(scopes) if scopes is not None else list(oauth_config.scopes or [])
+        )
 
         # check for a globally configure token
         key = TokenStoreKey(
             user_key=create_default_user_for_preconfigured_tokens().cache_key,
             resource=resource_str,
             authorization_server=auth_server_str,
-            scope_fingerprint=scope_fingerprint(scope_list)
+            scope_fingerprint=scope_fingerprint(scope_list),
         )
 
         lock = self._locks[key]
@@ -151,7 +176,7 @@ class TokenManager:
             user_key=user.cache_key,
             resource=resource_str,
             authorization_server=auth_server_str,
-            scope_fingerprint=scope_fingerprint(scope_list)
+            scope_fingerprint=scope_fingerprint(scope_list),
         )
 
         lock = self._locks[key]
@@ -168,13 +193,22 @@ class TokenManager:
             # If token exists but expired, try to refresh it
             if record and record.refresh_token:
                 # For refresh, we need OAuth metadata
-                resource_hint = str(oauth_config.resource) if oauth_config.resource else getattr(server_config, "url", None)
+                resource_hint = (
+                    str(oauth_config.resource)
+                    if oauth_config.resource
+                    else getattr(server_config, "url", None)
+                )
                 server_url = getattr(server_config, "url", None)
                 resource = normalize_resource(resource_hint, server_url)
 
                 # Get OAuth metadata for token refresh
                 parsed_resource = URL(resource)
-                metadata_url = str(parsed_resource.copy_with(path="/.well-known/oauth-protected-resource" + parsed_resource.path))
+                metadata_url = str(
+                    parsed_resource.copy_with(
+                        path="/.well-known/oauth-protected-resource"
+                        + parsed_resource.path
+                    )
+                )
                 resource_metadata = await self._get_resource_metadata(metadata_url)
                 auth_server_url = select_authorization_server(
                     resource_metadata, str(oauth_config.authorization_server)
@@ -199,13 +233,22 @@ class TokenManager:
 
             # Need to run full authorization flow - only if no token found or refresh failed
             if not record:
-                resource_hint = str(oauth_config.resource) if oauth_config.resource else getattr(server_config, "url", None)
+                resource_hint = (
+                    str(oauth_config.resource)
+                    if oauth_config.resource
+                    else getattr(server_config, "url", None)
+                )
                 server_url = getattr(server_config, "url", None)
                 resource = normalize_resource(resource_hint, server_url)
 
                 # Get OAuth metadata for full authorization flow
                 parsed_resource = URL(resource)
-                metadata_url = str(parsed_resource.copy_with(path="/.well-known/oauth-protected-resource" + parsed_resource.path))
+                metadata_url = str(
+                    parsed_resource.copy_with(
+                        path="/.well-known/oauth-protected-resource"
+                        + parsed_resource.path
+                    )
+                )
                 resource_metadata = await self._get_resource_metadata(metadata_url)
                 auth_server_url = select_authorization_server(
                     resource_metadata, str(oauth_config.authorization_server)
@@ -327,8 +370,13 @@ class TokenManager:
         # Construct OAuth authorization server metadata URL
         parsed_url = URL(url)
         metadata_url = str(
-            parsed_url.copy_with(path="/.well-known/oauth-authorization-server" + parsed_url.path))
-        metadata = await fetch_authorization_server_metadata(self._http_client, metadata_url)
+            parsed_url.copy_with(
+                path="/.well-known/oauth-authorization-server" + parsed_url.path
+            )
+        )
+        metadata = await fetch_authorization_server_metadata(
+            self._http_client, metadata_url
+        )
         self._auth_metadata_cache[url] = (time.time(), metadata)
         return metadata
 

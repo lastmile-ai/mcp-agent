@@ -22,6 +22,7 @@ from mcp_agent.mcp.gen_client import gen_client
 # Create the MCP app with OAuth configuration
 app = MCPApp(name="oauth_github_example")
 
+
 async def search_github_orgs(query: str, limit: int = 5) -> List[Dict[str, Any]]:
     """
     Search for GitHub organizations using the GitHub MCP server with OAuth.
@@ -42,9 +43,7 @@ async def search_github_orgs(query: str, limit: int = 5) -> List[Dict[str, Any]]
         try:
             # Connect to the GitHub MCP server with OAuth
             async with gen_client(
-                "github",
-                server_registry=context.server_registry,
-                context=context
+                "github", server_registry=context.server_registry, context=context
             ) as github_client:
                 logger.info("Connected to GitHub MCP server with OAuth")
 
@@ -72,8 +71,8 @@ async def search_github_orgs(query: str, limit: int = 5) -> List[Dict[str, Any]]
                         "query": query,
                         "perPage": min(limit, 100),  # GitHub API max is 100
                         "sort": "best-match",
-                        "order": "desc"
-                    }
+                        "order": "desc",
+                    },
                 )
 
                 logger.info("Search completed, processing results...")
@@ -83,12 +82,12 @@ async def search_github_orgs(query: str, limit: int = 5) -> List[Dict[str, Any]]
                     # The result content should contain the organization data
                     organizations = []
                     for content_item in result.content:
-                        if hasattr(content_item, 'text'):
+                        if hasattr(content_item, "text"):
                             try:
                                 # Try to parse as JSON if it's structured data
                                 data = json.loads(content_item.text)
-                                if isinstance(data, dict) and 'items' in data:
-                                    organizations.extend(data['items'][:limit])
+                                if isinstance(data, dict) and "items" in data:
+                                    organizations.extend(data["items"][:limit])
                                 elif isinstance(data, list):
                                     organizations.extend(data[:limit])
                                 else:
@@ -126,9 +125,9 @@ async def demonstrate_org_search():
     ]
 
     for query in search_queries:
-        print(f"\n{'='*50}")
+        print(f"\n{'=' * 50}")
         print(f"Searching for: {query}")
-        print('='*50)
+        print("=" * 50)
 
         try:
             orgs = await search_github_orgs(query, limit=3)
@@ -136,13 +135,13 @@ async def demonstrate_org_search():
             if orgs:
                 for i, org in enumerate(orgs, 1):
                     print(f"\n{i}. {org.get('login', 'Unknown')}")
-                    if 'description' in org and org['description']:
+                    if "description" in org and org["description"]:
                         print(f"   Description: {org['description']}")
-                    if 'html_url' in org:
+                    if "html_url" in org:
                         print(f"   URL: {org['html_url']}")
-                    if 'public_repos' in org:
+                    if "public_repos" in org:
                         print(f"   Public repos: {org['public_repos']}")
-                    if 'location' in org and org['location']:
+                    if "location" in org and org["location"]:
                         print(f"   Location: {org['location']}")
             else:
                 print("No organizations found.")
@@ -150,7 +149,6 @@ async def demonstrate_org_search():
         except Exception as e:
             print(f"Error: {e}")
             continue
-
 
 
 async def main():
@@ -180,7 +178,7 @@ if __name__ == "__main__":
     # Set up logging to show detailed information
     logging.basicConfig(
         level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
 
     asyncio.run(main())

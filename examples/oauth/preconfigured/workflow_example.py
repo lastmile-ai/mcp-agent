@@ -32,9 +32,7 @@ class GitHubOrganizationAnalyzer(Agent):
         self.name = "github_org_analyzer"
 
     async def analyze_organizations(
-        self,
-        queries: List[str],
-        detailed_analysis: bool = True
+        self, queries: List[str], detailed_analysis: bool = True
     ) -> Dict[str, Any]:
         """
         Analyze multiple organizations based on search queries.
@@ -86,7 +84,9 @@ class GitHubOrganizationAnalyzer(Agent):
             # Generate summary
             results["summary"] = self._generate_summary(results["organizations"])
 
-            logger.info(f"Analysis completed: {len(results['organizations'])} organizations analyzed")
+            logger.info(
+                f"Analysis completed: {len(results['organizations'])} organizations analyzed"
+            )
             return results
 
         except Exception as e:
@@ -98,28 +98,21 @@ class GitHubOrganizationAnalyzer(Agent):
         from mcp_agent.mcp.gen_client import gen_client
 
         async with gen_client(
-            "github",
-            server_registry=self.context.server_registry,
-            context=self.context
+            "github", server_registry=self.context.server_registry, context=self.context
         ) as github_client:
             result = await github_client.call_tool(
                 "search_orgs",
-                {
-                    "query": query,
-                    "perPage": 10,
-                    "sort": "best-match",
-                    "order": "desc"
-                }
+                {"query": query, "perPage": 10, "sort": "best-match", "order": "desc"},
             )
 
             organizations = []
             if result.content:
                 for content_item in result.content:
-                    if hasattr(content_item, 'text'):
+                    if hasattr(content_item, "text"):
                         try:
                             data = json.loads(content_item.text)
-                            if isinstance(data, dict) and 'items' in data:
-                                organizations.extend(data['items'])
+                            if isinstance(data, dict) and "items" in data:
+                                organizations.extend(data["items"])
                             elif isinstance(data, list):
                                 organizations.extend(data)
                         except json.JSONDecodeError:
@@ -127,7 +120,9 @@ class GitHubOrganizationAnalyzer(Agent):
 
             return organizations
 
-    async def _analyze_organization_details(self, org: Dict[str, Any]) -> Dict[str, Any]:
+    async def _analyze_organization_details(
+        self, org: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Analyze detailed information about an organization."""
         details = {
             "activity_score": self._calculate_activity_score(org),
@@ -164,6 +159,7 @@ class GitHubOrganizationAnalyzer(Agent):
 
         try:
             from datetime import datetime
+
             created = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
             now = datetime.now(created.tzinfo)
             return (now - created).days / 365.25
@@ -190,10 +186,8 @@ class GitHubOrganizationAnalyzer(Agent):
             "average_repos_per_org": total_repos / len(organizations),
             "size_distribution": size_categories,
             "top_organizations": sorted(
-                organizations,
-                key=lambda x: x.get("activity_score", 0),
-                reverse=True
-            )[:5]
+                organizations, key=lambda x: x.get("activity_score", 0), reverse=True
+            )[:5],
         }
 
 
@@ -203,9 +197,7 @@ app = MCPApp(name="oauth_workflow_example")
 
 @app.async_tool
 async def analyze_github_ecosystem(
-    app_ctx: Context,
-    focus_areas: List[str],
-    include_details: bool = True
+    app_ctx: Context, focus_areas: List[str], include_details: bool = True
 ) -> Dict[str, Any]:
     """
     Analyze the GitHub ecosystem based on focus areas.
@@ -228,13 +220,19 @@ async def analyze_github_ecosystem(
 
     # Map focus areas to search queries
     query_mapping = {
-        "AI/ML": ["machine-learning", "artificial-intelligence", "deep-learning", "tensorflow", "pytorch"],
+        "AI/ML": [
+            "machine-learning",
+            "artificial-intelligence",
+            "deep-learning",
+            "tensorflow",
+            "pytorch",
+        ],
         "cloud": ["cloud-computing", "aws", "azure", "kubernetes", "docker"],
         "security": ["cybersecurity", "security", "encryption", "vulnerability"],
         "web": ["web-development", "javascript", "react", "vue", "angular"],
         "mobile": ["mobile-development", "android", "ios", "react-native", "flutter"],
         "data": ["data-science", "analytics", "big-data", "database", "sql"],
-        "devtools": ["developer-tools", "ci-cd", "testing", "monitoring", "automation"]
+        "devtools": ["developer-tools", "ci-cd", "testing", "monitoring", "automation"],
     }
 
     all_queries = []
@@ -250,8 +248,7 @@ async def analyze_github_ecosystem(
     try:
         # Perform the analysis
         analysis_results = await analyzer.analyze_organizations(
-            queries=unique_queries,
-            detailed_analysis=include_details
+            queries=unique_queries, detailed_analysis=include_details
         )
 
         # Add ecosystem-level insights
@@ -260,7 +257,7 @@ async def analyze_github_ecosystem(
             "timestamp": time.time(),
             "queries_executed": unique_queries,
             "results": analysis_results,
-            "insights": _generate_ecosystem_insights(analysis_results)
+            "insights": _generate_ecosystem_insights(analysis_results),
         }
 
         logger.info("GitHub ecosystem analysis completed successfully")
@@ -283,7 +280,7 @@ def _generate_ecosystem_insights(results: Dict[str, Any]) -> Dict[str, Any]:
         "dominant_languages": _analyze_language_trends(organizations),
         "geographic_distribution": _analyze_geographic_distribution(organizations),
         "maturity_analysis": _analyze_organization_maturity(organizations),
-        "activity_patterns": _analyze_activity_patterns(organizations)
+        "activity_patterns": _analyze_activity_patterns(organizations),
     }
 
     return insights
@@ -295,11 +292,13 @@ def _analyze_language_trends(organizations: List[Dict[str, Any]]) -> Dict[str, A
     # you might use additional GitHub API calls to get language data
     return {
         "message": "Language trend analysis would require additional API calls",
-        "suggestion": "Use repository listing and language detection APIs"
+        "suggestion": "Use repository listing and language detection APIs",
     }
 
 
-def _analyze_geographic_distribution(organizations: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _analyze_geographic_distribution(
+    organizations: List[Dict[str, Any]],
+) -> Dict[str, Any]:
     """Analyze geographic distribution of organizations."""
     locations = {}
     for org in organizations:
@@ -308,22 +307,30 @@ def _analyze_geographic_distribution(organizations: List[Dict[str, Any]]) -> Dic
             locations[location] = locations.get(location, 0) + 1
 
     return {
-        "total_with_location": len([org for org in organizations if org.get("location")]),
-        "top_locations": dict(sorted(locations.items(), key=lambda x: x[1], reverse=True)[:10])
+        "total_with_location": len(
+            [org for org in organizations if org.get("location")]
+        ),
+        "top_locations": dict(
+            sorted(locations.items(), key=lambda x: x[1], reverse=True)[:10]
+        ),
     }
 
 
-def _analyze_organization_maturity(organizations: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _analyze_organization_maturity(
+    organizations: List[Dict[str, Any]],
+) -> Dict[str, Any]:
     """Analyze the maturity of organizations."""
     mature_count = sum(1 for org in organizations if org.get("age_years", 0) > 5)
-    established_count = sum(1 for org in organizations if 2 <= org.get("age_years", 0) <= 5)
+    established_count = sum(
+        1 for org in organizations if 2 <= org.get("age_years", 0) <= 5
+    )
     new_count = sum(1 for org in organizations if org.get("age_years", 0) < 2)
 
     return {
         "mature_orgs": mature_count,  # > 5 years
         "established_orgs": established_count,  # 2-5 years
         "new_orgs": new_count,  # < 2 years
-        "maturity_ratio": mature_count / len(organizations) if organizations else 0
+        "maturity_ratio": mature_count / len(organizations) if organizations else 0,
     }
 
 
@@ -341,8 +348,8 @@ def _analyze_activity_patterns(organizations: List[Dict[str, Any]]) -> Dict[str,
         "activity_distribution": {
             "high": sum(1 for score in activity_scores if score > 75),
             "medium": sum(1 for score in activity_scores if 25 <= score <= 75),
-            "low": sum(1 for score in activity_scores if score < 25)
-        }
+            "low": sum(1 for score in activity_scores if score < 25),
+        },
     }
 
 
@@ -365,7 +372,7 @@ async def demonstrate_pre_auth_workflow():
             "refresh_token": "github_oauth_refresh_token_here",
             "server_name": "github",
             "scopes": ["read:org", "public_repo"],
-            "authorization_server": "https://github.com/login/oauth/authorize"
+            "authorization_server": "https://github.com/login/oauth/authorize",
         }
     ]
 
@@ -382,26 +389,30 @@ async def demonstrate_pre_auth_workflow():
             result = await analyze_github_ecosystem(
                 app_ctx=context,
                 focus_areas=["AI/ML", "cloud", "security"],
-                include_details=True
+                include_details=True,
             )
 
             print("\n3. Workflow Results:")
             print(f"   - Focus areas analyzed: {result['focus_areas']}")
             print(f"   - Queries executed: {len(result['queries_executed'])}")
-            print(f"   - Organizations found: {result['results']['summary'].get('total_organizations', 0)}")
+            print(
+                f"   - Organizations found: {result['results']['summary'].get('total_organizations', 0)}"
+            )
 
-            if result['results']['errors']:
+            if result["results"]["errors"]:
                 print(f"   - Errors encountered: {len(result['results']['errors'])}")
 
             print("\n4. Ecosystem Insights:")
-            insights = result['insights']
-            if 'geographic_distribution' in insights:
-                top_locations = insights['geographic_distribution'].get('top_locations', {})
+            insights = result["insights"]
+            if "geographic_distribution" in insights:
+                top_locations = insights["geographic_distribution"].get(
+                    "top_locations", {}
+                )
                 if top_locations:
                     print(f"   - Top locations: {list(top_locations.keys())[:3]}")
 
-            if 'maturity_analysis' in insights:
-                maturity = insights['maturity_analysis']
+            if "maturity_analysis" in insights:
+                maturity = insights["maturity_analysis"]
                 print(f"   - Mature organizations: {maturity.get('mature_orgs', 0)}")
                 print(f"   - Maturity ratio: {maturity.get('maturity_ratio', 0):.2%}")
 

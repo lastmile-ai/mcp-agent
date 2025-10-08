@@ -17,8 +17,17 @@ from mcp.server.fastmcp import FastMCP
 from mcp_agent.app import MCPApp
 from mcp_agent.server.app_server import create_mcp_server_for_app
 
-from mcp_agent.config import MCPServerSettings, Settings, LoggerSettings, MCPSettings, MCPServerAuthSettings, \
-    MCPOAuthClientSettings, OAuthSettings, OAuthTokenStoreSettings, TemporalSettings
+from mcp_agent.config import (
+    MCPServerSettings,
+    Settings,
+    LoggerSettings,
+    MCPSettings,
+    MCPServerAuthSettings,
+    MCPOAuthClientSettings,
+    OAuthSettings,
+    OAuthTokenStoreSettings,
+    TemporalSettings,
+)
 
 # Note: This is purely optional:
 # if not provided, a default FastMCP server will be created by MCPApp using create_mcp_server_for_app()
@@ -26,12 +35,14 @@ mcp = FastMCP(name="basic_agent_server", instructions="My basic agent server exa
 
 
 # Get client id and secret from environment variables
-client_id = os.getenv('GITHUB_CLIENT_ID')
-client_secret = os.getenv('GITHUB_CLIENT_SECRET')
+client_id = os.getenv("GITHUB_CLIENT_ID")
+client_secret = os.getenv("GITHUB_CLIENT_SECRET")
 
 if not client_id or not client_secret:
-    print("\nGitHub client id and/or secret not found in GITHUB_CLIENT_Id and GITHUB_CLIENT_SECRET "
-          "environment variables.")
+    print(
+        "\nGitHub client id and/or secret not found in GITHUB_CLIENT_Id and GITHUB_CLIENT_SECRET "
+        "environment variables."
+    )
     print("\nTo create these:")
     print("\n1. Open your profile on github.com and navigate to 'Developer Settings'")
     print("\n2. Create a new OAuth app and create a client secret for it.")
@@ -41,44 +52,46 @@ if not client_id or not client_secret:
 
 
 settings = Settings(
-        execution_engine="temporal",
-        temporal=TemporalSettings(
-            host="localhost:7233",
-            namespace="default",
-            task_queue="mcp-agent",
-            max_concurrent_activities=10,
-        ),
-        logger=LoggerSettings(level="info"),
-        oauth=OAuthSettings(
-            callback_base_url=AnyHttpUrl("http://localhost:8000"),
-            flow_timeout_seconds=300,
-            token_store=OAuthTokenStoreSettings(refresh_leeway_seconds=60),
-        ),
-        mcp=MCPSettings(
-            servers={
-                "github": MCPServerSettings(
-                    name="github",
-                    transport="streamable_http",
-                    url="https://api.githubcopilot.com/mcp/",
-                    auth=MCPServerAuthSettings(
-                        oauth=MCPOAuthClientSettings(
-                            client_id=client_id,
-                            client_secret=client_secret,
-                            use_internal_callback=True,
-                            enabled=True,
-                            scopes= [
-                                "read:org",  # Required for search_orgs tool
-                                "public_repo",  # Access to public repositories
-                                "user:email"  # User information access
-                            ],
-                            authorization_server=AnyHttpUrl("https://github.com/login/oauth"),
-                            resource=AnyHttpUrl("https://api.githubcopilot.com/mcp")
-                        )
+    execution_engine="temporal",
+    temporal=TemporalSettings(
+        host="localhost:7233",
+        namespace="default",
+        task_queue="mcp-agent",
+        max_concurrent_activities=10,
+    ),
+    logger=LoggerSettings(level="info"),
+    oauth=OAuthSettings(
+        callback_base_url=AnyHttpUrl("http://localhost:8000"),
+        flow_timeout_seconds=300,
+        token_store=OAuthTokenStoreSettings(refresh_leeway_seconds=60),
+    ),
+    mcp=MCPSettings(
+        servers={
+            "github": MCPServerSettings(
+                name="github",
+                transport="streamable_http",
+                url="https://api.githubcopilot.com/mcp/",
+                auth=MCPServerAuthSettings(
+                    oauth=MCPOAuthClientSettings(
+                        client_id=client_id,
+                        client_secret=client_secret,
+                        use_internal_callback=True,
+                        enabled=True,
+                        scopes=[
+                            "read:org",  # Required for search_orgs tool
+                            "public_repo",  # Access to public repositories
+                            "user:email",  # User information access
+                        ],
+                        authorization_server=AnyHttpUrl(
+                            "https://github.com/login/oauth"
+                        ),
+                        resource=AnyHttpUrl("https://api.githubcopilot.com/mcp"),
                     )
-                )
-            }
-        ),
-    )
+                ),
+            )
+        }
+    ),
+)
 
 # Define the MCPApp instance. The server created for this app will advertise the
 # MCP logging capability and forward structured logs upstream to connected clients.
@@ -97,29 +110,22 @@ async def github_org_search_activity(query: str) -> str:
     print("running activity)")
     try:
         async with gen_client(
-                "github",
-                server_registry=app.context.server_registry,
-                context=app.context
+            "github", server_registry=app.context.server_registry, context=app.context
         ) as github_client:
             print("got client")
             result = await github_client.call_tool(
                 "search_orgs",
-                {
-                    "query": query,
-                    "perPage": 10,
-                    "sort": "best-match",
-                    "order": "desc"
-                }
+                {"query": query, "perPage": 10, "sort": "best-match", "order": "desc"},
             )
 
             organizations = []
             if result.content:
                 for content_item in result.content:
-                    if hasattr(content_item, 'text'):
+                    if hasattr(content_item, "text"):
                         try:
                             data = json.loads(content_item.text)
-                            if isinstance(data, dict) and 'items' in data:
-                                organizations.extend(data['items'])
+                            if isinstance(data, dict) and "items" in data:
+                                organizations.extend(data["items"])
                             elif isinstance(data, list):
                                 organizations.extend(data)
                         except json.JSONDecodeError:
@@ -129,8 +135,10 @@ async def github_org_search_activity(query: str) -> str:
             return str(organizations)
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         return f"Error: {e}"
+
 
 @app.tool(name="github_org_search")
 async def github_org_search(query: str) -> str:

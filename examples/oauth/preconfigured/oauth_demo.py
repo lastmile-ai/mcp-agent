@@ -40,7 +40,9 @@ class GitHubOAuthDemo:
         """
         self.client_id = client_id
         self.client_secret = client_secret
-        self.redirect_uri = redirect_uri or "http://localhost:8080/internal/oauth/callback"
+        self.redirect_uri = (
+            redirect_uri or "http://localhost:8080/internal/oauth/callback"
+        )
         self.state = secrets.token_urlsafe(32)  # CSRF protection
         self.access_token: Optional[str] = None
         self.refresh_token: Optional[str] = None
@@ -97,7 +99,7 @@ class GitHubOAuthDemo:
 
         headers = {
             "Accept": "application/json",
-            "User-Agent": "MCP-Agent-OAuth-Demo/1.0"
+            "User-Agent": "MCP-Agent-OAuth-Demo/1.0",
         }
 
         async with aiohttp.ClientSession() as session:
@@ -136,12 +138,14 @@ class GitHubOAuthDemo:
         headers = {
             "Authorization": f"Bearer {self.access_token}",
             "Accept": "application/vnd.github.v3+json",
-            "User-Agent": "MCP-Agent-OAuth-Demo/1.0"
+            "User-Agent": "MCP-Agent-OAuth-Demo/1.0",
         }
 
         async with aiohttp.ClientSession() as session:
             # Test with a simple user info call
-            async with session.get("https://api.github.com/user", headers=headers) as response:
+            async with session.get(
+                "https://api.github.com/user", headers=headers
+            ) as response:
                 if response.status != 200:
                     raise ValueError(f"Token test failed: {response.status}")
 
@@ -165,7 +169,7 @@ class GitHubOAuthDemo:
             "scopes": ["read:org", "public_repo"],
             "expires_at": self.token_expires_at,
             "authorization_server": "https://github.com/login/oauth/authorize",
-            "token_type": "Bearer"
+            "token_type": "Bearer",
         }
 
     async def save_token_to_file(self, filename: str = "github_oauth_token.json"):
@@ -177,11 +181,13 @@ class GitHubOAuthDemo:
         """
         token_data = self.get_token_for_mcp_agent()
 
-        with open(filename, 'w') as f:
+        with open(filename, "w") as f:
             json.dump(token_data, f, indent=2)
 
         print(f"Token saved to {filename}")
-        print("You can now use this token with the MCP agent workflow_pre_auth endpoint.")
+        print(
+            "You can now use this token with the MCP agent workflow_pre_auth endpoint."
+        )
 
     async def run_oauth_flow(self, scopes: list = None) -> Dict[str, Any]:
         """
@@ -209,16 +215,18 @@ class GitHubOAuthDemo:
         async def handle_callback(request):
             nonlocal callback_data
             try:
-                code = request.query.get('code')
-                state = request.query.get('state')
-                error = request.query.get('error')
+                code = request.query.get("code")
+                state = request.query.get("state")
+                error = request.query.get("error")
 
                 if error:
-                    callback_data['error'] = error
-                    callback_data['error_description'] = request.query.get('error_description', '')
+                    callback_data["error"] = error
+                    callback_data["error_description"] = request.query.get(
+                        "error_description", ""
+                    )
                 else:
-                    callback_data['code'] = code
-                    callback_data['state'] = state
+                    callback_data["code"] = code
+                    callback_data["state"] = state
 
                 callback_received.set()
 
@@ -232,7 +240,7 @@ class GitHubOAuthDemo:
                 </body>
                 </html>
                 """
-                return web.Response(text=html, content_type='text/html')
+                return web.Response(text=html, content_type="text/html")
 
             except Exception as e:
                 print(f"Error in callback handler: {e}")
@@ -240,11 +248,11 @@ class GitHubOAuthDemo:
 
         # Start local server
         app = web.Application()
-        app.router.add_get('/internal/oauth/callback', handle_callback)
+        app.router.add_get("/internal/oauth/callback", handle_callback)
 
         runner = web.AppRunner(app)
         await runner.setup()
-        site = web.TCPSite(runner, 'localhost', 8080)
+        site = web.TCPSite(runner, "localhost", 8080)
         await site.start()
 
         print("\n3. Local callback server started on http://localhost:8080")
@@ -260,7 +268,9 @@ class GitHubOAuthDemo:
 
         # Wait for callback with timeout
         try:
-            await asyncio.wait_for(callback_received.wait(), timeout=300)  # 5 minute timeout
+            await asyncio.wait_for(
+                callback_received.wait(), timeout=300
+            )  # 5 minute timeout
         except asyncio.TimeoutError:
             print("   Timeout waiting for authorization callback")
             await runner.cleanup()
@@ -269,11 +279,13 @@ class GitHubOAuthDemo:
         await runner.cleanup()
 
         # Step 3: Handle callback result
-        if 'error' in callback_data:
-            raise ValueError(f"OAuth error: {callback_data['error']} - {callback_data.get('error_description', '')}")
+        if "error" in callback_data:
+            raise ValueError(
+                f"OAuth error: {callback_data['error']} - {callback_data.get('error_description', '')}"
+            )
 
-        code = callback_data.get('code')
-        state = callback_data.get('state')
+        code = callback_data.get("code")
+        state = callback_data.get("state")
 
         if not code:
             raise ValueError("No authorization code received")
@@ -288,7 +300,7 @@ class GitHubOAuthDemo:
         print("6. Testing access token...")
         try:
             user_info = await self.test_token()
-            username = user_info.get('login', 'unknown')
+            username = user_info.get("login", "unknown")
             print(f"   ✓ Token test successful - authenticated as: {username}")
         except Exception as e:
             print(f"   ⚠ Token test failed: {e}")
@@ -304,14 +316,16 @@ async def main():
     print("=" * 40)
 
     # Check for environment variables
-    client_id = os.getenv('GITHUB_CLIENT_ID')
-    client_secret = os.getenv('GITHUB_CLIENT_SECRET')
+    client_id = os.getenv("GITHUB_CLIENT_ID")
+    client_secret = os.getenv("GITHUB_CLIENT_SECRET")
 
     if not client_id or not client_secret:
         print("\nTo use this demo, you need to set up a GitHub OAuth App:")
         print("1. Go to GitHub Settings > Developer settings > OAuth Apps")
         print("2. Click 'New OAuth App'")
-        print("3. Set Authorization callback URL to: http://localhost:8080/internal/oauth/callback")
+        print(
+            "3. Set Authorization callback URL to: http://localhost:8080/internal/oauth/callback"
+        )
         print("4. Set environment variables:")
         print("   export GITHUB_CLIENT_ID='your_client_id'")
         print("   export GITHUB_CLIENT_SECRET='your_client_secret'")
@@ -339,8 +353,10 @@ async def main():
 
         # Save token to file
         save_choice = input("\nSave token to file? (y/n): ").lower().strip()
-        if save_choice in ['y', 'yes']:
-            filename = input("Enter filename (default: github_oauth_token.json): ").strip()
+        if save_choice in ["y", "yes"]:
+            filename = input(
+                "Enter filename (default: github_oauth_token.json): "
+            ).strip()
             if not filename:
                 filename = "github_oauth_token.json"
             await oauth_demo.save_token_to_file(filename)
@@ -353,7 +369,7 @@ async def main():
 
         example_usage = {
             "workflow_name": "github_analysis_workflow",
-            "tokens": [token_data]
+            "tokens": [token_data],
         }
         print(f"   {json.dumps(example_usage, indent=2)}")
 
@@ -364,9 +380,9 @@ async def main():
                     "github": {
                         "auth": {
                             "oauth": {
-                                "access_token": token_data['access_token'],
-                                "refresh_token": token_data.get('refresh_token'),
-                                "scopes": token_data['scopes']
+                                "access_token": token_data["access_token"],
+                                "refresh_token": token_data.get("refresh_token"),
+                                "scopes": token_data["scopes"],
                             }
                         }
                     }
