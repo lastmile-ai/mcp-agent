@@ -372,7 +372,11 @@ class MCPAppClient(APIClient):
             "params": config_params,
         }
 
-        response = await self.put("/mcp_app/configure_app", payload)
+        # Use a longer timeout for configuring deployments
+        configure_timeout = 300.0
+        response = await self.put(
+            "/mcp_app/configure_app", payload, timeout=configure_timeout
+        )
 
         res = response.json()
         if not res or "appConfiguration" not in res:
