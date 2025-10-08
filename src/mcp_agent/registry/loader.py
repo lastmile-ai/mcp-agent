@@ -132,60 +132,6 @@ def _load_mcp_transport(base_url: str) -> Optional[Dict[str, Any]]:
     return {"type": "http", "base_url": base_url}
 
 
-async def discover(
-    entries: List[Dict[str, Any]],
-    timeout: float = 5.0
-) -> List[Dict[str, Any]]:
-    """
-    Discover MCP servers by querying their .well-known/mcp.json endpoints.
-
-    Args:
-        entries: List of server entries, each containing 'name' and 'base_url'.
-        timeout: Request timeout in seconds (default: 5.0).
-
-    Returns:
-        List of discovery results, each containing:
-        - alive: bool indicating if server is reachable
-        - well_known: dict with server metadata (if available)
-        - capabilities: dict with server capabilities (if available)
-    """
-    results = []
-    
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        for entry in entries:
-            result = {
-                "alive": False,
-                "well_known": None,
-                "capabilities": None
-            }
-            
-            try:
-                base_url = entry.get("base_url", "")
-                if not base_url:
-                    results.append(result)
-                    continue
-                
-                # Ensure base_url doesn't end with /
-                base_url = base_url.rstrip("/")
-                well_known_url = f"{base_url}/.well-known/mcp.json"
-                
-                response = await client.get(well_known_url)
-                
-                if response.status_code == 200:
-                    result["alive"] = True
-                    data = response.json()
-                    result["well_known"] = data
-                    result["capabilities"] = data.get("capabilities", {})
-                
-            except Exception:
-                # Server not reachable or error occurred
-                pass
-            
-            results.append(result)
-    
-    return results
-
-
 def load_tools_yaml(file_path: str) -> Dict[str, Any]:
     """
     Load and parse a tools YAML configuration file.
