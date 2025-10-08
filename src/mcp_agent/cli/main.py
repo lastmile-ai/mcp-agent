@@ -143,12 +143,6 @@ def main(
         console.print("mcp-agent - Model Context Protocol agent CLI\n")
         console.print("Run 'mcp-agent --help' to see all commands.")
 
-    # Best-effort version check (5s timeout, non-fatal)
-    try:
-        maybe_warn_newer_version()
-    except Exception:
-        pass
-
 
 # Mount non-cloud command groups (top-level, curated)
 app.add_typer(init_cmd.app, name="init", help="Scaffold a new mcp-agent project")

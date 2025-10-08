@@ -2115,11 +2115,12 @@ wheels = [
 
 [[package]]
 name = "mcp-agent"
-version = "0.1.30"
+version = "0.1.32"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "jsonref" },
     { name = "mcp" },
     { name = "numpy" },
@@ -2127,6 +2128,7 @@ dependencies = [
     { name = "opentelemetry-exporter-otlp-proto-http" },
     { name = "opentelemetry-instrumentation-anthropic" },
     { name = "opentelemetry-instrumentation-openai" },
+    { name = "pathspec" },
     { name = "prompt-toolkit" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -2135,6 +2137,7 @@ dependencies = [
     { name = "rich" },
     { name = "scikit-learn" },
     { name = "typer" },
+    { name = "watchdog" },
     { name = "websockets" },
 ]
 
@@ -2155,14 +2158,6 @@ azure = [
 ]
 bedrock = [
     { name = "boto3" },
-]
-cli = [
-    { name = "httpx" },
-    { name = "hvac" },
-    { name = "pathspec" },
-    { name = "pyjwt" },
-    { name = "typer" },
-    { name = "watchdog" },
 ]
 cohere = [
     { name = "cohere" },
@@ -2215,8 +2210,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115.6" },
     { name = "google-cloud-aiplatform", marker = "extra == 'anthropic-vertex'", specifier = ">=1.101.0" },
     { name = "google-genai", marker = "extra == 'google'", specifier = ">=1.10.0" },
-    { name = "httpx", marker = "extra == 'cli'", specifier = ">=0.28.1" },
-    { name = "hvac", marker = "extra == 'cli'", specifier = ">=1.1.1" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "jsonref", specifier = ">=1.1.0" },
     { name = "langchain-core", marker = "extra == 'langchain'", specifier = ">=0.3.64" },
     { name = "mcp", specifier = ">=1.13.1" },
@@ -2226,20 +2220,18 @@ requires-dist = [
     { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.29.0" },
     { name = "opentelemetry-instrumentation-anthropic", specifier = ">=0.39.3" },
     { name = "opentelemetry-instrumentation-openai", specifier = ">=0.39.3" },
-    { name = "pathspec", marker = "extra == 'cli'", specifier = ">=0.12.1" },
+    { name = "pathspec", specifier = ">=0.12.1" },
     { name = "prompt-toolkit", specifier = ">=3.0.50" },
     { name = "pydantic", specifier = ">=2.10.4" },
     { name = "pydantic-settings", specifier = ">=2.7.0" },
     { name = "pydantic-yaml", specifier = ">=1.5.1" },
-    { name = "pyjwt", marker = "extra == 'cli'", specifier = ">=2.10.1" },
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "redis", extras = ["hiredis"], marker = "extra == 'redis'", specifier = ">=5.0.4" },
     { name = "rich", specifier = ">=13.9.4" },
     { name = "scikit-learn", specifier = ">=1.6.0" },
     { name = "temporalio", extras = ["opentelemetry"], marker = "extra == 'temporal'", specifier = ">=1.10.0" },
     { name = "typer", specifier = ">=0.15.3" },
-    { name = "typer", extras = ["all"], marker = "extra == 'cli'", specifier = ">=0.15.3" },
-    { name = "watchdog", marker = "extra == 'cli'", specifier = ">=6.0.0" },
+    { name = "watchdog", specifier = ">=6.0.0" },
     { name = "websockets", specifier = ">=12.0" },
 ]
 provides-extras = ["temporal", "anthropic", "anthropic-bedrock", "anthropic-vertex", "bedrock", "openai", "azure", "google", "cohere", "langchain", "redis", "crewai", "cli"]
