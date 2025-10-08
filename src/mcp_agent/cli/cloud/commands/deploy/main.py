@@ -181,6 +181,10 @@ def deploy_config(
                 app_name = "default"
                 print_info("Using app name: 'default'")
 
+        if app_description is None:
+            if default_app_description:
+                app_description = default_app_description
+
         provided_key = api_key
         effective_api_url = api_url or settings.API_BASE_URL
         effective_api_key = (
