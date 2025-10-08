@@ -32,9 +32,11 @@ except ImportError:
     
     _meter = _DummyMeter()
 
+
 class ToolRegistryLoader:
     """
     A class responsible for loading and registering MCP tools from various sources.
+
     This class handles:
     - Discovering tools via .well-known/mcp.json
     - Loading tool configurations from files
@@ -94,6 +96,7 @@ class ToolRegistryLoader:
         
         return results
 
+
 def _load_config_from_file(path: str) -> Dict[str, Any]:
     """Load configuration from a YAML file.
     
@@ -113,6 +116,7 @@ def _load_config_from_file(path: str) -> Dict[str, Any]:
     with open(path, 'r') as f:
         return yaml.safe_load(f)
 
+
 def _load_mcp_transport(base_url: str) -> Optional[Dict[str, Any]]:
     """Load MCP transport configuration from a base URL.
     
@@ -125,8 +129,10 @@ def _load_mcp_transport(base_url: str) -> Optional[Dict[str, Any]]:
     # Placeholder implementation
     return {"type": "http", "base_url": base_url}
 
+
 # === Surgical patch: provide minimal loader APIs for tests ===
 __all__ = ['discover', 'load_tools_yaml']
+
 
 async def discover(entries: List[Dict[str, Any]], timeout: float = 2.0) -> List[Dict[str, Any]]:
     """Probe each registry entry for /.well-known/mcp and /health.
@@ -137,9 +143,9 @@ async def discover(entries: List[Dict[str, Any]], timeout: float = 2.0) -> List[
     
     Returns:
         List of entries augmented with:
-          - alive: bool
-          - well_known: bool
-          - capabilities: dict
+        - alive: bool
+        - well_known: bool
+        - capabilities: dict
     """
     out: List[Dict[str, Any]] = []
     # Use the httpx imported in this module so tests can monkeypatch AsyncClient
@@ -178,6 +184,7 @@ async def discover(entries: List[Dict[str, Any]], timeout: float = 2.0) -> List[
                 info['alive'] = False
             out.append(info)
     return out
+
 
 def load_tools_yaml(file_path: str) -> Dict[str, Any]:
     """Load a tools.yaml and return the parsed mapping.
