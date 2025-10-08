@@ -9,7 +9,6 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import typer
-from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from mcp_agent.cli.auth import load_api_key_credentials
@@ -30,7 +29,6 @@ from mcp_agent.cli.secrets.processor import (
 )
 from mcp_agent.cli.utils.retry import retry_async_with_exponential_backoff, RetryError
 from mcp_agent.cli.utils.ux import (
-    console,
     print_deployment_header,
     print_error,
     print_info,
