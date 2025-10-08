@@ -3,8 +3,6 @@ import os
 import time
 from typing import Any, Dict, List, Optional
 
-from .loader import load_tools_yaml, discover
-
 _DEFAULT_TTL = int(os.getenv("REGISTRY_REFRESH_SEC", "300"))
 
 class ToolRegistryStore:
@@ -19,6 +17,9 @@ class ToolRegistryStore:
         return (time.time() - self._last_refresh) > self._ttl or not self._registry
 
     async def refresh(self) -> List[Dict[str, Any]]:
+        # Import here to avoid circular dependency
+        from .loader import load_tools_yaml, discover
+        
         async with self._lock:
             entries = load_tools_yaml(self._tools_yaml_path)
             self._registry = await discover(entries)
