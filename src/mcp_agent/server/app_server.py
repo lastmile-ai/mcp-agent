@@ -3,6 +3,8 @@ MCPAgentServer - Exposes MCPApp as MCP server, and
 mcp-agent workflows and agents as MCP tools.
 """
 
+from __future__ import annotations
+
 import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -11,6 +13,7 @@ import os
 import secrets
 import asyncio
 from pydantic import BaseModel, Field
+from contextvars import ContextVar
 
 from mcp.server.fastmcp import Context as MCPContext, FastMCP
 from mcp.server.fastmcp.server import AuthSettings
@@ -36,7 +39,11 @@ from mcp_agent.executor.workflow_registry import (
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.logging.logger import LoggingConfig
 from mcp_agent.mcp.mcp_server_registry import ServerRegistry
-from mcp_agent.oauth.identity import OAuthUserIdentity
+from mcp_agent.oauth.identity import (
+    OAuthUserIdentity,
+    DEFAULT_PRECONFIGURED_IDENTITY,
+    session_identity as _session_identity_from_value,
+)
 from mcp_agent.oauth.callbacks import callback_registry
 from mcp_agent.oauth.errors import (
     CallbackTimeoutError,
@@ -51,17 +58,29 @@ logger = get_logger(__name__)
 # Allows external workers (e.g., Temporal) to relay logs/prompts through MCPApp.
 _RUN_SESSION_REGISTRY: Dict[str, Any] = {}
 _RUN_EXECUTION_ID_REGISTRY: Dict[str, str] = {}
+_RUN_IDENTITY_REGISTRY: Dict[str, OAuthUserIdentity] = {}
 _RUN_SESSION_LOCK = asyncio.Lock()
 _PENDING_PROMPTS: Dict[str, Dict[str, Any]] = {}
 _PENDING_PROMPTS_LOCK = asyncio.Lock()
 _IDEMPOTENCY_KEYS_SEEN: Dict[str, Set[str]] = {}
 _IDEMPOTENCY_KEYS_LOCK = asyncio.Lock()
 
+_CURRENT_IDENTITY: ContextVar[OAuthUserIdentity | None] = ContextVar(
+    "mcp_current_identity", default=None
+)
 
-async def _register_session(run_id: str, execution_id: str, session: Any) -> None:
+
+async def _register_session(
+    run_id: str,
+    execution_id: str,
+    session: Any,
+    identity: OAuthUserIdentity | None = None,
+) -> None:
     async with _RUN_SESSION_LOCK:
         _RUN_SESSION_REGISTRY[execution_id] = session
         _RUN_EXECUTION_ID_REGISTRY[run_id] = execution_id
+        if identity is not None:
+            _RUN_IDENTITY_REGISTRY[execution_id] = identity
         try:
             logger.debug(
                 f"Registered upstream session for run_id={run_id}, execution_id={execution_id}, session_id={id(session)}"
@@ -75,6 +94,7 @@ async def _unregister_session(run_id: str) -> None:
         execution_id = _RUN_EXECUTION_ID_REGISTRY.pop(run_id, None)
         if execution_id:
             _RUN_SESSION_REGISTRY.pop(execution_id, None)
+            _RUN_IDENTITY_REGISTRY.pop(execution_id, None)
             try:
                 logger.debug(
                     f"Unregistered upstream session mapping for run_id={run_id}, execution_id={execution_id}"
@@ -96,6 +116,41 @@ async def _get_session(execution_id: str) -> Any | None:
         except Exception:
             pass
         return session
+
+
+def _get_identity_for_execution(execution_id: str) -> OAuthUserIdentity | None:
+    return _RUN_IDENTITY_REGISTRY.get(execution_id)
+
+
+def _set_current_identity(identity: OAuthUserIdentity | None) -> None:
+    _CURRENT_IDENTITY.set(identity)
+
+
+def get_current_identity() -> OAuthUserIdentity | None:
+    return _CURRENT_IDENTITY.get()
+
+
+def _resolve_identity_for_request(
+    ctx: MCPContext | None = None,
+    app_context: "Context" | None = None,
+    execution_id: str | None = None,
+) -> OAuthUserIdentity:
+    identity = _CURRENT_IDENTITY.get()
+    if identity is None and execution_id:
+        identity = _get_identity_for_execution(execution_id)
+    if identity is None and ctx is not None:
+        session_id = _extract_session_id_from_context(ctx)
+        identity = _session_identity_from_value(session_id)
+    if identity is None and app_context is None and ctx is not None:
+        app = _get_attached_app(ctx.fastmcp)
+        if app is not None and getattr(app, "context", None) is not None:
+            app_context = app.context
+    if identity is None and app_context is not None:
+        session_id = getattr(app_context, "session_id", None)
+        identity = _session_identity_from_value(session_id)
+    if identity is None:
+        identity = DEFAULT_PRECONFIGURED_IDENTITY
+    return identity
 
 
 class ServerContext(ContextDependent):
@@ -191,6 +246,7 @@ def _set_upstream_from_request_ctx_if_available(ctx: MCPContext) -> None:
         pass
 
     # Capture authenticated user information if available
+    session_id = _extract_session_id_from_context(ctx)
     identity: OAuthUserIdentity | None = None
     try:
         auth_user = auth_context_var.get()
@@ -212,16 +268,24 @@ def _set_upstream_from_request_ctx_if_available(ctx: MCPContext) -> None:
                         maybe_token = MCPAccessToken.model_validate(
                             access_token.model_dump()
                         )
-                        identity = OAuthUserIdentity.from_access_token(maybe_token)
+                identity = OAuthUserIdentity.from_access_token(maybe_token)
             except Exception:
                 identity = None
+
+    if identity is None:
+        identity = _session_identity_from_value(session_id)
+
+    if identity is None:
+        identity = DEFAULT_PRECONFIGURED_IDENTITY
+
+    _set_current_identity(identity)
 
     app: MCPApp | None = _get_attached_app(ctx.fastmcp)
     if app is not None and getattr(app, "context", None) is not None:
         if session is not None:
             app.context.upstream_session = session
-        # Always overwrite the current user to avoid leaking identities between requests.
-        app.context.current_user = identity
+        if session_id:
+            app.context.session_id = session_id
 
 
 def _resolve_workflows_and_context(
@@ -258,6 +322,47 @@ def _resolve_workflows_and_context(
         return app.workflows, app.context
 
     return None, None
+
+
+def _extract_session_id_from_context(ctx: MCPContext) -> str | None:
+    """Attempt to extract the caller's MCP session identifier from the request context."""
+    # Request-level meta (top-level)
+    try:
+        meta = getattr(ctx.request_context, "meta", None)
+        if meta is not None:
+            extra = getattr(meta, "model_extra", {}) or {}
+            session_id = (
+                getattr(meta, "sessionId", None)
+                or getattr(meta, "session_id", None)
+                or extra.get("sessionId")
+                or extra.get("session_id")
+            )
+            if session_id:
+                return str(session_id)
+    except Exception:
+        pass
+
+    # Parameters meta within the request payload
+    try:
+        req = getattr(ctx.request_context, "request", None)
+        if req is not None:
+            root = getattr(req, "root", None)
+            params = getattr(root, "params", None)
+            meta = getattr(params, "meta", None)
+            if meta is not None:
+                extra = getattr(meta, "model_extra", {}) or {}
+                session_id = (
+                    getattr(meta, "sessionId", None)
+                    or getattr(meta, "session_id", None)
+                    or extra.get("sessionId")
+                    or extra.get("session_id")
+                )
+                if session_id:
+                    return str(session_id)
+    except Exception:
+        pass
+
+    return None
 
 
 def _resolve_workflow_registry(ctx: MCPContext) -> WorkflowRegistry | None:
@@ -532,10 +637,12 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                             )
                     # Successful with latest → bind mapping for consistency
                     try:
+                        identity = _get_identity_for_execution(execution_id)
                         await _register_session(
                             run_id=execution_id,
                             execution_id=execution_id,
                             session=latest_session,
+                            identity=identity,
                         )
                         # logger.info(
                         #     f"[notify] rebound mapping to latest session_id={id(latest_session)} for execution_id={execution_id}"
@@ -763,10 +870,12 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                 if result is not None:
                     if register_session:
                         try:
+                            identity = _get_identity_for_execution(execution_id)
                             await _register_session(
                                 run_id=execution_id,
                                 execution_id=execution_id,
                                 session=session,
+                                identity=identity,
                             )
                             # logger.debug(
                             #     f"[{log_prefix}] rebound mapping to session_id={id(session)} for execution_id={execution_id}")
@@ -780,10 +889,12 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                 )
                 if register_session:
                     try:
+                        identity = _get_identity_for_execution(execution_id)
                         await _register_session(
                             run_id=execution_id,
                             execution_id=execution_id,
                             session=session,
+                            identity=identity,
                         )
                         # logger.debug(
                         #     f"[{log_prefix}] rebound mapping to session_id={id(session)} for execution_id={execution_id}")
@@ -1028,10 +1139,12 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         f"[log] delivered via latest session_id={id(latest_session)} level={level} ns={namespace}"
                     )
                     try:
+                        identity = _get_identity_for_execution(execution_id)
                         await _register_session(
                             run_id=execution_id,
                             execution_id=execution_id,
                             session=latest_session,
+                            identity=identity,
                         )
                         logger.info(
                             f"[log] rebound mapping to latest session_id={id(latest_session)} for execution_id={execution_id}"
@@ -1118,10 +1231,17 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                             logger="mcp_agent.human",
                         )
                         try:
+                            identity = _get_identity_for_execution(execution_id)
+                            if identity is None:
+                                identity = _session_identity_from_value(
+                                    metadata.get("session_id")
+                                    or metadata.get("sessionId")
+                                )
                             await _register_session(
                                 run_id=execution_id,
                                 execution_id=execution_id,
                                 session=latest_session,
+                                identity=identity,
                             )
                             logger.info(
                                 f"[human] rebound mapping to latest session_id={id(latest_session)} for execution_id={execution_id}"
@@ -1377,8 +1497,14 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             sess = getattr(ctx, "session", None)
             if sess and run_id:
                 exec_id = _RUN_EXECUTION_ID_REGISTRY.get(run_id, run_id)
+                app_obj = _get_attached_app(ctx.fastmcp)
+                app_ctx = getattr(app_obj, "context", None) if app_obj else None
+                identity = _resolve_identity_for_request(ctx, app_ctx, exec_id)
                 await _register_session(
-                    run_id=run_id, execution_id=exec_id, session=sess
+                    run_id=run_id,
+                    execution_id=exec_id,
+                    session=sess,
+                    identity=identity,
                 )
         except Exception:
             pass
@@ -1421,8 +1547,14 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             sess = getattr(ctx, "session", None)
             if sess and run_id:
                 exec_id = _RUN_EXECUTION_ID_REGISTRY.get(run_id, run_id)
+                app_obj = _get_attached_app(ctx.fastmcp)
+                app_ctx = getattr(app_obj, "context", None) if app_obj else None
+                identity = _resolve_identity_for_request(ctx, app_ctx, exec_id)
                 await _register_session(
-                    run_id=run_id, execution_id=exec_id, session=sess
+                    run_id=run_id,
+                    execution_id=exec_id,
+                    session=sess,
+                    identity=identity,
                 )
         except Exception:
             pass
@@ -1486,8 +1618,14 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             sess = getattr(ctx, "session", None)
             if sess and run_id:
                 exec_id = _RUN_EXECUTION_ID_REGISTRY.get(run_id, run_id)
+                app_obj = _get_attached_app(ctx.fastmcp)
+                app_ctx = getattr(app_obj, "context", None) if app_obj else None
+                identity = _resolve_identity_for_request(ctx, app_ctx, exec_id)
                 await _register_session(
-                    run_id=run_id, execution_id=exec_id, session=sess
+                    run_id=run_id,
+                    execution_id=exec_id,
+                    session=sess,
+                    identity=identity,
                 )
         except Exception:
             pass
@@ -1560,17 +1698,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         if not app_context.token_manager:
             raise ToolError("OAuth token manager not available.")
 
-        current_user = app_context.current_user
-        if current_user is None:
-            session_id = getattr(app_context, "session_id", None)
-            if session_id:
-                current_user = OAuthUserIdentity(
-                    provider="mcp-session", subject=str(session_id)
-                )
-            else:
-                raise ToolError(
-                    "Authenticated user required for workflow pre-authorization."
-                )
+        identity = _resolve_identity_for_request(ctx, app_context)
 
         if not tokens:
             raise ToolError("At least one token must be provided.")
@@ -1601,7 +1729,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         )
                         continue
 
-                    server_config = app_context.server_registry.get_server_config(
+                    server_config = app_context.server_registry.registry.get(
                         server_name
                     )
                     if not server_config:
@@ -1612,7 +1740,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
 
                     await app_context.token_manager.store_user_token(
                         context=app_context,
-                        user=current_user,
+                        user=identity,
                         server_name=server_name,
                         server_config=server_config,
                         token_data=token_data,
@@ -2241,10 +2369,12 @@ async def _workflow_run(
 
         # Register upstream session for this run so external workers can proxy logs/prompts
         try:
+            identity = _resolve_identity_for_request(ctx, app_context, execution_id)
             await _register_session(
                 run_id=execution.run_id,
                 execution_id=execution_id,
                 session=getattr(ctx, "session", None),
+                identity=identity,
             )
         except Exception:
             pass

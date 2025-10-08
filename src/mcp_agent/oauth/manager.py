@@ -303,6 +303,7 @@ class TokenManager:
         server_name: str,
         server_config,
         scopes: Iterable[str] | None = None,
+        identity: OAuthUserIdentity | None = None,
     ) -> TokenRecord:
         oauth_config: MCPOAuthClientSettings | None = None
         if server_config and server_config.auth:
@@ -323,14 +324,21 @@ class TokenManager:
             requested_scopes=requested_scopes,
         )
 
+        context_identity = None
+        try:
+            from mcp_agent.server import app_server
+
+            context_identity = app_server.get_current_identity()
+        except Exception:
+            context_identity = None
         session_identity = self._session_identity(context)
-        identities = _dedupe(
-            [
-                context.current_user,
-                session_identity,
-                self._default_identity,
-            ]
-        )
+        identity_candidates = [
+            identity,
+            context_identity,
+            session_identity,
+            self._default_identity,
+        ]
+        identities = _dedupe(identity_candidates)
         if not identities:
             raise MissingUserIdentityError(
                 "No authenticated user available for OAuth authorization"
@@ -388,8 +396,15 @@ class TokenManager:
                     await self._token_store.delete(key)
 
         # Only authenticated users (non-default identity) can initiate new flows.
-        user_identity = context.current_user
-        if user_identity is None:
+        flow_identity = next(  # type: ignore[arg-type]
+            (
+                cand
+                for cand in identity_candidates
+                if cand is not None and cand != self._default_identity
+            ),
+            None,
+        )
+        if flow_identity is None:
             if last_error:
                 raise last_error
             raise MissingUserIdentityError(
@@ -397,7 +412,7 @@ class TokenManager:
             )
 
         user_key = self._build_store_key(
-            user_identity,
+            flow_identity,
             resolved.resource,
             resolved.issuer,
             resolved.scopes,
@@ -412,7 +427,7 @@ class TokenManager:
 
             record = await self._flow.authorize(
                 context=context,
-                user=user_identity,
+                user=flow_identity,
                 server_name=server_name,
                 oauth_config=oauth_config,
                 resource=resolved.resource,
@@ -433,11 +448,10 @@ class TokenManager:
     async def invalidate(
         self,
         *,
-        user: OAuthUserIdentity,
+        identity: OAuthUserIdentity,
         resource: str,
         authorization_server: str | None,
         scopes: Iterable[str],
-        session_id: str | None = None,
     ) -> None:
         canonical_resource = normalize_resource(resource, resource)
         canonical_auth_server = (
@@ -446,13 +460,16 @@ class TokenManager:
             else authorization_server
         )
         key = self._build_store_key(
-            user,
+            identity,
             canonical_resource,
             canonical_auth_server or "",
             tuple(scopes),
         )
         await self._token_store.delete(key)
-        if user.cache_key != self._default_identity.cache_key and canonical_auth_server:
+        if (
+            identity.cache_key != self._default_identity.cache_key
+            and canonical_auth_server
+        ):
             default_key = self._build_store_key(
                 self._default_identity,
                 canonical_resource,
@@ -460,17 +477,6 @@ class TokenManager:
                 tuple(scopes),
             )
             await self._token_store.delete(default_key)
-        if session_id:
-            session_identity = OAuthUserIdentity(
-                provider="mcp-session", subject=str(session_id)
-            )
-            session_key = self._build_store_key(
-                session_identity,
-                canonical_resource,
-                canonical_auth_server or "",
-                tuple(scopes),
-            )
-            await self._token_store.delete(session_key)
 
     async def _refresh_token(
         self,

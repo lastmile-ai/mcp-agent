@@ -33,7 +33,6 @@ from mcp_agent.tracing.tracer import TracingConfig
 from mcp_agent.workflows.llm.llm_selector import ModelSelector
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.tracing.token_counter import TokenCounter
-from mcp_agent.oauth.identity import OAuthUserIdentity
 
 
 if TYPE_CHECKING:
@@ -97,9 +96,6 @@ class Context(BaseModel):
     # Dynamic gateway configuration (per-run overrides via Temporal memo)
     gateway_url: str | None = None
     gateway_token: str | None = None
-
-    # Current authenticated user (set when acting as an MCP server)
-    current_user: Optional[OAuthUserIdentity] = None
 
     # OAuth helpers for downstream servers
     token_store: Optional[TokenStore] = None

@@ -59,7 +59,7 @@ src/mcp_agent/oauth/
 
 Integration touchpoints:
 - `mcp_agent/config.py` – add OAuth settings models.
-- `mcp_agent/core/context.py` – add `current_user`, `token_manager`, `token_store`, `oauth_config` fields.
+- `mcp_agent/core/context.py` – add `token_manager`, `token_store`, `oauth_config` fields.
 - `mcp_agent/app.py` – initialize token store/manager based on settings.
 - `mcp_agent/server/app_server.py` – configure FastMCP auth settings, register callback route, surface user identity, extend relay to handle `auth/request`.
 - `mcp_agent/mcp/mcp_server_registry.py` & `mcp_agent/mcp/mcp_connection_manager.py` – wire `OAuthHttpxAuth` into HTTP transports and expose helper for manual token teardown.

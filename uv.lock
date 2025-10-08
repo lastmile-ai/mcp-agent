@@ -1589,18 +1589,6 @@ wheels = [
 ]
 
 [[package]]
-name = "hvac"
-version = "2.3.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "requests" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/48/a4/c0b698a7250b7a5c2956427406560701862215c646e079a7907846608f44/hvac-2.3.0.tar.gz", hash = "sha256:1b85e3320e8642dd82f234db63253cda169a817589e823713dc5fca83119b1e2", size = 332660, upload-time = "2024-06-18T14:46:09.748Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/0b/34/56facf52e2ea14ce640f434ccf00311af6f3a1df0019d4682ba28ea09948/hvac-2.3.0-py3-none-any.whl", hash = "sha256:a3afc5710760b6ee9b3571769df87a0333da45da05a5f9f963e1d3925a84be7d", size = 155860, upload-time = "2024-06-18T14:46:05.399Z" },
-]
-
-[[package]]
 name = "identify"
 version = "2.6.12"
 source = { registry = "https://pypi.org/simple" }
@@ -2234,7 +2222,7 @@ requires-dist = [
     { name = "watchdog", specifier = ">=6.0.0" },
     { name = "websockets", specifier = ">=12.0" },
 ]
-provides-extras = ["temporal", "anthropic", "anthropic-bedrock", "anthropic-vertex", "bedrock", "openai", "azure", "google", "cohere", "langchain", "redis", "crewai", "cli"]
+provides-extras = ["temporal", "anthropic", "anthropic-bedrock", "anthropic-vertex", "bedrock", "openai", "azure", "google", "cohere", "langchain", "redis", "crewai"]
 
 [package.metadata.requires-dev]
 dev = [

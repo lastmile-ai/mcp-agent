@@ -25,11 +25,9 @@ class DummyContext:
     def __init__(
         self,
         session_id: str | None,
-        current_user: OAuthUserIdentity | None,
         config=None,
     ):
         self.session_id = session_id
-        self.current_user = current_user
         self.config = config
 
 
@@ -62,12 +60,12 @@ async def test_preconfigured_token_lookup_and_invalidation():
     manager._resolve_oauth_context = AsyncMock(return_value=resolved)  # type: ignore[attr-defined]
 
     await manager.store_preconfigured_token(
-        context=DummyContext(session_id=None, current_user=None),
+        context=DummyContext(session_id=None),
         server_name="github",
         server_config=server_config,
     )
 
-    context = DummyContext(session_id="session-1", current_user=None)
+    context = DummyContext(session_id="session-1")
     token = await manager.ensure_access_token(
         context=context,
         server_name="github",
@@ -82,11 +80,10 @@ async def test_preconfigured_token_lookup_and_invalidation():
         resolved.scopes,
     )
     await manager.invalidate(
-        user=DEFAULT_PRECONFIGURED_IDENTITY,
+        identity=DEFAULT_PRECONFIGURED_IDENTITY,
         resource=resolved.resource,
         authorization_server=resolved.issuer,
         scopes=resolved.scopes,
-        session_id=context.session_id,
     )
     assert await store.get(key) is None
 
@@ -124,7 +121,7 @@ async def test_store_user_token_uses_workflow_and_session_metadata():
         "expires_at": 0,
     }
 
-    context = DummyContext(session_id="session-xyz", current_user=user_identity)
+    context = DummyContext(session_id="session-xyz")
     await manager.store_user_token(
         context=context,
         user=user_identity,
