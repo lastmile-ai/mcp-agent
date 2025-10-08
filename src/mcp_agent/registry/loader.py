@@ -1,5 +1,6 @@
 import os
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
+
 import httpx
 import yaml
 from contextlib import contextmanager
@@ -39,96 +40,95 @@ discovery_latency_ms = _meter.create_histogram(
     description="Time to perform tool discovery in milliseconds",
     unit="ms",
 )
-
 discovery_errors = _meter.create_counter(
     name="mcp_agent_discovery_errors",
-    description="Count of discovery errors",
-    unit="1",
+    description="Count of tool discovery errors",
 )
 
 
-def _load_mcp_transport(config: Dict[str, Any]) -> Any:
-    """Load and initialize MCP transport from config."""
-    transport_type = config.get("transportType")
-    args = config.get("args", {})
-
-    if transport_type == "http":
-        from mcp import OKTransport
-        return OKTransport(
-            url=args.get("url"),
-            timeout=httpx.Timeout(
-                connect=float(os.getenv("MCP_CONNECT_TIMEOUT_SEC", "5.0")),
-                read=float(os.getenv("MCP_READ_TIMEOUT_SEC", "10.0")),
-                write=float(os.getenv("MCP_WRITE_TIMEOUT_SEC", "10.0")),
-                pool=float(os.getenv("MCP_POOL_TIMEOUT_SEC", "5.0"))
-            ),
-        )
-    elif transport_type == "stdio":
-        from mcp import StdioTransport
-        return StdioTransport(
-            command=args.get("command"),
-            args=args.get("args", []),
-            env=args.get("env"),
-        )
-    else:
-        raise ValueError(f"Unknown transport type: {transport_type}")
-
-
-def _load_config_from_file(config_path: str) -> List[Dict[str, Any]]:
-    """Load MCP configuration from a YAML file.
-    
-    Args:
-        config_path: Path to the YAML configuration file
+def _load_config_from_file(path: str) -> List[Dict[str, Any]]:
+    """Load server configuration from a file (JSON or YAML)."""
+    with open(path, "r") as f:
+        content = f.read()
         
-    Returns:
-        List of server configurations
-    """
-    with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
-    
-    # Handle both list and dict formats
-    if isinstance(config, list):
-        return config
-    elif isinstance(config, dict):
-        # If it's a dict with 'servers' key, return the servers list
-        if 'servers' in config:
-            return config['servers']
-        # Otherwise, treat it as a single server config
-        return [config]
+    if path.endswith(".json"):
+        import json
+        return json.loads(content)
+    elif path.endswith(".yaml") or path.endswith(".yml"):
+        return yaml.safe_load(content)
     else:
-        raise ValueError(f"Invalid config format: {type(config)}")
+        raise ValueError(f"Unsupported config file format: {path}")
+
+
+def _load_mcp_transport(server_config: Dict[str, Any]):
+    """Load MCP transport from server config."""
+    from mcp.client.stdio import StdioServerParameters, stdio_client
+    
+    command = server_config.get("command")
+    args = server_config.get("args", [])
+    env = server_config.get("env")
+    
+    if not command:
+        raise ValueError("Server configuration must include 'command'")
+    
+    server_params = StdioServerParameters(
+        command=command,
+        args=args,
+        env=env,
+    )
+    
+    # Create read/write context for the transport
+    read, write = stdio_client(server_params)
+    
+    # Create a simple object to hold read/write
+    class Transport:
+        pass
+    
+    transport = Transport()
+    transport.read = read
+    transport.write = write
+    
+    return transport
 
 
 class ToolRegistryLoader:
-    """Loader for discovering and loading tools from MCP servers."""
-
+    """Loads tool definitions from MCP servers into the registry."""
+    
     def __init__(self, store: ToolRegistryStore):
-        """Initialize the loader with a store.
-        
-        Args:
-            store: ToolRegistryStore to register discovered tools
-        """
         self.store = store
-
-    async def discover_and_load(
+    
+    async def discover_and_register_tools(
         self,
         config_path: Optional[str] = None,
-        servers: Optional[List[Dict[str, Any]]] = None,
-    ) -> Tuple[int, List[str]]:
-        """Discover and load tools from MCP servers.
+        config_url: Optional[str] = None,
+    ) -> tuple[int, List[str]]:
+        """Discover tools from configured MCP servers and register them.
         
         Args:
-            config_path: Path to YAML config file (optional)
-            servers: List of server configurations (optional)
+            config_path: Path to local config file
+            config_url: URL to remote config file
             
         Returns:
-            Tuple of (number of tools loaded, list of error messages)
+            Tuple of (number of tools registered, list of error messages)
         """
-        import asyncio
-        from mcp import ClientSession
+        from mcp.client.session import ClientSession
         
-        # Load config from file if provided
-        if config_path:
+        servers = []
+        
+        if config_url:
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(config_url)
+                    response.raise_for_status()
+                    servers = yaml.safe_load(response.text)
+            except Exception as e:
+                error_msg = f"Failed to load config from {config_url}: {e}"
+                discovery_errors.add(1, {"error_type": "config_load"})
+                return 0, [error_msg]
+        elif config_path:
+            if not os.path.exists(config_path):
+                return 0, [f"Config file not found: {config_path}"]
+            
             try:
                 servers = _load_config_from_file(config_path)
             except Exception as e:
