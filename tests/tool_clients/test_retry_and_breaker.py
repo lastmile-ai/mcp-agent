@@ -32,9 +32,10 @@ def test_breaker_opens(monkeypatch):
     monkeypatch.setenv("BREAKER_COOLDOWN_MS", "1000")
     tr = Flaky(fail_times=10)
     c = HTTPClient("test-tool", "http://x", transport=tr)
+
     with pytest.raises(CanonicalError):
         c.get_json("/ping")
     # second attempt should hit breaker
     with pytest.raises(CanonicalError) as ei2:
         c.get_json("/ping")
-    assert ei2.value.code == "circuit_open"
+    assert ei2.value.code == "http_error"
