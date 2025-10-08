@@ -5,8 +5,9 @@ mcp-agent workflows and agents as MCP tools.
 
 import json
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
-from typing import Any, Dict, List, Optional, Set, Tuple, Type, TYPE_CHECKING
+from contextlib import asynccontextmanager, contextmanager
+from dataclasses import dataclass
+from typing import Any, Dict, Iterator, List, Optional, Set, Tuple, Type, TYPE_CHECKING
 import os
 import secrets
 import asyncio
@@ -37,6 +38,11 @@ from mcp_agent.logging.logger import get_logger
 from mcp_agent.logging.logger import LoggingConfig
 from mcp_agent.mcp.mcp_server_registry import ServerRegistry
 from mcp_agent.oauth.identity import OAuthUserIdentity
+from mcp_agent.oauth.context_state import (
+    identity_scope,
+    get_current_identity,
+    get_current_session_id,
+)
 from mcp_agent.oauth.callbacks import callback_registry
 from mcp_agent.oauth.errors import (
     CallbackTimeoutError,
@@ -47,34 +53,58 @@ if TYPE_CHECKING:
     from mcp_agent.core.context import Context
 
 logger = get_logger(__name__)
-# Simple in-memory registry mapping workflow execution_id -> upstream session handle.
-# Allows external workers (e.g., Temporal) to relay logs/prompts through MCPApp.
-_RUN_SESSION_REGISTRY: Dict[str, Any] = {}
+
+
+@dataclass
+class _ExecutionBinding:
+    """Track per-execution session + identity information for Temporal relays."""
+
+    session: Any | None = None
+    identity: OAuthUserIdentity | None = None
+    session_id: str | None = None
+
+
+_RUN_BINDINGS: Dict[str, _ExecutionBinding] = {}
 _RUN_EXECUTION_ID_REGISTRY: Dict[str, str] = {}
 _RUN_SESSION_LOCK = asyncio.Lock()
 _PENDING_PROMPTS: Dict[str, Dict[str, Any]] = {}
 _PENDING_PROMPTS_LOCK = asyncio.Lock()
 _IDEMPOTENCY_KEYS_SEEN: Dict[str, Set[str]] = {}
 _IDEMPOTENCY_KEYS_LOCK = asyncio.Lock()
+_IDENTITY_SENTINEL = object()
+_SESSION_SENTINEL = object()
 
 
-async def _register_session(run_id: str, execution_id: str, session: Any) -> None:
+async def _register_execution_binding(
+    *,
+    run_id: str,
+    execution_id: str,
+    session: Any | None = None,
+    identity: OAuthUserIdentity | None | object = _IDENTITY_SENTINEL,
+    session_id: str | None | object = _SESSION_SENTINEL,
+) -> None:
     async with _RUN_SESSION_LOCK:
-        _RUN_SESSION_REGISTRY[execution_id] = session
+        binding = _RUN_BINDINGS.setdefault(execution_id, _ExecutionBinding())
+        if session is not None:
+            binding.session = session
+        if identity is not _IDENTITY_SENTINEL and identity is not None:
+            binding.identity = identity  # type: ignore[assignment]
+        if session_id is not _SESSION_SENTINEL and session_id is not None:
+            binding.session_id = session_id  # type: ignore[assignment]
         _RUN_EXECUTION_ID_REGISTRY[run_id] = execution_id
         try:
             logger.debug(
-                f"Registered upstream session for run_id={run_id}, execution_id={execution_id}, session_id={id(session)}"
+                f"Registered upstream session for run_id={run_id}, execution_id={execution_id}, session_id={id(binding.session)}"
             )
         except Exception:
             pass
 
 
-async def _unregister_session(run_id: str) -> None:
+async def _unregister_execution_binding(run_id: str) -> None:
     async with _RUN_SESSION_LOCK:
         execution_id = _RUN_EXECUTION_ID_REGISTRY.pop(run_id, None)
         if execution_id:
-            _RUN_SESSION_REGISTRY.pop(execution_id, None)
+            _RUN_BINDINGS.pop(execution_id, None)
             try:
                 logger.debug(
                     f"Unregistered upstream session mapping for run_id={run_id}, execution_id={execution_id}"
@@ -83,9 +113,15 @@ async def _unregister_session(run_id: str) -> None:
                 pass
 
 
+async def _get_binding(execution_id: str) -> _ExecutionBinding | None:
+    async with _RUN_SESSION_LOCK:
+        return _RUN_BINDINGS.get(execution_id)
+
+
 async def _get_session(execution_id: str) -> Any | None:
     async with _RUN_SESSION_LOCK:
-        session = _RUN_SESSION_REGISTRY.get(execution_id)
+        binding = _RUN_BINDINGS.get(execution_id)
+        session = binding.session if binding else None
         try:
             logger.debug(
                 (
@@ -174,23 +210,16 @@ def _get_attached_server_context(mcp: FastMCP) -> ServerContext | None:
     return getattr(mcp, "_mcp_agent_server_context", None)
 
 
-def _set_upstream_from_request_ctx_if_available(ctx: MCPContext) -> None:
-    """Attach the low-level server session to the app context for upstream log forwarding.
-
-    This ensures logs emitted from background workflow tasks are forwarded to the client
-    even when the low-level request contextvar is not available in those tasks.
-    """
-    # First, try to use the session property from the FastMCP Context
+def _capture_request_identity(
+    ctx: MCPContext,
+) -> tuple[MCPApp | None, OAuthUserIdentity | None, str | None]:
+    """Capture session + identity information from the current HTTP request."""
     session = None
     try:
-        session = (
-            ctx.session
-        )  # This accesses the property which returns ctx.request_context.session
+        session = ctx.session
     except (AttributeError, ValueError):
-        # ctx.session property might raise ValueError if context not available
         pass
 
-    # Capture authenticated user information if available
     identity: OAuthUserIdentity | None = None
     try:
         auth_user = auth_context_var.get()
@@ -200,7 +229,6 @@ def _set_upstream_from_request_ctx_if_available(ctx: MCPContext) -> None:
     if isinstance(auth_user, AuthenticatedUser):
         access_token = getattr(auth_user, "access_token", None)
         if access_token is not None:
-            # Prefer enriched token instances but fall back to raw data if necessary
             try:
                 from mcp_agent.oauth.access_token import MCPAccessToken
 
@@ -216,12 +244,31 @@ def _set_upstream_from_request_ctx_if_available(ctx: MCPContext) -> None:
             except Exception:
                 identity = None
 
-    app: MCPApp | None = _get_attached_app(ctx.fastmcp)
+    session_id_hint: str | None = None
+    try:
+        request_obj = getattr(ctx.request_context, "request", None)
+        if request_obj is not None:
+            session_id_hint = request_obj.query_params.get("session_id")
+    except Exception:
+        session_id_hint = None
+
+    app = _get_attached_app(ctx.fastmcp)
     if app is not None and getattr(app, "context", None) is not None:
         if session is not None:
             app.context.upstream_session = session
-        # Always overwrite the current user to avoid leaking identities between requests.
-        app.context.current_user = identity
+        if session_id_hint is None:
+            session_id_hint = getattr(app.context, "session_id", None)
+
+    return app, identity, session_id_hint
+
+
+@contextmanager
+def _request_identity_scope(
+    ctx: MCPContext,
+) -> Iterator[tuple[MCPApp | None, OAuthUserIdentity | None, str | None]]:
+    app, identity, session_id = _capture_request_identity(ctx)
+    with identity_scope(identity, session_id):
+        yield app, identity, session_id
 
 
 def _resolve_workflows_and_context(
@@ -232,6 +279,9 @@ def _resolve_workflows_and_context(
     Tries lifespan ServerContext first (including compatible mocks), then attached app.
     Also ensures the app context is updated with the current upstream session once per request.
     """
+    # Capture session/identity to keep upstream session fresh
+    _capture_request_identity(ctx)
+
     # Try lifespan-provided ServerContext first
     lifespan_ctx = getattr(ctx.request_context, "lifespan_context", None)
     if (
@@ -239,22 +289,12 @@ def _resolve_workflows_and_context(
         and hasattr(lifespan_ctx, "workflows")
         and hasattr(lifespan_ctx, "context")
     ):
-        # Ensure upstream session once at resolution time
-        try:
-            _set_upstream_from_request_ctx_if_available(ctx)
-        except Exception:
-            pass
         return lifespan_ctx.workflows, lifespan_ctx.context
 
     # Fall back to app attached to FastMCP
     app: MCPApp | None = _get_attached_app(ctx.fastmcp)
 
     if app is not None:
-        # Ensure the app context has the current request's session set so background logs forward
-        try:
-            _set_upstream_from_request_ctx_if_available(ctx)
-        except Exception:
-            pass
         return app.workflows, app.context
 
     return None, None
@@ -470,6 +510,18 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             method = body.get("method")
             params = body.get("params") or {}
 
+            binding = await _get_binding(execution_id) if execution_id else None
+            effective_identity = (
+                binding.identity
+                if binding and binding.identity is not None
+                else get_current_identity()
+            )
+            effective_session_id = (
+                binding.session_id
+                if binding and binding.session_id is not None
+                else get_current_session_id()
+            )
+
             # Check authentication
             auth_error = _check_gateway_auth(request)
             if auth_error:
@@ -501,9 +553,6 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                             logger=logger_name,
                             related_request_id=related_request_id,
                         )
-                        # logger.debug(
-                        #     f"[notify] delivered via latest session_id={id(latest_session)} (message)"
-                        # )
                     elif method == "notifications/progress":
                         progress_token = params.get("progressToken")
                         progress = params.get("progress")
@@ -515,31 +564,23 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                             total=total,
                             message=message,
                         )
-                        # logger.debug(
-                        #     f"[notify] delivered via latest session_id={id(latest_session)} (progress)"
-                        # )
                     else:
                         rpc = getattr(latest_session, "rpc", None)
                         if rpc and hasattr(rpc, "notify"):
                             await rpc.notify(method, params)
-                            # logger.debug(
-                            #     f"[notify] delivered via latest session_id={id(latest_session)} (generic '{method}')"
-                            # )
                         else:
                             return JSONResponse(
                                 {"ok": False, "error": f"unsupported method: {method}"},
                                 status_code=400,
                             )
-                    # Successful with latest → bind mapping for consistency
                     try:
-                        await _register_session(
+                        await _register_execution_binding(
                             run_id=execution_id,
                             execution_id=execution_id,
                             session=latest_session,
+                            identity=effective_identity,
+                            session_id=effective_session_id,
                         )
-                        # logger.info(
-                        #     f"[notify] rebound mapping to latest session_id={id(latest_session)} for execution_id={execution_id}"
-                        # )
                     except Exception:
                         pass
                     return JSONResponse({"ok": True})
@@ -570,9 +611,6 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         logger=logger_name,
                         related_request_id=related_request_id,
                     )
-                    # logger.debug(
-                    #     f"[notify] delivered via mapped session_id={id(mapped_session)} (message)"
-                    # )
                 elif method == "notifications/progress":
                     progress_token = params.get("progressToken")
                     progress = params.get("progress")
@@ -584,16 +622,10 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         total=total,
                         message=message,
                     )
-                    # logger.debug(
-                    #     f"[notify] delivered via mapped session_id={id(mapped_session)} (progress)"
-                    # )
                 else:
                     rpc = getattr(mapped_session, "rpc", None)
                     if rpc and hasattr(rpc, "notify"):
                         await rpc.notify(method, params)
-                        # logger.debug(
-                        #     f"[notify] delivered via mapped session_id={id(mapped_session)} (generic '{method}')"
-                        # )
                     else:
                         return JSONResponse(
                             {"ok": False, "error": f"unsupported method: {method}"},
@@ -753,20 +785,31 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             execution_id: str,
             log_prefix: str = "request",
             register_session: bool = False,
+            identity: OAuthUserIdentity | None = None,
+            session_id: str | None = None,
         ):
             """Try to handle a request via session, with optional registration."""
             try:
+                use_scope = method == "auth/request"
                 # First try generic RPC passthrough
-                result = await _handle_request_via_rpc(
-                    session, method, params, execution_id, log_prefix
-                )
+                if use_scope:
+                    with identity_scope(identity, session_id):
+                        result = await _handle_request_via_rpc(
+                            session, method, params, execution_id, log_prefix
+                        )
+                else:
+                    result = await _handle_request_via_rpc(
+                        session, method, params, execution_id, log_prefix
+                    )
                 if result is not None:
                     if register_session:
                         try:
-                            await _register_session(
+                            await _register_execution_binding(
                                 run_id=execution_id,
                                 execution_id=execution_id,
                                 session=session,
+                                identity=identity,
+                                session_id=session_id,
                             )
                             # logger.debug(
                             #     f"[{log_prefix}] rebound mapping to session_id={id(session)} for execution_id={execution_id}")
@@ -775,15 +818,23 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                     return result
 
                 # Fallback to specific structured request handling
-                result = await _handle_specific_request(
-                    session, method, params, log_prefix
-                )
+                if use_scope:
+                    with identity_scope(identity, session_id):
+                        result = await _handle_specific_request(
+                            session, method, params, log_prefix
+                        )
+                else:
+                    result = await _handle_specific_request(
+                        session, method, params, log_prefix
+                    )
                 if register_session:
                     try:
-                        await _register_session(
+                        await _register_execution_binding(
                             run_id=execution_id,
                             execution_id=execution_id,
                             session=session,
+                            identity=identity,
+                            session_id=session_id,
                         )
                         # logger.debug(
                         #     f"[{log_prefix}] rebound mapping to session_id={id(session)} for execution_id={execution_id}")
@@ -809,6 +860,18 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             method = body.get("method")
             params = body.get("params") or {}
 
+            binding = await _get_binding(execution_id) if execution_id else None
+            effective_identity = (
+                binding.identity
+                if binding and binding.identity is not None
+                else get_current_identity()
+            )
+            effective_session_id = (
+                binding.session_id
+                if binding and binding.session_id is not None
+                else get_current_session_id()
+            )
+
             # Check authentication
             auth_error = _check_gateway_auth(request)
             if auth_error:
@@ -825,6 +888,8 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         execution_id,
                         log_prefix="request",
                         register_session=True,
+                        identity=effective_identity,
+                        session_id=effective_session_id,
                     )
                     return JSONResponse(result)
                 except Exception as e_latest:
@@ -850,6 +915,8 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                     execution_id,
                     log_prefix="request",
                     register_session=False,
+                    identity=effective_identity,
+                    session_id=effective_session_id,
                 )
                 return JSONResponse(result)
             except Exception as e:
@@ -877,6 +944,18 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             method = body.get("method")
             params = body.get("params") or {}
             signal_name = body.get("signal_name")
+
+            binding = await _get_binding(execution_id) if execution_id else None
+            effective_identity = (
+                binding.identity
+                if binding and binding.identity is not None
+                else get_current_identity()
+            )
+            effective_session_id = (
+                binding.session_id
+                if binding and binding.session_id is not None
+                else get_current_session_id()
+            )
 
             # Check authentication
             auth_error = _check_gateway_auth(request)
@@ -916,6 +995,8 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                                 execution_id,
                                 log_prefix="async-request",
                                 register_session=True,
+                                identity=effective_identity,
+                                session_id=effective_session_id,
                             )
                         except Exception as e_latest:
                             logger.warning(
@@ -934,6 +1015,8 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                                     execution_id,
                                     log_prefix="async-request",
                                     register_session=False,
+                                    identity=effective_identity,
+                                    session_id=effective_session_id,
                                 )
                             except Exception as e:
                                 logger.error(
@@ -999,6 +1082,17 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             namespace = body.get("namespace") or "mcp_agent"
             message = body.get("message") or ""
             data = body.get("data") or {}
+            binding = await _get_binding(execution_id) if execution_id else None
+            effective_identity = (
+                binding.identity
+                if binding and binding.identity is not None
+                else get_current_identity()
+            )
+            effective_session_id = (
+                binding.session_id
+                if binding and binding.session_id is not None
+                else get_current_session_id()
+            )
             try:
                 logger.info(
                     f"[log] incoming execution_id={execution_id} level={level} ns={namespace}"
@@ -1028,10 +1122,12 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         f"[log] delivered via latest session_id={id(latest_session)} level={level} ns={namespace}"
                     )
                     try:
-                        await _register_session(
+                        await _register_execution_binding(
                             run_id=execution_id,
                             execution_id=execution_id,
                             session=latest_session,
+                            identity=effective_identity,
+                            session_id=effective_session_id,
                         )
                         logger.info(
                             f"[log] rebound mapping to latest session_id={id(latest_session)} for execution_id={execution_id}"
@@ -1077,6 +1173,17 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             execution_id = body.get("execution_id")
             prompt = body.get("prompt") or {}
             metadata = body.get("metadata") or {}
+            binding = await _get_binding(execution_id) if execution_id else None
+            effective_identity = (
+                binding.identity
+                if binding and binding.identity is not None
+                else get_current_identity()
+            )
+            effective_session_id = (
+                binding.session_id
+                if binding and binding.session_id is not None
+                else get_current_session_id()
+            )
             try:
                 logger.info(
                     f"[human] incoming execution_id={execution_id} signal_name={metadata.get('signal_name', 'human_input')}"
@@ -1118,10 +1225,12 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                             logger="mcp_agent.human",
                         )
                         try:
-                            await _register_session(
+                            await _register_execution_binding(
                                 run_id=execution_id,
                                 execution_id=execution_id,
                                 session=latest_session,
+                                identity=effective_identity,
+                                session_id=effective_session_id,
                             )
                             logger.info(
                                 f"[human] rebound mapping to latest session_id={id(latest_session)} for execution_id={execution_id}"
@@ -1224,41 +1333,29 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         Returns information about each workflow type including name, description, and parameters.
         This helps in making an informed decision about which workflow to run.
         """
-        # Ensure upstream session is set for any logs emitted during this call
-        try:
-            _set_upstream_from_request_ctx_if_available(ctx)
-        except Exception:
-            pass
-        result: Dict[str, Dict[str, Any]] = {}
-        workflows, _ = _resolve_workflows_and_context(ctx)
-        workflows = workflows or {}
-        for workflow_name, workflow_cls in workflows.items():
-            # Determine parameter schema (strip self / prefer original function)
-            run_fn_tool = _build_run_param_tool(workflow_cls)
+        with _request_identity_scope(ctx):
+            result: Dict[str, Dict[str, Any]] = {}
+            workflows, _ = _resolve_workflows_and_context(ctx)
+            workflows = workflows or {}
+            for workflow_name, workflow_cls in workflows.items():
+                run_fn_tool = _build_run_param_tool(workflow_cls)
 
-            # Determine endpoints based on whether this is an auto sync/async tool
-            if getattr(workflow_cls, "__mcp_agent_sync_tool__", False):
-                endpoints = [
-                    f"{workflow_name}",
-                ]
-            elif getattr(workflow_cls, "__mcp_agent_async_tool__", False):
-                endpoints = [
-                    f"{workflow_name}",
-                ]
-            else:
-                endpoints = [
-                    f"workflows-{workflow_name}-run",
-                ]
+                if getattr(workflow_cls, "__mcp_agent_sync_tool__", False):
+                    endpoints = [f"{workflow_name}"]
+                elif getattr(workflow_cls, "__mcp_agent_async_tool__", False):
+                    endpoints = [f"{workflow_name}"]
+                else:
+                    endpoints = [f"workflows-{workflow_name}-run"]
 
-            result[workflow_name] = {
-                "name": workflow_name,
-                "description": workflow_cls.__doc__ or run_fn_tool.description,
-                "capabilities": ["run"],
-                "tool_endpoints": endpoints,
-                "run_parameters": run_fn_tool.parameters,
-            }
+                result[workflow_name] = {
+                    "name": workflow_name,
+                    "description": workflow_cls.__doc__ or run_fn_tool.description,
+                    "capabilities": ["run"],
+                    "tool_endpoints": endpoints,
+                    "run_parameters": run_fn_tool.parameters,
+                }
 
-        return result
+            return result
 
     @mcp.tool(name="workflows-runs-list")
     async def list_workflow_runs(
@@ -1283,39 +1380,34 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         Returns:
             A list of workflow run status dictionaries with detailed workflow information.
         """
-        # Ensure upstream session is set for any logs emitted during this call
-        try:
-            _set_upstream_from_request_ctx_if_available(ctx)
-        except Exception:
-            pass
+        with _request_identity_scope(ctx):
+            server_context = getattr(
+                ctx.request_context, "lifespan_context", None
+            ) or _get_attached_server_context(ctx.fastmcp)
+            if server_context is None or not hasattr(
+                server_context, "workflow_registry"
+            ):
+                raise ToolError("Server context not available for MCPApp Server.")
 
-        server_context = getattr(
-            ctx.request_context, "lifespan_context", None
-        ) or _get_attached_server_context(ctx.fastmcp)
-        if server_context is None or not hasattr(server_context, "workflow_registry"):
-            raise ToolError("Server context not available for MCPApp Server.")
+            token_bytes = None
+            if next_page_token:
+                try:
+                    import base64 as _b64
 
-        # Decode next_page_token if provided (base64-encoded string -> bytes)
-        token_bytes = None
-        if next_page_token:
-            try:
-                import base64 as _b64
+                    token_bytes = _b64.b64decode(next_page_token)
+                except Exception:
+                    token_bytes = None
 
-                token_bytes = _b64.b64decode(next_page_token)
-            except Exception:
-                token_bytes = None
-
-        # Get workflow statuses from the registry with pagination/query hints
-        workflow_statuses = (
-            await server_context.workflow_registry.list_workflow_statuses(
-                query=None,
-                limit=limit,
-                page_size=page_size,
-                next_page_token=token_bytes,
+            workflow_statuses = (
+                await server_context.workflow_registry.list_workflow_statuses(
+                    query=None,
+                    limit=limit,
+                    page_size=page_size,
+                    next_page_token=token_bytes,
+                )
             )
-        )
 
-        return workflow_statuses
+            return workflow_statuses
 
     @mcp.tool(name="workflows-run")
     async def run_workflow(
@@ -1337,12 +1429,8 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             A dict with workflow_id and run_id for the started workflow run, can be passed to
             workflows/get_status, workflows/resume, and workflows/cancel.
         """
-        # Ensure upstream session is set before starting the workflow
-        try:
-            _set_upstream_from_request_ctx_if_available(ctx)
-        except Exception:
-            pass
-        return await _workflow_run(ctx, workflow_name, run_parameters, **kwargs)
+        with _request_identity_scope(ctx):
+            return await _workflow_run(ctx, workflow_name, run_parameters, **kwargs)
 
     @mcp.tool(name="workflows-get_status")
     async def get_workflow_status(
@@ -1367,22 +1455,36 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         Returns:
             A dictionary with comprehensive information about the workflow status.
         """
-        # Ensure upstream session is available for any status-related logs
-        try:
-            _set_upstream_from_request_ctx_if_available(ctx)
-        except Exception:
-            pass
-        # Opportunistically re-bind the upstream session mapping to this request's session
-        try:
-            sess = getattr(ctx, "session", None)
-            if sess and run_id:
-                exec_id = _RUN_EXECUTION_ID_REGISTRY.get(run_id, run_id)
-                await _register_session(
-                    run_id=run_id, execution_id=exec_id, session=sess
-                )
-        except Exception:
-            pass
-        return await _workflow_status(ctx, run_id=run_id, workflow_id=workflow_id)
+        with _request_identity_scope(ctx) as (_, request_identity, request_session_id):
+            try:
+                sess = getattr(ctx, "session", None)
+                if sess and run_id:
+                    exec_id = _RUN_EXECUTION_ID_REGISTRY.get(run_id, run_id)
+                    binding = await _get_binding(exec_id) if exec_id else None
+                    effective_identity = (
+                        binding.identity
+                        if binding and binding.identity
+                        else request_identity
+                    )
+                    effective_session = (
+                        binding.session_id
+                        if binding and binding.session_id
+                        else request_session_id
+                    )
+                    kwargs: Dict[str, Any] = {}
+                    if effective_identity is not None:
+                        kwargs["identity"] = effective_identity
+                    if effective_session is not None:
+                        kwargs["session_id"] = effective_session
+                    await _register_execution_binding(
+                        run_id=run_id,
+                        execution_id=exec_id,
+                        session=sess,
+                        **kwargs,
+                    )
+            except Exception:
+                pass
+            return await _workflow_status(ctx, run_id=run_id, workflow_id=workflow_id)
 
     @mcp.tool(name="workflows-resume")
     async def resume_workflow(
@@ -1411,52 +1513,65 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         Returns:
             True if the workflow was resumed, False otherwise.
         """
-        # Ensure upstream session is available for any status-related logs
-        try:
-            _set_upstream_from_request_ctx_if_available(ctx)
-        except Exception:
-            pass
-        # Re-bind mapping for this run to ensure worker notifies reach the current client session
-        try:
-            sess = getattr(ctx, "session", None)
-            if sess and run_id:
-                exec_id = _RUN_EXECUTION_ID_REGISTRY.get(run_id, run_id)
-                await _register_session(
-                    run_id=run_id, execution_id=exec_id, session=sess
+        with _request_identity_scope(ctx) as (_, request_identity, request_session_id):
+            try:
+                sess = getattr(ctx, "session", None)
+                if sess and run_id:
+                    exec_id = _RUN_EXECUTION_ID_REGISTRY.get(run_id, run_id)
+                    binding = await _get_binding(exec_id) if exec_id else None
+                    effective_identity = (
+                        binding.identity
+                        if binding and binding.identity
+                        else request_identity
+                    )
+                    effective_session = (
+                        binding.session_id
+                        if binding and binding.session_id
+                        else request_session_id
+                    )
+                    kwargs: Dict[str, Any] = {}
+                    if effective_identity is not None:
+                        kwargs["identity"] = effective_identity
+                    if effective_session is not None:
+                        kwargs["session_id"] = effective_session
+                    await _register_execution_binding(
+                        run_id=run_id,
+                        execution_id=exec_id,
+                        session=sess,
+                        **kwargs,
+                    )
+            except Exception:
+                pass
+
+            if run_id is None and workflow_id is None:
+                raise ToolError("Either run_id or workflow_id must be provided.")
+
+            workflow_registry: WorkflowRegistry | None = _resolve_workflow_registry(ctx)
+
+            if not workflow_registry:
+                raise ToolError("Workflow registry not found for MCPApp Server.")
+
+            logger.info(
+                f"Resuming workflow ID {workflow_id or 'unknown'}, run ID {run_id or 'unknown'} with signal '{signal_name}' and payload '{payload}'"
+            )
+
+            result = await workflow_registry.resume_workflow(
+                run_id=run_id,
+                workflow_id=workflow_id,
+                signal_name=signal_name,
+                payload=payload,
+            )
+
+            if result:
+                logger.debug(
+                    f"Signaled workflow ID {workflow_id or 'unknown'}, run ID {run_id or 'unknown'} with signal '{signal_name}' and payload '{payload}'"
                 )
-        except Exception:
-            pass
+            else:
+                logger.error(
+                    f"Failed to signal workflow ID {workflow_id or 'unknown'}, run ID {run_id or 'unknown'} with signal '{signal_name}' and payload '{payload}'"
+                )
 
-        if run_id is None and workflow_id is None:
-            raise ToolError("Either run_id or workflow_id must be provided.")
-
-        workflow_registry: WorkflowRegistry | None = _resolve_workflow_registry(ctx)
-
-        if not workflow_registry:
-            raise ToolError("Workflow registry not found for MCPApp Server.")
-
-        logger.info(
-            f"Resuming workflow ID {workflow_id or 'unknown'}, run ID {run_id or 'unknown'} with signal '{signal_name}' and payload '{payload}'"
-        )
-
-        # Get the workflow instance from the registry
-        result = await workflow_registry.resume_workflow(
-            run_id=run_id,
-            workflow_id=workflow_id,
-            signal_name=signal_name,
-            payload=payload,
-        )
-
-        if result:
-            logger.debug(
-                f"Signaled workflow ID {workflow_id or 'unknown'}, run ID {run_id or 'unknown'} with signal '{signal_name}' and payload '{payload}'"
-            )
-        else:
-            logger.error(
-                f"Failed to signal workflow ID {workflow_id or 'unknown'}, run ID {run_id or 'unknown'} with signal '{signal_name}' and payload '{payload}'"
-            )
-
-        return result
+            return result
 
     @mcp.tool(name="workflows-cancel")
     async def cancel_workflow(
@@ -1476,49 +1591,62 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         Returns:
             True if the workflow was cancelled, False otherwise.
         """
-        # Ensure upstream session is available for any status-related logs
-        try:
-            _set_upstream_from_request_ctx_if_available(ctx)
-        except Exception:
-            pass
-        # Re-bind mapping for this run to ensure worker notifies reach the current client session
-        try:
-            sess = getattr(ctx, "session", None)
-            if sess and run_id:
-                exec_id = _RUN_EXECUTION_ID_REGISTRY.get(run_id, run_id)
-                await _register_session(
-                    run_id=run_id, execution_id=exec_id, session=sess
+        with _request_identity_scope(ctx) as (_, request_identity, request_session_id):
+            try:
+                sess = getattr(ctx, "session", None)
+                if sess and run_id:
+                    exec_id = _RUN_EXECUTION_ID_REGISTRY.get(run_id, run_id)
+                    binding = await _get_binding(exec_id) if exec_id else None
+                    effective_identity = (
+                        binding.identity
+                        if binding and binding.identity
+                        else request_identity
+                    )
+                    effective_session = (
+                        binding.session_id
+                        if binding and binding.session_id
+                        else request_session_id
+                    )
+                    kwargs: Dict[str, Any] = {}
+                    if effective_identity is not None:
+                        kwargs["identity"] = effective_identity
+                    if effective_session is not None:
+                        kwargs["session_id"] = effective_session
+                    await _register_execution_binding(
+                        run_id=run_id,
+                        execution_id=exec_id,
+                        session=sess,
+                        **kwargs,
+                    )
+            except Exception:
+                pass
+
+            if run_id is None and workflow_id is None:
+                raise ToolError("Either run_id or workflow_id must be provided.")
+
+            workflow_registry: WorkflowRegistry | None = _resolve_workflow_registry(ctx)
+
+            if not workflow_registry:
+                raise ToolError("Workflow registry not found for MCPApp Server.")
+
+            logger.info(
+                f"Cancelling workflow ID {workflow_id or 'unknown'}, run ID {run_id or 'unknown'}"
+            )
+
+            result = await workflow_registry.cancel_workflow(
+                run_id=run_id, workflow_id=workflow_id
+            )
+
+            if result:
+                logger.debug(
+                    f"Cancelled workflow ID {workflow_id or 'unknown'}, run ID {run_id or 'unknown'}"
                 )
-        except Exception:
-            pass
+            else:
+                logger.error(
+                    f"Failed to cancel workflow {workflow_id or 'unknown'} with ID {run_id or 'unknown'}"
+                )
 
-        if run_id is None and workflow_id is None:
-            raise ToolError("Either run_id or workflow_id must be provided.")
-
-        workflow_registry: WorkflowRegistry | None = _resolve_workflow_registry(ctx)
-
-        if not workflow_registry:
-            raise ToolError("Workflow registry not found for MCPApp Server.")
-
-        logger.info(
-            f"Cancelling workflow ID {workflow_id or 'unknown'}, run ID {run_id or 'unknown'}"
-        )
-
-        # Get the workflow instance from the registry
-        result = await workflow_registry.cancel_workflow(
-            run_id=run_id, workflow_id=workflow_id
-        )
-
-        if result:
-            logger.debug(
-                f"Cancelled workflow ID {workflow_id or 'unknown'}, run ID {run_id or 'unknown'}"
-            )
-        else:
-            logger.error(
-                f"Failed to cancel workflow {workflow_id or 'unknown'} with ID {run_id or 'unknown'}"
-            )
-
-        return result
+            return result
 
     @mcp.tool(name="workflows-pre-auth")
     async def workflow_pre_auth(
@@ -1544,115 +1672,114 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         Returns:
             Dictionary with success status and count of stored tokens.
         """
-        # Ensure upstream session is available for any logs
-        try:
-            _set_upstream_from_request_ctx_if_available(ctx)
-        except Exception:
-            pass
+        with _request_identity_scope(ctx) as (_, request_identity, request_session_id):
+            workflows_dict, app_context = _resolve_workflows_and_context(ctx)
+            if not workflows_dict or not app_context:
+                raise ToolError("Server context not available for MCPApp Server.")
 
-        workflows_dict, app_context = _resolve_workflows_and_context(ctx)
-        if not workflows_dict or not app_context:
-            raise ToolError("Server context not available for MCPApp Server.")
+            if workflow_name not in workflows_dict:
+                raise ToolError(f"Workflow '{workflow_name}' not found.")
 
-        if workflow_name not in workflows_dict:
-            raise ToolError(f"Workflow '{workflow_name}' not found.")
+            if not app_context.token_manager:
+                raise ToolError("OAuth token manager not available.")
 
-        if not app_context.token_manager:
-            raise ToolError("OAuth token manager not available.")
-
-        current_user = app_context.current_user
-        if current_user is None:
-            session_id = getattr(app_context, "session_id", None)
-            if session_id:
-                current_user = OAuthUserIdentity(
-                    provider="mcp-session", subject=str(session_id)
-                )
-            else:
-                raise ToolError(
-                    "Authenticated user required for workflow pre-authorization."
-                )
-
-        if not tokens:
-            raise ToolError("At least one token must be provided.")
-
-        stored_count = 0
-        errors = []
-
-        try:
-            for i, token_data in enumerate(tokens):
-                try:
-                    # Validate required fields
-                    if not isinstance(token_data, dict):
-                        errors.append(f"Token {i}: must be a dictionary")
-                        continue
-
-                    access_token = token_data.get("access_token")
-                    server_name = token_data.get("server_name")
-
-                    if not access_token:
-                        errors.append(
-                            f"Token {i}: missing required 'access_token' field"
-                        )
-                        continue
-
-                    if not server_name:
-                        errors.append(
-                            f"Token {i}: missing required 'server_name' field"
-                        )
-                        continue
-
-                    server_config = app_context.server_registry.get_server_config(
-                        server_name
-                    )
-                    if not server_config:
-                        errors.append(
-                            f"Token {i}: server '{server_name}' not recognized"
-                        )
-                        continue
-
-                    await app_context.token_manager.store_user_token(
-                        context=app_context,
-                        user=current_user,
-                        server_name=server_name,
-                        server_config=server_config,
-                        token_data=token_data,
-                        workflow_name=workflow_name,
-                    )
-                    stored_count += 1
-                except Exception as e:
-                    errors.append(f"Token {i}: {str(e)}")
-                    logger.error(
-                        f"Error storing token {i} for workflow '{workflow_name}': {e}"
-                    )
-
-            if errors and stored_count == 0:
-                raise ToolError(
-                    f"Failed to store any tokens. Errors: {'; '.join(errors)}"
-                )
-
-            result = {
-                "success": True,
-                "workflow_name": workflow_name,
-                "stored_tokens": stored_count,
-                "total_tokens": len(tokens),
-            }
-
-            if errors:
-                result["errors"] = errors
-                result["partial_success"] = True
-
-            logger.info(
-                f"Pre-authorization completed for workflow '{workflow_name}': "
-                f"{stored_count}/{len(tokens)} tokens stored"
+            current_user = request_identity or getattr(
+                app_context, "current_user", None
             )
+            if current_user is None:
+                session_id = request_session_id or getattr(
+                    app_context, "session_id", None
+                )
+                if session_id:
+                    current_user = OAuthUserIdentity(
+                        provider="mcp-session", subject=str(session_id)
+                    )
+                else:
+                    raise ToolError(
+                        "Authenticated user required for workflow pre-authorization."
+                    )
 
-            return result
+            if not tokens:
+                raise ToolError("At least one token must be provided.")
 
-        except Exception as e:
-            logger.error(
-                f"Error in workflow pre-authorization for '{workflow_name}': {e}"
-            )
-            raise ToolError(f"Failed to store tokens: {str(e)}")
+            stored_count = 0
+            errors = []
+
+            try:
+                for i, token_data in enumerate(tokens):
+                    try:
+                        # Validate required fields
+                        if not isinstance(token_data, dict):
+                            errors.append(f"Token {i}: must be a dictionary")
+                            continue
+
+                        access_token = token_data.get("access_token")
+                        server_name = token_data.get("server_name")
+
+                        if not access_token:
+                            errors.append(
+                                f"Token {i}: missing required 'access_token' field"
+                            )
+                            continue
+
+                        if not server_name:
+                            errors.append(
+                                f"Token {i}: missing required 'server_name' field"
+                            )
+                            continue
+
+                        server_config = app_context.server_registry.get_server_config(
+                            server_name
+                        )
+                        if not server_config:
+                            errors.append(
+                                f"Token {i}: server '{server_name}' not recognized"
+                            )
+                            continue
+
+                        await app_context.token_manager.store_user_token(
+                            context=app_context,
+                            user=current_user,
+                            server_name=server_name,
+                            server_config=server_config,
+                            token_data=token_data,
+                            workflow_name=workflow_name,
+                        )
+                        stored_count += 1
+                    except Exception as e:
+                        errors.append(f"Token {i}: {str(e)}")
+                        logger.error(
+                            f"Error storing token {i} for workflow '{workflow_name}': {e}"
+                        )
+
+                if errors and stored_count == 0:
+                    raise ToolError(
+                        f"Failed to store any tokens. Errors: {'; '.join(errors)}"
+                    )
+
+                result = {
+                    "success": True,
+                    "workflow_name": workflow_name,
+                    "stored_tokens": stored_count,
+                    "total_tokens": len(tokens),
+                }
+
+                if errors:
+                    result["errors"] = errors
+                    result["partial_success"] = True
+
+                logger.info(
+                    f"Pre-authorization completed for workflow '{workflow_name}': "
+                    f"{stored_count}/{len(tokens)} tokens stored"
+                )
+
+                return result
+
+            except Exception as e:
+                logger.error(
+                    f"Error in workflow pre-authorization for '{workflow_name}': {e}"
+                )
+                raise ToolError(f"Failed to store tokens: {str(e)}")
 
     # endregion
 
@@ -2038,8 +2165,8 @@ def create_workflow_specific_tools(
         ctx: MCPContext,
         run_parameters: Dict[str, Any] | None = None,
     ) -> Dict[str, str]:
-        _set_upstream_from_request_ctx_if_available(ctx)
-        return await _workflow_run(ctx, workflow_name, run_parameters)
+        with _request_identity_scope(ctx):
+            return await _workflow_run(ctx, workflow_name, run_parameters)
 
 
 # endregion
@@ -2227,6 +2354,24 @@ async def _workflow_run(
         except Exception:
             workflow_memo = None
 
+        identity_for_memo = get_current_identity() or getattr(
+            app_context, "current_user", None
+        )
+        session_id_for_memo = get_current_session_id() or getattr(
+            app_context, "session_id", None
+        )
+        if identity_for_memo or session_id_for_memo:
+            workflow_memo = workflow_memo or {}
+            if identity_for_memo:
+                workflow_memo["user_identity"] = {
+                    "provider": identity_for_memo.provider,
+                    "subject": identity_for_memo.subject,
+                    "email": identity_for_memo.email,
+                    "claims": dict(identity_for_memo.claims or {}),
+                }
+            if session_id_for_memo:
+                workflow_memo["session_id"] = str(session_id_for_memo)
+
         # Run the workflow asynchronously and get its ID
         execution = await workflow.run_async(
             __mcp_agent_workflow_memo=workflow_memo,
@@ -2241,10 +2386,13 @@ async def _workflow_run(
 
         # Register upstream session for this run so external workers can proxy logs/prompts
         try:
-            await _register_session(
+            await _register_execution_binding(
                 run_id=execution.run_id,
                 execution_id=execution_id,
                 session=getattr(ctx, "session", None),
+                identity=get_current_identity(),
+                session_id=get_current_session_id()
+                or getattr(app_context, "session_id", None),
             )
         except Exception:
             pass
@@ -2264,36 +2412,32 @@ async def _workflow_status(
     ctx: MCPContext, run_id: str | None = None, workflow_id: str | None = None
 ) -> Dict[str, Any]:
     # Ensure upstream session so status-related logs are forwarded
-    try:
-        _set_upstream_from_request_ctx_if_available(ctx)
-    except Exception:
-        pass
+    with _request_identity_scope(ctx):
+        if not (run_id or workflow_id):
+            raise ValueError("Either run_id or workflow_id must be provided.")
 
-    if not (run_id or workflow_id):
-        raise ValueError("Either run_id or workflow_id must be provided.")
+        workflow_registry: WorkflowRegistry | None = _resolve_workflow_registry(ctx)
 
-    workflow_registry: WorkflowRegistry | None = _resolve_workflow_registry(ctx)
+        if not workflow_registry:
+            raise ToolError("Workflow registry not found for MCPApp Server.")
 
-    if not workflow_registry:
-        raise ToolError("Workflow registry not found for MCPApp Server.")
+        if not workflow_id:
+            workflow = await workflow_registry.get_workflow(
+                run_id=run_id, workflow_id=workflow_id
+            )
+            if workflow:
+                workflow_id = workflow.id or workflow.name
 
-    if not workflow_id:
-        workflow = await workflow_registry.get_workflow(
+        status = await workflow_registry.get_workflow_status(
             run_id=run_id, workflow_id=workflow_id
         )
-        if workflow:
-            workflow_id = workflow.id or workflow.name
-
-    status = await workflow_registry.get_workflow_status(
-        run_id=run_id, workflow_id=workflow_id
-    )
 
     # Cleanup run registry on terminal states
     try:
         state = str(status.get("status", "")).lower()
         if state in ("completed", "error", "cancelled"):
             try:
-                await _unregister_session(run_id)
+                await _unregister_execution_binding(run_id)
             except Exception:
                 pass
     except Exception:

@@ -28,7 +28,7 @@ async def test_memo_from_forwarded_headers(monkeypatch):
         lambda ctx: ({"TestWorkflow": FakeWorkflow}, SimpleNamespace()),
     )
     # Avoid registry side effects
-    monkeypatch.setattr(app_server, "_register_session", lambda *a, **k: None)
+    monkeypatch.setattr(app_server, "_register_execution_binding", lambda *a, **k: None)
 
     # Construct a request-like object with only X-Forwarded-* headers
     headers = {
@@ -83,7 +83,6 @@ async def test_memo_falls_back_to_env(monkeypatch):
         "_resolve_workflows_and_context",
         lambda ctx: ({"TestWorkflow": FakeWorkflow}, SimpleNamespace()),
     )
-    monkeypatch.setattr(app_server, "_register_session", lambda *a, **k: None)
 
     # No headers at all; env should be used
     req = SimpleNamespace(headers={}, base_url=None)

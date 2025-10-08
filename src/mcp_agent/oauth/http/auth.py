@@ -6,6 +6,11 @@ import httpx
 
 from typing import TYPE_CHECKING
 
+from mcp_agent.oauth.context_state import (
+    get_current_identity,
+    get_current_session_id,
+)
+
 if TYPE_CHECKING:
     from mcp_agent.oauth.manager import TokenManager
     from mcp_agent.core.context import Context
@@ -47,16 +52,18 @@ class OAuthHttpxAuth(httpx.Auth):
         if response.status_code != 401:
             return
 
-        user = self._context.current_user
+        user = get_current_identity() or self._context.current_user
         if user is None:
             return
-
+        session_id = get_current_session_id() or getattr(
+            self._context, "session_id", None
+        )
         await self._token_manager.invalidate(
             user=user,
             resource=token_record.resource or "",
             authorization_server=token_record.authorization_server,
             scopes=token_record.scopes,
-            session_id=self._context.session_id,
+            session_id=session_id,
         )
 
         refreshed_record = await self._token_manager.ensure_access_token(

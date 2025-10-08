@@ -12,7 +12,9 @@ from mcp_agent.oauth.manager import (
     _candidate_authorization_metadata_urls,
     _candidate_resource_metadata_urls,
 )
+from mcp_agent.oauth.records import TokenRecord
 from mcp_agent.oauth.store import InMemoryTokenStore
+from mcp_agent.oauth.context_state import identity_scope
 
 
 class DummyServerConfig:
@@ -89,6 +91,49 @@ async def test_preconfigured_token_lookup_and_invalidation():
         session_id=context.session_id,
     )
     assert await store.get(key) is None
+
+
+@pytest.mark.asyncio
+async def test_scoped_identity_used_when_context_user_missing():
+    oauth_settings = OAuthSettings(
+        callback_base_url="http://localhost:8000",
+        flow_timeout_seconds=300,
+    )
+    store = InMemoryTokenStore()
+    manager = TokenManager(token_store=store, settings=oauth_settings)
+
+    oauth_config = MCPOAuthClientSettings(
+        enabled=True,
+        authorization_server="https://auth.example.com",
+        resource="https://api.example.com/mcp",
+    )
+    server_config = DummyServerConfig(oauth_config)
+
+    resolved = ResolvedOAuthContext(
+        resource="https://api.example.com/mcp",
+        resource_metadata=SimpleNamespace(),
+        authorization_server_url="https://auth.example.com",
+        authorization_metadata=SimpleNamespace(issuer="https://auth.example.com"),
+        issuer="https://auth.example.com",
+        scopes=("repo",),
+    )
+    manager._resolve_oauth_context = AsyncMock(return_value=resolved)  # type: ignore[attr-defined]
+
+    token_record = TokenRecord(access_token="abc", scopes=("repo",))
+    manager._token_store.set = AsyncMock()  # type: ignore[attr-defined]
+    manager._flow.authorize = AsyncMock(return_value=token_record)  # type: ignore[attr-defined]
+
+    scoped_identity = OAuthUserIdentity(provider="scoped", subject="user-42")
+    context = DummyContext(session_id=None, current_user=None)
+
+    with identity_scope(scoped_identity):
+        await manager.ensure_access_token(
+            context=context,
+            server_name="github",
+            server_config=server_config,
+        )
+
+    manager._flow.authorize.assert_awaited_once()  # type: ignore[attr-defined]
 
 
 @pytest.mark.asyncio

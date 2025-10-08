@@ -14,6 +14,8 @@ from typing import (
 )
 
 
+from contextvars import Token
+
 from pydantic import BaseModel, ConfigDict, Field
 from mcp_agent.core.context_dependent import ContextDependent
 from mcp_agent.executor.workflow_signal import (
@@ -21,6 +23,11 @@ from mcp_agent.executor.workflow_signal import (
     SignalMailbox,
 )
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.oauth.context_state import (
+    push_identity,
+    reset_identity,
+)
+from mcp_agent.oauth.identity import OAuthUserIdentity
 
 if TYPE_CHECKING:
     from temporalio.client import WorkflowHandle
@@ -116,10 +123,14 @@ class Workflow(ABC, Generic[T], ContextDependent):
         # means it can be replayed automatically
         self.state = WorkflowState(metadata=metadata or {})
 
+        # Track scoped identity/session tokens when running under Temporal
+        self._identity_tokens: tuple[Token, Token] | None = None
+
         # Flag to prevent re-attaching signals
         # Set in signal_handler.attach_to_workflow (done in workflow initialize())
         self._signal_handler_attached = False
         self._signal_mailbox: SignalMailbox = SignalMailbox()
+        self._identity_tokens: tuple[Token, Token] | None = None
 
     @property
     def executor(self):
@@ -790,6 +801,45 @@ class Workflow(ABC, Generic[T], ContextDependent):
                             self.context.gateway_token = gateway_token
                         except Exception:
                             pass
+
+                    identity_obj: OAuthUserIdentity | None = None
+                    identity_data = memo_map.get("user_identity")
+                    session_hint = memo_map.get("session_id")
+                    if identity_data:
+                        try:
+                            identity_obj = OAuthUserIdentity(
+                                provider=str(identity_data.get("provider")),
+                                subject=str(identity_data.get("subject")),
+                                email=identity_data.get("email"),
+                                claims=dict(identity_data.get("claims") or {}),
+                            )
+                        except Exception:
+                            identity_obj = None
+                    if identity_obj:
+                        try:
+                            self.context.current_user = identity_obj
+                        except Exception:
+                            pass
+                    if session_hint and not getattr(self.context, "session_id", None):
+                        try:
+                            self.context.session_id = str(session_hint)
+                        except Exception:
+                            pass
+                    if identity_obj or session_hint:
+                        if self._identity_tokens:
+                            try:
+                                reset_identity(self._identity_tokens)
+                            except Exception:
+                                pass
+                            finally:
+                                self._identity_tokens = None
+                        try:
+                            self._identity_tokens = push_identity(
+                                identity_obj,
+                                str(session_hint) if session_hint else None,
+                            )
+                        except Exception:
+                            self._identity_tokens = None
             except Exception:
                 # Safe to ignore if called outside workflow sandbox or memo unavailable
                 pass
@@ -833,6 +883,13 @@ class Workflow(ABC, Generic[T], ContextDependent):
             return
 
         self._logger.debug(f"Cleaning up workflow {self.name}")
+        if self._identity_tokens:
+            try:
+                reset_identity(self._identity_tokens)
+            except Exception:
+                pass
+            finally:
+                self._identity_tokens = None
         self._initialized = False
 
     async def __aenter__(self):

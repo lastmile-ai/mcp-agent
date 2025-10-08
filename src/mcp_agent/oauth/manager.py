@@ -36,6 +36,10 @@ from mcp_agent.oauth.store import (
     TokenStoreKey,
     scope_fingerprint,
 )
+from mcp_agent.oauth.context_state import (
+    get_current_identity,
+    get_current_session_id,
+)
 
 if TYPE_CHECKING:
     from mcp_agent.core.context import Context
@@ -284,7 +288,8 @@ class TokenManager:
                 "authorization_server_url": resolved.authorization_server_url,
                 "pre_configured": False,
                 "workflow_name": workflow_name,
-                "session_id": getattr(context, "session_id", None),
+                "session_id": getattr(context, "session_id", None)
+                or get_current_session_id(),
             },
         )
 
@@ -323,9 +328,11 @@ class TokenManager:
             requested_scopes=requested_scopes,
         )
 
+        scoped_identity = get_current_identity()
         session_identity = self._session_identity(context)
         identities = _dedupe(
             [
+                scoped_identity,
                 context.current_user,
                 session_identity,
                 self._default_identity,
@@ -388,7 +395,7 @@ class TokenManager:
                     await self._token_store.delete(key)
 
         # Only authenticated users (non-default identity) can initiate new flows.
-        user_identity = context.current_user
+        user_identity = context.current_user or scoped_identity
         if user_identity is None:
             if last_error:
                 raise last_error
@@ -659,7 +666,7 @@ class TokenManager:
             await close()
 
     def _session_identity(self, context: "Context") -> OAuthUserIdentity | None:
-        session_id = getattr(context, "session_id", None)
+        session_id = getattr(context, "session_id", None) or get_current_session_id()
         if not session_id:
             return None
         return OAuthUserIdentity(provider="mcp-session", subject=str(session_id))
