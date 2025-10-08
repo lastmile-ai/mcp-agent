@@ -25,7 +25,6 @@ from mcp.server.fastmcp.tools import Tool as FastTool
 
 from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
-from mcp_agent.config import MCPOAuthClientSettings
 from mcp_agent.core.context_dependent import ContextDependent
 from mcp_agent.executor.workflow import Workflow
 from mcp_agent.executor.workflow_registry import (
@@ -42,8 +41,8 @@ from mcp_agent.oauth.callbacks import callback_registry
 from mcp_agent.oauth.errors import (
     CallbackTimeoutError,
 )
-from mcp_agent.oauth.manager import create_default_user_for_preconfigured_tokens
 from mcp_agent.server.token_verifier import MCPAgentTokenVerifier
+
 if TYPE_CHECKING:
     from mcp_agent.core.context import Context
 
@@ -217,30 +216,12 @@ def _set_upstream_from_request_ctx_if_available(ctx: MCPContext) -> None:
             except Exception:
                 identity = None
 
-    if not identity:
-        # Try create identity from session id
-        try:
-            session_id = ctx.request_context.request.query_params.get("session_id")
-            identity = create_default_user_for_preconfigured_tokens(session_id)
-        except Exception:
-            identity = None
-
-    if session is not None:
-        app: MCPApp | None = _get_attached_app(ctx.fastmcp)
-        if app is not None and getattr(app, "context", None) is not None:
-            # Set on global app context so the logger can access it
-            # Previously captured; no need to keep old value
-            # Use direct assignment for Pydantic model
+    app: MCPApp | None = _get_attached_app(ctx.fastmcp)
+    if app is not None and getattr(app, "context", None) is not None:
+        if session is not None:
             app.context.upstream_session = session
-            app.context.current_user = identity
-            return
-        else:
-            return
-    else:
-        # Update identity even if we failed to resolve a session
-        app: MCPApp | None = _get_attached_app(ctx.fastmcp)
-        if app is not None and getattr(app, "context", None) is not None:
-            app.context.current_user = identity
+        # Always overwrite the current user to avoid leaking identities between requests.
+        app.context.current_user = identity
 
 
 def _resolve_workflows_and_context(
@@ -732,7 +713,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             elif method == "auth/request":
                 # TODO: special handling of auth request, should be replaced by future URL elicitation
                 class AuthToken(BaseModel):
-                    confirmation: str = Field(description="Please press enter to confirm this message has been received")
+                    confirmation: str = Field(
+                        description="Please press enter to confirm this message has been received"
+                    )
 
                 flow_id = params["flow_id"]
                 callback_future = await callback_registry.create_handle(flow_id)
@@ -1574,8 +1557,20 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         if workflow_name not in workflows_dict:
             raise ToolError(f"Workflow '{workflow_name}' not found.")
 
-        if not app_context.token_store:
-            raise ToolError("Token storage not available.")
+        if not app_context.token_manager:
+            raise ToolError("OAuth token manager not available.")
+
+        current_user = app_context.current_user
+        if current_user is None:
+            session_id = getattr(app_context, "session_id", None)
+            if session_id:
+                current_user = OAuthUserIdentity(
+                    provider="mcp-session", subject=str(session_id)
+                )
+            else:
+                raise ToolError(
+                    "Authenticated user required for workflow pre-authorization."
+                )
 
         if not tokens:
             raise ToolError("At least one token must be provided.")
@@ -1606,57 +1601,23 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         )
                         continue
 
-                    server_config = app_context.server_registry.get_server_config(server_name)
+                    server_config = app_context.server_registry.get_server_config(
+                        server_name
+                    )
                     if not server_config:
                         errors.append(
                             f"Token {i}: server '{server_name}' not recognized"
                         )
                         continue
 
-                    oauth_config: MCPOAuthClientSettings | None = None
-                    if server_config and server_config.auth:
-                        oauth_config = getattr(server_config.auth, "oauth", None)
-                    if not oauth_config or not oauth_config.enabled:
-                        errors.append(
-                            f"Token {i}: Server '{server_name}' is not configured for OAuth authentication"
-                        )
-                        continue
-
-                    # Create TokenRecord
-                    from mcp_agent.oauth.records import TokenRecord
-                    from mcp_agent.oauth.store.base import (
-                        TokenStoreKey,
-                        scope_fingerprint,
+                    await app_context.token_manager.store_user_token(
+                        context=app_context,
+                        user=current_user,
+                        server_name=server_name,
+                        server_config=server_config,
+                        token_data=token_data,
+                        workflow_name=workflow_name,
                     )
-
-                    resource_str = str(oauth_config.resource) if oauth_config.resource \
-                        else getattr(server_config, "url", None)
-                    auth_server_str = str(oauth_config.authorization_server) if oauth_config.authorization_server \
-                        else None
-                    scope_list = list(oauth_config.scopes or [])
-
-                    token_record = TokenRecord(
-                        access_token=access_token,
-                        refresh_token=token_data.get("refresh_token"),
-                        scopes=tuple(scope_list),
-                        expires_at=token_data.get("expires_at"),
-                        token_type=token_data.get("token_type", "Bearer"),
-                        resource=server_name,
-                        authorization_server=auth_server_str,
-                        metadata={"workflow_name": workflow_name},
-                    )
-
-                    str(oauth_config.resource) if oauth_config.resource else getattr(server_config, "url", None)
-                    # Create storage key using current user
-                    store_key = TokenStoreKey(
-                        user_key=app_context.current_user.cache_key,
-                        resource=resource_str,
-                        authorization_server=auth_server_str,
-                        scope_fingerprint=scope_fingerprint(scope_list),
-                    )
-
-                    # Store the token
-                    await app_context.token_store.set(store_key, token_record)
                     stored_count += 1
                 except Exception as e:
                     errors.append(f"Token {i}: {str(e)}")

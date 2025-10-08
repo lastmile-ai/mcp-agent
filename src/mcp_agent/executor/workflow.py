@@ -431,6 +431,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
             return False
 
     if temporal_workflow is not None:
+
         @temporal_workflow.signal(dynamic=True)
         async def _signal_receiver(self, name: str, args: Sequence[RawValue]):
             """Dynamic signal handler for Temporal workflows."""

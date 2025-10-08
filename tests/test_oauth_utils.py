@@ -84,3 +84,7 @@ def test_normalize_resource_with_fallback():
     )
     with pytest.raises(ValueError):
         normalize_resource(None, None)
+
+
+def test_normalize_resource_canonicalizes_case():
+    assert normalize_resource("https://Example.COM/", None) == "https://example.com"

@@ -13,8 +13,8 @@
 2. **Protected Resource Metadata** – Serve `/.well-known/oauth-protected-resource` using FastMCP hooks so clients can discover the auth server.
 3. **Access Token Validation** – Enforce bearer tokens on every inbound MCP request via `RequireAuthMiddleware`, populating the request context with the authenticated user.
 4. **OAuth Token Service** – New `mcp_agent.oauth` package with:
-   - `TokenStore`/`TokenRecord` abstractions
-   - `InMemoryTokenStore` and Redis-backed implementation (second pass)
+  - `TokenStore`/`TokenRecord` abstractions
+  - `InMemoryTokenStore` and Redis-backed implementation (optional for multi-instance)
    - `TokenManager` orchestration (acquire, refresh, revoke)
    - `OAuthHttpxAuth` for attaching tokens to downstream HTTP transports
    - `AuthorizationFlowCoordinator` that interacts with the user via MCP `auth/request`
@@ -95,7 +95,7 @@ Integration touchpoints:
    - Provide method to revoke tokens via authorization server when supported.
 
 ## Open Questions / Follow-ups
-- Redis-backed `TokenStore` (requires deployment secrets) – planned second phase.
+- Additional operational hardening (token rotation policies, rate limits).
 - How LastMile auth server exposes token introspection + JWKS; need concrete endpoint specs to finalize `MCPAgentTokenVerifier`.
 - MCP client adoption of `auth/request` SEP – need capability detection; until widely supported we rely on hosted callback fallback & manual instructions.
 - Access control DSL (include/exclude by email/domain) – to be evaluated once token identity payload finalized.
@@ -105,4 +105,3 @@ Integration touchpoints:
 - Metadata discovery + PKCE generation (pure python tests).
 - Integration-style test for delegated flow using mocked HTTP server + fake MCP client (ensures `auth/request` plumbing works end-to-end).
 - Tests around server 401 enforcement + WWW-Authenticate header.
-

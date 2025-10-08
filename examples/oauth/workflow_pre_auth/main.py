@@ -1,60 +1,75 @@
-"""
-Workflow MCP Server Example
-
-This example demonstrates three approaches to creating agents and workflows:
-1. Traditional workflow-based approach with manual agent creation
-2. Programmatic agent configuration using AgentConfig
-3. Declarative agent configuration using FastMCPApp decorators
-"""
-
 import asyncio
 import json
+import os
 from typing import Optional
+
 from pydantic import AnyHttpUrl
 
 from mcp.server.fastmcp import FastMCP
-from mcp_agent.core.context import Context as AppContext
 
 from mcp_agent.app import MCPApp
-from mcp_agent.server.app_server import create_mcp_server_for_app
+from mcp_agent.config import (
+    LoggerSettings,
+    MCPOAuthClientSettings,
+    MCPServerAuthSettings,
+    MCPServerSettings,
+    MCPSettings,
+    OAuthSettings,
+    OAuthTokenStoreSettings,
+    Settings,
+)
+from mcp_agent.core.context import Context as AppContext
 from mcp_agent.mcp.gen_client import gen_client
-from mcp_agent.config import MCPServerSettings, Settings, LoggerSettings, MCPSettings, MCPServerAuthSettings, \
-    MCPOAuthClientSettings
+from mcp_agent.server.app_server import create_mcp_server_for_app
 
 # Note: This is purely optional:
 # if not provided, a default FastMCP server will be created by MCPApp using create_mcp_server_for_app()
 mcp = FastMCP(name="basic_agent_server", instructions="My basic agent server example.")
 
 
-class MCPServerOAuthSettings:
-    pass
-
+redis_url = os.getenv("OAUTH_REDIS_URL")
+if redis_url:
+    token_store_settings = OAuthTokenStoreSettings(
+        backend="redis",
+        redis_url=redis_url,
+        redis_prefix="mcp_agent:oauth_tokens",
+        refresh_leeway_seconds=60,
+    )
+else:
+    token_store_settings = OAuthTokenStoreSettings(refresh_leeway_seconds=60)
 
 settings = Settings(
-        execution_engine="asyncio",
-        logger=LoggerSettings(level="info"),
-        mcp=MCPSettings(
-            servers={
-                "github": MCPServerSettings(
-                    name="github",
-                    transport="streamable_http",
-                    url="https://api.githubcopilot.com/mcp/",
-                    auth=MCPServerAuthSettings(
-                        oauth=MCPOAuthClientSettings(
-                            enabled=True,
-                            scopes= [
-                                "read:org",  # Required for search_orgs tool
-                                "public_repo",  # Access to public repositories
-                                "user:email"  # User information access
-                            ],
-                            authorization_server=AnyHttpUrl("https://github.com/login/oauth"),
-                            resource=AnyHttpUrl("https://api.githubcopilot.com/mcp")
-                        )
+    execution_engine="asyncio",
+    logger=LoggerSettings(level="info"),
+    oauth=OAuthSettings(
+        callback_base_url=AnyHttpUrl("http://localhost:8000"),
+        flow_timeout_seconds=300,
+        token_store=token_store_settings,
+    ),
+    mcp=MCPSettings(
+        servers={
+            "github": MCPServerSettings(
+                name="github",
+                transport="streamable_http",
+                url="https://api.githubcopilot.com/mcp/",
+                auth=MCPServerAuthSettings(
+                    oauth=MCPOAuthClientSettings(
+                        enabled=True,
+                        scopes=[
+                            "read:org",  # Required for search_orgs tool
+                            "public_repo",  # Access to public repositories
+                            "user:email",  # User information access
+                        ],
+                        authorization_server=AnyHttpUrl(
+                            "https://github.com/login/oauth"
+                        ),
+                        resource=AnyHttpUrl("https://api.githubcopilot.com/mcp"),
                     )
-                )
-            }
-        ),
-    )
+                ),
+            )
+        }
+    ),
+)
 
 # Define the MCPApp instance. The server created for this app will advertise the
 # MCP logging capability and forward structured logs upstream to connected clients.
@@ -68,7 +83,6 @@ app = MCPApp(
 
 @app.tool(name="github_org_search")
 async def github_org_search(query: str, app_ctx: Optional[AppContext] = None) -> str:
-
     # Use the context's app if available for proper logging with upstream_session
     _app = app_ctx.app if app_ctx else app
     # Ensure the app's logger is bound to the current context with upstream_session
@@ -77,28 +91,21 @@ async def github_org_search(query: str, app_ctx: Optional[AppContext] = None) ->
 
     try:
         async with gen_client(
-                "github",
-                server_registry=app_ctx.server_registry,
-                context=app_ctx
+            "github", server_registry=app_ctx.server_registry, context=app_ctx
         ) as github_client:
             result = await github_client.call_tool(
                 "search_orgs",
-                {
-                    "query": query,
-                    "perPage": 10,
-                    "sort": "best-match",
-                    "order": "desc"
-                }
+                {"query": query, "perPage": 10, "sort": "best-match", "order": "desc"},
             )
 
             organizations = []
             if result.content:
                 for content_item in result.content:
-                    if hasattr(content_item, 'text'):
+                    if hasattr(content_item, "text"):
                         try:
                             data = json.loads(content_item.text)
-                            if isinstance(data, dict) and 'items' in data:
-                                organizations.extend(data['items'])
+                            if isinstance(data, dict) and "items" in data:
+                                organizations.extend(data["items"])
                             elif isinstance(data, list):
                                 organizations.extend(data)
                         except json.JSONDecodeError:
@@ -107,7 +114,9 @@ async def github_org_search(query: str, app_ctx: Optional[AppContext] = None) ->
             return str(organizations)
     except Exception:
         import traceback
+
         return f"Error: {traceback.format_exc()}"
+
 
 async def main():
     async with app.run() as agent_app:
@@ -124,7 +133,7 @@ async def main():
         agent_app.logger.info(f"MCP Server settings: {mcp_server.settings}")
 
         # Run the server
-        #await mcp_server.run_stdio_async()
+        # await mcp_server.run_stdio_async()
         await mcp_server.run_sse_async()
 
 

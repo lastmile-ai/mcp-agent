@@ -44,3 +44,8 @@ def _claim(token: MCPAccessToken, key: str) -> Any | None:
     if not token.claims:
         return None
     return token.claims.get(key)
+
+
+DEFAULT_PRECONFIGURED_IDENTITY = OAuthUserIdentity(
+    provider="mcp-agent", subject="preconfigured-tokens"
+)

@@ -85,14 +85,14 @@ class AuthorizationFlowCoordinator:
         scope_param = " ".join(scopes)
 
         params = {
-            "response_type":"code",
-            "client_id":client_id,
-            "redirect_uri":redirect_uri,
-            "scope":scope_param,
-            "state":state,
-            "code_challenge":code_challenge,
-            "code_challenge_method":"S256",
-            "resource":resource,
+            "response_type": "code",
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "scope": scope_param,
+            "state": state,
+            "code_challenge": code_challenge,
+            "code_challenge_method": "S256",
+            "resource": resource,
         }
 
         # add extra params if any
@@ -100,8 +100,11 @@ class AuthorizationFlowCoordinator:
             params.update(oauth_config.extra_authorize_params)
 
         import urllib.parse
+
         authorize_url = httpx.URL(
-            str(auth_metadata.authorization_endpoint) +"?" + urllib.parse.urlencode(params)
+            str(auth_metadata.authorization_endpoint)
+            + "?"
+            + urllib.parse.urlencode(params)
         )
 
         callback_future = None
@@ -112,7 +115,7 @@ class AuthorizationFlowCoordinator:
             "url": str(authorize_url),
             "message": f"Authorization required for {server_name}",
             "redirect_uri_options": redirect_options,
-            "flow_id": flow_id
+            "flow_id": flow_id,
         }
 
         result = await _send_auth_request(context, request_payload)
@@ -200,6 +203,9 @@ class AuthorizationFlowCoordinator:
         else:
             effective_scopes = tuple(scopes)
 
+        issuer = getattr(auth_metadata, "issuer", None)
+        issuer_str = str(issuer) if issuer else authorization_server_url
+
         return TokenRecord(
             access_token=access_token,
             refresh_token=refresh_token,
@@ -207,8 +213,11 @@ class AuthorizationFlowCoordinator:
             scopes=effective_scopes,
             token_type=str(callback_data.get("token_type", "Bearer")),
             resource=resource,
-            authorization_server=authorization_server_url,
-            metadata={"raw": token_response.text},
+            authorization_server=issuer_str,
+            metadata={
+                "raw": token_response.text,
+                "authorization_server_url": authorization_server_url,
+            },
         )
 
 

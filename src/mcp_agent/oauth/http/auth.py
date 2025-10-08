@@ -56,6 +56,7 @@ class OAuthHttpxAuth(httpx.Auth):
             resource=token_record.resource or "",
             authorization_server=token_record.authorization_server,
             scopes=token_record.scopes,
+            session_id=self._context.session_id,
         )
 
         refreshed_record = await self._token_manager.ensure_access_token(
@@ -65,13 +66,8 @@ class OAuthHttpxAuth(httpx.Auth):
             scopes=self._scopes,
         )
 
-        # Create a new request with the refreshed token
-        retry_request = httpx.Request(
-            method=request.method,
-            url=request.url,
-            headers=request.headers.copy(),
-            content=request.content,
-        )
+        # Create a new request with the refreshed token. Using copy() preserves the original body.
+        retry_request = request.copy()
         retry_request.headers["Authorization"] = (
             f"{refreshed_record.token_type} {refreshed_record.access_token}"
         )

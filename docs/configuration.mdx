@@ -144,8 +144,10 @@ oauth:
   callback_base_url: https://agent.example.com
   flow_timeout_seconds: 180
   token_store:
-    backend: memory   # use "redis" for multi-instance deployments
+    backend: memory   # set to "redis" for multi-instance deployments
     refresh_leeway_seconds: 90
+    redis_url: redis://localhost:6379
+    redis_prefix: mcp_agent:oauth_tokens
 
 mcp:
   servers:
@@ -164,6 +166,7 @@ mcp:
 
 - When `authorization.enabled` is true the MCP server advertises `/.well-known/oauth-protected-resource` and enforces bearer tokens using the provided introspection or JWKS configuration.
 - `oauth` enables delegated authorization flows; the default in-memory token store is ideal for local development while Redis is recommended for production clusters.
+- To use Redis for token storage, configure `token_store.backend: redis` and supply `redis_url` (see optional dependency `mcp-agent[redis]`).
 - Downstream servers opt into OAuth via `mcp.servers.<name>.auth.oauth`. Supplying a `client_id`/`client_secret` allows immediate usage; support for dynamic client registration is planned as a follow-up.
 
 ## Configuration Reference

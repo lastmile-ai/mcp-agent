@@ -204,6 +204,7 @@ async def initialize_context(
     decorator_registry: Optional[DecoratorRegistry] = None,
     signal_registry: Optional[SignalRegistry] = None,
     store_globally: bool = False,
+    session_id: str | None = None,
 ):
     """
     Initialize the global application context.
@@ -221,7 +222,7 @@ async def initialize_context(
         config, context.executor
     )
 
-    context.session_id = str(context.executor.uuid())
+    context.session_id = session_id or str(context.executor.uuid())
 
     # Initialize token counter with engine hint for fast path checks
     context.token_counter = TokenCounter(execution_engine=config.execution_engine)

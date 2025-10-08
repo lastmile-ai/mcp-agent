@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import List
 
 import httpx
+from httpx import URL
 from mcp.shared.auth import OAuthMetadata, ProtectedResourceMetadata
 
 from mcp_agent.logging.logger import get_logger
@@ -53,8 +54,23 @@ def select_authorization_server(
 
 
 def normalize_resource(resource: str | None, fallback: str | None) -> str:
-    if resource:
-        return resource.rstrip("/")
-    if fallback:
-        return fallback.rstrip("/")
-    raise ValueError("Unable to determine resource identifier for OAuth flow")
+    candidate = resource or fallback
+    if not candidate:
+        raise ValueError("Unable to determine resource identifier for OAuth flow")
+
+    parsed = URL(candidate)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"Unsupported resource scheme: {parsed.scheme}")
+
+    host = parsed.host.lower() if parsed.host else parsed.host
+    path = parsed.path.rstrip("/")
+    if path == "/":
+        path = ""
+    canonical = parsed.copy_with(
+        scheme=parsed.scheme,
+        host=host,
+        path=path,
+        query=None,
+        fragment=None,
+    )
+    return str(canonical)

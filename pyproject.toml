@@ -70,6 +70,9 @@ cohere = [
 langchain = [
     "langchain-core>=0.3.64",
 ]
+redis = [
+    "redis[hiredis]>=5.0.4",
+]
 crewai = [
     "crewai>=0.126.0",
 ]
