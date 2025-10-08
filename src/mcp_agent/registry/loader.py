@@ -1,8 +1,10 @@
 import os
 from typing import Any, Dict, List, Optional
+
 import httpx
 import yaml
 from contextlib import contextmanager
+
 from mcp_agent.registry.store import ToolRegistryStore
 
 # Try to import opentelemetry, provide dummy classes if unavailable
@@ -12,15 +14,26 @@ try:
 except ImportError:
     # Dummy classes for test collection without opentelemetry
     class _DummyMeter:
-        def create_histogram(self, *args, **kwargs): return _DummyHistogram()
-        def create_counter(self, *args, **kwargs): return _DummyCounter()
+        def create_histogram(self, *args, **kwargs):
+            return _DummyHistogram()
+        
+        def create_counter(self, *args, **kwargs):
+            return _DummyCounter()
+    
     class _DummyHistogram:
-        def record(self, value, attributes=None): pass
+        def record(self, value, attributes=None):
+            pass
+        
         @contextmanager
-        def time(self): yield
+        def time(self):
+            yield
+    
     class _DummyCounter:
-        def add(self, value, attributes=None): pass
+        def add(self, value, attributes=None):
+            pass
+    
     _meter = _DummyMeter()
+
 
 class ToolRegistryLoader:
     """
@@ -31,9 +44,9 @@ class ToolRegistryLoader:
     - Loading tool configurations from files
     - Registering tools in the ToolRegistryStore
     """
+
     def __init__(self, store: Optional[ToolRegistryStore] = None):
-        """
-        Initialize the ToolRegistryLoader.
+        """Initialize the ToolRegistryLoader.
 
         Args:
             store: Optional ToolRegistryStore instance. If not provided, creates a new one.
@@ -65,14 +78,29 @@ class ToolRegistryLoader:
         Returns:
             List of discovery results for each entry.
         """
-        json_results = await discover_json(entries, timeout=timeout)
-        health_results = await discover_health(entries, timeout=2.0)
-        # merge results logic if you want - here just return both
-        return {'json_results': json_results, 'health_results': health_results}
+        results = await discover(entries, timeout=timeout)
+        
+        # Register discovered tools
+        for entry, result in zip(entries, results):
+            if result.get("alive") and result.get("capabilities"):
+                # Extract tools from capabilities if available
+                capabilities = result.get("capabilities", {})
+                tools = capabilities.get("tools", [])
+                
+                for tool in tools:
+                    self.store.register_tool(
+                        name=tool.get("name"),
+                        server_name=entry["name"],
+                        description=tool.get("description", ""),
+                        input_schema=tool.get("inputSchema", {}),
+                        metadata={"base_url": entry["base_url"]}
+                    )
+        
+        return results
+
 
 def _load_config_from_file(path: str) -> Dict[str, Any]:
-    """
-    Load configuration from a YAML file.
+    """Load configuration from a YAML file.
 
     Args:
         path: Path to the YAML configuration file.
@@ -86,13 +114,13 @@ def _load_config_from_file(path: str) -> Dict[str, Any]:
     """
     if not os.path.exists(path):
         raise FileNotFoundError(f"Configuration file not found: {path}")
-
+    
     with open(path, 'r') as f:
         return yaml.safe_load(f)
 
+
 def _load_mcp_transport(base_url: str) -> Optional[Dict[str, Any]]:
-    """
-    Load MCP transport configuration from a base URL.
+    """Load MCP transport configuration from a base URL.
 
     Args:
         base_url: Base URL of the MCP server.
@@ -103,49 +131,38 @@ def _load_mcp_transport(base_url: str) -> Optional[Dict[str, Any]]:
     # Placeholder implementation
     return {"type": "http", "base_url": base_url}
 
-__all__ = ['discover_json', 'discover_health', 'load_tools_yaml']
 
-# First version
-async def discover_json(entries: List[Dict[str, Any]], timeout: float = 5.0) -> List[Dict[str, Any]]:
+def load_tools_yaml(file_path: str) -> Dict[str, Any]:
     """
-    Discover MCP servers by querying their .well-known/mcp.json endpoints.
+    Load and parse a tools YAML configuration file.
 
     Args:
-        entries: List of server entries with 'name' and 'base_url'
-        timeout: Request timeout (default 5.0 seconds)
+        file_path: Path to the YAML file containing tool definitions.
 
     Returns:
-        List of dicts with fields:
-        - alive: bool
-        - well_known: dict
-        - capabilities: dict
-    """
-    results = []
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        for entry in entries:
-            result = {"alive": False, "well_known": None, "capabilities": None}
-            base_url = entry.get("base_url", "")
-            if not base_url:
-                results.append(result)
-                continue
-            base_url = base_url.rstrip("/")
-            well_known_url = f"{base_url}/.well-known/mcp.json"
-            try:
-                response = await client.get(well_known_url)
-                if response.status_code == 200:
-                    result["alive"] = True
-                    data = response.json()
-                    result["well_known"] = data
-                    result["capabilities"] = data.get("capabilities", {})
-            except Exception:
-                pass
-            results.append(result)
-    return results
+        Parsed YAML content as a dictionary containing tool definitions.
 
-# Second version, probe .well-known/mcp and /health
-async def discover_health(entries: List[Dict[str, Any]], timeout: float = 2.0) -> List[Dict[str, Any]]:
+    Raises:
+        FileNotFoundError: If the file doesn't exist.
+        yaml.YAMLError: If the file is not valid YAML.
     """
-    Probe each registry entry for /.well-known/mcp and /health.
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"Tools YAML file not found: {file_path}")
+    
+    with open(file_path, 'r') as f:
+        content = yaml.safe_load(f)
+    
+    return content if content is not None else {}
+
+# === Surgical patch: provide minimal loader APIs for tests ===
+from typing import Any, Dict, List, Optional
+import httpx as _httpx
+import yaml as _yaml
+
+__all__ = ['discover', 'load_tools_yaml']
+
+async def discover(entries: List[Dict[str, Any]], timeout: float = 2.0) -> List[Dict[str, Any]]:
+    """Probe each registry entry for /.well-known/mcp and /health.
 
     Args:
         entries: List of {name, base_url}
@@ -153,18 +170,20 @@ async def discover_health(entries: List[Dict[str, Any]], timeout: float = 2.0) -
 
     Returns:
         List of entries augmented with:
-        - alive: bool
-        - well_known: bool
-        - capabilities: dict
+          - alive: bool
+          - well_known: bool
+          - capabilities: dict
     """
     out: List[Dict[str, Any]] = []
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    # Use the httpx imported in this module so tests can monkeypatch AsyncClient
+    async with _httpx.AsyncClient(timeout=timeout) as client:
         for e in entries:
             base = e.get('base_url') or ''
             info = dict(e)
             info.setdefault('capabilities', {})
             info['alive'] = False
             info['well_known'] = False
+
             try:
                 wk = await client.get(f"{base}/.well-known/mcp")
                 if wk.status_code == 200:
@@ -178,7 +197,9 @@ async def discover_health(entries: List[Dict[str, Any]], timeout: float = 2.0) -
                     except Exception:
                         pass
             except Exception:
+                # leave as defaults
                 pass
+
             try:
                 h = await client.get(f"{base}/health")
                 if h.status_code == 200:
@@ -188,16 +209,14 @@ async def discover_health(entries: List[Dict[str, Any]], timeout: float = 2.0) -
                         info['alive'] = bool(ok) if ok is not None else True
                     except Exception:
                         info['alive'] = True
-                else:
-                    info['alive'] = False
             except Exception:
                 info['alive'] = False
+
             out.append(info)
     return out
 
 def load_tools_yaml(file_path: str) -> Dict[str, Any]:
-    """
-    Load a tools.yaml and return the parsed mapping.
+    """Load a tools.yaml and return the parsed mapping.
 
     Returns an empty dict if YAML content is empty.
     Raises FileNotFoundError if the path does not exist.
@@ -205,7 +224,5 @@ def load_tools_yaml(file_path: str) -> Dict[str, Any]:
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"Tools YAML file not found: {file_path}")
     with open(file_path, 'r') as f:
-        content = yaml.safe_load(f)
+        content = _yaml.safe_load(f)
     return content or {}
-
-# End of file, all helpers and code preserved!
