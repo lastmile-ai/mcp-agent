@@ -1,42 +1,127 @@
-Here is a recommended **Assistant Project Collaboration Policy** you can use to guide my actions when working with you on repository development, CI/CD, and related engineering tasks. You can refer to or restate this policy at the beginning of each project session, or paste it into assistant tabs for continuity:
+As a default, the assistant should conduct code fixes by browsing and editing files directly in VS Code. The perplexity_file_editor.py script should only be used as a fallback when direct VS Code editing is unavailable or problematic.
 
-***
+# Perplexity File Editor Policy
 
-## Assistant Project Collaboration Policy
+Instructions for conducting code fixes using the reusable perplexity_file_editor.py script.
 
-1. **Branch Commit Restriction**
-   - Commit changes, code, documentation, and workflow updates **only** to the designated development branch (e.g., `work`).
-   - **Never commit** to the `main` branch or other protected branches unless you give explicit, one-time permission.
+## 1. Allowed Editing Commands and Workflow
 
-2. **Workflow Control**
-   - **Do NOT run** or manually trigger any workflow (build, lint, CI/CD, etc.) until you have given explicit approval.
-   - Only dispatch workflows when instructed, specifying the branch and required workflow(s).
-   - Confirm all workflow YAML changes are limited to the development branch.
+### Available Commands
+- **read**: Read file contents
+- **write**: Write/overwrite entire file
+- **insert**: Insert content at specific line
+- **replace**: Replace specific line range
+- **delete**: Delete specific line range
+- **search**: Search for patterns in file
 
-3. **Change Approval**
-   - Always provide a summary of intended file changes and commit messages before making any commit.
-   - Wait for your confirmation before proceeding with any significant file edits, refactoring, or addition/removal of files.
+### Workflow Steps
+1. Read target file to understand current state
+2. Identify exact lines/sections requiring changes
+3. Apply appropriate command (insert/replace/delete)
+4. Verify changes by reading updated file
+5. Run tests to validate functionality
+6. Commit changes if all tests pass
 
-4. **Sensitive Actions**
-   - Never delete, force-push, or alter branch protection settings unless directly instructed.
+### Command Syntax
+```
+python perplexity_file_editor.py <command>  [options]
+```
 
-5. **Memory and Continuity**
-   - Assume NO persistent memory across new browser tabs or sessions. Restate these collaboration instructions visibly at the start of each new tab/session.
-   - If unsure, defer action and request clarification.
+## 2. Commit and Branch Policy
 
-6. **Transparency**
-   - Link all steps to branch, file, and workflow context.
-   - Notify you of any restrictions or limitations before attempting actions that may break policy.
+### Branch Restrictions
+- **ONLY** commit to development branch: `work`
+- **NEVER** commit to: `main` or other protected branches
+- Always verify current branch before committing: `git branch`
 
-7. **Error Handling**
-   - If an action is mistakenly performed outside the policy (e.g., committing to main), immediately notify you and offer corrective steps.
+### Commit Process
+1. Stage changes: `git add <files>`
+2. Create descriptive commit message: `git commit -m "fix: [description]"`
+3. Verify commit is on correct branch
+4. Do NOT push until explicitly instructed
 
+### Commit Message Format
+- Use conventional commits: `fix:`, `feat:`, `refactor:`, `test:`, `docs:`
+- Be specific about what was changed and why
+- Reference issue numbers when applicable
 
-8. Collaboration Request File Context**
-    - When you request project collaboration (e.g., “analyze/update/fix files for feature X”), immediately fetch and save to memory the full content of all relevant files linked to your request.
-    - Always include the latest state of these files from the specified branch before proposing, editing, or committing changes.
-    - Confirm that files are up-to-date and contextually correct for the given task prior to proceeding.
-    - Use this file context to enhance code quality, review accuracy, and ensure changes are based on the actual project state.
+## 3. Test Collection and Validation
 
-    ***
-    
+### Before Making Changes
+1. Identify relevant test files in `/tests` directory
+2. Run existing tests to establish baseline: `pytest <test_file>`
+3. Document current test status
+
+### After Making Changes
+1. Run affected tests: `pytest tests/test_<module>.py`
+2. Run full test suite if changes are significant: `pytest`
+3. Check test coverage: `pytest --cov=src`
+4. Verify no new failures introduced
+5. If tests fail, iterate on fixes before committing
+
+### Test Validation Requirements
+- All existing tests must pass
+- New functionality requires new tests
+- Test coverage should not decrease
+- Document any skipped tests with justification
+
+## 4. Constraints and Allowed Folders/Files
+
+### Allowed Edit Locations
+- `/src/mcp_agent/` - Source code modules
+- `/tests/` - Test files
+- `/docs/` - Documentation files
+- `/examples/` - Example code and scripts
+- Root-level config files (when necessary)
+
+### Restricted Locations
+- `.github/workflows/` - Workflow files (requires explicit approval)
+- `.git/` - Git internals (never modify directly)
+- `venv/`, `.venv/`, `__pycache__/` - Generated directories
+- Protected branches via direct commits
+
+### File Type Restrictions
+- Primarily edit: `.py`, `.md`, `.yaml`, `.yml`, `.json`, `.toml`
+- Avoid binary files, compiled code, or system files
+- Always create backups before modifying configuration files
+
+### Safety Constraints
+- Make incremental changes (one logical change per commit)
+- Never delete files without explicit confirmation
+- Preserve existing functionality unless explicitly changing it
+- Maintain code style and formatting consistency
+- Add comments for non-obvious changes
+
+## 5. Error Handling and Recovery
+
+### If Editor Script Fails
+1. Read error message carefully
+2. Verify file path exists and is accessible
+3. Check line numbers are within file bounds
+4. Ensure file is not locked or read-only
+5. Try alternative command if appropriate
+
+### If Tests Fail After Changes
+1. Read test output to identify failure
+2. Revert changes if necessary: `git checkout -- <file>`
+3. Re-read original file to understand issue
+4. Make corrective edits
+5. Re-run tests before committing
+
+### If Committed to Wrong Branch
+1. Immediately notify user
+2. Do NOT push changes
+3. Suggest corrective steps:
+   - Create new branch from correct base
+   - Cherry-pick commits
+   - Reset original branch
+
+## 6. Best Practices
+- Always read files before editing
+- Make small, focused changes
+- Test after each logical change
+- Write clear commit messages
+- Document assumptions and decisions
+- Ask for clarification when uncertain
+- Verify branch before committing
+- Never force-push or alter history
