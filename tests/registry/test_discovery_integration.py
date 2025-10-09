@@ -42,7 +42,7 @@ async def test_discovery_populates_registry_with_retries(monkeypatch):
             await self._real_client.__aexit__(exc_type, exc, tb)
     
     # Patch httpx.AsyncClient in the loader module
-    monkeypatch.setattr(L.httpx, "AsyncClient", DummyAsyncClient)
+    monkeypatch.setattr(L._httpx, "AsyncClient", DummyAsyncClient)
     
     entries = [{"name":"t1","base_url":"http://tool1:123"}]
     out = await discover(entries)
