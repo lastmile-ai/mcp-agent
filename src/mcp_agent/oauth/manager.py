@@ -294,6 +294,7 @@ class TokenManager:
             resolved.issuer,
             record.scopes,
         )
+
         await self._token_store.set(key, record)
 
     async def get_access_token_if_present(
@@ -316,6 +317,7 @@ class TokenManager:
         requested_scopes = (
             list(scopes) if scopes is not None else list(oauth_config.scopes or [])
         )
+
         resolved = await self._resolve_oauth_context(
             context=context,
             server_name=server_name,

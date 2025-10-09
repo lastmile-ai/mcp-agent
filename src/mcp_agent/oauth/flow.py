@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import asyncio
-import time
+import httpx
 import uuid
+import time
+
 from json import JSONDecodeError
 from typing import Any, Dict, Sequence
 from urllib.parse import parse_qs, urlparse
 
-import httpx
 from mcp.shared.auth import OAuthMetadata, ProtectedResourceMetadata
 from mcp.server.session import ServerSession
 
@@ -19,9 +20,9 @@ from mcp_agent.logging.logger import get_logger
 from mcp_agent.oauth.callbacks import callback_registry
 from mcp_agent.oauth.errors import (
     AuthorizationDeclined,
-    CallbackTimeoutError,
     MissingUserIdentityError,
     OAuthFlowError,
+    CallbackTimeoutError,
 )
 from mcp_agent.oauth.identity import OAuthUserIdentity
 from mcp_agent.oauth.pkce import (
@@ -117,7 +118,19 @@ class AuthorizationFlowCoordinator:
             "redirect_uri_options": redirect_options,
             "flow_id": flow_id,
             "server_name": server_name,
-            "scopes": scope_param,
+            "scopes": scopes,
+            "flow_timeout_seconds": self._settings.flow_timeout_seconds,
+            "state": state,
+            "token_endpoint": str(auth_metadata.token_endpoint),
+            "redirect_uri": redirect_uri,
+            "client_id": client_id,
+            "code_verifier": code_verifier,
+            "resource": resource,
+            "scope_param": scope_param,
+            "extra_token_params": oauth_config.extra_token_params or {},
+            "client_secret": oauth_config.client_secret,
+            "issuer_str": str(getattr(auth_metadata, "issuer", "") or ""),
+            "authorization_server_url": authorization_server_url,
         }
 
         result = await _send_auth_request(context, request_payload)
@@ -131,6 +144,12 @@ class AuthorizationFlowCoordinator:
                 callback_data = result
                 if callback_future is not None:
                     await callback_registry.discard(flow_id)
+            elif result and result.get("token_record"):
+                if callback_future is not None:
+                    await callback_registry.discard(flow_id)
+
+                tr_data = result["token_record"]
+                return TokenRecord.model_validate_json(tr_data)
             elif callback_future is not None:
                 timeout = self._settings.flow_timeout_seconds or 300
                 try:
@@ -221,6 +240,7 @@ class AuthorizationFlowCoordinator:
                 "authorization_server_url": authorization_server_url,
             },
         )
+
 
 
 def _parse_callback_params(url: str) -> Dict[str, str]:

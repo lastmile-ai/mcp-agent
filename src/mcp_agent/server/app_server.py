@@ -6,14 +6,19 @@ mcp-agent workflows and agents as MCP tools.
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
-from typing import Any, Dict, List, Optional, Set, Tuple, Type, TYPE_CHECKING
+import time
+import httpx
 import os
 import secrets
 import asyncio
+
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from typing import Any, Dict, List, Optional, Set, Tuple, Type, TYPE_CHECKING
 from pydantic import BaseModel, Field
 from contextvars import ContextVar
+from urllib.parse import parse_qs, urlparse
+from json import JSONDecodeError
 
 from mcp.server.fastmcp import Context as MCPContext, FastMCP
 from mcp.server.fastmcp.server import AuthSettings
@@ -21,10 +26,11 @@ from mcp.server.auth.middleware.auth_context import (
     AuthenticatedUser,
     auth_context_var,
 )
-from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.fastmcp.tools import Tool as FastTool
+
+from starlette.requests import Request
+from starlette.responses import HTMLResponse, JSONResponse
 
 from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
@@ -35,7 +41,6 @@ from mcp_agent.executor.workflow_registry import (
     WorkflowRegistry,
     WorkflowRunsPage,
 )
-
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.logging.logger import LoggingConfig
 from mcp_agent.mcp.mcp_server_registry import ServerRegistry
@@ -45,10 +50,14 @@ from mcp_agent.oauth.identity import (
     session_identity as _session_identity_from_value,
 )
 from mcp_agent.oauth.callbacks import callback_registry
-from mcp_agent.oauth.errors import (
-    CallbackTimeoutError,
-)
 from mcp_agent.server.token_verifier import MCPAgentTokenVerifier
+from mcp_agent.oauth.errors import (
+    AuthorizationDeclined,
+    CallbackTimeoutError,
+    OAuthFlowError,
+)
+from mcp_agent.oauth.records import TokenRecord
+
 
 if TYPE_CHECKING:
     from mcp_agent.core.context import Context
@@ -359,6 +368,11 @@ def _extract_session_id_from_context(ctx: MCPContext) -> str | None:
                 )
                 if session_id:
                     return str(session_id)
+
+            query_params = getattr(req, "query_params", None)
+            if query_params is not None:
+                if "session_id" in query_params:
+                    return query_params.get("session_id")
     except Exception:
         pass
 
@@ -791,10 +805,10 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         params=CreateMessageRequestParams(**params),
                     )
                 )
-                result = await session.send_request(
+                callback_data = await session.send_request(
                     request=req, result_type=CreateMessageResult
                 )  # type: ignore[attr-defined]
-                return result.model_dump(by_alias=True, mode="json", exclude_none=True)
+                return callback_data.model_dump(by_alias=True, mode="json", exclude_none=True)
             elif method == "elicitation/create":
                 req = ServerRequest(
                     ElicitRequest(
@@ -802,33 +816,33 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         params=ElicitRequestParams(**params),
                     )
                 )
-                result = await session.send_request(
+                callback_data = await session.send_request(
                     request=req, result_type=ElicitResult
                 )  # type: ignore[attr-defined]
-                return result.model_dump(by_alias=True, mode="json", exclude_none=True)
+                return callback_data.model_dump(by_alias=True, mode="json", exclude_none=True)
             elif method == "roots/list":
                 req = ServerRequest(ListRootsRequest(method="roots/list"))
-                result = await session.send_request(
+                callback_data = await session.send_request(
                     request=req, result_type=ListRootsResult
                 )  # type: ignore[attr-defined]
-                return result.model_dump(by_alias=True, mode="json", exclude_none=True)
+                return callback_data.model_dump(by_alias=True, mode="json", exclude_none=True)
             elif method == "ping":
                 req = ServerRequest(PingRequest(method="ping"))
-                result = await session.send_request(
+                callback_data = await session.send_request(
                     request=req, result_type=EmptyResult
                 )  # type: ignore[attr-defined]
-                return result.model_dump(by_alias=True, mode="json", exclude_none=True)
+                return callback_data.model_dump(by_alias=True, mode="json", exclude_none=True)
             elif method == "auth/request":
                 # TODO: special handling of auth request, should be replaced by future URL elicitation
 
                 # first check to see if the token is in the cache already
+                server_name = params["server_name"]
+                scopes = params.get("scopes", [])
                 try:
                     if context and hasattr(context, "token_manager"):
                         manager = context.token_manager
                         if manager:
-                            server_name = params["server_name"]
                             server_config = context.server_registry.get_server_config(server_name)
-                            scopes = params.get("scopes", [])
 
                             token = await manager.get_access_token_if_present(
                                 context=context,
@@ -842,60 +856,179 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                     # elicitation fallback below
                     pass
 
-                class AuthToken(BaseModel):
-                    confirmation: str = Field(
-                        description="Please press enter to confirm this message has been received"
-                    )
+                # token is not present in the cache, perform the auth flow
+                record = await _perform_auth_flow(context, params, scopes, session)
 
-                flow_id = params["flow_id"]
-                callback_future = await callback_registry.create_handle(flow_id)
-
-                req = ElicitRequest(
-                    method="elicitation/create",
-                    params=ElicitRequestParams(
-                        message=params["message"] + "\n\n" + params["url"],
-                        requestedSchema=AuthToken.model_json_schema(),
-                    ),
-                )
-
-                result = await session.send_request(
-                    request=req, result_type=ElicitResult
-                )  # type: ignore[attr-defined]
-
-                timeout = 300
-                try:
-                    callback_data = await asyncio.wait_for(
-                        callback_future, timeout=timeout
-                    )
-                except asyncio.TimeoutError as exc:
-                    raise CallbackTimeoutError(
-                        f"Timed out waiting for OAuth callback after {timeout} seconds"
-                    ) from exc
-
+                # save in the token manager for next time
                 try:
                     if context and hasattr(context, "token_manager"):
                         manager = context.token_manager
                         if manager:
-                            server_name = params["server_name"]
                             server_config = context.server_registry.get_server_config(server_name)
-                            scopes = params.get("scopes", [])
 
-                            token_data={}
+                            token_data = {
+                                "access_token": record.access_token,
+                                "refresh_token": record.refresh_token,
+                                "scopes": record.scopes,
+                                "authorization_server":  record.authorization_server,
+                                "expires_at": record.expires_at,
+                                "token_type": "Bearer",
+                            }
 
                             await manager.store_user_token(
                                 context=context,
                                 user=identity,
                                 server_name=server_name,
-                                server_config=server_config,
-                                token_data=token_data
-                            )
+                                server_config = server_config,
+                                token_data = token_data)
                 except Exception:
-                    # Token is not stored, we have to auth again next time.
                     pass
 
-                return callback_data
+                return {"token_record": record.model_dump_json()}
             else:
                 raise ValueError(f"unsupported method: {method}")
+
+        async def _perform_auth_flow(context, params, scopes, session):
+            from mcp.types import (
+                ElicitRequest,
+                ElicitRequestParams,
+                ElicitResult,
+            )
+
+            class AuthToken(BaseModel):
+                confirmation: str = Field(
+                    description="Please press enter to confirm this message has been received"
+                )
+
+            flow_id = params["flow_id"]
+            flow_timeout_seconds = params.get("flow_timeout_seconds")
+            state = params["state"]
+            token_endpoint = params["token_endpoint"]
+            redirect_uri = params["redirect_uri"]
+            client_id = params["client_id"]
+            code_verifier = params["code_verifier"]
+            resource = params.get("resource")
+            scope_param = params.get("scope_param")
+            extra_token_params = params.get("extra_token_params", {})
+            client_secret = params.get("client_secret")
+            issuer_str = params.get("issuer_str")
+            authorization_server_url = params.get("authorization_server_url")
+            callback_future = await callback_registry.create_handle(flow_id)
+            req = ElicitRequest(
+                method="elicitation/create",
+                params=ElicitRequestParams(
+                    message=params["message"] + "\n\n" + params["url"],
+                    requestedSchema=AuthToken.model_json_schema(),
+                ),
+            )
+            await session.send_request(
+                request=req, result_type=ElicitResult
+            )  # type: ignore[attr-defined]
+            timeout = 300
+            try:
+                callback_data = await asyncio.wait_for(
+                    callback_future, timeout=timeout
+                )
+            except asyncio.TimeoutError as exc:
+                raise CallbackTimeoutError(
+                    f"Timed out waiting for OAuth callback after {timeout} seconds"
+                ) from exc
+            try:
+                if callback_data and callback_data.get("url"):
+                    callback_data = _parse_callback_params(callback_data["url"])
+                    if callback_future is not None:
+                        await callback_registry.discard(flow_id)
+                elif callback_data and callback_data.get("code"):
+                    callback_data = callback_data
+                    if callback_future is not None:
+                        await callback_registry.discard(flow_id)
+                elif callback_future is not None:
+                    timeout = flow_timeout_seconds or 300
+                    try:
+                        callback_data = await asyncio.wait_for(
+                            callback_future, timeout=timeout
+                        )
+                    except asyncio.TimeoutError as exc:
+                        raise CallbackTimeoutError(
+                            f"Timed out waiting for OAuth callback after {timeout} seconds"
+                        ) from exc
+                else:
+                    raise AuthorizationDeclined(
+                        "Authorization request was declined by the user"
+                    )
+            finally:
+                if callback_future is not None:
+                    await callback_registry.discard(flow_id)
+            error = callback_data.get("error")
+            if error:
+                description = callback_data.get("error_description") or error
+                raise OAuthFlowError(f"Authorization server returned error: {description}")
+            returned_state = callback_data.get("state")
+            if returned_state != state:
+                raise OAuthFlowError("State mismatch detected in OAuth callback")
+            authorization_code = callback_data.get("code")
+            if not authorization_code:
+                raise OAuthFlowError("Authorization callback did not include code")
+            token_endpoint = str(token_endpoint)
+            data: Dict[str, Any] = {
+                "grant_type": "authorization_code",
+                "code": authorization_code,
+                "redirect_uri": redirect_uri,
+                "client_id": client_id,
+                "code_verifier": code_verifier,
+                "resource": resource,
+            }
+            if scope_param:
+                data["scope"] = scope_param
+            if extra_token_params:
+                data.update(extra_token_params)
+            auth = None
+            if client_secret:
+                data["client_secret"] = client_secret
+            try:
+                if context and hasattr(context, "token_manager"):
+                    manager = context.token_manager
+                    if manager:
+                        http_client = manager._http_client
+            except Exception:
+                http_client = None
+            if not http_client:
+                http_client = httpx.AsyncClient(timeout=30.0)
+            token_response = await http_client.post(
+                token_endpoint, data=data, auth=auth, headers={"Accept": "application/json"}
+            )
+            token_response.raise_for_status()
+            try:
+                callback_data = token_response.json()
+            except JSONDecodeError:
+                callback_data = _parse_callback_params("?" + token_response.text)
+            access_token = callback_data.get("access_token")
+            if not access_token:
+                raise OAuthFlowError("Token endpoint response missing access_token")
+            refresh_token = callback_data.get("refresh_token")
+            expires_in = callback_data.get("expires_in")
+            expires_at = None
+            if isinstance(expires_in, (int, float)):
+                expires_at = time.time() + float(expires_in)
+            scope_from_payload = callback_data.get("scope")
+            if isinstance(scope_from_payload, str) and scope_from_payload.strip():
+                effective_scopes = tuple(scope_from_payload.split())
+            else:
+                effective_scopes = tuple(scopes)
+            record = TokenRecord(
+                access_token=access_token,
+                refresh_token=refresh_token,
+                expires_at=expires_at,
+                scopes=effective_scopes,
+                token_type=str(callback_data.get("token_type", "Bearer")),
+                resource=resource,
+                authorization_server=issuer_str,
+                metadata={
+                    "raw": token_response.text,
+                    "authorization_server_url": authorization_server_url,
+                },
+            )
+            return record
 
         async def _try_session_request(
             session,
@@ -2496,3 +2629,11 @@ async def _workflow_status(
 
 
 # endregion
+
+def _parse_callback_params(url: str) -> Dict[str, str]:
+    parsed = urlparse(url)
+    params = {}
+    params.update({k: v[-1] for k, v in parse_qs(parsed.query).items()})
+    if parsed.fragment:
+        params.update({k: v[-1] for k, v in parse_qs(parsed.fragment).items()})
+    return params

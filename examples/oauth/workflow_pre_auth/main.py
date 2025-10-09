@@ -109,7 +109,6 @@ app = MCPApp(
 
 @app.workflow_task(name="github_org_search_activity")
 async def github_org_search_activity(query: str) -> str:
-    from mcp_agent.mcp.gen_client import gen_client
 
     print("running activity)")
     try:
