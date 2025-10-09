@@ -15,27 +15,39 @@ from mcp_agent.config import (
 
 
 def _assert_console_exporter(exporter):
-    """Assert that exporter is a ConsoleExporterSettings instance."""
-    assert isinstance(exporter, ConsoleExporterSettings)
+    """Assert that exporter is in V3 console format: {console: {...}}."""
+    assert isinstance(exporter, dict)
+    assert "console" in exporter
+    assert isinstance(exporter["console"], dict)
 
 
 def _assert_file_exporter(exporter, path=None, path_pattern=None):
-    """Assert that exporter is a FileExporterSettings instance with optional path checks."""
-    assert isinstance(exporter, FileExporterSettings)
+    """Assert that exporter is in V3 file format with optional path checks."""
+    assert isinstance(exporter, dict)
+    assert "file" in exporter
+    file_config = exporter["file"]
+    assert isinstance(file_config, dict)
     if path is not None:
-        assert exporter.path == path
+        assert file_config.get("path") == path
     if path_pattern is not None:
-        assert exporter.path_settings is not None
-        assert exporter.path_settings.path_pattern == path_pattern
+        assert file_config.get("path_settings") is not None
+        path_settings = file_config["path_settings"]
+        if isinstance(path_settings, dict):
+            assert path_settings.get("path_pattern") == path_pattern
+        else:
+            assert path_settings.path_pattern == path_pattern
 
 
 def _assert_otlp_exporter(exporter, endpoint: str | None = None, headers: dict | None = None):
-    """Assert that exporter is an OTLPExporterSettings instance with optional field checks."""
-    assert isinstance(exporter, OTLPExporterSettings)
+    """Assert that exporter is in V3 OTLP format with optional field checks."""
+    assert isinstance(exporter, dict)
+    assert "otlp" in exporter
+    otlp_config = exporter["otlp"]
+    assert isinstance(otlp_config, dict)
     if endpoint is not None:
-        assert exporter.endpoint == endpoint
+        assert otlp_config.get("endpoint") == endpoint
     if headers is not None:
-        assert exporter.headers == headers
+        assert otlp_config.get("headers") == headers
 
 
 # ============================================================================
@@ -84,10 +96,17 @@ def test_v1_file_exporter_with_base_model_path_settings():
     )
 
     assert len(settings.exporters) == 1
-    _assert_file_exporter(settings.exporters[0])
-    assert settings.exporters[0].path_settings is not None
-    assert settings.exporters[0].path_settings.path_pattern == "trace-{unique_id}.jsonl"
-    assert settings.exporters[0].path_settings.unique_id == "session_id"
+    file_exp = settings.exporters[0]
+    _assert_file_exporter(file_exp)
+    file_config = file_exp["file"]
+    assert file_config.get("path_settings") is not None
+    path_settings = file_config["path_settings"]
+    if isinstance(path_settings, dict):
+        assert path_settings.get("path_pattern") == "trace-{unique_id}.jsonl"
+        assert path_settings.get("unique_id") == "session_id"
+    else:
+        assert path_settings.path_pattern == "trace-{unique_id}.jsonl"
+        assert path_settings.unique_id == "session_id"
 
 
 def test_v1_otlp_exporter_with_base_model():
@@ -182,9 +201,15 @@ def test_v2_file_exporter_with_path_settings():
     assert len(settings.exporters) == 1
     file_exp = settings.exporters[0]
     _assert_file_exporter(file_exp, path="/tmp/trace.jsonl")
-    assert file_exp.path_settings is not None
-    assert file_exp.path_settings.path_pattern == "logs/{unique_id}.jsonl"
-    assert file_exp.path_settings.timestamp_format == "%Y%m%d"
+    file_config = file_exp["file"]
+    path_settings = file_config.get("path_settings")
+    assert path_settings is not None
+    if isinstance(path_settings, dict):
+        assert path_settings.get("path_pattern") == "logs/{unique_id}.jsonl"
+        assert path_settings.get("timestamp_format") == "%Y%m%d"
+    else:
+        assert path_settings.path_pattern == "logs/{unique_id}.jsonl"
+        assert path_settings.timestamp_format == "%Y%m%d"
 
 
 # ============================================================================
@@ -250,10 +275,17 @@ def test_v3_file_exporter_with_advanced_path_settings():
     assert len(settings.exporters) == 1
     file_exp = settings.exporters[0]
     _assert_file_exporter(file_exp, path="a/b/c/d")
-    assert file_exp.path_settings is not None
-    assert file_exp.path_settings.path_pattern == "logs/mcp-agent-{unique_id}.jsonl"
-    assert file_exp.path_settings.unique_id == "timestamp"
-    assert file_exp.path_settings.timestamp_format == "%Y%m%d_%H%M%S"
+    file_config = file_exp["file"]
+    path_settings = file_config.get("path_settings")
+    assert path_settings is not None
+    if isinstance(path_settings, dict):
+        assert path_settings.get("path_pattern") == "logs/mcp-agent-{unique_id}.jsonl"
+        assert path_settings.get("unique_id") == "timestamp"
+        assert path_settings.get("timestamp_format") == "%Y%m%d_%H%M%S"
+    else:
+        assert path_settings.path_pattern == "logs/mcp-agent-{unique_id}.jsonl"
+        assert path_settings.unique_id == "timestamp"
+        assert path_settings.timestamp_format == "%Y%m%d_%H%M%S"
 
 
 def test_v3_console_exporter_empty_dict():

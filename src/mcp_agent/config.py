@@ -575,6 +575,9 @@ class OpenTelemetrySettings(BaseModel):
             Dict[Literal["console"], ConsoleExporterSettings | Dict],
             Dict[Literal["file"], FileExporterSettings | Dict],
             Dict[Literal["otlp"], OTLPExporterSettings | Dict],
+            ConsoleExporterSettings,
+            FileExporterSettings,
+            OTLPExporterSettings,
         ]
     ] = []
     """
@@ -637,9 +640,16 @@ class OpenTelemetrySettings(BaseModel):
                 normalized.append(entry)
                 continue
 
-            # Convert BaseModel to dict for uniform handling
+            # Handle BaseModel instances passed directly (e.g., from tests or re-validation)
+            # If already a typed exporter settings instance, keep as-is (already finalized)
+            if isinstance(entry, (ConsoleExporterSettings, FileExporterSettings, OTLPExporterSettings)):
+                normalized.append(entry)
+                continue
+
+            # Handle other BaseModel instances by converting to dict
             if isinstance(entry, BaseModel):
                 entry = entry.model_dump(exclude_none=True)
+                # Fall through to dict processing below
 
             if isinstance(entry, dict):
                 # V2 → V3 conversion: Extract 'type' field and use it as the dict key
@@ -669,20 +679,23 @@ class OpenTelemetrySettings(BaseModel):
     @classmethod
     def _finalize_exporters(cls, values: "OpenTelemetrySettings"):
         """
-        Convert exporter entries to typed settings objects and handle V1 legacy field fallback.
+        Convert exporter entries to V3 dict format for serialization compatibility.
 
         This validator runs after Pydantic validation and:
         1. Extracts V1 legacy fields (path, path_settings, otlp_settings) from the model
-        2. Converts string exporters and dict exporters to typed exporter settings
+        2. Converts string exporters and dict exporters to V3 dict format
         3. Falls back to legacy fields when string exporters don't provide explicit config
         4. Removes legacy fields from the model to avoid leaking them in serialization
 
+        Output format is V3 dicts (e.g., {console: {}}, {file: {path: "..."}}) to ensure
+        that re-serialization and re-validation works correctly.
+
         Example V1 conversions:
-        - "file" + path="trace.jsonl" → FileExporterSettings(path="trace.jsonl")
-        - "otlp" + otlp_settings={endpoint: "..."} → OTLPExporterSettings(endpoint="...")
+        - "file" + path="trace.jsonl" → {file: {path: "trace.jsonl"}}
+        - "otlp" + otlp_settings={endpoint: "..."} → {otlp: {endpoint: "...", headers: ...}}
         """
 
-        typed_exporters: List[OpenTelemetryExporterSettings] = []
+        finalized_exporters: List[Dict[str, Dict[str, Any]]] = []
 
         # Extract V1 legacy fields (captured via extra="allow" in model_config)
         # V1 schema had these fields at the top level of OpenTelemetrySettings
@@ -709,8 +722,18 @@ class OpenTelemetrySettings(BaseModel):
             legacy_otlp = {}
 
         for exporter in values.exporters:
-            if isinstance(exporter, (ConsoleExporterSettings, FileExporterSettings, OTLPExporterSettings)):
-                typed_exporters.append(exporter)
+            # If already a typed BaseModel instance, convert to V3 dict format
+            if isinstance(exporter, ConsoleExporterSettings):
+                console_dict = exporter.model_dump(exclude_none=True)
+                finalized_exporters.append({"console": console_dict})
+                continue
+            elif isinstance(exporter, FileExporterSettings):
+                file_dict = exporter.model_dump(exclude_none=True)
+                finalized_exporters.append({"file": file_dict})
+                continue
+            elif isinstance(exporter, OTLPExporterSettings):
+                otlp_dict = exporter.model_dump(exclude_none=True)
+                finalized_exporters.append({"otlp": otlp_dict})
                 continue
 
             exporter_name: str | None = None
@@ -736,30 +759,27 @@ class OpenTelemetrySettings(BaseModel):
                 raise TypeError(f"Unexpected exporter entry: {exporter!r}")
 
             if exporter_name == "console":
-                typed_exporters.append(
-                    ConsoleExporterSettings.model_validate(payload or {})
-                )
+                console_settings = ConsoleExporterSettings.model_validate(payload or {})
+                finalized_exporters.append({"console": console_settings.model_dump(exclude_none=True)})
             elif exporter_name == "file":
                 file_payload = payload.copy()
                 file_payload.setdefault("path", legacy_path)
                 if "path_settings" not in file_payload and legacy_path_settings is not None:
                     file_payload["path_settings"] = legacy_path_settings
-                typed_exporters.append(
-                    FileExporterSettings.model_validate(file_payload)
-                )
+                file_settings = FileExporterSettings.model_validate(file_payload)
+                finalized_exporters.append({"file": file_settings.model_dump(exclude_none=True)})
             elif exporter_name == "otlp":
                 otlp_payload = payload.copy()
                 otlp_payload.setdefault("endpoint", legacy_otlp.get("endpoint"))
                 otlp_payload.setdefault("headers", legacy_otlp.get("headers"))
-                typed_exporters.append(
-                    OTLPExporterSettings.model_validate(otlp_payload)
-                )
+                otlp_settings = OTLPExporterSettings.model_validate(otlp_payload)
+                finalized_exporters.append({"otlp": otlp_settings.model_dump(exclude_none=True)})
             else:
                 raise ValueError(
                     f"Unsupported OpenTelemetry exporter '{exporter_name}'. Supported exporters: console, file, otlp."
                 )
 
-        values.exporters = typed_exporters
+        values.exporters = finalized_exporters
 
         # Remove legacy extras once we've consumed them to avoid leaking into dumps
         if hasattr(values, "path"):

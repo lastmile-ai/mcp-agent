@@ -9,7 +9,13 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExport
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
-from mcp_agent.config import OpenTelemetrySettings
+from mcp_agent.config import (
+    OpenTelemetrySettings,
+    ConsoleExporterSettings,
+    FileExporterSettings,
+    OTLPExporterSettings,
+    TracePathSettings,
+)
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.tracing.file_span_exporter import FileSpanExporter
 
@@ -112,12 +118,24 @@ class TracingConfig:
         tracer_provider = TracerProvider(**tracer_provider_kwargs)
 
         for exporter in settings.exporters:
-            # Exporter entries can be strings (legacy) or typed configs with a 'type' attribute
-            exporter_type = (
-                exporter
-                if isinstance(exporter, str)
-                else getattr(exporter, "type", None)
-            )
+            # Determine exporter type from V3 dict format: {console: {}}, {file: {...}}, {otlp: {...}}
+            exporter_type = None
+            payload = {}
+
+            if isinstance(exporter, str):
+                # Legacy V1 string format
+                exporter_type = exporter
+            elif isinstance(exporter, dict):
+                # V3 dict format: {exporter_name: {config}}
+                if len(exporter) == 1:
+                    exporter_type, payload = next(iter(exporter.items()))
+                    if payload is None:
+                        payload = {}
+            else:
+                # Unexpected format
+                logger.error(f"Unknown exporter format: {exporter!r}")
+                continue
+
             if exporter_type == "console":
                 tracer_provider.add_span_processor(
                     BatchSpanProcessor(
@@ -125,24 +143,15 @@ class TracingConfig:
                     )
                 )
             elif exporter_type == "otlp":
-                # Merge endpoint/headers from typed config with legacy secrets (if provided)
-                endpoint = (
-                    getattr(exporter, "endpoint", None)
-                    if not isinstance(exporter, str)
-                    else None
-                )
-                headers = (
-                    getattr(exporter, "headers", None)
-                    if not isinstance(exporter, str)
-                    else None
-                )
+                # Extract endpoint/headers from V3 dict payload
+                endpoint = payload.get("endpoint") if isinstance(payload, dict) else None
+                headers = payload.get("headers") if isinstance(payload, dict) else None
+
+                # Fall back to legacy otlp_settings if not provided in payload
                 if settings.otlp_settings:
-                    endpoint = endpoint or getattr(
-                        settings.otlp_settings, "endpoint", None
-                    )
-                    headers = headers or getattr(
-                        settings.otlp_settings, "headers", None
-                    )
+                    endpoint = endpoint or getattr(settings.otlp_settings, "endpoint", None)
+                    headers = headers or getattr(settings.otlp_settings, "headers", None)
+
                 if endpoint:
                     tracer_provider.add_span_processor(
                         BatchSpanProcessor(
@@ -157,16 +166,20 @@ class TracingConfig:
                         "OTLP exporter is enabled but no OTLP settings endpoint is provided."
                     )
             elif exporter_type == "file":
-                custom_path = (
-                    getattr(exporter, "path", None)
-                    if not isinstance(exporter, str)
-                    else getattr(settings, "path", None)
-                )
-                path_settings = (
-                    getattr(exporter, "path_settings", None)
-                    if not isinstance(exporter, str)
-                    else getattr(settings, "path_settings", None)
-                )
+                # Extract path and path_settings from V3 dict payload
+                custom_path = payload.get("path") if isinstance(payload, dict) else None
+                path_settings = payload.get("path_settings") if isinstance(payload, dict) else None
+
+                # Fall back to legacy top-level fields if not provided in payload
+                if not custom_path:
+                    custom_path = getattr(settings, "path", None)
+                if not path_settings:
+                    path_settings = getattr(settings, "path_settings", None)
+
+                # Convert path_settings dict to TracePathSettings if needed
+                if isinstance(path_settings, dict):
+                    path_settings = TracePathSettings.model_validate(path_settings)
+
                 tracer_provider.add_span_processor(
                     BatchSpanProcessor(
                         FileSpanExporter(
