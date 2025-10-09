@@ -1,11 +1,9 @@
 from __future__ import annotations
-
 import asyncio
 import json
 import math
 import time
-from typing import Any, Dict, List, Optional, Protocol, Tuple
-
+from typing import Dict, List, Optional, Protocol, Tuple
 from .models import (
     AssembleInputs,
     AssembleOptions,
@@ -20,14 +18,11 @@ from .hash import compute_manifest_hash
 from .telemetry import meter
 from .toolkit import RegistryToolKit
 from .logutil import log_structured, redact_event
-
 class ToolKit(Protocol):
     async def semantic_search(self, query: str, top_k: int) -> List[Span]: ...
     async def symbols(self, target: str) -> List[Span]: ...
     async def neighbors(self, uri: str, line_or_start: int, radius: int) -> List[Span]: ...
     async def patterns(self, globs: List[str]) -> List[Span]: ...
-
-
 class NoopToolKit:
     async def semantic_search(self, query: str, top_k: int) -> List[Span]:
         return []
@@ -37,7 +32,6 @@ class NoopToolKit:
         return []
     async def patterns(self, globs: List[str]) -> List[Span]:
         return []
-
 
 def _norm_uri(uri: str) -> str:
     return uri.replace("\\", "/")
@@ -57,7 +51,6 @@ def _merge_spans(spans: List[Span]) -> List[Span]:
     by_uri: Dict[str, List[Span]] = {}
     for sp in spans:
         by_uri.setdefault(_norm_uri(sp.uri), []).append(sp)
-
     out: List[Span] = []
     for uri, lst in by_uri.items():
         lst_sorted = sorted(lst, key=lambda s: (s.start, s.end))
@@ -112,7 +105,6 @@ def _budget_and_build_slices(spans: List[Span], opts: AssembleOptions, report: A
     files_seen: Dict[str, int] = {}
     sections_used: Dict[int, int] = {}
     tokens_used = 0
-
     slices: List[Slice] = []
     for sp in spans:
         tokens = _estimate_tokens(sp)
@@ -120,7 +112,6 @@ def _budget_and_build_slices(spans: List[Span], opts: AssembleOptions, report: A
             report.overflow.append(dict(uri=sp.uri, start=int(sp.start), end=int(sp.end), reason="token_budget", tool=sp.tool))  # type: ignore[arg-type]
             report.pruned["token_budget"] = report.pruned.get("token_budget", 0) + 1
             continue
-
         sec = int(sp.section or 0)
         cap_for_sec = section_caps.get(sec)
         if cap_for_sec is not None:
@@ -131,21 +122,17 @@ def _budget_and_build_slices(spans: List[Span], opts: AssembleOptions, report: A
                 report.pruned[key] = report.pruned.get(key, 0) + 1
                 continue
             sections_used[sec] = used + 1
-
         if opts.max_files is not None:
             if files_seen.get(sp.uri, 0) == 0 and len(files_seen) >= int(opts.max_files):
                 report.overflow.append(dict(uri=sp.uri, start=int(sp.start), end=int(sp.end), reason="max_files", tool=sp.tool))  # type: ignore[arg-type]
                 report.pruned["max_files"] = report.pruned.get("max_files", 0) + 1
                 continue
-
         files_seen[sp.uri] = 1
         tokens_used += tokens
-        slices.append(Slice(uri=sp.uri, start=int(sp.start), end=int(sp.end), bytes=tokens*4, token_estimate=tokens, reason=s.reason or "", tool=s.tool))
-
+        slices.append(Slice(uri=sp.uri, start=int(sp.start), end=int(sp.end), bytes=tokens*4, token_estimate=tokens, reason=sp.reason or "", tool=sp.tool))
     report.tokens_out = tokens_used
     report.files_out = len({s.uri for s in slices})
     return slices
-
 
 async def assemble_context(
     inputs: AssembleInputs,
@@ -160,10 +147,8 @@ async def assemble_context(
     settings = ContextSettings()
     options = opts or AssembleOptions()
     tk: ToolKit = toolkit or RegistryToolKit(trace_id=(telemetry_attrs or {}).get('trace_id',''), tool_versions=tool_versions, repo_sha=(telemetry_attrs or {}).get('commit_sha'))
-
     report = AssembleReport()
     spans: List[Span] = []
-
     # Seeds
     for p in inputs.changed_paths:
         spans.append(Span(uri=p, start=0, end=1, section=4, priority=1, reason="changed_path"))
@@ -173,7 +158,6 @@ async def assemble_context(
         p = t.get("path") if isinstance(t, dict) else None
         if p:
             spans.append(Span(uri=str(p), start=0, end=1, section=2, priority=2, reason="failing_test"))
-
     spans.extend(inputs.must_include or [])
 
     async def _with_timeout(coro, ms: int, tool: str) -> List[Span]:
@@ -209,14 +193,12 @@ async def assemble_context(
                 s.reason = s.reason or "semantic_search"
                 s.tool = s.tool or "semantic_search"
             spans.extend(_guard_payload(res, "semantic_search", "semantic_search"))
-
         for rf in inputs.referenced_files or []:
             res = await _with_timeout(tk.symbols(str(rf)), settings.SYMBOLS_TIMEOUT_MS, "symbols")
             for s in res:
                 s.reason = s.reason or "symbols"
                 s.tool = s.tool or "symbols"
             spans.extend(_guard_payload(res, "symbols", "symbols"))
-
         for ft in inputs.failing_tests or []:
             p = ft.get("path") if isinstance(ft, dict) else None
             line = ft.get("line", 0) if isinstance(ft, dict) else 0
@@ -226,7 +208,6 @@ async def assemble_context(
                     s.reason = s.reason or "neighbors"
                     s.tool = s.tool or "neighbors"
                 spans.extend(_guard_payload(res, "neighbors", "neighbors"))
-
         # Patterns from globs + settings.AST_GREP_PATTERNS
         globs = list(set((inputs.referenced_files or []) + (inputs.changed_paths or [])))
         patterns = ContextSettings().AST_GREP_PATTERNS or []
@@ -241,17 +222,13 @@ async def assemble_context(
         m.inc_errors(1, {"phase": "assemble", "reason": "tool_error", **(telemetry_attrs or {})})
 
     report.spans_in = len(spans)
-
     spans = _preplacement_filter(spans, inputs.never_include or [], report)
-
     file_lengths = getattr(opts, "file_lengths", None) if opts else None
     if int(options.neighbor_radius or 0) > 0:
         spans = _apply_neighborhood(spans, int(options.neighbor_radius), file_lengths=file_lengths)
-
     spans = _merge_spans(spans)
     report.spans_merged = len(spans)
     spans_sorted = sorted(spans, key=_span_key)
-
     slices = _budget_and_build_slices(spans_sorted, options, report)
 
     manifest = Manifest(slices=slices, meta=ManifestMeta())
@@ -281,5 +258,4 @@ async def assemble_context(
     }
     red_evt = redact_event(event, ContextSettings().REDACT_PATH_GLOBS)
     log_structured(**red_evt)
-
     return manifest, pack_hash, report
