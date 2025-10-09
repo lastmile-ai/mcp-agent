@@ -117,7 +117,7 @@ async def run_assembling_phase(
         missing = _must_include_covered(inputs, manifest)
         if missing:
             # Signal violation and raise to fail the run
-            await sse_emitter.emit(run_id, {"phase": "ASSEMBLING", "status": "violation", "non_droppable_missing": missing})
+            await sse_emitter.emit(run_id, {"phase": "ASSEMBLING", "status": "violation", "violation": True, "non_droppable_missing": missing})
             raise RuntimeError("non_droppable_missing")
 
     return manifest, pack_hash, report

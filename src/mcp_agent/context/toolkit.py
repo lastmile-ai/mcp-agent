@@ -109,6 +109,7 @@ class RegistryToolKit:
         sig = self._sign(payload)
         if sig:
             headers["X-Signature"] = sig
+            headers["Authorization"] = f"Signature {sig}"
         kwargs = {"headers": headers}
         if timeout_ms:
             kwargs["timeout"] = timeout_ms / 1000.0

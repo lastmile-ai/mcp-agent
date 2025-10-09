@@ -7,7 +7,7 @@ Manifest = import_module("mcp_agent.context.models").Manifest  # lazy import
 
 
 def test_schema_matches_model():
-    schema_path = Path(__file__).parents[2] / "schemas" / "context.manifest.schema.json"
+    schema_path = Path(__file__).parents[2] / "schema" / "context.manifest.schema.json"
     with open(schema_path, "r", encoding="utf-8") as f:
         on_disk = json.load(f)
 

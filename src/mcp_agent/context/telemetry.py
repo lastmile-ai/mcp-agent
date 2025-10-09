@@ -46,3 +46,24 @@ def meter() -> _Meter:
     if _meter_singleton is None:
         _meter_singleton = _Meter()
     return _meter_singleton
+
+
+def setup_otel() -> None:
+    """Best-effort OTEL metrics exporter setup.
+    No-op if SDK not present. Uses default OTEL_* env vars.
+    """
+    try:  # pragma: no cover
+        from opentelemetry.sdk.resources import Resource
+        from opentelemetry.sdk.metrics import MeterProvider
+        from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+        from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+        # Minimal provider + reader using env-configured endpoint
+        provider = MeterProvider(resource=Resource.create({}))
+        reader = PeriodicExportingMetricReader(OTLPMetricExporter())
+        provider._metric_readers.append(reader)  # type: ignore[attr-defined]
+        # Bind provider
+        from opentelemetry import metrics as _metrics  # type: ignore
+        _metrics.set_meter_provider(provider)  # type: ignore
+    except Exception:
+        # Leave meter() as-is if OTEL not available
+        return None

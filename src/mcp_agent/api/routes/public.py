@@ -18,6 +18,7 @@ class PublicAPIState:
         # Changed: queues now maps run_id to a set of consumer queues
         self.queues: Dict[str, Set["asyncio.Queue[str]"]] = {}
         self.tasks: Set[asyncio.Task] = set()
+        self.artifacts: Dict[str, tuple[bytes, str]] = {}
 
     async def cancel_all_tasks(self):
         """Cancel all tracked background tasks."""
@@ -184,7 +185,18 @@ async def get_artifact(request: Request):
     ok, _ = _authenticate(request)
     if not ok:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
-    return JSONResponse({"error": "not_found"}, status_code=404)
+    state = _get_state(request)
+    art_id = request.path_params.get("id", "")
+    blob = state.artifacts.get(art_id)
+    if not blob:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    data, content_type = blob
+    try:
+        payload = json.loads(data.decode("utf-8"))
+        return JSONResponse(payload, media_type=content_type)
+    except Exception:
+        # Binary fallback
+        return JSONResponse({"error": "unsupported_content"}, status_code=415)
 
 
 routes = [

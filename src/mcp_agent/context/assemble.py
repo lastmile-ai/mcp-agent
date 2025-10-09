@@ -159,7 +159,7 @@ async def assemble_context(
     m = meter()
     settings = ContextSettings()
     options = opts or AssembleOptions()
-    tk: ToolKit = toolkit or RegistryToolKit(trace_id=(telemetry_attrs or {}).get("trace_id",""), tool_versions=tool_versions)
+    tk: ToolKit = toolkit or RegistryToolKit(trace_id=(telemetry_attrs or {}).get('trace_id',''), tool_versions=tool_versions, repo_sha=(telemetry_attrs or {}).get('commit_sha'))
 
     report = AssembleReport()
     spans: List[Span] = []

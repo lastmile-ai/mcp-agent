@@ -90,9 +90,15 @@ async def _create_run_with_context(request: Request) -> JSONResponse:
                 sse=_StateSSEEmitter(state),
             )
         except Exception:
+            # Update run status on enforce
+            if ContextSettings().ENFORCE_NON_DROPPABLE:
+                try:
+                    state.runs.setdefault(run_id, {})["status"] = "failed"
+                except Exception:
+                    pass
             # Signal violation or error via SSE
             queues = state.queues.get(run_id, [])
-            evt = json.dumps({"event":"context","phase":"ASSEMBLING","status":"error"})
+            evt = json.dumps({"event":"context","phase":"ASSEMBLING","status":"error","violation": True})
             for q in list(queues):
                 try: await q.put(evt)
                 except Exception: pass
