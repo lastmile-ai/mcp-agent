@@ -10,11 +10,17 @@ This example mirrors `mcp_basic_agent` but adds GitHub MCP with OAuth using the 
    - `http://127.0.0.1:33419/callback`
    - `http://localhost:33418/callback`
 
-2. Install deps and run:
+2. Copy the secrets template and fill in your API keys / OAuth client (or export the env vars manually):
 
 ```bash
-uv sync
+cp mcp_agent.secrets.yaml.example mcp_agent.secrets.yaml
+```
+
+3. Install deps and run:
+
+```bash
 uv pip install -r requirements.txt
+# If you populated the secrets file you can skip these exports.
 export GITHUB_CLIENT_ID=...
 export GITHUB_CLIENT_SECRET=...
 uv run main.py

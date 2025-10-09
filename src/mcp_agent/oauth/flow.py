@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import httpx
 import uuid
 import time
@@ -197,7 +198,7 @@ class AuthorizationFlowCoordinator:
                     "Authorization request was declined by the user"
                 )
         finally:
-            if callback_future is not None:
+            with contextlib.suppress(Exception):
                 await callback_registry.discard(flow_id)
 
         error = callback_data.get("error")
@@ -274,7 +275,6 @@ class AuthorizationFlowCoordinator:
         )
 
 
-
 def _parse_callback_params(url: str) -> Dict[str, str]:
     parsed = urlparse(url)
     params = {}
@@ -323,13 +323,16 @@ async def _run_loopback_flow(
     except Exception:
         pass
 
-    # Deferred import to avoid heavy deps unless needed
-    import contextlib
     import socket
-    import threading
     import webbrowser
-    from http.server import BaseHTTPRequestHandler, HTTPServer
-    from urllib.parse import urlparse as _urlparse, parse_qs as _parse_qs
+    from urllib.parse import (
+        urlencode as _urlencode,
+        urlparse as _p,
+        parse_qs as _q,
+        urlunparse as _u,
+        urlsplit as _urlsplit,
+        parse_qs as _parse_qs,
+    )
 
     selected: tuple[str, int] | None = None
 
@@ -337,6 +340,7 @@ async def _run_loopback_flow(
     for url, port in loopback_candidates:
         with contextlib.closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
             try:
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 s.bind(("127.0.0.1", port))
                 selected = (url, port)
                 break
@@ -350,82 +354,102 @@ async def _run_loopback_flow(
 
     redirect_url, port = selected
 
-    # Minimal request handler to capture the callback
-    result_container: dict[str, Any] = {"payload": None}
+    loop = asyncio.get_running_loop()
+    payload_future: asyncio.Future[Dict[str, Any]] = loop.create_future()
 
-    class _Handler(BaseHTTPRequestHandler):
-        def do_GET(self):  # noqa: N802 (http server style)
-            try:
-                parsed = _urlparse(self.path)
-                params = {k: v[-1] for k, v in _parse_qs(parsed.query).items()}
-                # Deliver by flow id or state
-                # Store payload for delivery after HTTP response
-                result_container["payload"] = params
-                # Respond immediately
-                self.send_response(200)
-                self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.end_headers()
-                self.wfile.write(
-                    b"<!DOCTYPE html><html><body><h3>Authorization complete.</h3><p>You may close this window and return to MCP Agent.</p></body></html>"
-                )
-            except Exception:
-                self.send_response(500)
-                self.end_headers()
-
-        def log_message(self, format: str, *args):  # noqa: A003 - keep server quiet
-            return
-
-    httpd: HTTPServer = HTTPServer(("127.0.0.1", port), _Handler)
-
-    def _serve_once():
+    async def _handle(
+        reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
         try:
-            httpd.handle_request()
-        finally:
+            request_line = await reader.readline()
+            if not request_line:
+                return
+            parts = request_line.decode("latin-1").strip().split(" ")
+            if len(parts) < 2:
+                return
+            target = parts[1]
+
+            # Consume headers until blank line
+            while True:
+                header = await reader.readline()
+                if not header or header in (b"\r\n", b"\n"):
+                    break
+
+            parsed_target = _urlsplit(target)
+            params = {k: v[-1] for k, v in _parse_qs(parsed_target.query).items()}
+            if not payload_future.done():
+                payload_future.set_result(params)
+
+            body = (
+                "<!DOCTYPE html><html><body><h3>Authorization complete.</h3>"
+                "<p>You may close this window and return to MCP Agent.</p></body></html>"
+            )
+            response = (
+                "HTTP/1.1 200 OK\r\n"
+                "Content-Type: text/html; charset=utf-8\r\n"
+                f"Content-Length: {len(body.encode('utf-8'))}\r\n"
+                "Connection: close\r\n\r\n"
+                f"{body}"
+            )
+            writer.write(response.encode("utf-8"))
+            await writer.drain()
+        except Exception:
             with contextlib.suppress(Exception):
-                httpd.server_close()
+                writer.write(
+                    b"HTTP/1.1 500 Internal Server Error\r\nConnection: close\r\n\r\n"
+                )
+                await writer.drain()
+        finally:
+            writer.close()
+            with contextlib.suppress(Exception):
+                await writer.wait_closed()
 
-    t = threading.Thread(target=_serve_once, daemon=True)
-    t.start()
+    server = await asyncio.start_server(_handle, "127.0.0.1", port)
 
-    # Ensure the authorization URL uses the selected redirect_uri.
-    from urllib.parse import (
-        urlencode as _urlencode,
-        urlparse as _p,
-        parse_qs as _q,
-        urlunparse as _u,
-    )
-
-    parsed = _p(str(authorize_url))
-    q = {k: v[-1] for k, v in _q(parsed.query).items()}
-    q["redirect_uri"] = redirect_url
-    final_url = _u(
-        (
-            parsed.scheme,
-            parsed.netloc,
-            parsed.path,
-            parsed.params,
-            _urlencode(q),
-            parsed.fragment,
+    try:
+        # Ensure the authorization URL uses the selected redirect_uri.
+        parsed = _p(str(authorize_url))
+        q = {k: v[-1] for k, v in _q(parsed.query).items()}
+        q["redirect_uri"] = redirect_url
+        final_url = _u(
+            (
+                parsed.scheme,
+                parsed.netloc,
+                parsed.path,
+                parsed.params,
+                _urlencode(q),
+                parsed.fragment,
+            )
         )
-    )
 
-    # Open the browser to the adjusted URL
-    with contextlib.suppress(Exception):
-        webbrowser.open(final_url, new=1, autoraise=True)
+        logger.info(
+            "OAuth loopback flow started",
+            data={
+                "redirect_uri": redirect_url,
+                "authorization_url": final_url,
+                "ports": sorted({p for _, p in loopback_candidates}),
+                "selected_port": port,
+            },
+        )
 
-    # Wait for one request or timeout
-    # Simple polling with backoff; we keep this lightweight.
-    import time as _time
+        # Open the browser to the adjusted URL, but always print the URL
+        print(
+            "\nOpen the following URL in your browser to authorize if it does not open automatically:\n"
+            f"  {final_url}\n"
+        )
+        with contextlib.suppress(Exception):
+            webbrowser.open(final_url, new=1, autoraise=True)
 
-    deadline = _time.time() + 300.0
-    while _time.time() < deadline:
-        if result_container["payload"] is not None:
-            break
-        _time.sleep(0.1)
-
-    payload = result_container["payload"]
-    if not payload:
-        raise CallbackTimeoutError("Timed out waiting for loopback OAuth callback")
+        try:
+            payload = await asyncio.wait_for(payload_future, timeout=300.0)
+        except asyncio.TimeoutError as exc:
+            raise CallbackTimeoutError(
+                "Timed out waiting for loopback OAuth callback"
+            ) from exc
+    finally:
+        server.close()
+        with contextlib.suppress(Exception):
+            await server.wait_closed()
 
     # Try to deliver via flow id first, else by state
     delivered = await callback_registry.deliver(flow_id, payload)

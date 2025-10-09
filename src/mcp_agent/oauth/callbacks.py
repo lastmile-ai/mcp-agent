@@ -52,7 +52,7 @@ class OAuthCallbackRegistry:
         if not state:
             return False
         async with self._lock:
-            flow_id = self._state_to_flow.get(state)
+            flow_id = self._state_to_flow.pop(state, None)
         if not flow_id:
             return False
         return await self.deliver(flow_id, payload)
