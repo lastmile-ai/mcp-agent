@@ -1,25 +1,19 @@
 from __future__ import annotations
-
 import json
-import time
 from typing import Any, Dict, Optional, Protocol, Tuple
-
 from .assemble import assemble_context, ToolKit, NoopToolKit
 from .models import AssembleInputs, AssembleOptions, AssembleReport, Manifest
 from .telemetry import meter
 from .settings import ContextSettings
 from .logutil import redact_event
 
-
 class ArtifactStore(Protocol):
     async def put(self, run_id: str, path: str, data: bytes, content_type: str = "application/octet-stream") -> str: ...
     # Returns an artifact id or path.
 
-
 class SSEEmitter(Protocol):
     async def emit(self, run_id: str, event: Dict[str, Any]) -> None: ...
     # Sends a server-sent event to stream clients.
-
 
 class MemoryArtifactStore:
     def __init__(self) -> None:
@@ -38,14 +32,12 @@ class MemoryArtifactStore:
     def content_type(self, run_id: str, path: str) -> str:
         return self._ct[(run_id, path)]
 
-
 class MemorySSEEmitter:
     def __init__(self) -> None:
         self.events: Dict[str, list[Dict[str, Any]]] = {}
 
     async def emit(self, run_id: str, event: Dict[str, Any]) -> None:
         self.events.setdefault(run_id, []).append(event)
-
 
 def _must_include_covered(inputs: AssembleInputs, manifest: Manifest):
     missing = []
@@ -58,7 +50,6 @@ def _must_include_covered(inputs: AssembleInputs, manifest: Manifest):
         if not ok:
             missing.append({"uri": ms.uri, "start": int(ms.start), "end": int(ms.end), "reason": ms.reason or ""})
     return missing
-
 
 async def run_assembling_phase(
     run_id: str,
@@ -78,9 +69,7 @@ async def run_assembling_phase(
     Emits redacted SSE events and persists artifacts/context/manifest.json.
     Enforces non-droppable coverage when ENFORCE_NON_DROPPABLE=true.
     """
-    m = meter()
     cfg = ContextSettings()
-
     tk = toolkit or NoopToolKit()
     store = artifact_store or MemoryArtifactStore()
     sse_emitter = sse or MemorySSEEmitter()
