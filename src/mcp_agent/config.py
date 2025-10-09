@@ -119,6 +119,8 @@ class OAuthSettings(BaseModel):
     )
     flow_timeout_seconds: int = Field(300, ge=30)
     callback_base_url: AnyHttpUrl | None = None
+    # Fixed loopback ports to try (client-only OAuth). If empty, loopback is disabled.
+    loopback_ports: list[int] = Field(default_factory=lambda: [33418, 33419, 33420])
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 

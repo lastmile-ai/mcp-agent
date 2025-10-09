@@ -17,7 +17,10 @@
   - `InMemoryTokenStore` and Redis-backed implementation (optional for multi-instance)
    - `TokenManager` orchestration (acquire, refresh, revoke)
    - `OAuthHttpxAuth` for attaching tokens to downstream HTTP transports
-   - `AuthorizationFlowCoordinator` that interacts with the user via MCP `auth/request`
+   - `AuthorizationFlowCoordinator` that interacts with the user via MCP `auth/request`.
+     When no upstream client session is available, a client-only loopback flow starts a
+     temporary local callback listener on 127.0.0.1 using a configurable fixed port list
+     (default: 33418, 33419, 33420), opens the browser, and completes the PKCE code flow.
 5. **Delegated Authorization UI Flow** – Extend the gateway/session relay so servers can send `auth/request` messages to MCP clients, capturing authorization codes via either:
    - Client-returned callback URL (preferred, works with SEP-capable clients)
    - MCP Agent hosted callback endpoint (`/internal/oauth/callback/{flow_id}`) as a fallback / native-app style loopback.

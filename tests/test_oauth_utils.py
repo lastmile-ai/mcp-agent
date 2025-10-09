@@ -1,4 +1,5 @@
 import time
+import asyncio
 import pathlib
 import sys
 
@@ -88,3 +89,24 @@ def test_normalize_resource_with_fallback():
 
 def test_normalize_resource_canonicalizes_case():
     assert normalize_resource("https://Example.COM/", None) == "https://example.com"
+
+
+def test_oauth_loopback_ports_config_defaults():
+    from mcp_agent.config import OAuthSettings
+
+    s = OAuthSettings()
+    assert isinstance(s.loopback_ports, list)
+    assert 33418 in s.loopback_ports
+
+
+@pytest.mark.asyncio
+async def test_callback_registry_state_mapping():
+    from mcp_agent.oauth.callbacks import OAuthCallbackRegistry
+
+    reg = OAuthCallbackRegistry()
+    fut = await reg.create_handle("flow1")
+    await reg.register_state("flow1", "state1")
+    delivered = await reg.deliver_by_state("state1", {"code": "abc"})
+    assert delivered is True
+    result = await asyncio.wait_for(fut, timeout=0.2)
+    assert result["code"] == "abc"

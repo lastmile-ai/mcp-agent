@@ -31,7 +31,7 @@ from mcp_agent.oauth.pkce import (
     generate_state,
 )
 from mcp_agent.oauth.records import TokenRecord
-from mcp_agent.oauth.errors import OAuthFlowError
+# Keep import list minimal in this module to avoid warnings; OAuthFlowError imported elsewhere when needed
 
 logger = get_logger(__name__)
 
@@ -359,16 +359,7 @@ async def _run_loopback_flow(
                 parsed = _urlparse(self.path)
                 params = {k: v[-1] for k, v in _parse_qs(parsed.query).items()}
                 # Deliver by flow id or state
-                delivered = False
-                if flow_id:
-                    delivered = (
-                        threading.get_native_id() is not None
-                    )  # dummy to appease linters
-                    # Ignore variable; use registry
-                # Prefer explicit flow delivery; else by state
-                ok = False
-                if flow_id:
-                    ok = False  # avoid mypy confusion; we'll deliver after sending response
+                # Store payload for delivery after HTTP response
                 result_container["payload"] = params
                 # Respond immediately
                 self.send_response(200)
@@ -396,12 +387,31 @@ async def _run_loopback_flow(
     t = threading.Thread(target=_serve_once, daemon=True)
     t.start()
 
-    # Open the browser to the provider's authorize URL. The authorize URL must
-    # already include a redirect_uri matching one of the provider's registered
-    # values. We do not mutate the URL here because we don't know which of the
-    # candidate redirect URIs the client registered; that comes from config.
+    # Ensure the authorization URL uses the selected redirect_uri.
+    from urllib.parse import (
+        urlencode as _urlencode,
+        urlparse as _p,
+        parse_qs as _q,
+        urlunparse as _u,
+    )
+
+    parsed = _p(str(authorize_url))
+    q = {k: v[-1] for k, v in _q(parsed.query).items()}
+    q["redirect_uri"] = redirect_url
+    final_url = _u(
+        (
+            parsed.scheme,
+            parsed.netloc,
+            parsed.path,
+            parsed.params,
+            _urlencode(q),
+            parsed.fragment,
+        )
+    )
+
+    # Open the browser to the adjusted URL
     with contextlib.suppress(Exception):
-        webbrowser.open(str(authorize_url), new=1, autoraise=True)
+        webbrowser.open(final_url, new=1, autoraise=True)
 
     # Wait for one request or timeout
     # Simple polling with backoff; we keep this lightweight.
