@@ -1,10 +1,10 @@
 from __future__ import annotations
 import json
 from typing import Any, Dict, Optional, Protocol, Tuple
-from .assemble import assemble_context, ToolKit, NoopToolKit
+from .assemble import assemble_context, ToolKit, NoopToolKit, must_include_missing
 from .models import AssembleInputs, AssembleOptions, AssembleReport, Manifest
 from .settings import ContextSettings
-from .logutil import redact_event
+from .logutil import redact_event, redact_path
 
 class ArtifactStore(Protocol):
     async def put(self, run_id: str, path: str, data: bytes, content_type: str = "application/octet-stream") -> str: ...
@@ -37,18 +37,6 @@ class MemorySSEEmitter:
 
     async def emit(self, run_id: str, event: Dict[str, Any]) -> None:
         self.events.setdefault(run_id, []).append(event)
-
-def _must_include_covered(inputs: AssembleInputs, manifest: Manifest):
-    missing = []
-    for ms in inputs.must_include or []:
-        ok = False
-        for sl in manifest.slices:
-            if sl.uri == ms.uri and int(sl.start) <= int(ms.start) and int(sl.end) >= int(ms.end):
-                ok = True
-                break
-        if not ok:
-            missing.append({"uri": ms.uri, "start": int(ms.start), "end": int(ms.end), "reason": ms.reason or ""})
-    return missing
 
 async def run_assembling_phase(
     run_id: str,
@@ -88,6 +76,11 @@ async def run_assembling_phase(
     manifest_bytes = json.dumps(json.loads(manifest.model_dump_json()), indent=2).encode("utf-8")
     art_id = await store.put(run_id, "artifacts/context/manifest.json", manifest_bytes, content_type="application/json")
 
+    example_uri = ""
+    if manifest.slices:
+        candidate = manifest.slices[0].uri
+        example_uri = candidate if redact_path(candidate, cfg.REDACT_PATH_GLOBS) == candidate else ""
+
     end_evt = {
         "phase": "ASSEMBLING",
         "status": "end",
@@ -98,11 +91,12 @@ async def run_assembling_phase(
         "files_out": report.files_out,
         "tokens_out": report.tokens_out,
         "artifact": art_id,
+        "example_uri": example_uri,
     }
     await sse_emitter.emit(run_id, redact_event(end_evt, cfg.REDACT_PATH_GLOBS))
 
     if cfg.ENFORCE_NON_DROPPABLE:
-        missing = _must_include_covered(inputs, manifest)
+        missing = must_include_missing(inputs, manifest)
         if missing:
             # Signal violation and raise to fail the run
             await sse_emitter.emit(run_id, {"phase": "ASSEMBLING", "status": "violation", "violation": True, "non_droppable_missing": missing})
