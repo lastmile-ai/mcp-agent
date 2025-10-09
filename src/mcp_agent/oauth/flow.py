@@ -116,6 +116,8 @@ class AuthorizationFlowCoordinator:
             "message": f"Authorization required for {server_name}",
             "redirect_uri_options": redirect_options,
             "flow_id": flow_id,
+            "server_name": server_name,
+            "scopes": scope_param,
         }
 
         result = await _send_auth_request(context, request_payload)

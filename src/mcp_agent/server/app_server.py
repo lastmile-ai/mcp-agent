@@ -766,7 +766,8 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             return None
 
         async def _handle_specific_request(
-            session, method: str, params: dict, log_prefix: str = "request"
+            session: Any, method: str, params: dict, identity: OAuthUserIdentity,
+            context: "Context", log_prefix: str = "request"
         ):
             """Handle specific request types with structured request/response."""
             from mcp.types import (
@@ -819,6 +820,28 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                 return result.model_dump(by_alias=True, mode="json", exclude_none=True)
             elif method == "auth/request":
                 # TODO: special handling of auth request, should be replaced by future URL elicitation
+
+                # first check to see if the token is in the cache already
+                try:
+                    if context and hasattr(context, "token_manager"):
+                        manager = context.token_manager
+                        if manager:
+                            server_name = params["server_name"]
+                            server_config = context.server_registry.get_server_config(server_name)
+                            scopes = params.get("scopes", [])
+
+                            token = await manager.get_access_token_if_present(
+                                context=context,
+                                server_name=server_name,
+                                server_config=server_config,
+                                scopes=scopes,
+                                identity=identity)
+                            if token:
+                                return token
+                except Exception:
+                    # elicitation fallback below
+                    pass
+
                 class AuthToken(BaseModel):
                     confirmation: str = Field(
                         description="Please press enter to confirm this message has been received"
@@ -849,6 +872,27 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         f"Timed out waiting for OAuth callback after {timeout} seconds"
                     ) from exc
 
+                try:
+                    if context and hasattr(context, "token_manager"):
+                        manager = context.token_manager
+                        if manager:
+                            server_name = params["server_name"]
+                            server_config = context.server_registry.get_server_config(server_name)
+                            scopes = params.get("scopes", [])
+
+                            token_data={}
+
+                            await manager.store_user_token(
+                                context=context,
+                                user=identity,
+                                server_name=server_name,
+                                server_config=server_config,
+                                token_data=token_data
+                            )
+                except Exception:
+                    # Token is not stored, we have to auth again next time.
+                    pass
+
                 return callback_data
             else:
                 raise ValueError(f"unsupported method: {method}")
@@ -858,10 +902,16 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             method: str,
             params: dict,
             execution_id: str,
+            context: "Context",
             log_prefix: str = "request",
             register_session: bool = False,
         ):
             """Try to handle a request via session, with optional registration."""
+            try:
+                identity = _get_identity_for_execution(execution_id)
+            except Exception:
+                identity = None
+
             try:
                 # First try generic RPC passthrough
                 result = await _handle_request_via_rpc(
@@ -870,7 +920,6 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                 if result is not None:
                     if register_session:
                         try:
-                            identity = _get_identity_for_execution(execution_id)
                             await _register_session(
                                 run_id=execution_id,
                                 execution_id=execution_id,
@@ -885,11 +934,10 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
 
                 # Fallback to specific structured request handling
                 result = await _handle_specific_request(
-                    session, method, params, log_prefix
+                    session, method, params, identity, context, log_prefix
                 )
                 if register_session:
                     try:
-                        identity = _get_identity_for_execution(execution_id)
                         await _register_session(
                             run_id=execution_id,
                             execution_id=execution_id,
@@ -915,6 +963,12 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             include_in_schema=False,
         )
         async def _relay_request(request: Request):
+            app = _get_attached_app(mcp_server)
+            if app and app.context:
+                app_context = app.context
+            else:
+                app_context = None
+
             body = await request.json()
             execution_id = request.path_params.get("execution_id")
             method = body.get("method")
@@ -934,6 +988,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         method,
                         params,
                         execution_id,
+                        app_context,
                         log_prefix="request",
                         register_session=True,
                     )
@@ -959,6 +1014,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                     method,
                     params,
                     execution_id,
+                    app_context,
                     log_prefix="request",
                     register_session=False,
                 )
@@ -1013,6 +1069,12 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
 
             # Create background task to handle the request and signal the workflow
             async def _handle_async_request_task():
+                app = _get_attached_app(mcp_server)
+                if app and app.context:
+                    app_context = app.context
+                else:
+                    app_context = None
+
                 try:
                     result = None
 
@@ -1025,6 +1087,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                                 method,
                                 params,
                                 execution_id,
+                                app_context,
                                 log_prefix="async-request",
                                 register_session=True,
                             )
@@ -1043,6 +1106,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                                     method,
                                     params,
                                     execution_id,
+                                    app_context,
                                     log_prefix="async-request",
                                     register_session=False,
                                 )
@@ -1060,9 +1124,8 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                     # Signal the workflow with the result using method-specific signal
                     try:
                         # Try to get Temporal client from the app context
-                        app = _get_attached_app(mcp_server)
-                        if app and app.context and hasattr(app.context, "executor"):
-                            executor = app.context.executor
+                        if app_context and hasattr(app_context, "executor"):
+                            executor = app_context.executor
                             if hasattr(executor, "client"):
                                 client = executor.client
                                 # Find the workflow using execution_id as both workflow_id and run_id

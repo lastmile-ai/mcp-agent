@@ -16,7 +16,7 @@ from mcp_agent.config import (
     MCPSettings,
     OAuthSettings,
     OAuthTokenStoreSettings,
-    Settings,
+    Settings, TemporalSettings,
 )
 from mcp_agent.core.context import Context as AppContext
 from mcp_agent.mcp.gen_client import gen_client
@@ -26,6 +26,23 @@ from mcp_agent.server.app_server import create_mcp_server_for_app
 # if not provided, a default FastMCP server will be created by MCPApp using create_mcp_server_for_app()
 mcp = FastMCP(name="basic_agent_server", instructions="My basic agent server example.")
 
+
+# Get client id and secret from environment variables
+client_id = os.getenv("GITHUB_CLIENT_ID")
+client_secret = os.getenv("GITHUB_CLIENT_SECRET")
+
+if not client_id or not client_secret:
+    print(
+        "\nGitHub client id and/or secret not found in GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET "
+        "environment variables."
+    )
+    print("\nTo create these:")
+    print("1. Open your profile on github.com and navigate to 'Developer Settings'")
+    print("2. Create a new OAuth app and create a client secret for it.")
+    print("3. Create environment variables:")
+    print("export GITHUB_CLIENT_ID='your_client_id_here'")
+    print("export GITHUB_CLIENT_SECRET='your_client_secret_here'")
+    exit(1)
 
 redis_url = os.getenv("OAUTH_REDIS_URL")
 if redis_url:
@@ -39,7 +56,13 @@ else:
     token_store_settings = OAuthTokenStoreSettings(refresh_leeway_seconds=60)
 
 settings = Settings(
-    execution_engine="asyncio",
+    execution_engine="temporal",
+    temporal=TemporalSettings(
+        host="localhost:7233",
+        namespace="default",
+        task_queue="mcp-agent",
+        max_concurrent_activities=10,
+    ),
     logger=LoggerSettings(level="info"),
     oauth=OAuthSettings(
         callback_base_url=AnyHttpUrl("http://localhost:8000"),
@@ -54,6 +77,9 @@ settings = Settings(
                 url="https://api.githubcopilot.com/mcp/",
                 auth=MCPServerAuthSettings(
                     oauth=MCPOAuthClientSettings(
+                        client_id=client_id,
+                        client_secret=client_secret,
+                        use_internal_callback=True,
                         enabled=True,
                         scopes=[
                             "read:org",  # Required for search_orgs tool
@@ -81,18 +107,16 @@ app = MCPApp(
 )
 
 
-@app.tool(name="github_org_search")
-async def github_org_search(query: str, app_ctx: Optional[AppContext] = None) -> str:
-    # Use the context's app if available for proper logging with upstream_session
-    _app = app_ctx.app if app_ctx else app
-    # Ensure the app's logger is bound to the current context with upstream_session
-    if _app._logger and hasattr(_app._logger, "_bound_context"):
-        _app._logger._bound_context = app_ctx
+@app.workflow_task(name="github_org_search_activity")
+async def github_org_search_activity(query: str) -> str:
+    from mcp_agent.mcp.gen_client import gen_client
 
+    print("running activity)")
     try:
         async with gen_client(
-            "github", server_registry=app_ctx.server_registry, context=app_ctx
+            "github", server_registry=app.context.server_registry, context=app.context
         ) as github_client:
+            print("got client")
             result = await github_client.call_tool(
                 "search_orgs",
                 {"query": query, "perPage": 10, "sort": "best-match", "order": "desc"},
@@ -111,11 +135,25 @@ async def github_org_search(query: str, app_ctx: Optional[AppContext] = None) ->
                         except json.JSONDecodeError:
                             pass
 
+            print(f"Organizations: {organizations}")
             return str(organizations)
-    except Exception:
+    except Exception as e:
         import traceback
 
-        return f"Error: {traceback.format_exc()}"
+        traceback.print_exc()
+        return f"Error: {e}"
+
+
+
+@app.tool(name="github_org_search")
+async def github_org_search(query: str, app_ctx: Optional[AppContext] = None) -> str:
+    if app._logger and hasattr(app._logger, "_bound_context"):
+        app._logger._bound_context = app.context
+
+    result = await app.executor.execute(github_org_search_activity, query)
+    print(f"Result: {result}")
+
+    return result
 
 
 async def main():

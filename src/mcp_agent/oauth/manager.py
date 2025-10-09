@@ -296,6 +296,105 @@ class TokenManager:
         )
         await self._token_store.set(key, record)
 
+    async def get_access_token_if_present(
+        self,
+        *,
+        context: "Context",
+        server_name: str,
+        server_config,
+        scopes: Iterable[str] | None = None,
+        identity: OAuthUserIdentity | None = None,
+    ) -> TokenRecord | None:
+        oauth_config: MCPOAuthClientSettings | None = None
+        if server_config and server_config.auth:
+            oauth_config = getattr(server_config.auth, "oauth", None)
+        if not oauth_config or not oauth_config.enabled:
+            raise OAuthFlowError(
+                f"Server '{server_name}' is not configured for OAuth authentication"
+            )
+
+        requested_scopes = (
+            list(scopes) if scopes is not None else list(oauth_config.scopes or [])
+        )
+        resolved = await self._resolve_oauth_context(
+            context=context,
+            server_name=server_name,
+            server_config=server_config,
+            oauth_config=oauth_config,
+            requested_scopes=requested_scopes,
+        )
+
+        context_identity = None
+        try:
+            from mcp_agent.server import app_server
+
+            context_identity = app_server.get_current_identity()
+        except Exception:
+            context_identity = None
+        session_identity = self._session_identity(context)
+
+        identity_candidates = [
+            identity,
+            context_identity,
+            session_identity,
+            self._default_identity,
+        ]
+        identities = _dedupe(identity_candidates)
+        if not identities:
+            raise MissingUserIdentityError(
+                "No authenticated user available for OAuth authorization"
+            )
+
+        leeway = (
+            self._settings.token_store.refresh_leeway_seconds
+            if self._settings.token_store
+            else 60
+        )
+
+        for identity in identities:
+            key = self._build_store_key(
+                identity,
+                resolved.resource,
+                resolved.issuer,
+                resolved.scopes,
+            )
+            lock = self._locks[key]
+            async with lock:
+                record = await self._token_store.get(key)
+                if record and not record.is_expired(leeway_seconds=leeway):
+                    return record
+
+                if record and record.refresh_token:
+                    try:
+                        refreshed = await self._refresh_token(
+                            record,
+                            oauth_config=oauth_config,
+                            auth_metadata=resolved.authorization_metadata,
+                            resource=resolved.resource,
+                            scopes=resolved.scopes,
+                        )
+                    except TokenRefreshError as exc:
+                        logger.warning(
+                            "Failed to refresh token for identity '%s': %s",
+                            identity.cache_key,
+                            exc,
+                        )
+                        await self._token_store.delete(key)
+                        continue
+
+                    if refreshed:
+                        refreshed = refreshed.model_copy(
+                            update={
+                                "resource": resolved.resource,
+                                "authorization_server": resolved.issuer,
+                            }
+                        )
+                        await self._token_store.set(key, refreshed)
+                        return refreshed
+
+                    await self._token_store.delete(key)
+        return None
+
     async def ensure_access_token(
         self,
         *,
@@ -332,6 +431,7 @@ class TokenManager:
         except Exception:
             context_identity = None
         session_identity = self._session_identity(context)
+
         identity_candidates = [
             identity,
             context_identity,
@@ -442,6 +542,7 @@ class TokenManager:
                     "authorization_server": resolved.issuer,
                 }
             )
+
             await self._token_store.set(user_key, record)
             return record
 
@@ -665,7 +766,33 @@ class TokenManager:
             await close()
 
     def _session_identity(self, context: "Context") -> OAuthUserIdentity | None:
-        session_id = getattr(context, "session_id", None)
+        in_temporal = False
+        try:
+            from temporalio import workflow as _wf  # type: ignore
+            from temporalio import activity as _a  # type: ignore
+
+            try:
+                in_temporal = bool(_wf.in_workflow()) or bool(_a.in_activity())
+            except Exception:
+                in_temporal = False
+        except Exception:
+            in_temporal = False
+
+        session_id = None
+        if in_temporal:
+            # Base the identity on the Temporal workflow execution ID
+            try:
+                from mcp_agent.executor.temporal.temporal_context import (
+                    get_execution_id as _get_exec_id,
+                )
+                session_id = _get_exec_id()
+            except Exception:
+                pass
+
+        if not session_id:
+            session_id = getattr(context, "session_id", None)
+
         if not session_id:
             return None
         return OAuthUserIdentity(provider="mcp-session", subject=str(session_id))
+
