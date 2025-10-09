@@ -1,5 +1,4 @@
 import json
-import os
 from importlib import import_module
 from pathlib import Path
 
@@ -10,7 +9,6 @@ def test_schema_matches_model():
     schema_path = Path(__file__).parents[2] / "schema" / "context.manifest.schema.json"
     with open(schema_path, "r", encoding="utf-8") as f:
         on_disk = json.load(f)
-
     generated = Manifest.model_json_schema()
     # Compare a few stable, meaningful keys rather than exact dict
     assert on_disk.get("title") == generated.get("title")
