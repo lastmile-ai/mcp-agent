@@ -9,6 +9,7 @@ from mcp_agent.registry.store import ToolRegistryStore
 
 # Try to import opentelemetry, provide dummy classes if unavailable
 try:
+    from opentelemetry.metrics import get_meter
     _meter = get_meter(__name__)
 except ImportError:
     # Dummy classes for test collection without opentelemetry
@@ -131,58 +132,58 @@ def _load_mcp_transport(base_url: str) -> Optional[Dict[str, Any]]:
     return {"type": "http", "base_url": base_url}
 
 
-async def discover(entries: List[Dict[str, Any]], timeout: float = 5.0) -> List[Dict[str, Any]]:
-    """Probe each entry for "/.well-known/mcp" and "/health" and summarize.
-
-    Returns a list of dicts mirroring entries with added keys:
-      - alive: bool
-      - well_known: bool
-      - capabilities: dict (if present in well-known)
+async def discover(
+    entries: List[Dict[str, Any]],
+    timeout: float = 5.0
+) -> List[Dict[str, Any]]:
     """
-    results: List[Dict[str, Any]] = []
-    timeout = float(timeout)
+    Discover MCP servers by querying their .well-known/mcp.json endpoints.
 
+    Args:
+        entries: List of server entries, each containing 'name' and 'base_url'.
+        timeout: Request timeout in seconds (default: 5.0).
+
+    Returns:
+        List of discovery results, each containing:
+        - alive: bool indicating if server is reachable
+        - well_known: dict with server metadata (if available)
+        - capabilities: dict with server capabilities (if available)
+    """
+    results = []
+    
     async with httpx.AsyncClient(timeout=timeout) as client:
-        for e in entries or []:
-            base = (e.get("base_url") or "").rstrip("/")
-            info: Dict[str, Any] = dict(e) if isinstance(e, dict) else {"base_url": str(e)}
-            info.setdefault("capabilities", {})
-            info["alive"] = False
-            info["well_known"] = False
-
-            # Probe .well-known/mcp
+        for entry in entries:
+            result = {
+                "alive": False,
+                "well_known": None,
+                "capabilities": None
+            }
+            
             try:
-                wk = await client.get(f"{base}/.well-known/mcp")
-                if wk.status_code == 200:
-                    info["well_known"] = True
-                    try:
-                        data = wk.json()
-                        if isinstance(data, dict):
-                            caps = data.get("capabilities") or {}
-                            if isinstance(caps, dict):
-                                info["capabilities"] = caps
-                    except Exception:
-                        pass
+                base_url = entry.get("base_url", "")
+                if not base_url:
+                    results.append(result)
+                    continue
+                
+                # Ensure base_url doesn't end with /
+                base_url = base_url.rstrip("/")
+                well_known_url = f"{base_url}/.well-known/mcp.json"
+                
+                response = await client.get(well_known_url)
+                
+                if response.status_code == 200:
+                    result["alive"] = True
+                    data = response.json()
+                    result["well_known"] = data
+                    result["capabilities"] = data.get("capabilities", {})
+                
             except Exception:
+                # Server not reachable or error occurred
                 pass
-
-            # Probe /health
-            try:
-                h = await client.get(f"{base}/health")
-                if 200 <= h.status_code < 300:
-                    try:
-                        hj = h.json()
-                        ok = hj.get("ok") if isinstance(hj, dict) else None
-                        info["alive"] = bool(ok) if ok is not None else True
-                    except Exception:
-                        info["alive"] = True
-            except Exception:
-                info["alive"] = False
-
-            results.append(info)
-
+            
+            results.append(result)
+    
     return results
-
 
 
 def load_tools_yaml(file_path: str) -> Dict[str, Any]:
@@ -206,4 +207,3 @@ def load_tools_yaml(file_path: str) -> Dict[str, Any]:
         content = yaml.safe_load(f)
     
     return content if content is not None else {}
-
