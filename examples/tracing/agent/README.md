@@ -16,10 +16,10 @@ If desired, [install Jaeger locally](https://www.jaegertracing.io/docs/2.5/getti
 otel:
   enabled: true
   exporters:
-    - type: console
-    - type: file
-    - type: otlp
-      endpoint: "http://localhost:4318/v1/traces"
+    - console: {}
+    - file: {}
+    - otlp:
+        endpoint: "http://localhost:4318/v1/traces"
 ```
 
 <img width="2160" alt="Image" src="https://github.com/user-attachments/assets/93ffc4e5-f255-43a9-be3a-755994fec809" />

@@ -4,9 +4,6 @@ import pytest
 from pydantic_core import ValidationError
 
 from mcp_agent.config import (
-    ConsoleExporterSettings,
-    FileExporterSettings,
-    OTLPExporterSettings,
     OpenTelemetrySettings,
     Settings,
     TraceOTLPSettings,

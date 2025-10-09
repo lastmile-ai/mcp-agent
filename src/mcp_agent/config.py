@@ -585,12 +585,12 @@ class OpenTelemetrySettings(BaseModel):
     either a plain string name (e.g. "console") or a keyed mapping (e.g.
     `{file: {path: "path/to/file"}}`).
 
-    Backward examples:
+    Backward compatible:
       - `exporters: ["console", "otlp"]`
       - `exporters: [{type: "file", path: "/tmp/out"}]`
-    New v3 examples:
-      - `exporters: ["console", "file", otlp: {endpoint: "https://"}]`
-      - `exporters: [console: {}, file: {path: "trace.jsonl"}]`
+    Schema:
+      - `exporters: [console: {}, file: {path: "trace.jsonl"}, otlp: {endpoint: "https://..."}]`
+      - `exporters: ["console", {file: {path: "trace.jsonl"}}]`
 
     Strings fall back to legacy fields like `otlp_settings`, `path`, and
     `path_settings` when no explicit config is present"""
@@ -602,9 +602,8 @@ class OpenTelemetrySettings(BaseModel):
     sample_rate: float = 1.0
     """Sample rate for tracing (1.0 = sample everything)"""
 
-    # Deprecated V1 field: use exporters list with V3 syntax instead
     otlp_settings: TraceOTLPSettings | None = None
-    """Deprecated V1 field for single OTLP exporter. Prefer V3 syntax: exporters: [{otlp: {endpoint: "..."}}]"""
+    """Deprecated field for single OTLP exporter. Prefer syntax: exporters: [{otlp: {endpoint: "..."}}]"""
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
@@ -612,7 +611,7 @@ class OpenTelemetrySettings(BaseModel):
     @classmethod
     def _coerce_exporters_schema(cls, data: Dict) -> Dict:
         """
-        Normalize exporter entries to V3 format for backward compatibility.
+        Normalize exporter entries for backward compatibility.
 
         This validator handles three schema versions:
         - V1: String exporters like ["console", "file", "otlp"] with top-level legacy fields

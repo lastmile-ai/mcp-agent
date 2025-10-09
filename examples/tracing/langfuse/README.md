@@ -61,8 +61,8 @@ Lastly, ensure the proper trace endpoint is configured in the typed exporter in 
 otel:
   enabled: true
   exporters:
-    - type: otlp
-      endpoint: "https://us.cloud.langfuse.com/api/public/otel/v1/traces"
+    - otlp:
+        endpoint: "https://us.cloud.langfuse.com/api/public/otel/v1/traces"
 ```
 
 ## `4` Run locally

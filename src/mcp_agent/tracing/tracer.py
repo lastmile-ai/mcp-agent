@@ -11,9 +11,6 @@ from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExport
 
 from mcp_agent.config import (
     OpenTelemetrySettings,
-    ConsoleExporterSettings,
-    FileExporterSettings,
-    OTLPExporterSettings,
     TracePathSettings,
 )
 from mcp_agent.logging.logger import get_logger
