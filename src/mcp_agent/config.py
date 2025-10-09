@@ -602,9 +602,6 @@ class OpenTelemetrySettings(BaseModel):
     sample_rate: float = 1.0
     """Sample rate for tracing (1.0 = sample everything)"""
 
-    otlp_settings: TraceOTLPSettings | None = None
-    """Deprecated field for single OTLP exporter. Prefer syntax: exporters: [{otlp: {endpoint: "..."}}]"""
-
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
     @model_validator(mode="before")
@@ -613,15 +610,15 @@ class OpenTelemetrySettings(BaseModel):
         """
         Normalize exporter entries for backward compatibility.
 
-        This validator handles three schema versions:
-        - V1: String exporters like ["console", "file", "otlp"] with top-level legacy fields
-        - V2: Discriminated union with 'type' field: [{type: "console"}, {type: "otlp", endpoint: "..."}]
-        - V3: Dict key as discriminator: [{console: {}}, {otlp: {endpoint: "..."}}]
+        This validator handles three exporter formats:
+        - String exporters like ["console", "file", "otlp"] with top-level legacy fields
+        - Type-discriminated format with 'type' field: [{type: "console"}, {type: "otlp", endpoint: "..."}]
+        - Key-discriminated format: [{console: {}}, {otlp: {endpoint: "..."}}]
 
         Conversion logic:
-        - V1 strings → Keep as-is, will be finalized in _finalize_exporters using legacy fields
-        - V2 {type: "X", ...} → Convert to V3 {X: {...}} by removing 'type' and using it as dict key
-        - V3 {X: {...}} → Keep as-is (already in correct format)
+        - String exporters → Keep as-is, will be finalized in _finalize_exporters using legacy fields
+        - {type: "X", ...} → Convert to {X: {...}} by removing 'type' and using it as dict key
+        - {X: {...}} → Keep as-is (already in correct format)
         """
         if not isinstance(data, dict):
             return data
@@ -633,7 +630,7 @@ class OpenTelemetrySettings(BaseModel):
         normalized: List[Union[str, Dict[str, Dict[str, object]]]] = []
 
         for entry in exporters:
-            # V1/V3: plain string like "console" or "file"
+            # Plain string like "console" or "file"
             # These will be expanded later using legacy fields (path, otlp_settings, etc.)
             if isinstance(entry, str):
                 normalized.append(entry)
@@ -651,7 +648,7 @@ class OpenTelemetrySettings(BaseModel):
                 # Fall through to dict processing below
 
             if isinstance(entry, dict):
-                # V2 → V3 conversion: Extract 'type' field and use it as the dict key
+                # Type-discriminated format: Extract 'type' field and use it as the dict key
                 # Example: {type: "otlp", endpoint: "..."} → {otlp: {endpoint: "..."}}
                 if "type" in entry:
                     entry = entry.copy()
@@ -659,7 +656,7 @@ class OpenTelemetrySettings(BaseModel):
                     normalized.append({exporter_type: entry})
                     continue
 
-                # V3 format: Single-key dict like {console: {}} or {otlp: {endpoint: "..."}}
+                # Key-discriminated format: Single-key dict like {console: {}} or {otlp: {endpoint: "..."}}
                 if len(entry) == 1:
                     normalized.append(entry)
                     continue
@@ -678,26 +675,26 @@ class OpenTelemetrySettings(BaseModel):
     @classmethod
     def _finalize_exporters(cls, values: "OpenTelemetrySettings"):
         """
-        Convert exporter entries to V3 dict format for serialization compatibility.
+        Convert exporter entries to key-discriminated dict format for serialization compatibility.
 
         This validator runs after Pydantic validation and:
-        1. Extracts V1 legacy fields (path, path_settings, otlp_settings) from the model
-        2. Converts string exporters and dict exporters to V3 dict format
+        1. Extracts legacy top-level fields (path, path_settings, otlp_settings) from the model
+        2. Converts string exporters and dict exporters to key-discriminated dict format
         3. Falls back to legacy fields when string exporters don't provide explicit config
         4. Removes legacy fields from the model to avoid leaking them in serialization
 
-        Output format is V3 dicts (e.g., {console: {}}, {file: {path: "..."}}) to ensure
+        Output format is key-discriminated dicts (e.g., {console: {}}, {file: {path: "..."}}) to ensure
         that re-serialization and re-validation works correctly.
 
-        Example V1 conversions:
+        Example conversions:
         - "file" + path="trace.jsonl" → {file: {path: "trace.jsonl"}}
         - "otlp" + otlp_settings={endpoint: "..."} → {otlp: {endpoint: "...", headers: ...}}
         """
 
         finalized_exporters: List[Dict[str, Dict[str, Any]]] = []
 
-        # Extract V1 legacy fields (captured via extra="allow" in model_config)
-        # V1 schema had these fields at the top level of OpenTelemetrySettings
+        # Extract legacy top-level fields (captured via extra="allow" in model_config)
+        # These fields were previously defined at the top level of OpenTelemetrySettings
         legacy_path = getattr(values, "path", None)
         legacy_path_settings = getattr(values, "path_settings", None)
 
@@ -713,15 +710,15 @@ class OpenTelemetrySettings(BaseModel):
                 getattr(legacy_path_settings, "model_dump", lambda **_: legacy_path_settings)()
             )
 
-        # Extract V1 otlp_settings and normalize to dict
-        legacy_otlp = values.otlp_settings
+        # Extract legacy otlp_settings and normalize to dict
+        legacy_otlp = getattr(values, "otlp_settings", None)
         if isinstance(legacy_otlp, BaseModel):
             legacy_otlp = legacy_otlp.model_dump(exclude_none=True)
         elif not isinstance(legacy_otlp, dict):
             legacy_otlp = {}
 
         for exporter in values.exporters:
-            # If already a typed BaseModel instance, convert to V3 dict format
+            # If already a typed BaseModel instance, convert to key-discriminated dict format
             if isinstance(exporter, ConsoleExporterSettings):
                 console_dict = exporter.model_dump(exclude_none=True)
                 finalized_exporters.append({"console": console_dict})
@@ -785,6 +782,8 @@ class OpenTelemetrySettings(BaseModel):
             delattr(values, "path")
         if hasattr(values, "path_settings"):
             delattr(values, "path_settings")
+        if hasattr(values, "otlp_settings"):
+            delattr(values, "otlp_settings")
 
         return values
 
@@ -1057,16 +1056,30 @@ def get_settings(config_path: str | None = None, set_global: bool = True) -> Set
         Settings instance with loaded configuration.
     """
 
-    def deep_merge(base: dict, update: dict) -> dict:
-        """Recursively merge two dictionaries, preserving nested structures."""
+    def deep_merge(base: dict, update: dict, path: tuple = ()) -> dict:
+        """Recursively merge two dictionaries, preserving nested structures.
+
+        Special handling for 'exporters' lists under 'otel' key:
+        - Concatenates lists instead of replacing them
+        - Allows combining exporters from config and secrets files
+        """
         merged = base.copy()
         for key, value in update.items():
+            current_path = path + (key,)
             if (
                 key in merged
                 and isinstance(merged[key], dict)
                 and isinstance(value, dict)
             ):
-                merged[key] = deep_merge(merged[key], value)
+                merged[key] = deep_merge(merged[key], value, current_path)
+            elif (
+                key in merged
+                and isinstance(merged[key], list)
+                and isinstance(value, list)
+                and current_path == ("otel", "exporters")
+            ):
+                # Concatenate exporters lists from config and secrets
+                merged[key] = merged[key] + value
             else:
                 merged[key] = value
         return merged

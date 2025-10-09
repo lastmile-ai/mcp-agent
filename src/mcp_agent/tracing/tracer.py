@@ -115,15 +115,15 @@ class TracingConfig:
         tracer_provider = TracerProvider(**tracer_provider_kwargs)
 
         for exporter in settings.exporters:
-            # Determine exporter type from V3 dict format: {console: {}}, {file: {...}}, {otlp: {...}}
+            # Determine exporter type from dict format: {console: {}}, {file: {...}}, {otlp: {...}}
             exporter_type = None
             payload = {}
 
             if isinstance(exporter, str):
-                # Legacy V1 string format
+                # Legacy string format
                 exporter_type = exporter
             elif isinstance(exporter, dict):
-                # V3 dict format: {exporter_name: {config}}
+                # Key-discriminated dict format: {exporter_name: {config}}
                 if len(exporter) == 1:
                     exporter_type, payload = next(iter(exporter.items()))
                     if payload is None:
@@ -140,14 +140,15 @@ class TracingConfig:
                     )
                 )
             elif exporter_type == "otlp":
-                # Extract endpoint/headers from V3 dict payload
+                # Extract endpoint/headers from dict payload
                 endpoint = payload.get("endpoint") if isinstance(payload, dict) else None
                 headers = payload.get("headers") if isinstance(payload, dict) else None
 
                 # Fall back to legacy otlp_settings if not provided in payload
-                if settings.otlp_settings:
-                    endpoint = endpoint or getattr(settings.otlp_settings, "endpoint", None)
-                    headers = headers or getattr(settings.otlp_settings, "headers", None)
+                legacy_otlp = getattr(settings, "otlp_settings", None)
+                if legacy_otlp:
+                    endpoint = endpoint or getattr(legacy_otlp, "endpoint", None)
+                    headers = headers or getattr(legacy_otlp, "headers", None)
 
                 if endpoint:
                     tracer_provider.add_span_processor(
@@ -163,7 +164,7 @@ class TracingConfig:
                         "OTLP exporter is enabled but no OTLP settings endpoint is provided."
                     )
             elif exporter_type == "file":
-                # Extract path and path_settings from V3 dict payload
+                # Extract path and path_settings from dict payload
                 custom_path = payload.get("path") if isinstance(payload, dict) else None
                 path_settings = payload.get("path_settings") if isinstance(payload, dict) else None
 

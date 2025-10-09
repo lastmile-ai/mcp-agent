@@ -27,8 +27,8 @@ openai:
 otel:
   enabled: true
   exporters:
-    - console: {}
-    - file: {}
+    - console
+    - file
     # To export to a collector, also include:
     # - otlp:
     #     endpoint: "http://localhost:4318/v1/traces"

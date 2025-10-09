@@ -16,8 +16,8 @@ If desired, [install Jaeger locally](https://www.jaegertracing.io/docs/2.5/getti
 otel:
   enabled: true
   exporters:
-    - console: {}
-    - file: {}
+    - console
+    - file
     - otlp:
         endpoint: "http://localhost:4318/v1/traces"
 ```

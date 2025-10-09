@@ -29,8 +29,8 @@ Then update the `mcp_agent.config.yaml` to include a typed OTLP exporter with th
 otel:
   enabled: true
   exporters:
-    - console: {}
-    - file: {}
+    - console
+    - file
     - otlp:
         endpoint: "http://localhost:4318/v1/traces"
 ```

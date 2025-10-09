@@ -1,4 +1,4 @@
-"""Tests for OpenTelemetry exporter configuration handling across V1, V2, and V3 schemas."""
+"""Tests for OpenTelemetry exporter configuration handling across different formats."""
 
 import pytest
 from pydantic_core import ValidationError
@@ -12,14 +12,14 @@ from mcp_agent.config import (
 
 
 def _assert_console_exporter(exporter):
-    """Assert that exporter is in V3 console format: {console: {...}}."""
+    """Assert that exporter is in key-discriminated console format: {console: {...}}."""
     assert isinstance(exporter, dict)
     assert "console" in exporter
     assert isinstance(exporter["console"], dict)
 
 
 def _assert_file_exporter(exporter, path=None, path_pattern=None):
-    """Assert that exporter is in V3 file format with optional path checks."""
+    """Assert that exporter is in key-discriminated file format with optional path checks."""
     assert isinstance(exporter, dict)
     assert "file" in exporter
     file_config = exporter["file"]
@@ -36,7 +36,7 @@ def _assert_file_exporter(exporter, path=None, path_pattern=None):
 
 
 def _assert_otlp_exporter(exporter, endpoint: str | None = None, headers: dict | None = None):
-    """Assert that exporter is in V3 OTLP format with optional field checks."""
+    """Assert that exporter is in key-discriminated OTLP format with optional field checks."""
     assert isinstance(exporter, dict)
     assert "otlp" in exporter
     otlp_config = exporter["otlp"]
@@ -48,11 +48,11 @@ def _assert_otlp_exporter(exporter, endpoint: str | None = None, headers: dict |
 
 
 # ============================================================================
-# V1 Schema Tests (String exporters with legacy top-level fields)
+# String Exporter Tests (with legacy top-level fields)
 # ============================================================================
 
 def test_v1_string_exporters_with_legacy_fields():
-    """Test V1 schema: exporters as strings with top-level path/otlp_settings."""
+    """Test string exporters with top-level path/otlp_settings."""
     settings = OpenTelemetrySettings(
         enabled=True,
         exporters=["console", "file", "otlp"],
@@ -82,7 +82,7 @@ def test_v1_string_exporters_with_legacy_fields():
 
 
 def test_v1_file_exporter_with_base_model_path_settings():
-    """Test V1 with TracePathSettings as BaseModel."""
+    """Test string exporter with TracePathSettings as BaseModel."""
     settings = OpenTelemetrySettings(
         enabled=True,
         exporters=["file"],
@@ -107,7 +107,7 @@ def test_v1_file_exporter_with_base_model_path_settings():
 
 
 def test_v1_otlp_exporter_with_base_model():
-    """Test V1 with TraceOTLPSettings as BaseModel."""
+    """Test string exporter with TraceOTLPSettings as BaseModel."""
     settings = OpenTelemetrySettings(
         enabled=True,
         exporters=["otlp"],
@@ -126,7 +126,7 @@ def test_v1_otlp_exporter_with_base_model():
 
 
 def test_v1_string_exporters_without_legacy_fields():
-    """Test V1 string exporters without legacy fields (should create empty settings)."""
+    """Test string exporters without legacy fields (should create empty settings)."""
     settings = OpenTelemetrySettings(
         enabled=True,
         exporters=["console", "file", "otlp"],
@@ -139,11 +139,11 @@ def test_v1_string_exporters_without_legacy_fields():
 
 
 # ============================================================================
-# V2 Schema Tests (Discriminated union with 'type' field)
+# Type-Discriminated Exporter Tests (using 'type' field)
 # ============================================================================
 
 def test_v2_type_discriminated_union():
-    """Test V2 schema: exporters with 'type' discriminator field."""
+    """Test exporters with 'type' discriminator field."""
     settings = OpenTelemetrySettings(
         enabled=True,
         exporters=[
@@ -160,7 +160,7 @@ def test_v2_type_discriminated_union():
 
 
 def test_v2_multiple_otlp_exporters():
-    """Test V2 schema supports multiple OTLP exporters with different endpoints."""
+    """Test type-discriminated format supports multiple OTLP exporters with different endpoints."""
     settings = OpenTelemetrySettings(
         enabled=True,
         exporters=[
@@ -179,7 +179,7 @@ def test_v2_multiple_otlp_exporters():
 
 
 def test_v2_file_exporter_with_path_settings():
-    """Test V2 file exporter with nested path_settings."""
+    """Test type-discriminated file exporter with nested path_settings."""
     settings = OpenTelemetrySettings(
         enabled=True,
         exporters=[
@@ -210,11 +210,11 @@ def test_v2_file_exporter_with_path_settings():
 
 
 # ============================================================================
-# V3 Schema Tests (Dict key as discriminator, no 'type' field)
+# Key-Discriminated Exporter Tests (dict key, no 'type' field)
 # ============================================================================
 
 def test_v3_dict_key_discriminator():
-    """Test V3 schema: exporters use dict keys as discriminators."""
+    """Test key-discriminated format: exporters use dict keys as discriminators."""
     settings = OpenTelemetrySettings(
         enabled=True,
         exporters=[
@@ -231,7 +231,7 @@ def test_v3_dict_key_discriminator():
 
 
 def test_v3_multiple_exporters_same_type():
-    """Test V3 supports multiple exporters of the same type."""
+    """Test key-discriminated format supports multiple exporters of the same type."""
     settings = OpenTelemetrySettings(
         enabled=True,
         exporters=[
@@ -252,7 +252,7 @@ def test_v3_multiple_exporters_same_type():
 
 
 def test_v3_file_exporter_with_advanced_path_settings():
-    """Test V3 file exporter with complex path_settings."""
+    """Test key-discriminated file exporter with complex path_settings."""
     settings = OpenTelemetrySettings(
         enabled=True,
         exporters=[
@@ -286,7 +286,7 @@ def test_v3_file_exporter_with_advanced_path_settings():
 
 
 def test_v3_console_exporter_empty_dict():
-    """Test V3 console exporter with empty dict (no extra settings needed)."""
+    """Test key-discriminated console exporter with empty dict (no extra settings needed)."""
     settings = OpenTelemetrySettings(
         enabled=True,
         exporters=[{"console": {}}],
@@ -301,12 +301,12 @@ def test_v3_console_exporter_empty_dict():
 # ============================================================================
 
 def test_mixed_v1_and_v3_string_and_dict():
-    """Test mixing V1 strings with V3 dict syntax in the same config."""
+    """Test mixing string exporters with key-discriminated dict syntax in the same config."""
     settings = OpenTelemetrySettings(
         enabled=True,
         exporters=[
-            "console",  # V1 string
-            {"file": {"path": "/tmp/trace.jsonl"}},  # V3 dict
+            "console",  # String exporter
+            {"file": {"path": "/tmp/trace.jsonl"}},  # Key-discriminated dict
         ],
     )
 
@@ -316,7 +316,7 @@ def test_mixed_v1_and_v3_string_and_dict():
 
 
 def test_v2_to_v3_conversion():
-    """Test that V2 format is automatically converted to V3 internal format."""
+    """Test that type-discriminated format is automatically converted to key-discriminated internal format."""
     v2_settings = OpenTelemetrySettings(
         enabled=True,
         exporters=[
@@ -335,7 +335,7 @@ def test_v2_to_v3_conversion():
 
 
 def test_v1_legacy_fields_removed_after_finalization():
-    """Test that V1 legacy fields are removed from the model after conversion."""
+    """Test that legacy top-level fields are removed from the model after conversion."""
     settings = OpenTelemetrySettings(
         enabled=True,
         exporters=["file"],
@@ -364,7 +364,7 @@ def test_invalid_exporter_format_raises():
 
 
 def test_invalid_dict_exporter_with_multi_keys_raises():
-    """Test that V3 dict exporters with multiple keys raise ValueError."""
+    """Test that key-discriminated dict exporters with multiple keys raise ValueError."""
     with pytest.raises(ValidationError, match="OpenTelemetry exporters must be strings"):
         OpenTelemetrySettings(
             exporters=[
@@ -386,7 +386,7 @@ def test_settings_default_construction():
 
 
 def test_v1_full_config_via_settings():
-    """Test V1 config loaded via full Settings model."""
+    """Test string exporter config loaded via full Settings model."""
     settings = Settings(
         otel={
             "enabled": True,
@@ -402,7 +402,7 @@ def test_v1_full_config_via_settings():
 
 
 def test_v2_full_config_via_settings():
-    """Test V2 config loaded via full Settings model."""
+    """Test type-discriminated config loaded via full Settings model."""
     settings = Settings(
         otel={
             "enabled": True,
@@ -422,7 +422,7 @@ def test_v2_full_config_via_settings():
 
 
 def test_v3_full_config_via_settings():
-    """Test V3 config loaded via full Settings model."""
+    """Test key-discriminated config loaded via full Settings model."""
     settings = Settings(
         otel={
             "enabled": True,
@@ -441,3 +441,163 @@ def test_v3_full_config_via_settings():
     assert len(settings.otel.exporters) == 2
     _assert_console_exporter(settings.otel.exporters[0])
     _assert_otlp_exporter(settings.otel.exporters[1], endpoint="https://collector.example.com:4318")
+
+
+def test_merge_otel_exporters_from_config_and_secrets():
+    """Test that OTEL exporters from config.yaml and secrets.yaml are merged together."""
+    from mcp_agent.config import get_settings
+
+    # Simulate config.yaml with one OTLP exporter (public endpoint)
+    config_data = {
+        "otel": {
+            "exporters": [
+                {"otlp": {
+                    "endpoint": "https://us.cloud.langfuse.com/api/public/otel/v1/traces",
+                    "headers": {"Authorization": "Basic AUTH_STRING"}
+                }}
+            ]
+        }
+    }
+
+    # Simulate secrets.yaml with another OTLP exporter (secret endpoint)
+    secrets_data = {
+        "otel": {
+            "enabled": True,
+            "exporters": [
+                {"otlp": {"endpoint": "https://some-other-otel-exporter"}}
+            ]
+        }
+    }
+
+    # Manually perform deep merge as get_settings does internally
+    def deep_merge(base: dict, update: dict, path: tuple = ()) -> dict:
+        """Recursively merge two dictionaries, preserving nested structures.
+
+        Special handling for 'exporters' lists under 'otel' key:
+        - Concatenates lists instead of replacing them
+        - Allows combining exporters from config and secrets files
+        """
+        merged = base.copy()
+        for key, value in update.items():
+            current_path = path + (key,)
+            if (
+                key in merged
+                and isinstance(merged[key], dict)
+                and isinstance(value, dict)
+            ):
+                merged[key] = deep_merge(merged[key], value, current_path)
+            elif (
+                key in merged
+                and isinstance(merged[key], list)
+                and isinstance(value, list)
+                and current_path == ("otel", "exporters")
+            ):
+                # Concatenate exporters lists from config and secrets
+                merged[key] = merged[key] + value
+            else:
+                merged[key] = value
+        return merged
+
+    merged = deep_merge(config_data, secrets_data)
+    settings = Settings(**merged)
+
+    # Verify both exporters are present
+    assert settings.otel.enabled is True
+    assert len(settings.otel.exporters) == 2
+
+    # Verify first exporter (from config.yaml)
+    _assert_otlp_exporter(
+        settings.otel.exporters[0],
+        endpoint="https://us.cloud.langfuse.com/api/public/otel/v1/traces",
+        headers={"Authorization": "Basic AUTH_STRING"}
+    )
+
+    # Verify second exporter (from secrets.yaml)
+    _assert_otlp_exporter(
+        settings.otel.exporters[1],
+        endpoint="https://some-other-otel-exporter"
+    )
+
+
+def test_merge_non_otel_lists_are_replaced_not_concatenated():
+    """Test that non-OTEL lists are replaced, not concatenated (default behavior)."""
+    # Manually perform deep merge as get_settings does internally
+    def deep_merge(base: dict, update: dict, path: tuple = ()) -> dict:
+        """Recursively merge two dictionaries, preserving nested structures.
+
+        Special handling for 'exporters' lists under 'otel' key:
+        - Concatenates lists instead of replacing them
+        - Allows combining exporters from config and secrets files
+        """
+        merged = base.copy()
+        for key, value in update.items():
+            current_path = path + (key,)
+            if (
+                key in merged
+                and isinstance(merged[key], dict)
+                and isinstance(value, dict)
+            ):
+                merged[key] = deep_merge(merged[key], value, current_path)
+            elif (
+                key in merged
+                and isinstance(merged[key], list)
+                and isinstance(value, list)
+                and current_path == ("otel", "exporters")
+            ):
+                # Concatenate exporters lists from config and secrets
+                merged[key] = merged[key] + value
+            else:
+                merged[key] = value
+        return merged
+
+    # Test with logger.transports (should be replaced, not concatenated)
+    config_data = {
+        "logger": {
+            "transports": ["console", "file"]
+        }
+    }
+    secrets_data = {
+        "logger": {
+            "transports": ["http"]
+        }
+    }
+    merged = deep_merge(config_data, secrets_data)
+    # Should be replaced, not concatenated
+    assert merged["logger"]["transports"] == ["http"]
+    assert len(merged["logger"]["transports"]) == 1
+
+    # Test with mcp.servers (dict, should be merged)
+    config_data = {
+        "mcp": {
+            "servers": {
+                "fetch": {"command": "uvx", "args": ["mcp-server-fetch"]}
+            }
+        }
+    }
+    secrets_data = {
+        "mcp": {
+            "servers": {
+                "filesystem": {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem"]}
+            }
+        }
+    }
+    merged = deep_merge(config_data, secrets_data)
+    # Both servers should be present (dicts are merged)
+    assert "fetch" in merged["mcp"]["servers"]
+    assert "filesystem" in merged["mcp"]["servers"]
+
+    # Test with a nested list that's NOT otel.exporters (should be replaced)
+    config_data = {
+        "agents": {
+            "search_paths": [".claude/agents", "~/.claude/agents"]
+        }
+    }
+    secrets_data = {
+        "agents": {
+            "search_paths": [".mcp-agent/agents"]
+        }
+    }
+    merged = deep_merge(config_data, secrets_data)
+    # Should be replaced, not concatenated
+    assert merged["agents"]["search_paths"] == [".mcp-agent/agents"]
+    assert len(merged["agents"]["search_paths"]) == 1
