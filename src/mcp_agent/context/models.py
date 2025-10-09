@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 def utc_now_iso() -> str:
@@ -55,6 +55,7 @@ class AssembleInputs(BaseModel):
 
 
 class AssembleOptions(BaseModel):
+    model_config = ConfigDict(extra='allow')
     top_k: int = 25
     neighbor_radius: int = 20
     token_budget: Optional[int] = None

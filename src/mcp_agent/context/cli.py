@@ -77,8 +77,7 @@ def _main_impl(argv: Optional[List[str]] = None):
 
     print(json.dumps(manifest.model_dump(), indent=2))
 
-def main():
-    _main_impl()
-
+def main(argv: Optional[List[str]] = None) -> int:
+    return _main_impl(argv)
 if __name__ == "__main__":
     main()

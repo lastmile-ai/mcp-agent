@@ -3,7 +3,6 @@ import json
 from typing import Any, Dict, Optional, Protocol, Tuple
 from .assemble import assemble_context, ToolKit, NoopToolKit
 from .models import AssembleInputs, AssembleOptions, AssembleReport, Manifest
-from .telemetry import meter
 from .settings import ContextSettings
 from .logutil import redact_event
 

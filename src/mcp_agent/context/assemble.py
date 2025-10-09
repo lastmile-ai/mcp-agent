@@ -188,13 +188,13 @@ async def assemble_context(
 
     try:
         for tgt in inputs.task_targets or []:
-            res = await _with_timeout(tk.semantic_search(str(tgt), int(options.top_k)), settings.SEMANTIC_TIMEOUT_MS, "semantic_search")
+            res = await _with_timeout(tk.semantic_search(str(tgt), int(options.top_k)), (options.timeouts_ms.get('semantic', settings.SEMANTIC_TIMEOUT_MS)), "semantic_search")
             for s in res:
                 s.reason = s.reason or "semantic_search"
                 s.tool = s.tool or "semantic_search"
             spans.extend(_guard_payload(res, "semantic_search", "semantic_search"))
         for rf in inputs.referenced_files or []:
-            res = await _with_timeout(tk.symbols(str(rf)), settings.SYMBOLS_TIMEOUT_MS, "symbols")
+            res = await _with_timeout(tk.symbols(str(rf)), (options.timeouts_ms.get('symbols', settings.SYMBOLS_TIMEOUT_MS)), "symbols")
             for s in res:
                 s.reason = s.reason or "symbols"
                 s.tool = s.tool or "symbols"
@@ -203,7 +203,7 @@ async def assemble_context(
             p = ft.get("path") if isinstance(ft, dict) else None
             line = ft.get("line", 0) if isinstance(ft, dict) else 0
             if p:
-                res = await _with_timeout(tk.neighbors(str(p), int(line), int(options.neighbor_radius)), settings.NEIGHBORS_TIMEOUT_MS, "neighbors")
+                res = await _with_timeout(tk.neighbors(str(p), int(line), int(options.neighbor_radius)), (options.timeouts_ms.get('neighbors', settings.NEIGHBORS_TIMEOUT_MS)), "neighbors")
                 for s in res:
                     s.reason = s.reason or "neighbors"
                     s.tool = s.tool or "neighbors"
@@ -213,7 +213,7 @@ async def assemble_context(
         patterns = ContextSettings().AST_GREP_PATTERNS or []
         pattern_inputs = list(set(globs + patterns))
         if pattern_inputs:
-            res = await _with_timeout(tk.patterns(pattern_inputs), settings.PATTERNS_TIMEOUT_MS, "patterns")
+            res = await _with_timeout(tk.patterns(pattern_inputs), (options.timeouts_ms.get('patterns', settings.PATTERNS_TIMEOUT_MS)), "patterns")
             for s in res:
                 s.reason = s.reason or "patterns"
                 s.tool = s.tool or "patterns"
@@ -240,7 +240,7 @@ async def assemble_context(
 
     dur_ms = (time.perf_counter() - t0) * 1000.0
     attrs = {"phase": "assemble", "pack_hash": pack_hash, **(telemetry_attrs or {})}
-    m.record_duration_ms(dur_ms, attributes=attrs)
+    m.record_duration_ms(dur_ms, attrs)
     if report.overflow:
         m.inc_overflow(len(report.overflow), attributes=attrs)
 
@@ -259,3 +259,7 @@ async def assemble_context(
     red_evt = redact_event(event, ContextSettings().REDACT_PATH_GLOBS)
     log_structured(**red_evt)
     return manifest, pack_hash, report
+
+
+async def assemble(inputs: AssembleInputs, toolkit: Optional[ToolKit] = None, opts: Optional[AssembleOptions] = None):
+    return await assemble_context(inputs, opts, toolkit)

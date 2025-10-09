@@ -26,7 +26,7 @@ def compute_manifest_hash(
     versions yields different hashes.
     """
     payload = {
-        "manifest": json.loads(manifest.model_dump_json()),
+        "slices": [s.model_dump() for s in manifest.slices],
         "code_version": code_version or "",
         "tool_versions": tool_versions or {},
         "settings_fingerprint": settings_fingerprint or "",
