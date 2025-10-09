@@ -1,10 +1,8 @@
-import io
 import json
-import os
 from importlib import import_module
-from pathlib import Path
 
 cli = import_module("mcp_agent.context.cli")
+
 
 def test_cli_dry_run(tmp_path, capsys):
     inputs = {
@@ -18,10 +16,8 @@ def test_cli_dry_run(tmp_path, capsys):
     in_path = tmp_path / "inputs.json"
     out_path = tmp_path / "manifest.json"
     in_path.write_text(json.dumps(inputs), encoding="utf-8")
-
     code = cli.main(["assemble", "--inputs", str(in_path), "--out", str(out_path), "--dry-run"])
     assert code == 0
-
     out = capsys.readouterr().out
     assert "pack_hash:" in out
     # manifest written
