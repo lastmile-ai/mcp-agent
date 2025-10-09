@@ -328,7 +328,6 @@ async def _run_loopback_flow(
     from urllib.parse import (
         urlencode as _urlencode,
         urlparse as _p,
-        parse_qs as _q,
         urlunparse as _u,
         urlsplit as _urlsplit,
         parse_qs as _parse_qs,
@@ -348,8 +347,9 @@ async def _run_loopback_flow(
                 continue
 
     if selected is None:
+        cfg_ports = ",".join(str(p) for _, p in loopback_candidates) or "(none)"
         raise AuthorizationDeclined(
-            "All configured loopback ports are busy; configure a different port list"
+            f"All configured loopback ports are busy (tried: {cfg_ports}); set oauth.loopback_ports to a different list"
         )
 
     redirect_url, port = selected
@@ -377,7 +377,8 @@ async def _run_loopback_flow(
 
             parsed_target = _urlsplit(target)
             params = {k: v[-1] for k, v in _parse_qs(parsed_target.query).items()}
-            if not payload_future.done():
+            is_auth_callback = bool(params.get("code") or params.get("error"))
+            if is_auth_callback and not payload_future.done():
                 payload_future.set_result(params)
 
             body = (
@@ -409,7 +410,7 @@ async def _run_loopback_flow(
     try:
         # Ensure the authorization URL uses the selected redirect_uri.
         parsed = _p(str(authorize_url))
-        q = {k: v[-1] for k, v in _q(parsed.query).items()}
+        q = {k: v[-1] for k, v in _parse_qs(parsed.query).items()}
         q["redirect_uri"] = redirect_url
         final_url = _u(
             (
@@ -422,11 +423,30 @@ async def _run_loopback_flow(
             )
         )
 
+        # Mask sensitive query parameters in logs
+        try:
+            masked_q = dict(q)
+            for sensitive in ("state", "code_challenge"):
+                if sensitive in masked_q:
+                    masked_q[sensitive] = "***"
+            masked_url = _u(
+                (
+                    parsed.scheme,
+                    parsed.netloc,
+                    parsed.path,
+                    parsed.params,
+                    _urlencode(masked_q),
+                    parsed.fragment,
+                )
+            )
+        except Exception:
+            masked_url = "(redacted)"
+
         logger.info(
             "OAuth loopback flow started",
             data={
                 "redirect_uri": redirect_url,
-                "authorization_url": final_url,
+                "authorization_url": masked_url,
                 "ports": sorted({p for _, p in loopback_candidates}),
                 "selected_port": port,
             },
