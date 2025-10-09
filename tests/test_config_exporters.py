@@ -445,7 +445,6 @@ def test_v3_full_config_via_settings():
 
 def test_merge_otel_exporters_from_config_and_secrets():
     """Test that OTEL exporters from config.yaml and secrets.yaml are merged together."""
-    from mcp_agent.config import get_settings
 
     # Simulate config.yaml with one OTLP exporter (public endpoint)
     config_data = {
