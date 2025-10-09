@@ -1,9 +1,7 @@
-from import_module import import_module
+from importlib import import_module
 import asyncio
-
 assemble = import_module("mcp_agent.context.assemble")
 models = import_module("mcp_agent.context.models")
-
 def test_overflow_victim_ordering():
     # Create 3 spans that individually exceed a tiny token budget after the first two
     spans = [
