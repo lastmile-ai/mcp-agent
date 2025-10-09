@@ -32,7 +32,6 @@ except ImportError:
     
     _meter = _DummyMeter()
 
-
 class ToolRegistryLoader:
     """
     A class responsible for loading and registering MCP tools from various sources.
@@ -96,7 +95,6 @@ class ToolRegistryLoader:
         
         return results
 
-
 def _load_config_from_file(path: str) -> Dict[str, Any]:
     """Load configuration from a YAML file.
     
@@ -116,7 +114,6 @@ def _load_config_from_file(path: str) -> Dict[str, Any]:
     with open(path, 'r') as f:
         return yaml.safe_load(f)
 
-
 def _load_mcp_transport(base_url: str) -> Optional[Dict[str, Any]]:
     """Load MCP transport configuration from a base URL.
     
@@ -129,33 +126,8 @@ def _load_mcp_transport(base_url: str) -> Optional[Dict[str, Any]]:
     # Placeholder implementation
     return {"type": "http", "base_url": base_url}
 
-
-def load_tools_yaml(file_path: str) -> Dict[str, Any]:
-    """
-    Load and parse a tools YAML configuration file.
-    
-    Args:
-        file_path: Path to the YAML file containing tool definitions.
-    
-    Returns:
-        Parsed YAML content as a dictionary containing tool definitions.
-    
-    Raises:
-        FileNotFoundError: If the file doesn't exist.
-        yaml.YAMLError: If the file is not valid YAML.
-    """
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f"Tools YAML file not found: {file_path}")
-    
-    with open(file_path, 'r') as f:
-        content = yaml.safe_load(f)
-    
-    return content if content is not None else {}
-
-
 # === Surgical patch: provide minimal loader APIs for tests ===
 __all__ = ['discover', 'load_tools_yaml']
-
 
 async def discover(entries: List[Dict[str, Any]], timeout: float = 2.0) -> List[Dict[str, Any]]:
     """Probe each registry entry for /.well-known/mcp and /health.
@@ -210,7 +182,6 @@ async def discover(entries: List[Dict[str, Any]], timeout: float = 2.0) -> List[
             
             out.append(info)
     return out
-
 
 def load_tools_yaml(file_path: str) -> Dict[str, Any]:
     """Load a tools.yaml and return the parsed mapping.
