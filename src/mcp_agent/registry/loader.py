@@ -1,28 +1,26 @@
+import asyncio
 import os
-from typing import Any, Dict, List, Optional
-
+from typing import Any, Dict, List, Optional, Tuple
 import httpx
 import yaml
 from contextlib import contextmanager
 
-from mcp_agent.registry.store import ToolRegistryStore
-
 # Try to import opentelemetry, provide dummy classes if unavailable
 try:
+    from opentelemetry import metrics
+    from opentelemetry.metrics import get_meter
     _meter = get_meter(__name__)
 except ImportError:
     # Dummy classes for test collection without opentelemetry
     class _DummyMeter:
         def create_histogram(self, *args, **kwargs):
             return _DummyHistogram()
-        
         def create_counter(self, *args, **kwargs):
             return _DummyCounter()
     
     class _DummyHistogram:
         def record(self, value, attributes=None):
             pass
-        
         @contextmanager
         def time(self):
             yield
@@ -33,177 +31,105 @@ except ImportError:
     
     _meter = _DummyMeter()
 
+# Telemetry
+discovery_latency_ms = _meter.create_histogram(
+    name="discovery_latency_ms",
+    description="Latency of tool discovery probes in milliseconds",
+    unit="ms"
+)
 
-class ToolRegistryLoader:
-    """
-    A class responsible for loading and registering MCP tools from various sources.
+capabilities_total = _meter.create_counter(
+    name="capabilities_total",
+    description="Total discovered capabilities by name"
+)
 
-    This class handles:
-    - Discovering tools via .well-known/mcp.json
-    - Loading tool configurations from files
-    - Registering tools in the ToolRegistryStore
-    """
+DEFAULT_TOOLS_YAML = os.getenv("TOOLS_YAML_PATH", "tools/tools.yaml")
 
-    def __init__(self, store: Optional[ToolRegistryStore] = None):
-        """Initialize the ToolRegistryLoader.
 
-        Args:
-            store: Optional ToolRegistryStore instance. If not provided, creates a new one.
-        """
-        self.store = store or ToolRegistryStore()
-        self._discovery_duration_hist = _meter.create_histogram(
-            name="mcp_agent.registry.loader.discovery.duration",
-            unit="ms",
-            description="Discovery request duration in milliseconds"
-        )
-        self._discovery_counter = _meter.create_counter(
-            name="mcp_agent.registry.loader.discovery.count",
-            unit="1",
-            description="Number of discovery requests"
-        )
+def load_tools_yaml(path: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Parse tools.yaml. Returns list of entries with at least name and base_url."""
+    p = path or DEFAULT_TOOLS_YAML
+    with open(p, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+    items = data.get("tools") if isinstance(data, dict) else data
+    if not isinstance(items, list):
+        return []
+    out: List[Dict[str, Any]] = []
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        name = it.get("name")
+        base = it.get("base_url") or it.get("baseURL")
+        version = it.get("version")
+        if not name or not base:
+            continue
+        out.append({"name": str(name), "base_url": str(base), "version": version})
+    return out
 
-    async def discover_and_register_tools(
-        self,
-        entries: List[Dict[str, Any]],
-        timeout: float = 5.0
-    ) -> List[Dict[str, Any]]:
-        """
-        Discover tools from a list of server entries and register them.
 
-        Args:
-            entries: List of server entries, each containing 'name' and 'base_url'.
-            timeout: Request timeout in seconds (default: 5.0).
-
-        Returns:
-            List of discovery results for each entry.
-        """
-        results = await discover(entries, timeout=timeout)
+async def _probe_one(client: httpx.AsyncClient, base_url: str) -> Tuple[bool, Dict[str, Any]]:
+    """Probe /.well-known/mcp then /health. Returns (alive, info)."""
+    info: Dict[str, Any] = {}
+    # Try well-known MCP first
+    try:
+        import time
+        start_time = time.perf_counter()
+        r = await client.get(f"{base_url.rstrip('/')}/.well-known/mcp", timeout=3.0)
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        discovery_latency_ms.record(elapsed_ms)
         
-        # Register discovered tools
-        for entry, result in zip(entries, results):
-            if result.get("alive") and result.get("capabilities"):
-                # Extract tools from capabilities if available
-                capabilities = result.get("capabilities", {})
-                tools = capabilities.get("tools", [])
-                
-                for tool in tools:
-                    self.store.register_tool(
-                        name=tool.get("name"),
-                        server_name=entry["name"],
-                        description=tool.get("description", ""),
-                        input_schema=tool.get("inputSchema", {}),
-                        metadata={"base_url": entry["base_url"]}
-                    )
+        if r.status_code == 200 and r.headers.get("content-type", "").startswith("application/json"):
+            j = r.json()
+            # Accept either root fields or nested under 'mcp'
+            meta = j.get("mcp", j)
+            version = meta.get("version") or j.get("version")
+            caps = meta.get("capabilities") or j.get("capabilities") or {}
+            if isinstance(caps, dict):
+                for k in caps.keys():
+                    capabilities_total.add(1, attributes={"capability": str(k)})
+            info.update({"version": version, "capabilities": caps, "well_known": True})
+            return True, info
+    except Exception:
+        pass
+    # Fallback to /health
+    try:
+        import time
+        start_time = time.perf_counter()
+        r = await client.get(f"{base_url.rstrip('/')}/health", timeout=2.0)
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        discovery_latency_ms.record(elapsed_ms)
         
-        return results
+        if r.status_code == 200:
+            info.update({"health": True})
+            return True, info
+    except Exception:
+        pass
+    return False, info
 
 
-def _load_config_from_file(path: str) -> Dict[str, Any]:
-    """Load configuration from a YAML file.
-
-    Args:
-        path: Path to the YAML configuration file.
-
-    Returns:
-        Parsed configuration as a dictionary.
-
-    Raises:
-        FileNotFoundError: If the file doesn't exist.
-        yaml.YAMLError: If the file is not valid YAML.
-    """
-    if not os.path.exists(path):
-        raise FileNotFoundError(f"Configuration file not found: {path}")
-    
-    with open(path, 'r') as f:
-        return yaml.safe_load(f)
-
-
-def _load_mcp_transport(base_url: str) -> Optional[Dict[str, Any]]:
-    """Load MCP transport configuration from a base URL.
-
-    Args:
-        base_url: Base URL of the MCP server.
-
-    Returns:
-        Transport configuration dictionary or None if unavailable.
-    """
-    # Placeholder implementation
-    return {"type": "http", "base_url": base_url}
-
-
-async def discover(entries: List[Dict[str, Any]], timeout: float = 5.0) -> List[Dict[str, Any]]:
-    """Probe each entry for "/.well-known/mcp" and "/health" and summarize.
-
-    Returns a list of dicts mirroring entries with added keys:
-      - alive: bool
-      - well_known: bool
-      - capabilities: dict (if present in well-known)
-    """
-    results: List[Dict[str, Any]] = []
-    timeout = float(timeout)
-
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        for e in entries or []:
-            base = (e.get("base_url") or "").rstrip("/")
-            info: Dict[str, Any] = dict(e) if isinstance(e, dict) else {"base_url": str(e)}
-            info.setdefault("capabilities", {})
-            info["alive"] = False
-            info["well_known"] = False
-
-            # Probe .well-known/mcp
-            try:
-                wk = await client.get(f"{base}/.well-known/mcp")
-                if wk.status_code == 200:
-                    info["well_known"] = True
-                    try:
-                        data = wk.json()
-                        if isinstance(data, dict):
-                            caps = data.get("capabilities") or {}
-                            if isinstance(caps, dict):
-                                info["capabilities"] = caps
-                    except Exception:
-                        pass
-            except Exception:
-                pass
-
-            # Probe /health
-            try:
-                h = await client.get(f"{base}/health")
-                if 200 <= h.status_code < 300:
-                    try:
-                        hj = h.json()
-                        ok = hj.get("ok") if isinstance(hj, dict) else None
-                        info["alive"] = bool(ok) if ok is not None else True
-                    except Exception:
-                        info["alive"] = True
-            except Exception:
-                info["alive"] = False
-
-            results.append(info)
-
-    return results
-
-
-
-def load_tools_yaml(file_path: str) -> Dict[str, Any]:
-    """
-    Load and parse a tools YAML configuration file.
-
-    Args:
-        file_path: Path to the YAML file containing tool definitions.
-
-    Returns:
-        Parsed YAML content as a dictionary containing tool definitions.
-
-    Raises:
-        FileNotFoundError: If the file doesn't exist.
-        yaml.YAMLError: If the file is not valid YAML.
-    """
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f"Tools YAML file not found: {file_path}")
-    
-    with open(file_path, 'r') as f:
-        content = yaml.safe_load(f)
-    
-    return content if content is not None else {}
-
+async def discover(entries: List[Dict[str, Any]], retries: int = 2, backoff_ms: int = 50) -> List[Dict[str, Any]]:
+    """Probe all entries with limited retries. Returns registry records."""
+    out: List[Dict[str, Any]] = []
+    async with httpx.AsyncClient() as client:
+        for it in entries:
+            name = it["name"]
+            base = it["base_url"]
+            version = it.get("version")
+            info: Dict[str, Any] = {}
+            alive = False
+            attempt = 0
+            while attempt <= retries and not alive:
+                alive, info = await _probe_one(client, base)
+                if not alive:
+                    await asyncio.sleep(backoff_ms / 1000)
+                attempt += 1
+            record = {
+                "name": name,
+                "base_url": base,
+                "version": info.get("version", version),
+                "capabilities": info.get("capabilities", {}),
+                "alive": bool(alive),
+                "well_known": bool(info.get("well_known", False)),
+            }
+            out.append(record)
+    return out
