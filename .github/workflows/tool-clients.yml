@@ -1,7 +1,6 @@
 name: Tool Clients
 on:
-  pull_request:
-    branches: [ work, main ]
+  workflow_call:
   workflow_dispatch:
 jobs:
   tests:

@@ -1,7 +1,6 @@
 name: Public API Contract
 on:
-  pull_request:
-    branches: [ work, main ]
+  workflow_call:
   workflow_dispatch:
 jobs:
   contract:
