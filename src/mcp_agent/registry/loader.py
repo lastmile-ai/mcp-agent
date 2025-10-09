@@ -9,7 +9,6 @@ from mcp_agent.registry.store import ToolRegistryStore
 
 # Try to import opentelemetry, provide dummy classes if unavailable
 try:
-    from opentelemetry.metrics import get_meter
     _meter = get_meter(__name__)
 except ImportError:
     # Dummy classes for test collection without opentelemetry
@@ -132,6 +131,60 @@ def _load_mcp_transport(base_url: str) -> Optional[Dict[str, Any]]:
     return {"type": "http", "base_url": base_url}
 
 
+async def discover(entries: List[Dict[str, Any]], timeout: float = 5.0) -> List[Dict[str, Any]]:
+    """Probe each entry for "/.well-known/mcp" and "/health" and summarize.
+
+    Returns a list of dicts mirroring entries with added keys:
+      - alive: bool
+      - well_known: bool
+      - capabilities: dict (if present in well-known)
+    """
+    results: List[Dict[str, Any]] = []
+    timeout = float(timeout)
+
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        for e in entries or []:
+            base = (e.get("base_url") or "").rstrip("/")
+            info: Dict[str, Any] = dict(e) if isinstance(e, dict) else {"base_url": str(e)}
+            info.setdefault("capabilities", {})
+            info["alive"] = False
+            info["well_known"] = False
+
+            # Probe .well-known/mcp
+            try:
+                wk = await client.get(f"{base}/.well-known/mcp")
+                if wk.status_code == 200:
+                    info["well_known"] = True
+                    try:
+                        data = wk.json()
+                        if isinstance(data, dict):
+                            caps = data.get("capabilities") or {}
+                            if isinstance(caps, dict):
+                                info["capabilities"] = caps
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+            # Probe /health
+            try:
+                h = await client.get(f"{base}/health")
+                if 200 <= h.status_code < 300:
+                    try:
+                        hj = h.json()
+                        ok = hj.get("ok") if isinstance(hj, dict) else None
+                        info["alive"] = bool(ok) if ok is not None else True
+                    except Exception:
+                        info["alive"] = True
+            except Exception:
+                info["alive"] = False
+
+            results.append(info)
+
+    return results
+
+
+
 def load_tools_yaml(file_path: str) -> Dict[str, Any]:
     """
     Load and parse a tools YAML configuration file.
@@ -154,75 +207,3 @@ def load_tools_yaml(file_path: str) -> Dict[str, Any]:
     
     return content if content is not None else {}
 
-# === Surgical patch: provide minimal loader APIs for tests ===
-from typing import Any, Dict, List, Optional
-import httpx as _httpx
-import yaml as _yaml
-
-__all__ = ['discover', 'load_tools_yaml']
-
-async def discover(entries: List[Dict[str, Any]], timeout: float = 2.0) -> List[Dict[str, Any]]:
-    """Probe each registry entry for /.well-known/mcp and /health.
-
-    Args:
-        entries: List of {name, base_url}
-        timeout: per-request timeout in seconds
-
-    Returns:
-        List of entries augmented with:
-          - alive: bool
-          - well_known: bool
-          - capabilities: dict
-    """
-    out: List[Dict[str, Any]] = []
-    # Use the httpx imported in this module so tests can monkeypatch AsyncClient
-    async with _httpx.AsyncClient(timeout=timeout) as client:
-        for e in entries:
-            base = e.get('base_url') or ''
-            info = dict(e)
-            info.setdefault('capabilities', {})
-            info['alive'] = False
-            info['well_known'] = False
-
-            try:
-                wk = await client.get(f"{base}/.well-known/mcp")
-                if wk.status_code == 200:
-                    info['well_known'] = True
-                    try:
-                        data = wk.json()
-                        if isinstance(data, dict):
-                            caps = data.get('capabilities') or {}
-                            if isinstance(caps, dict):
-                                info['capabilities'] = caps
-                    except Exception:
-                        pass
-            except Exception:
-                # leave as defaults
-                pass
-
-            try:
-                h = await client.get(f"{base}/health")
-                if h.status_code == 200:
-                    try:
-                        hj = h.json()
-                        ok = hj.get('ok') if isinstance(hj, dict) else None
-                        info['alive'] = bool(ok) if ok is not None else True
-                    except Exception:
-                        info['alive'] = True
-            except Exception:
-                info['alive'] = False
-
-            out.append(info)
-    return out
-
-def load_tools_yaml(file_path: str) -> Dict[str, Any]:
-    """Load a tools.yaml and return the parsed mapping.
-
-    Returns an empty dict if YAML content is empty.
-    Raises FileNotFoundError if the path does not exist.
-    """
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f"Tools YAML file not found: {file_path}")
-    with open(file_path, 'r') as f:
-        content = _yaml.safe_load(f)
-    return content or {}
