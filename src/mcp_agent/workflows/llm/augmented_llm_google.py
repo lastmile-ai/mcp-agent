@@ -57,7 +57,7 @@ class GoogleAugmentedLLM(
             intelligencePriority=0.3,
         )
         # Get default model from config if available
-        default_model = "gemini-2.0-flash"  # Fallback default
+        default_model = "gemini-2.5-flash"  # Fallback default
 
         if self.context.config.google:
             if hasattr(self.context.config.google, "default_model"):
@@ -238,6 +238,10 @@ class GoogleAugmentedLLM(
 
         return response.text or ""
 
+    @classmethod
+    def get_provider_config(cls, context):
+        return getattr(getattr(context, "config", None), "google", None)
+
     async def generate_structured(
         self,
         message,
@@ -250,7 +254,7 @@ class GoogleAugmentedLLM(
         import json
 
         params = self.get_request_params(request_params)
-        model = await self.select_model(params) or (params.model or "gemini-2.0-flash")
+        model = await self.select_model(params) or (params.model or "gemini-2.5-flash")
 
         # Convert input messages and build config
         messages = GoogleConverter.convert_mixed_messages_to_google(message)

@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import pathspec
 
 from mcp_agent.cli.cloud.commands.deploy.validation import (
     validate_entrypoint,
@@ -16,6 +17,10 @@ from mcp_agent.cli.cloud.commands.deploy.wrangler_wrapper import (
     _modify_requirements_txt,
     _needs_requirements_modification,
     wrangler_deploy,
+)
+from mcp_agent.cli.cloud.commands.deploy.bundle_utils import (
+    create_pathspec_from_gitignore,
+    should_ignore_by_gitignore,
 )
 from mcp_agent.cli.core.constants import MCP_SECRETS_FILENAME
 
@@ -36,6 +41,9 @@ app = MCPApp(
 """
         main_py_path = project_path / "main.py"
         main_py_path.write_text(main_py_content)
+
+        # Create a requirements.txt to satisfy dependency file requirement
+        (project_path / "requirements.txt").write_text("mcp-agent")
 
         yield project_path
 
@@ -275,6 +283,25 @@ app = MCPApp(name="test-app")
         with pytest.raises(
             ValueError,
             match="Invalid poetry project: poetry.lock found without corresponding pyproject.toml",
+        ):
+            validate_project(project_path)
+
+
+def test_validate_project_no_dependency_files():
+    """Test validate_project when no dependency management files exist."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        project_path = Path(temp_dir)
+
+        # Create main.py only, no dependency files
+        main_py_content = """from mcp_agent_cloud import MCPApp
+
+app = MCPApp(name="test-app")
+"""
+        (project_path / "main.py").write_text(main_py_content)
+
+        with pytest.raises(
+            ValueError,
+            match="No Python project dependency management files found. Expected one of: pyproject.toml, requirements.txt, poetry.lock, uv.lock in the project directory.",
         ):
             validate_project(project_path)
 
@@ -629,6 +656,8 @@ def test_wrangler_deploy_complex_file_extensions():
 from mcp_agent_cloud import MCPApp
 app = MCPApp(name="test-app")
 """)
+        # Create requirements.txt to satisfy dependency file requirement
+        (project_path / "requirements.txt").write_text("mcp-agent")
 
         # Create files with complex extensions
         complex_files = {
@@ -901,10 +930,16 @@ def test_wrangler_deploy_no_requirements_txt():
     with tempfile.TemporaryDirectory() as temp_dir:
         project_path = Path(temp_dir)
 
-        # Create main.py only
+        # Create main.py
         (project_path / "main.py").write_text("""
 from mcp_agent_cloud import MCPApp
 app = MCPApp(name="test-app")
+""")
+        # Create pyproject.toml to satisfy dependency file requirement
+        (project_path / "pyproject.toml").write_text("""[project]
+name = "test-app"
+version = "0.1.0"
+dependencies = ["mcp-agent"]
 """)
 
         with patch("subprocess.run") as mock_subprocess:
@@ -927,6 +962,8 @@ def test_wrangler_deploy_secrets_file_exclusion():
 from mcp_agent_cloud import MCPApp
 app = MCPApp(name="test-app")
 """)
+        # Create requirements.txt to satisfy dependency file requirement
+        (project_path / "requirements.txt").write_text("mcp-agent")
 
         # Create secrets file
         secrets_content = """
@@ -936,9 +973,17 @@ db_password: !developer_secret
         secrets_file = project_path / MCP_SECRETS_FILENAME
         secrets_file.write_text(secrets_content)
 
+        # Create secrets example file
+        secrets_example_file = project_path / "mcp_agent.secrets.yaml.example"
+        secrets_example_file.write_text("""
+# Example secrets file
+api_key: your_api_key_here
+db_password: your_password_here
+""")
+
         # Create other YAML files that should be processed
         config_file = project_path / "config.yaml"
-        config_file.write_text("app_name: test-app")
+        config_file.write_text("name: test-app")
 
         mcp_config_file = project_path / "mcp_agent.config.yaml"
         mcp_config_file.write_text("config: value")
@@ -956,6 +1001,10 @@ db_password: !developer_secret
             assert not (
                 temp_project_dir / f"{MCP_SECRETS_FILENAME}.mcpac.py"
             ).exists(), "Secrets file should not be processed as .mcpac.py"
+
+            assert (
+                temp_project_dir / "mcp_agent.secrets.yaml.example.mcpac.py"
+            ).exists()
 
             # Other YAML files should be processed normally
             assert (temp_project_dir / "config.yaml.mcpac.py").exists(), (
@@ -994,9 +1043,245 @@ db_password: !developer_secret
         assert secrets_file.read_text() == secrets_content, (
             "Secrets file content should be preserved"
         )
+        assert secrets_example_file.exists()
         assert config_file.exists(), "Config file should still exist"
 
         # No secrets-related mcpac.py files should exist in original directory
         assert not (project_path / f"{MCP_SECRETS_FILENAME}.mcpac.py").exists(), (
             "No secrets .mcpac.py file should exist in original directory"
         )
+
+
+# Bundle utils tests
+def test_should_ignore_by_gitignore():
+    """Exercise ignore matching for mixed files and directories.
+
+    Builds a `PathSpec` with file globs and directory suffixes and verifies the
+    adapter returns only the names that match those patterns, covering the
+    core filtering logic used during bundle copies.
+    """
+
+    gitignore_content = """*.log
+*.pyc
+node_modules/
+temp/
+build/
+"""
+
+    # Create a mock PathSpec directly
+    spec = pathspec.PathSpec.from_lines("gitwildmatch", gitignore_content.splitlines())
+
+    project_dir = Path("/fake/project")
+    current_path = str(project_dir)
+    names = ["test.log", "main.py", "node_modules", "config.yaml", "test.pyc"]
+
+    # Mock Path.is_dir method properly
+    original_is_dir = Path.is_dir
+    Path.is_dir = lambda self: self.name in ["node_modules", "temp", "build"]
+
+    try:
+        ignored = should_ignore_by_gitignore(current_path, names, project_dir, spec)
+    finally:
+        # Restore original method
+        Path.is_dir = original_is_dir
+
+    assert "test.log" in ignored
+    assert "test.pyc" in ignored
+    assert "node_modules" in ignored
+    assert "main.py" not in ignored
+    assert "config.yaml" not in ignored
+
+
+def test_create_pathspec_from_gitignore(tmp_path):
+    """`create_pathspec_from_gitignore` should parse patterns into a matcher.
+
+    Writes a temporary ignore file, loads it into a `PathSpec`, and asserts the
+    resulting matcher includes and excludes representative paths.
+    """
+
+    ignore_path = tmp_path / ".mcpacignore"
+    ignore_path.write_text("*.log\nbuild/\n")
+
+    spec = create_pathspec_from_gitignore(ignore_path)
+
+    assert spec is not None
+    assert spec.match_file("debug.log")
+    assert spec.match_file("build/output.txt")
+    assert not spec.match_file("main.py")
+
+
+def test_create_pathspec_from_gitignore_missing_file(tmp_path):
+    """Missing ignore files must return `None`.
+
+    Ensures callers can detect the absence of an ignore file and fall back to
+    default behaviour without raising.
+    """
+
+    missing_path = tmp_path / ".doesnotexist"
+    assert create_pathspec_from_gitignore(missing_path) is None
+
+
+def test_should_ignore_by_gitignore_without_spec(tmp_path):
+    """When no spec is provided the adapter should ignore nothing.
+
+    Verifies the helper returns an empty set so the copy operation only applies
+    the hard-coded exclusions.
+    """
+
+    project_dir = tmp_path
+    (project_dir / "data.txt").write_text("data")
+
+    ignored = should_ignore_by_gitignore(
+        str(project_dir), ["data.txt"], project_dir, spec=None
+    )
+
+    assert ignored == set()
+
+
+def test_should_ignore_by_gitignore_matches_directories(tmp_path):
+    """Directory patterns like `build/` must match folder names.
+
+    Confirms the helper rewrites directory paths with a trailing slash when
+    checking patterns so gitignore-style directory globs are honoured.
+    """
+
+    project_dir = tmp_path
+    (project_dir / "build").mkdir()
+    spec = pathspec.PathSpec.from_lines("gitwildmatch", ["build/"])
+
+    ignored = should_ignore_by_gitignore(str(project_dir), ["build"], project_dir, spec)
+
+    assert "build" in ignored
+
+
+def test_should_ignore_by_gitignore_handles_nested_paths(tmp_path):
+    """Nested patterns should be evaluated relative to the project root.
+
+    Demonstrates that patterns such as `assets/*.txt` apply to files in a
+    subdirectory while sparing siblings that do not match.
+    """
+
+    project_dir = tmp_path
+    nested = project_dir / "assets"
+    nested.mkdir()
+    (nested / "notes.txt").write_text("notes")
+    (nested / "keep.md").write_text("keep")
+
+    spec = pathspec.PathSpec.from_lines("gitwildmatch", ["assets/*.txt"])
+
+    ignored = should_ignore_by_gitignore(
+        str(nested), ["notes.txt", "keep.md"], project_dir, spec
+    )
+
+    assert "notes.txt" in ignored
+    assert "keep.md" not in ignored
+
+
+def test_wrangler_deploy_with_ignore_file():
+    """Bundling honours explicit ignore file patterns end to end.
+
+    Creates a project containing included and excluded files, supplies a real
+    `.mcpacignore`, and checks the temp bundle only contains files that should
+    survive, proving the ignore spec is wired into `copytree` correctly.
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        project_path = Path(temp_dir)
+
+        # Create main.py
+        (project_path / "main.py").write_text("""
+from mcp_agent_cloud import MCPApp
+app = MCPApp(name="test-app")
+""")
+        # Create requirements.txt to satisfy dependency file requirement
+        (project_path / "requirements.txt").write_text("mcp-agent")
+
+        # Create .mcpacignore
+        ignore_content = """*.log
+*.tmp
+build/
+dist/
+*.pyc
+"""
+        (project_path / ".mcpacignore").write_text(ignore_content)
+
+        # Create files that should be ignored
+        (project_path / "debug.log").write_text("log content")
+        (project_path / "temp.tmp").write_text("temp content")
+        (project_path / "cache.pyc").write_text("pyc content")
+
+        build_dir = project_path / "build"
+        build_dir.mkdir()
+        (build_dir / "output.txt").write_text("build output")
+
+        # Create files that should be included
+        (project_path / "config.yaml").write_text("config: value")
+        (project_path / "data.txt").write_text("data content")
+
+        def check_gitignore_respected(*args, **kwargs):
+            temp_project_dir = Path(kwargs["cwd"])
+
+            # Files matching gitignore should NOT be copied
+            assert not (temp_project_dir / "debug.log").exists()
+            assert not (temp_project_dir / "temp.tmp").exists()
+            assert not (temp_project_dir / "cache.pyc").exists()
+            assert not (temp_project_dir / "build").exists()
+
+            # Files not matching gitignore should be copied
+            assert (temp_project_dir / "main.py").exists()
+            assert (temp_project_dir / "config.yaml.mcpac.py").exists()
+            assert (temp_project_dir / "data.txt.mcpac.py").exists()
+
+            return MagicMock(returncode=0)
+
+        with patch("subprocess.run", side_effect=check_gitignore_respected):
+            wrangler_deploy(
+                "test-app", "test-api-key", project_path, project_path / ".mcpacignore"
+            )
+
+
+def test_wrangler_deploy_warns_when_ignore_file_missing():
+    """Missing ignore files should warn but still bundle everything.
+
+    Passes a nonexistent ignore path, asserts `print_warning` reports the issue,
+    and that the temporary bundle still includes files that would only be
+    skipped by an actual ignore spec.
+    """
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        project_path = Path(temp_dir)
+
+        (project_path / "main.py").write_text(
+            """
+from mcp_agent_cloud import MCPApp
+
+app = MCPApp(name="test-app")
+"""
+        )
+        # Create requirements.txt to satisfy dependency file requirement
+        (project_path / "requirements.txt").write_text("mcp-agent")
+        (project_path / "config.yaml").write_text("name: test-app\n")
+        (project_path / "artifact.txt").write_text("artifact\n")
+
+        missing_ignore = project_path / ".customignore"
+
+        def check_missing_ignore_behavior(*args, **kwargs):
+            temp_project_dir = Path(kwargs["cwd"])
+
+            # Nothing should be ignored beyond defaults when the file is missing
+            assert (temp_project_dir / "artifact.txt.mcpac.py").exists()
+            assert (temp_project_dir / "config.yaml.mcpac.py").exists()
+
+            return MagicMock(returncode=0)
+
+        with (
+            patch(
+                "mcp_agent.cli.cloud.commands.deploy.wrangler_wrapper.print_warning"
+            ) as mock_warning,
+            patch("subprocess.run", side_effect=check_missing_ignore_behavior),
+        ):
+            wrangler_deploy("test-app", "test-api-key", project_path, missing_ignore)
+
+        mock_warning.assert_called_once()
+        warning_message = mock_warning.call_args[0][0]
+        assert str(missing_ignore) in warning_message
+        assert "not found" in warning_message

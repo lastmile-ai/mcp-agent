@@ -24,6 +24,8 @@ from mcp_agent.cloud import MCPApp
 
 app = MCPApp(name="test-app")
 """)
+            # Create requirements.txt to satisfy dependency file requirement
+            (project_dir / "requirements.txt").write_text("mcp-agent")
 
             # Should not raise any exception
             validate_project(project_dir)
@@ -53,6 +55,8 @@ app = MCPApp(name="test-app")
             project_dir = Path(temp_dir)
             main_py = project_dir / "main.py"
             main_py.write_text("app = MCPApp()")
+            # Create requirements.txt to satisfy dependency file requirement
+            (project_dir / "requirements.txt").write_text("mcp-agent")
 
             with patch(
                 "mcp_agent.cli.cloud.commands.deploy.validation.validate_entrypoint"

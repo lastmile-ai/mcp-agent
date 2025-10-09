@@ -8350,7 +8350,7 @@
     }
   },
   {
-    "name": "gemini-2-5-pro",
+    "name": "gemini-2.5-pro",
     "description": "Gemini 2.5 Pro (AI_Studio)",
     "provider": "Google (AI_Studio)",
     "context_window": 1000000,
@@ -8375,7 +8375,7 @@
     }
   },
   {
-    "name": "gemini-2-5-pro",
+    "name": "gemini-2.5-pro",
     "description": "Gemini 2.5 Pro Vertex",
     "provider": "Google Vertex",
     "context_window": 1000000,
@@ -9025,7 +9025,7 @@
     }
   },
   {
-    "name": "gemini-2-5-flash-reasoning",
+    "name": "gemini-2.5-flash-reasoning",
     "description": "Gemini 2.5 Flash (Reasoning) (AI_Studio)",
     "provider": "Google (AI_Studio)",
     "context_window": 1000000,
@@ -9050,7 +9050,7 @@
     }
   },
   {
-    "name": "gemini-2-5-flash-reasoning",
+    "name": "gemini-2.5-flash-reasoning",
     "description": "Gemini 2.5 Flash (Reasoning) (Vertex)",
     "provider": "Google (Vertex)",
     "context_window": 1000000,
@@ -9675,7 +9675,7 @@
     }
   },
   {
-    "name": "gemini-2-5-flash",
+    "name": "gemini-2.5-flash",
     "description": "Gemini 2.5 Flash (AI_Studio)",
     "provider": "Google (AI_Studio)",
     "context_window": 1000000,
@@ -9700,7 +9700,7 @@
     }
   },
   {
-    "name": "gemini-2-5-flash",
+    "name": "gemini-2.5-flash",
     "description": "Gemini 2.5 Flash (Vertex)",
     "provider": "Google (Vertex)",
     "context_window": 1000000,
@@ -12375,7 +12375,7 @@
     }
   },
   {
-    "name": "gemini-2-5-flash-lite",
+    "name": "gemini-2.5-flash-lite",
     "description": "Gemini 2.5 Flash-Lite (AI Studio)",
     "provider": "Google (AI Studio)",
     "context_window": 1000000,
@@ -12400,7 +12400,7 @@
     }
   },
   {
-    "name": "gemini-2-5-flash-lite-reasoning",
+    "name": "gemini-2.5-flash-lite-reasoning",
     "description": "Gemini 2.5 Flash-Lite (Reasoning) (AI\n                              Studio)",
     "provider": "Google (AI Studio)",
     "context_window": 1000000,

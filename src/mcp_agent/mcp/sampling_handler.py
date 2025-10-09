@@ -30,6 +30,67 @@ if TYPE_CHECKING:
     from mcp_agent.core.context import Context
 
 
+def _format_sampling_request_for_human(params: CreateMessageRequestParams) -> str:
+    """Format sampling request for human review"""
+    messages_text = ""
+    for i, msg in enumerate(params.messages):
+        content = msg.content.text if hasattr(msg.content, "text") else str(msg.content)
+        messages_text += f"  Message {i + 1} ({msg.role}): {content[:200]}{'...' if len(content) > 200 else ''}\n"
+
+    system_prompt_display = (
+        "None"
+        if params.systemPrompt is None
+        else (
+            f"{params.systemPrompt[:100]}{'...' if len(params.systemPrompt) > 100 else ''}"
+        )
+    )
+
+    stop_sequences_display = (
+        "None" if params.stopSequences is None else str(params.stopSequences)
+    )
+
+    model_preferences_display = "None"
+    if params.modelPreferences is not None:
+        prefs = []
+        if params.modelPreferences.hints:
+            hints = [
+                hint.name
+                for hint in params.modelPreferences.hints
+                if hint.name is not None
+            ]
+            prefs.append(f"hints: {hints}")
+        if params.modelPreferences.costPriority is not None:
+            prefs.append(f"cost: {params.modelPreferences.costPriority}")
+        if params.modelPreferences.speedPriority is not None:
+            prefs.append(f"speed: {params.modelPreferences.speedPriority}")
+        if params.modelPreferences.intelligencePriority is not None:
+            prefs.append(
+                f"intelligence: {params.modelPreferences.intelligencePriority}"
+            )
+        model_preferences_display = ", ".join(prefs) if prefs else "None"
+
+    return f"""REQUEST DETAILS:
+- Max Tokens: {params.maxTokens}
+- System Prompt: {system_prompt_display}
+- Temperature: {params.temperature if params.temperature is not None else 0.7}
+- Stop Sequences: {stop_sequences_display}
+- Model Preferences: {model_preferences_display}
+MESSAGES:
+{messages_text}"""
+
+
+def _format_sampling_response_for_human(result: CreateMessageResult) -> str:
+    """Format sampling response for human review"""
+    content = (
+        result.content.text if hasattr(result.content, "text") else str(result.content)
+    )
+    return f"""RESPONSE DETAILS:
+- Model: {result.model}
+- Role: {result.role}
+CONTENT:
+{content}"""
+
+
 class SamplingHandler(ContextDependent):
     """Handles MCP sampling requests with optional human approval and LLM generation."""
 
@@ -89,10 +150,13 @@ class SamplingHandler(ContextDependent):
 
         from mcp_agent.human_input.types import HumanInputRequest
 
+        request_summary = _format_sampling_request_for_human(params)
+
         req = HumanInputRequest(
             prompt=(
                 "MCP server requests LLM sampling. Respond 'approve' to proceed, "
                 "anything else to reject (your input will be recorded as reason)."
+                f"\n\n{request_summary}"
             ),
             description="MCP Sampling Request Approval",
             request_id=f"sampling_request_{uuid4()}",
@@ -115,10 +179,13 @@ class SamplingHandler(ContextDependent):
 
         from mcp_agent.human_input.types import HumanInputRequest
 
+        response_summary = _format_sampling_response_for_human(result)
+
         req = HumanInputRequest(
             prompt=(
                 "LLM has generated a response. Respond 'approve' to send, "
                 "anything else to reject (your input will be recorded as reason)."
+                f"\n\n{response_summary}"
             ),
             description="MCP Sampling Response Approval",
             request_id=f"sampling_response_{uuid4()}",

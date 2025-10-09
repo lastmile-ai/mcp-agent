@@ -18,6 +18,10 @@ from mcp_agent.cli.utils.git_utils import (
     utc_iso_now,
 )
 
+from .bundle_utils import (
+    create_pathspec_from_gitignore,
+    should_ignore_by_gitignore,
+)
 from .constants import (
     CLOUDFLARE_ACCOUNT_ID,
     CLOUDFLARE_EMAIL,
@@ -107,7 +111,9 @@ def _handle_wrangler_error(e: subprocess.CalledProcessError) -> None:
         print_error(clean_output)
 
 
-def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
+def wrangler_deploy(
+    app_id: str, api_key: str, project_dir: Path, ignore_file: Path | None = None
+) -> None:
     """Bundle the MCP Agent using Wrangler.
 
     A thin wrapper around the Wrangler CLI to bundle the MCP Agent application code
@@ -128,24 +134,34 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
         app_id (str): The application ID.
         api_key (str): User MCP Agent Cloud API key.
         project_dir (Path): The directory of the project to deploy.
+        ignore_file (Path | None): Optional path to a gitignore-style file for excluding files from the bundle.
     """
 
     # Copy existing env to avoid overwriting
     env = os.environ.copy()
 
-    env.update(
-        {
-            "CLOUDFLARE_ACCOUNT_ID": CLOUDFLARE_ACCOUNT_ID,
-            "CLOUDFLARE_API_TOKEN": api_key,
-            "CLOUDFLARE_EMAIL": CLOUDFLARE_EMAIL,
-            "WRANGLER_AUTH_DOMAIN": deployment_settings.wrangler_auth_domain,
-            "WRANGLER_AUTH_URL": deployment_settings.wrangler_auth_url,
-            "WRANGLER_SEND_METRICS": str(WRANGLER_SEND_METRICS).lower(),
-            "CLOUDFLARE_API_BASE_URL": deployment_settings.cloudflare_api_base_url,
-            "HOME": os.path.expanduser(settings.DEPLOYMENT_CACHE_DIR),
-            "XDG_HOME_DIR": os.path.expanduser(settings.DEPLOYMENT_CACHE_DIR),
-        }
-    )
+    env_updates = {
+        "CLOUDFLARE_ACCOUNT_ID": CLOUDFLARE_ACCOUNT_ID,
+        "CLOUDFLARE_API_TOKEN": api_key,
+        "CLOUDFLARE_EMAIL": CLOUDFLARE_EMAIL,
+        "WRANGLER_AUTH_DOMAIN": deployment_settings.wrangler_auth_domain,
+        "WRANGLER_AUTH_URL": deployment_settings.wrangler_auth_url,
+        "WRANGLER_SEND_METRICS": str(WRANGLER_SEND_METRICS).lower(),
+        "CLOUDFLARE_API_BASE_URL": deployment_settings.cloudflare_api_base_url,
+        "HOME": os.path.expanduser(settings.DEPLOYMENT_CACHE_DIR),
+        "XDG_HOME_DIR": os.path.expanduser(settings.DEPLOYMENT_CACHE_DIR),
+    }
+
+    if os.name == "nt":
+        # On Windows, configure npm to use a safe prefix within our cache directory
+        # to avoid issues with missing global npm directories
+        npm_prefix = (
+            Path(os.path.expanduser(settings.DEPLOYMENT_CACHE_DIR)) / "npm-global"
+        )
+        npm_prefix.mkdir(parents=True, exist_ok=True)
+        env_updates["npm_config_prefix"] = str(npm_prefix)
+
+    env.update(env_updates)
 
     validate_project(project_dir)
 
@@ -156,18 +172,42 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
     with tempfile.TemporaryDirectory(prefix="mcp-deploy-") as temp_dir_str:
         temp_project_dir = Path(temp_dir_str) / "project"
 
-        # Copy the entire project to temp directory, excluding unwanted directories and secrets file
-        def ignore_patterns(_path, names):
+        # Load ignore rules (gitignore syntax) only if an explicit ignore file is provided
+        ignore_spec = (
+            create_pathspec_from_gitignore(ignore_file) if ignore_file else None
+        )
+        if ignore_file:
+            if ignore_spec is None:
+                print_warning(
+                    f"Ignore file '{ignore_file}' not found; applying default excludes only"
+                )
+            else:
+                print_info(f"Using ignore patterns from {ignore_file}")
+        else:
+            if settings.VERBOSE:
+                print_info("No ignore file provided; applying default excludes only")
+
+        # Copy the entire project to temp directory, excluding unwanted directories and the live secrets file
+        def ignore_patterns(path_str, names):
             ignored = set()
+
+            # Keep existing hardcoded exclusions (highest priority)
             for name in names:
                 if (name.startswith(".") and name not in {".env"}) or name in {
                     "logs",
                     "__pycache__",
                     "node_modules",
                     "venv",
-                    MCP_SECRETS_FILENAME,
+                    MCP_SECRETS_FILENAME,  # Exclude mcp_agent.secrets.yaml only
                 }:
                     ignored.add(name)
+
+            # Apply explicit ignore file patterns (if provided)
+            spec_ignored = should_ignore_by_gitignore(
+                path_str, names, project_dir, ignore_spec
+            )
+            ignored.update(spec_ignored)
+
             return ignored
 
         shutil.copytree(project_dir, temp_project_dir, ignore=ignore_patterns)
@@ -195,11 +235,30 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
                     continue
 
                 # For non-Python files, rename with .mcpac.py extension to be included as py files
-                relative_path = file_path.relative_to(temp_project_dir)
-                py_path = temp_project_dir / f"{relative_path}.mcpac.py"
+                py_path = file_path.with_suffix(file_path.suffix + ".mcpac.py")
 
                 # Rename in place
                 file_path.rename(py_path)
+
+        # Compute and log which original files are being bundled (skip internal helpers)
+        bundled_original_files: list[str] = []
+        internal_bundle_files = {"wrangler.toml", "mcp_deploy_breadcrumb.py"}
+        for root, _dirs, files in os.walk(temp_project_dir):
+            for filename in files:
+                rel = Path(root).relative_to(temp_project_dir) / filename
+                if filename in internal_bundle_files:
+                    continue
+                if filename.endswith(".mcpac.py"):
+                    orig_rel = str(rel)[: -len(".mcpac.py")]
+                    bundled_original_files.append(orig_rel)
+                else:
+                    bundled_original_files.append(str(rel))
+
+        bundled_original_files.sort()
+        if bundled_original_files:
+            print_info(f"Bundling {len(bundled_original_files)} project file(s):")
+            for p in bundled_original_files:
+                console.print(f" - {p}")
 
         # Collect deployment metadata (git if available, else workspace hash)
         git_meta = get_git_metadata(project_dir)
@@ -236,7 +295,8 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
                 },
             )
             meta_vars.update({"MCP_DEPLOY_WORKSPACE_HASH": bundle_hash})
-            print_info(f"Deploying from non-git workspace (hash {bundle_hash[:12]}…)")
+            if settings.VERBOSE:
+                print_info(f"Deploying from non-git workspace (hash {bundle_hash[:12]}…)")
 
         # Write a breadcrumb file into the project so it ships with the bundle.
         # Use a Python file for guaranteed inclusion without renaming.
@@ -304,22 +364,28 @@ def wrangler_deploy(app_id: str, api_key: str, project_dir: Path) -> None:
             task = progress.add_task("Bundling MCP Agent...", total=None)
 
             try:
+                cmd = [
+                    "npx",
+                    "--yes",
+                    "wrangler@4.22.0",
+                    "deploy",
+                    main_py,
+                    "--name",
+                    app_id,
+                    "--no-bundle",
+                ]
+
                 subprocess.run(
-                    [
-                        "npx",
-                        "--yes",
-                        "wrangler@4.22.0",
-                        "deploy",
-                        main_py,
-                        "--name",
-                        app_id,
-                        "--no-bundle",
-                    ],
+                    cmd,
                     check=True,
                     env=env,
                     cwd=str(temp_project_dir),
                     capture_output=True,
                     text=True,
+                    # On Windows, we need to use shell=True for npx to work correctly
+                    shell=(os.name == "nt"),
+                    encoding="utf-8",
+                    errors="replace",
                 )
                 progress.update(task, description="✅ Bundled successfully")
                 return

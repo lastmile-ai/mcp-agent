@@ -30,6 +30,9 @@ from opentelemetry import trace
 
 from pydantic import BaseModel
 
+from openai import AsyncAzureOpenAI
+from openai.types.chat import ChatCompletion
+
 from mcp.types import (
     CallToolRequestParams,
     CallToolRequest,
@@ -106,6 +109,8 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
         # Get default model from config if available
         default_model = "gpt-4o-mini"  # Fallback default
 
+        self._is_openai_model = lambda model: model and model.lower().startswith("gpt-")
+
         if self.context.config.azure:
             if hasattr(self.context.config.azure, "default_model"):
                 default_model = self.context.config.azure.default_model
@@ -127,6 +132,10 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
             max_iterations=10,
             use_history=True,
         )
+
+    @classmethod
+    def get_provider_config(cls, context):
+        return getattr(getattr(context, "config", None), "azure", None)
 
     @track_tokens()
     async def generate(self, message, request_params: RequestParams | None = None):
@@ -213,10 +222,19 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
                 )
                 self._annotate_span_for_completion_request(span, request, i)
 
-                response = await self.executor.execute(
-                    AzureCompletionTasks.request_completion_task,
-                    request,
-                )
+                # Route to appropriate completion task based on model type
+                if self._is_openai_model(model):
+                    # Use OpenAI client for GPT models
+                    response = await self.executor.execute(
+                        AzureOpenAICompletionTasks.request_completion_task,
+                        request,
+                    )
+                else:
+                    # Use Azure AI Inference client for non-GPT models
+                    response = await self.executor.execute(
+                        AzureCompletionTasks.request_completion_task,
+                        request,
+                    )
 
                 if isinstance(response, BaseException):
                     self.logger.error(f"Error: {response}")
@@ -229,8 +247,12 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
                 self._annotate_span_for_completion_response(span, response, i)
 
                 # Per-iteration token counts
-                iteration_input = response.usage["prompt_tokens"]
-                iteration_output = response.usage["completion_tokens"]
+                if isinstance(response.usage, dict):
+                    iteration_input = response.usage["prompt_tokens"]
+                    iteration_output = response.usage["completion_tokens"]
+                else:
+                    iteration_input = response.usage.prompt_tokens
+                    iteration_output = response.usage.completion_tokens
 
                 total_input_tokens += iteration_input
                 total_output_tokens += iteration_output
@@ -523,7 +545,7 @@ class AzureCompletionTasks:
         request: RequestCompletionRequest,
     ) -> ChatCompletions:
         """
-        Request a completion from Azure's API.
+        Request a completion from Azure's API using Azure AI Inference.
         """
         if request.config.api_key:
             azure_client = ChatCompletionsClient(
@@ -573,6 +595,69 @@ class AzureCompletionTasks:
                     f"Original error: {e}. Retry error: {retry_error}"
                 ) from retry_error
         return response
+
+
+class AzureOpenAICompletionTasks:
+    @staticmethod
+    @workflow_task
+    async def request_completion_task(
+        request: RequestCompletionRequest,
+    ) -> ChatCompletion:
+        """
+        Request a completion from Azure OpenAI API using the openai library.
+        This is used for GPT models on Azure.
+        """
+
+        def _openai_reasoning(model: str):
+            return model and model.startswith(("gpt-5", "gpt-o1", "gpt-o3", "gpt-o4"))
+
+        payload = request.payload.copy()
+
+        # Handle reasoning models
+        if _openai_reasoning(payload.get("model")):
+            # Newer reasoning models use 'max_completion_tokens' instead of 'max_tokens'
+            max_tokens = payload.get("max_tokens")
+            if max_tokens:
+                payload["max_completion_tokens"] = max_tokens
+                del payload["max_tokens"]
+
+            # Remove parameters that reasoning models don't support
+            params_to_remove = [
+                "temperature",
+                "top_p",
+                "presence_penalty",
+                "frequency_penalty",
+            ]
+            for param in params_to_remove:
+                payload.pop(param, None)
+
+        # Build client parameters
+        client_params = {
+            "azure_endpoint": request.config.endpoint,
+            "api_version": request.config.api_version,
+        }
+
+        # Handle authentication - prioritize API key, then Azure AD token, then Azure AD token provider
+        if request.config.api_key:
+            client_params["api_key"] = request.config.api_key
+        elif request.config.azure_ad_token:
+            client_params["azure_ad_token"] = request.config.azure_ad_token
+        elif request.config.azure_ad_token_provider:
+            client_params["azure_ad_token_provider"] = (
+                request.config.azure_ad_token_provider
+            )
+        else:
+            # Fall back to API key from environment if available
+            client_params["api_key"] = request.config.api_key
+
+        async with AsyncAzureOpenAI(**client_params) as client:
+            # Azure deployment name: use azure_deployment from config if specified,
+            # otherwise use the model name as deployment name
+            deployment = request.config.azure_deployment or payload.get("model")
+            payload["model"] = deployment
+
+            response = await client.chat.completions.create(**payload)
+            return response
 
 
 class MCPAzureTypeConverter(ProviderToMCPConverter[MessageParam, ResponseMessage]):

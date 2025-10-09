@@ -199,7 +199,7 @@ async def main():
                 if "workflows" in selected:
                     while True:
                         get_status_result = await server.call_tool(
-                            "workflows-BasicAgentWorkflow-get_status",
+                            "workflows-get_status",
                             arguments={"run_id": run_id},
                         )
 

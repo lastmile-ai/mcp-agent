@@ -388,21 +388,24 @@ class TestProcessConfigSecrets:
         mock_secrets_client.get_secret_value.side_effect = mock_get_secret_value
 
         # Mock user choices and prompts
-        # Only user_api_key and database.password need choices (bedrock and anthropic api_key are reused)
+        # Only anthropic.api_key, user_api_key and database.password need choices (bedrock api key is reused)
         mock_responses = [
-            "2",
-            "1",
-        ]  # user secret for user_api_key, deployment for database.password
-        mock_confirmations = [True]  # Exclude the removed key
+            "2",  # user secret for user_api_key
+            "1",  # deployment for anthropic.api_key (when reprocessed)
+            "1",  # deployment for database.password
+        ]
+        mock_confirmations = [
+            False,
+            True,
+            True,
+        ]  # [Use matching bedrock, reprocess anthropic, remove old value]
 
-        # Set up our mocks
         with (
             patch("rich.prompt.Prompt.ask", side_effect=mock_responses),
             patch("typer.confirm", side_effect=mock_confirmations),
             patch.dict("os.environ", {}, clear=True),
             patch("mcp_agent.cli.secrets.processor.print_secret_summary"),
         ):
-            # Process the config with existing output
             result = await process_config_secrets(
                 input_path=input_path,
                 output_path=output_path,
@@ -410,28 +413,25 @@ class TestProcessConfigSecrets:
                 non_interactive=False,
             )
 
-            # Read the updated output file
             with open(output_path, "r", encoding="utf-8") as f:
                 updated_output = f.read()
 
             deployed_secrets_yaml = load_yaml_with_secrets(updated_output)
 
             print(f"Updated output:\n{updated_output}")
-            # Verify the output contains reused secrets
+            # Verify the output contains reused secret
             assert (
                 deployed_secrets_yaml["server"]["bedrock"]["api_key"]
                 == existing_bedrock_api_key
-            )
-            assert (
-                deployed_secrets_yaml["server"]["anthropic"]["api_key"]
-                == existing_anthropic_api_key
             )
 
             # Verify the removed key is no longer in the output
             assert "removed" not in deployed_secrets_yaml
 
-            # Verify the new key was added and transformed
-            assert isinstance(deployed_secrets_yaml["database"]["password"], str)
+            # Verify the new keys were added and transformed
+            assert deployed_secrets_yaml["server"]["anthropic"]["api_key"].startswith(
+                UUID_PREFIX
+            )
             assert deployed_secrets_yaml["database"]["password"].startswith(UUID_PREFIX)
 
             # Verify user_api_key remains as UserSecret
@@ -444,7 +444,6 @@ class TestProcessConfigSecrets:
             assert "deployment_secrets" in result
             assert "user_secrets" in result
             assert "reused_secrets" in result
-            # Check if we have exactly 1 new secret and 2 reused secrets
-            assert len(result["deployment_secrets"]) == 1  # Only DB_PASSWORD
-            assert len(result["reused_secrets"]) == 2  # The bedrock and anthropic keys
+            assert len(result["deployment_secrets"]) == 2  # DB_password + anthropic key
+            assert len(result["reused_secrets"]) == 1  # The bedrock key
             assert len(result["user_secrets"]) == 1  # user_api_key

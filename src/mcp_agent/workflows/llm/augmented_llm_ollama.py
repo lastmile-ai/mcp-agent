@@ -33,6 +33,11 @@ class OllamaAugmentedLLM(OpenAIAugmentedLLM):
 
         self.provider = "Ollama"
 
+    @classmethod
+    def get_provider_config(cls, context):
+        # Uses the OpenAI-compatible config (base_url, api_key) for Ollama
+        return getattr(getattr(context, "config", None), "openai", None)
+
     async def generate_structured(
         self,
         message,
