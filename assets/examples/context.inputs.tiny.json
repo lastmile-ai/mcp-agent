@@ -1,0 +1,12 @@
+{
+  "task_targets": [
+    "refactor api"
+  ],
+  "changed_paths": [
+    "file:///a.py"
+  ],
+  "referenced_files": [],
+  "failing_tests": [],
+  "must_include": [],
+  "never_include": []
+}

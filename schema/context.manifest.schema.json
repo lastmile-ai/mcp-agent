@@ -1,0 +1,133 @@
+{
+  "$defs": {
+    "ManifestMeta": {
+      "properties": {
+        "code_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Code Version"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "inputs_fingerprint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Inputs Fingerprint"
+        },
+        "pack_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pack Hash"
+        },
+        "settings_fingerprint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Settings Fingerprint"
+        },
+        "tool_versions": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Tool Versions",
+          "type": "object"
+        }
+      },
+      "title": "ManifestMeta",
+      "type": "object"
+    },
+    "Slice": {
+      "properties": {
+        "bytes": {
+          "default": 0,
+          "title": "Bytes",
+          "type": "integer"
+        },
+        "end": {
+          "title": "End",
+          "type": "integer"
+        },
+        "reason": {
+          "default": "",
+          "title": "Reason",
+          "type": "string"
+        },
+        "start": {
+          "title": "Start",
+          "type": "integer"
+        },
+        "token_estimate": {
+          "default": 0,
+          "title": "Token Estimate",
+          "type": "integer"
+        },
+        "tool": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool"
+        },
+        "uri": {
+          "title": "Uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "uri",
+        "start",
+        "end"
+      ],
+      "title": "Slice",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "meta": {
+      "$ref": "#/$defs/ManifestMeta"
+    },
+    "slices": {
+      "items": {
+        "$ref": "#/$defs/Slice"
+      },
+      "title": "Slices",
+      "type": "array"
+    }
+  },
+  "title": "Manifest",
+  "type": "object"
+}

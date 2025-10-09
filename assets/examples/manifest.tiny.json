@@ -1,0 +1,21 @@
+{
+  "slices": [
+    {
+      "uri": "file:///a.py",
+      "start": 0,
+      "end": 21,
+      "bytes": 24,
+      "token_estimate": 6,
+      "reason": "changed_path",
+      "tool": null
+    }
+  ],
+  "meta": {
+    "pack_hash": "<computed-at-runtime>",
+    "code_version": null,
+    "tool_versions": {},
+    "settings_fingerprint": "<computed-at-runtime>",
+    "created_at": "<runtime-iso>",
+    "inputs_fingerprint": null
+  }
+}
