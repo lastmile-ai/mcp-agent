@@ -12,6 +12,9 @@ class OAuthCallbackRegistry:
     def __init__(self) -> None:
         self._pending: Dict[str, asyncio.Future[Dict[str, Any]]] = {}
         self._lock = asyncio.Lock()
+        # Map OAuth state -> flow_id to support loopback callbacks that
+        # only receive the state param (no flow id in the redirect path).
+        self._state_to_flow: Dict[str, str] = {}
 
     async def create_handle(self, flow_id: str) -> asyncio.Future[Dict[str, Any]]:
         """Create (or reuse) a future associated with a flow identifier."""
@@ -34,6 +37,26 @@ class OAuthCallbackRegistry:
                 future.set_result(payload)
             return True
 
+    async def register_state(self, flow_id: str, state: str) -> None:
+        """Associate an OAuth state value with a flow id for loopback delivery."""
+        if not state:
+            return
+        async with self._lock:
+            self._state_to_flow[state] = flow_id
+
+    async def deliver_by_state(self, state: str, payload: Dict[str, Any]) -> bool:
+        """Deliver a callback payload by resolving the flow id from state.
+
+        Returns False if the state is unknown.
+        """
+        if not state:
+            return False
+        async with self._lock:
+            flow_id = self._state_to_flow.get(state)
+        if not flow_id:
+            return False
+        return await self.deliver(flow_id, payload)
+
     async def fail(self, flow_id: str, exc: Exception) -> bool:
         async with self._lock:
             future = self._pending.get(flow_id)
@@ -48,6 +71,10 @@ class OAuthCallbackRegistry:
             future = self._pending.pop(flow_id, None)
             if future and not future.done():
                 future.cancel()
+            # Best-effort cleanup of any state entries pointing to this flow
+            for s, f in list(self._state_to_flow.items()):
+                if f == flow_id:
+                    self._state_to_flow.pop(s, None)
 
 
 # Global registry used by server + flow coordinator

@@ -8,7 +8,7 @@ import uuid
 import time
 
 from json import JSONDecodeError
-from typing import Any, Dict, Sequence
+from typing import Any, Dict, Sequence, Iterable, Tuple
 from urllib.parse import parse_qs, urlparse
 
 from mcp.shared.auth import OAuthMetadata, ProtectedResourceMetadata
@@ -31,6 +31,7 @@ from mcp_agent.oauth.pkce import (
     generate_state,
 )
 from mcp_agent.oauth.records import TokenRecord
+from mcp_agent.oauth.errors import OAuthFlowError
 
 logger = get_logger(__name__)
 
@@ -72,6 +73,26 @@ class AuthorizationFlowCoordinator:
         if oauth_config.use_internal_callback and self._settings.callback_base_url:
             internal_redirect = f"{str(self._settings.callback_base_url).rstrip('/')}/internal/oauth/callback/{flow_id}"
             redirect_options.insert(0, internal_redirect)
+
+        # If there is no upstream session to handle auth/request, we will use a
+        # local loopback callback listener on 127.0.0.1 with a configurable fixed
+        # set of ports. Build candidate redirect URIs here but only start the
+        # listener if we detect there is no upstream session.
+        loopback_candidates: list[Tuple[str, int]] = []
+        try:
+            # Expect a list of ports on settings under 'loopback_ports'; if not
+            # present, use a small default set that mirrors common tooling.
+            ports: Iterable[int] = getattr(
+                self._settings, "loopback_ports", (33418, 33419, 33420)
+            )
+            for p in ports:
+                loopback_candidates.append((f"http://127.0.0.1:{p}/callback", p))
+                loopback_candidates.append((f"http://localhost:{p}/callback", p))
+        except Exception:
+            pass
+        for url, _ in loopback_candidates:
+            if url not in redirect_options:
+                redirect_options.append(url)
 
         if not redirect_options:
             raise OAuthFlowError(
@@ -133,7 +154,18 @@ class AuthorizationFlowCoordinator:
             "authorization_server_url": authorization_server_url,
         }
 
-        result = await _send_auth_request(context, request_payload)
+        # Try to send an auth/request upstream if available. If not available,
+        # fall back to a local loopback server using the configured ports.
+        result: Dict[str, Any] | None
+        try:
+            result = await _send_auth_request(context, request_payload)
+        except AuthorizationDeclined:
+            result = await _run_loopback_flow(
+                flow_id=flow_id,
+                state=state,
+                authorize_url=authorize_url,
+                loopback_candidates=loopback_candidates,
+            )
 
         try:
             if result and result.get("url"):
@@ -264,3 +296,135 @@ async def _send_auth_request(
     raise AuthorizationDeclined(
         "No upstream MCP session available to prompt user for authorization"
     )
+
+
+async def _run_loopback_flow(
+    *,
+    flow_id: str,
+    state: str,
+    authorize_url: httpx.URL,
+    loopback_candidates: list[tuple[str, int]],
+) -> Dict[str, Any]:
+    """Run a local loopback OAuth authorization flow.
+
+    Tries a list of fixed ports; opens the browser to the authorization URL
+    unchanged (provider must already have an allowed redirect matching the
+    selection). Delivers the callback via callback_registry using either the
+    flow id (if present) or the state parameter.
+    """
+    if not loopback_candidates:
+        raise AuthorizationDeclined(
+            "No upstream session and no loopback ports configured for OAuth flow"
+        )
+
+    # Register state so the loopback handler can resolve flow id
+    try:
+        await callback_registry.register_state(flow_id, state)
+    except Exception:
+        pass
+
+    # Deferred import to avoid heavy deps unless needed
+    import contextlib
+    import socket
+    import threading
+    import webbrowser
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    from urllib.parse import urlparse as _urlparse, parse_qs as _parse_qs
+
+    selected: tuple[str, int] | None = None
+
+    # Find an available port from candidates
+    for url, port in loopback_candidates:
+        with contextlib.closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+            try:
+                s.bind(("127.0.0.1", port))
+                selected = (url, port)
+                break
+            except OSError:
+                continue
+
+    if selected is None:
+        raise AuthorizationDeclined(
+            "All configured loopback ports are busy; configure a different port list"
+        )
+
+    redirect_url, port = selected
+
+    # Minimal request handler to capture the callback
+    result_container: dict[str, Any] = {"payload": None}
+
+    class _Handler(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802 (http server style)
+            try:
+                parsed = _urlparse(self.path)
+                params = {k: v[-1] for k, v in _parse_qs(parsed.query).items()}
+                # Deliver by flow id or state
+                delivered = False
+                if flow_id:
+                    delivered = (
+                        threading.get_native_id() is not None
+                    )  # dummy to appease linters
+                    # Ignore variable; use registry
+                # Prefer explicit flow delivery; else by state
+                ok = False
+                if flow_id:
+                    ok = False  # avoid mypy confusion; we'll deliver after sending response
+                result_container["payload"] = params
+                # Respond immediately
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(
+                    b"<!DOCTYPE html><html><body><h3>Authorization complete.</h3><p>You may close this window and return to MCP Agent.</p></body></html>"
+                )
+            except Exception:
+                self.send_response(500)
+                self.end_headers()
+
+        def log_message(self, format: str, *args):  # noqa: A003 - keep server quiet
+            return
+
+    httpd: HTTPServer = HTTPServer(("127.0.0.1", port), _Handler)
+
+    def _serve_once():
+        try:
+            httpd.handle_request()
+        finally:
+            with contextlib.suppress(Exception):
+                httpd.server_close()
+
+    t = threading.Thread(target=_serve_once, daemon=True)
+    t.start()
+
+    # Open the browser to the provider's authorize URL. The authorize URL must
+    # already include a redirect_uri matching one of the provider's registered
+    # values. We do not mutate the URL here because we don't know which of the
+    # candidate redirect URIs the client registered; that comes from config.
+    with contextlib.suppress(Exception):
+        webbrowser.open(str(authorize_url), new=1, autoraise=True)
+
+    # Wait for one request or timeout
+    # Simple polling with backoff; we keep this lightweight.
+    import time as _time
+
+    deadline = _time.time() + 300.0
+    while _time.time() < deadline:
+        if result_container["payload"] is not None:
+            break
+        _time.sleep(0.1)
+
+    payload = result_container["payload"]
+    if not payload:
+        raise CallbackTimeoutError("Timed out waiting for loopback OAuth callback")
+
+    # Try to deliver via flow id first, else by state
+    delivered = await callback_registry.deliver(flow_id, payload)
+    if not delivered:
+        delivered = await callback_registry.deliver_by_state(
+            payload.get("state", ""), payload
+        )
+    if not delivered:
+        # If still not delivered, just return the parsed payload to the caller
+        # (flow will proceed using the returned data).
+        return payload
+    return payload
