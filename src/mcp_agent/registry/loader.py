@@ -1,8 +1,10 @@
 import os
+from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
+
 import httpx as _httpx
 import yaml as _yaml
-from contextlib import contextmanager
+
 from mcp_agent.registry.store import ToolRegistryStore
 
 # Try to import opentelemetry, provide dummy classes if unavailable
@@ -40,7 +42,6 @@ class ToolRegistryLoader:
     - Loading tool configurations from files
     - Registering tools in the ToolRegistryStore
     """
-
     def __init__(self, store: Optional[ToolRegistryStore] = None):
         """Initialize the ToolRegistryLoader.
         
