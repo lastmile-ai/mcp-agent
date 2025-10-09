@@ -44,3 +44,24 @@ def _claim(token: MCPAccessToken, key: str) -> Any | None:
     if not token.claims:
         return None
     return token.claims.get(key)
+
+
+DEFAULT_PRECONFIGURED_IDENTITY = OAuthUserIdentity(
+    provider="mcp-agent",
+    subject="preconfigured-tokens",
+    claims={
+        "token_source": "synthetic",
+        "description": "Synthetic identity used when no user/session is available",
+    },
+)
+
+
+def session_identity(session_id: str | None) -> OAuthUserIdentity | None:
+    """Build a deterministic identity for an unauthenticated MCP session."""
+    if not session_id:
+        return None
+    return OAuthUserIdentity(
+        provider="mcp-session",
+        subject=str(session_id),
+        claims={"token_source": "session"},
+    )

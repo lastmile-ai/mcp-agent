@@ -33,7 +33,6 @@ from mcp_agent.tracing.tracer import TracingConfig
 from mcp_agent.workflows.llm.llm_selector import ModelSelector
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.tracing.token_counter import TokenCounter
-from mcp_agent.oauth.identity import OAuthUserIdentity
 
 
 if TYPE_CHECKING:
@@ -97,9 +96,6 @@ class Context(BaseModel):
     # Dynamic gateway configuration (per-run overrides via Temporal memo)
     gateway_url: str | None = None
     gateway_token: str | None = None
-
-    # Current authenticated user (set when acting as an MCP server)
-    current_user: Optional[OAuthUserIdentity] = None
 
     # OAuth helpers for downstream servers
     token_store: Optional[TokenStore] = None
@@ -204,6 +200,7 @@ async def initialize_context(
     decorator_registry: Optional[DecoratorRegistry] = None,
     signal_registry: Optional[SignalRegistry] = None,
     store_globally: bool = False,
+    session_id: str | None = None,
 ):
     """
     Initialize the global application context.
@@ -221,7 +218,7 @@ async def initialize_context(
         config, context.executor
     )
 
-    context.session_id = str(context.executor.uuid())
+    context.session_id = session_id or str(context.executor.uuid())
 
     # Initialize token counter with engine hint for fast path checks
     context.token_counter = TokenCounter(execution_engine=config.execution_engine)
