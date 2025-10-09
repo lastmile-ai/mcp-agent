@@ -1,11 +1,8 @@
 import asyncio
 import time
-import statistics
 from importlib import import_module
-
 assemble = import_module("mcp_agent.context.assemble")
 models = import_module("mcp_agent.context.models")
-
 def test_perf_p95_tiny_corpus():
     inputs = models.AssembleInputs(changed_paths=["file:///a.py"])
     opts = models.AssembleOptions(neighbor_radius=0)
