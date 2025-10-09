@@ -44,6 +44,11 @@ class Manifest(BaseModel):
     slices: List[Slice] = Field(default_factory=list)
     meta: ManifestMeta = Field(default_factory=ManifestMeta)
 
+    @property
+    def file_contexts(self) -> List[Slice]:
+        """Alias to maintain compatibility with legacy callers."""
+        return self.slices
+
 
 class AssembleInputs(BaseModel):
     task_targets: List[str] = Field(default_factory=list)

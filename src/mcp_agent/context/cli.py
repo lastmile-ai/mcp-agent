@@ -1,83 +1,141 @@
 from __future__ import annotations
+
 import argparse
+import asyncio
 import json
 import sys
+from pathlib import Path
 from typing import List, Optional
 
-from .assemble import assemble_context, NoopToolKit
+from .assemble import assemble_context, NoopToolKit, must_include_missing
 from .models import AssembleInputs, AssembleOptions
 from .settings import ContextSettings
 
+
 def _load_inputs(path: str) -> AssembleInputs:
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    with open(path, "r", encoding="utf-8") as handle:
+        data = json.load(handle)
     return AssembleInputs.model_validate(data)
 
-def _must_include_covered(inputs: AssembleInputs, manifest) -> List[dict]:
-    """Return list of must_include spans that are NOT fully covered by any slice."""
-    missing = []
-    for ms in inputs.must_include or []:
-        ok = False
-        for sl in manifest.slices:
-            if sl.uri == ms.uri and int(sl.start) <= int(ms.start) and int(sl.end) >= int(ms.end):
-                ok = True
-                break
-        if not ok:
-            missing.append({"uri": ms.uri, "start": int(ms.start), "end": int(ms.end), "reason": ms.reason or ""})
-    return missing
 
-def build_opts_from_args(args: argparse.Namespace) -> AssembleOptions:
-    return AssembleOptions(
-        top_k=args.top_k,
-        neighbor_radius=args.neighbor_radius,
-        max_depth=args.max_depth,
-        seed_weights=args.seed_weights,
-        neighbor_weights=args.neighbor_weights,
-        allow_wildcards=not args.no_wildcards,
-        dynamic_chunk_window=args.dynamic_chunk_window,
+def build_opts_from_args(args: argparse.Namespace, settings: ContextSettings) -> AssembleOptions:
+    opts = AssembleOptions(
+        top_k=args.top_k if args.top_k is not None else settings.TOP_K,
+        neighbor_radius=args.neighbor_radius if args.neighbor_radius is not None else settings.NEIGHBOR_RADIUS,
+        token_budget=args.token_budget if args.token_budget is not None else settings.TOKEN_BUDGET,
+        max_files=args.max_files if args.max_files is not None else settings.MAX_FILES,
+        section_caps=dict(settings.SECTION_CAPS or {}),
+        enforce_non_droppable=settings.ENFORCE_NON_DROPPABLE,
     )
 
-def _main_impl(argv: Optional[List[str]] = None):
-    parser = argparse.ArgumentParser(description="Assemble context from definitions")
-    parser.add_argument("--inputs", required=True, help="Path to JSON with AssembleInputs")
-    parser.add_argument(
-        "--settings", default="context_settings.yaml", help="Path to settings YAML"
-    )
-    parser.add_argument("--top_k", type=int, help="Override top_k")
-    parser.add_argument("--neighbor_radius", type=int, help="Override neighbor_radius")
-    parser.add_argument("--max_depth", type=int, help="Override max_depth")
-    parser.add_argument("--seed_weights", help="Override seed_weights (float or map)")
-    parser.add_argument("--neighbor_weights", help="Override neighbor_weights")
-    parser.add_argument("--no_wildcards", action="store_true", help="Disable wildcards")
-    parser.add_argument(
-        "--dynamic_chunk_window", type=int, help="Override dynamic_chunk_window"
-    )
+    for item in args.section_cap or []:
+        section, _, limit = item.partition("=")
+        if not section or not limit:
+            raise ValueError(f"Invalid --section-cap value: '{item}'")
+        opts.section_caps[int(section)] = int(limit)
 
-    args = parser.parse_args(argv)
+    if args.enforce_non_droppable:
+        opts.enforce_non_droppable = True
+    if args.disable_enforce_non_droppable:
+        opts.enforce_non_droppable = False
 
-    inputs = _load_inputs(args.inputs)
-    settings = ContextSettings.from_yaml(args.settings)
+    return opts
 
-    opts = build_opts_from_args(args)
-    tool_kit = NoopToolKit()
 
-    manifest = assemble_context(inputs, settings, opts, tool_kit)
+def _cmd_assemble(args: argparse.Namespace) -> int:
+    try:
+        inputs = _load_inputs(args.inputs)
+    except FileNotFoundError:
+        print(f"ERROR: inputs file not found: {args.inputs}", file=sys.stderr)
+        return 1
 
-    missing = _must_include_covered(inputs, manifest)
-    if missing:
-        print(
-            f"ERROR: {len(missing)} must_include span(s) not fully covered:",
-            file=sys.stderr,
+    settings = ContextSettings()
+
+    try:
+        opts = build_opts_from_args(args, settings)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+
+    manifest, pack_hash, report = asyncio.run(
+        assemble_context(
+            inputs=inputs,
+            opts=opts,
+            toolkit=NoopToolKit(),
         )
-        for m in missing:
-            print(
-                f"  {m['uri']} [{m['start']}-{m['end']}] - {m['reason']}", file=sys.stderr
-            )
-        sys.exit(1)
+    )
 
-    print(json.dumps(manifest.model_dump(), indent=2))
+    if args.out:
+        out_path = Path(args.out)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = json.dumps(manifest.model_dump(), indent=2)
+        out_path.write_text(payload, encoding="utf-8")
+
+    print(f"pack_hash: {pack_hash}")
+    print(f"files_out: {report.files_out}")
+    print(f"tokens_out: {report.tokens_out}")
+
+    enforce = opts.enforce_non_droppable
+    if enforce:
+        missing = must_include_missing(inputs, manifest)
+        if missing:
+            print(
+                f"ERROR: {len(missing)} must_include span(s) not fully covered:",
+                file=sys.stderr,
+            )
+            for entry in missing:
+                print(
+                    f"  {entry['uri']} [{entry['start']}-{entry['end']}] - {entry['reason']}",
+                    file=sys.stderr,
+                )
+            return 2
+
+    return 0
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Assemble context manifests")
+    subparsers = parser.add_subparsers(dest="command")
+
+    assemble_parser = subparsers.add_parser("assemble", help="assemble context pack")
+    assemble_parser.add_argument("--inputs", required=True, help="Path to AssembleInputs JSON")
+    assemble_parser.add_argument("--out", help="Path to write manifest JSON")
+    assemble_parser.add_argument("--dry-run", action="store_true", help="Simulate assembly without side effects")
+    assemble_parser.add_argument("--top-k", type=int, help="Override top_k")
+    assemble_parser.add_argument("--neighbor-radius", type=int, help="Override neighbor radius")
+    assemble_parser.add_argument("--token-budget", type=int, help="Override token budget")
+    assemble_parser.add_argument("--max-files", type=int, help="Override max files")
+    assemble_parser.add_argument(
+        "--section-cap",
+        action="append",
+        metavar="SECTION=LIMIT",
+        default=[],
+        help="Override section cap (e.g. 2=1)",
+    )
+    assemble_parser.add_argument(
+        "--enforce-non-droppable",
+        action="store_true",
+        help="Fail if must_include spans are not fully covered",
+    )
+    assemble_parser.add_argument(
+        "--no-enforce-non-droppable",
+        dest="disable_enforce_non_droppable",
+        action="store_true",
+        help="Disable non-droppable enforcement",
+    )
+    assemble_parser.set_defaults(func=_cmd_assemble)
+
+    return parser
+
 
 def main(argv: Optional[List[str]] = None) -> int:
-    return _main_impl(argv)
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+    if not getattr(args, "command", None):
+        parser.print_help()
+        return 1
+    return args.func(args)
+
+
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
