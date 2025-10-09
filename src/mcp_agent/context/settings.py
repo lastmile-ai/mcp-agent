@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import json
-import os
 from hashlib import sha256
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -28,12 +27,18 @@ class ContextSettings(BaseSettings):
     ENFORCE_NON_DROPPABLE: bool = False
 
     # Logging and redaction
-    REDACT_PATH_GLOBS: list[str] = []
+    REDACT_PATH_GLOBS: List[str] = []
+
+    # Response guards
+    MAX_RESPONSE_BYTES: int = 1_000_000  # ~1MB per tool call
+    MAX_SPANS_PER_CALL: int = 5000
+
+    # Patterns configuration
+    AST_GREP_PATTERNS: List[str] = []  # optional AST-grep patterns to feed into patterns()
 
     model_config = SettingsConfigDict(env_prefix="MCP_CONTEXT_", case_sensitive=False)
 
     def fingerprint(self) -> str:
-        # Only include fields that affect assembly outcome
         material = {
             "TOP_K": self.TOP_K,
             "NEIGHBOR_RADIUS": self.NEIGHBOR_RADIUS,
@@ -45,6 +50,9 @@ class ContextSettings(BaseSettings):
             "MAX_FILES": self.MAX_FILES,
             "SECTION_CAPS": self.SECTION_CAPS,
             "ENFORCE_NON_DROPPABLE": self.ENFORCE_NON_DROPPABLE,
+            "MAX_RESPONSE_BYTES": self.MAX_RESPONSE_BYTES,
+            "MAX_SPANS_PER_CALL": self.MAX_SPANS_PER_CALL,
+            "AST_GREP_PATTERNS": tuple(self.AST_GREP_PATTERNS),
         }
         blob = json.dumps(material, sort_keys=True, separators=(",", ":")).encode("utf-8")
         return sha256(blob).hexdigest()

@@ -7,6 +7,8 @@ from typing import Any, Dict, Optional, Protocol, Tuple
 from .assemble import assemble_context, ToolKit, NoopToolKit
 from .models import AssembleInputs, AssembleOptions, AssembleReport, Manifest
 from .telemetry import meter
+from .settings import ContextSettings
+from .logutil import redact_event
 
 
 class ArtifactStore(Protocol):
@@ -20,7 +22,6 @@ class SSEEmitter(Protocol):
 
 
 class MemoryArtifactStore:
-    """Simple in-memory artifact store for tests or local runs."""
     def __init__(self) -> None:
         self._data: Dict[Tuple[str, str], bytes] = {}
         self._ct: Dict[Tuple[str, str], str] = {}
@@ -39,12 +40,24 @@ class MemoryArtifactStore:
 
 
 class MemorySSEEmitter:
-    """Collects events for assertions in tests."""
     def __init__(self) -> None:
         self.events: Dict[str, list[Dict[str, Any]]] = {}
 
     async def emit(self, run_id: str, event: Dict[str, Any]) -> None:
         self.events.setdefault(run_id, []).append(event)
+
+
+def _must_include_covered(inputs: AssembleInputs, manifest: Manifest):
+    missing = []
+    for ms in inputs.must_include or []:
+        ok = False
+        for sl in manifest.slices:
+            if sl.uri == ms.uri and int(sl.start) <= int(ms.start) and int(sl.end) >= int(ms.end):
+                ok = True
+                break
+        if not ok:
+            missing.append({"uri": ms.uri, "start": int(ms.start), "end": int(ms.end), "reason": ms.reason or ""})
+    return missing
 
 
 async def run_assembling_phase(
@@ -56,22 +69,24 @@ async def run_assembling_phase(
     sse: Optional[SSEEmitter] = None,
     code_version: Optional[str] = None,
     tool_versions: Optional[Dict[str, str]] = None,
+    repo: Optional[str] = None,
+    commit_sha: Optional[str] = None,
+    trace_id: Optional[str] = None,
 ) -> Tuple[Manifest, str, AssembleReport]:
     """
     Executes the ContextPack assembly stage within the run loop.
-    - Emits SSE {"phase":"ASSEMBLING", ...}
-    - Persists artifacts/context/manifest.json
-    - Returns (manifest, pack_hash, report)
+    Emits redacted SSE events and persists artifacts/context/manifest.json.
+    Enforces non-droppable coverage when ENFORCE_NON_DROPPABLE=true.
     """
     m = meter()
-    t0 = time.perf_counter()
+    cfg = ContextSettings()
 
     tk = toolkit or NoopToolKit()
     store = artifact_store or MemoryArtifactStore()
     sse_emitter = sse or MemorySSEEmitter()
 
-    # Announce start of assembling
-    await sse_emitter.emit(run_id, {"phase": "ASSEMBLING", "status": "start"})
+    start_evt = {"phase": "ASSEMBLING", "status": "start", "run_id": run_id, "repo": repo, "commit_sha": commit_sha}
+    await sse_emitter.emit(run_id, redact_event(start_evt, cfg.REDACT_PATH_GLOBS))
 
     manifest, pack_hash, report = await assemble_context(
         inputs=inputs,
@@ -79,26 +94,30 @@ async def run_assembling_phase(
         toolkit=tk,
         code_version=code_version,
         tool_versions=tool_versions,
+        telemetry_attrs={"run_id": run_id or "", "repo": repo or "", "commit_sha": commit_sha or "", "trace_id": trace_id or ""},
     )
 
-    # Persist manifest.json as an artifact
     manifest_bytes = json.dumps(json.loads(manifest.model_dump_json()), indent=2).encode("utf-8")
     art_id = await store.put(run_id, "artifacts/context/manifest.json", manifest_bytes, content_type="application/json")
 
-    # Announce completion with hash and quick stats
-    await sse_emitter.emit(
-        run_id,
-        {
-            "phase": "ASSEMBLING",
-            "status": "end",
-            "pack_hash": pack_hash,
-            "files_out": report.files_out,
-            "tokens_out": report.tokens_out,
-            "artifact": art_id,
-        },
-    )
+    end_evt = {
+        "phase": "ASSEMBLING",
+        "status": "end",
+        "pack_hash": pack_hash,
+        "run_id": run_id,
+        "repo": repo,
+        "commit_sha": commit_sha,
+        "files_out": report.files_out,
+        "tokens_out": report.tokens_out,
+        "artifact": art_id,
+    }
+    await sse_emitter.emit(run_id, redact_event(end_evt, cfg.REDACT_PATH_GLOBS))
 
-    dur_ms = (time.perf_counter() - t0) * 1000.0
-    m.record_duration_ms(dur_ms, {"phase": "assemble", "stage": "runloop"})
+    if cfg.ENFORCE_NON_DROPPABLE:
+        missing = _must_include_covered(inputs, manifest)
+        if missing:
+            # Signal violation and raise to fail the run
+            await sse_emitter.emit(run_id, {"phase": "ASSEMBLING", "status": "violation", "non_droppable_missing": missing})
+            raise RuntimeError("non_droppable_missing")
 
     return manifest, pack_hash, report
