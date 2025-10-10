@@ -1,7 +1,11 @@
 import asyncio
+from typing import Any
+
 import pytest
 
 from mcp_agent.app import MCPApp
+from mcp_agent.core.context import Context
+from mcp.server.fastmcp import Context as FastMCPContext
 from mcp_agent.server.app_server import (
     create_workflow_tools,
     create_declared_function_tools,
@@ -87,6 +91,10 @@ async def test_app_tool_registers_and_executes_sync_tool():
     ctx = _make_ctx(server_context)
     result = await sync_tool_fn(text="hi", ctx=ctx)
     assert result == "hi!"  # unwrapped (not WorkflowResult)
+    bound_app_ctx = getattr(ctx, "bound_app_context", None)
+    assert bound_app_ctx is not None
+    assert bound_app_ctx is not server_context.context
+    assert bound_app_ctx.fastmcp == ctx.fastmcp
 
     # Also ensure the underlying workflow returned a WorkflowResult
     # Start via workflow_run to get run_id, then wait for completion and inspect
@@ -171,3 +179,69 @@ async def test_auto_workflow_wraps_plain_return_in_workflowresult():
         assert result_payload["value"] == 42
     else:
         assert result_payload in (42, {"result": 42})
+
+
+@pytest.mark.asyncio
+async def test_workflow_run_binds_app_context_per_request():
+    app = MCPApp(name="test_request_binding")
+    await app.initialize()
+
+    sentinel_session = object()
+    app.context.upstream_session = sentinel_session
+
+    captured: dict[str, Any] = {}
+
+    @app.async_tool(name="binding_tool")
+    async def binding_tool(
+        value: int,
+        app_ctx: Context | None = None,
+        ctx: FastMCPContext | None = None,
+    ) -> str:
+        captured["app_ctx"] = app_ctx
+        captured["ctx"] = ctx
+        if app_ctx is not None:
+            # Access session property to confirm fallback path works during execution
+            captured["session_property"] = app_ctx.session
+            captured["request_context"] = getattr(app_ctx, "_request_context", None)
+            captured["fastmcp"] = app_ctx.fastmcp
+        return f"done:{value}"
+
+    server_context = type(
+        "SC", (), {"workflows": app.workflows, "context": app.context}
+    )()
+
+    ctx = _make_ctx(server_context)
+    # Simulate FastMCP attaching the app to its server for lookup paths
+    ctx.fastmcp._mcp_agent_app = app  # type: ignore[attr-defined]
+
+    run_info = await _workflow_run(ctx, "binding_tool", {"value": 7})
+    run_id = run_info["run_id"]
+
+    # Workflow should have the FastMCP request context attached
+    workflow = await app.context.workflow_registry.get_workflow(run_id)
+    assert getattr(workflow, "_mcp_request_context", None) is ctx
+
+    # Wait for completion so the tool function executes
+    for _ in range(200):
+        status = await app.context.workflow_registry.get_workflow_status(run_id)
+        if status.get("completed"):
+            break
+        await asyncio.sleep(0.01)
+    assert status.get("completed") is True
+
+    bound_app_ctx = getattr(ctx, "bound_app_context", None)
+    assert bound_app_ctx is not None
+    # The tool received the per-request bound context
+    assert captured.get("app_ctx") is bound_app_ctx
+    # FastMCP context argument should be the original request context
+    assert captured.get("ctx") is ctx
+    assert getattr(captured.get("ctx"), "bound_app_context", None) is bound_app_ctx
+    assert bound_app_ctx is not app.context
+    # Upstream session should be preserved on the bound context
+    assert bound_app_ctx.upstream_session is sentinel_session
+    assert captured.get("session_property") is sentinel_session
+    # FastMCP instance and request context bridge through the bound context
+    assert captured.get("fastmcp") is ctx.fastmcp
+    assert captured.get("request_context") is ctx.request_context
+    # Accessing session on the bound context should prefer upstream_session
+    assert bound_app_ctx.session is sentinel_session

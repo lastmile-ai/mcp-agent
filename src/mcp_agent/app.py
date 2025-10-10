@@ -586,6 +586,7 @@ class MCPApp:
         async def _invoke_target(workflow_self, *args, **kwargs):
             # Inject app_ctx (AppContext) and shim ctx (FastMCP Context) if requested by the function
             import inspect as _inspect
+            import typing as _typing
 
             call_kwargs = dict(kwargs)
 
@@ -622,24 +623,51 @@ class MCPApp:
             except Exception:
                 pass
 
-            # If the function expects a FastMCP Context (ctx/context), ensure it's present (None inside workflow)
+            # If the function expects a FastMCP Context (ctx/context), ensure it's present.
             try:
                 from mcp.server.fastmcp import Context as _Ctx  # type: ignore
             except Exception:
                 _Ctx = None  # type: ignore
 
+            def _is_fast_ctx_annotation(annotation) -> bool:
+                if _Ctx is None or annotation is _inspect._empty:
+                    return False
+                if annotation is _Ctx:
+                    return True
+                try:
+                    origin = _typing.get_origin(annotation)
+                    if origin is not None:
+                        return any(
+                            _is_fast_ctx_annotation(arg)
+                            for arg in _typing.get_args(annotation)
+                        )
+                except Exception:
+                    pass
+                try:
+                    return "fastmcp" in str(annotation)
+                except Exception:
+                    return False
+
             try:
                 sig = sig if "sig" in locals() else _inspect.signature(fn)
                 for p in sig.parameters.values():
-                    if (
-                        p.annotation is not _inspect._empty
-                        and _Ctx is not None
-                        and p.annotation is _Ctx
+                    needs_fast_ctx = False
+                    if _is_fast_ctx_annotation(p.annotation):
+                        needs_fast_ctx = True
+                    elif p.annotation is _inspect._empty and p.name in (
+                        "ctx",
+                        "context",
                     ):
-                        if p.name not in call_kwargs:
-                            call_kwargs[p.name] = None
-                    if p.name in ("ctx", "context") and p.name not in call_kwargs:
-                        call_kwargs[p.name] = None
+                        needs_fast_ctx = True
+                    if needs_fast_ctx and p.name not in call_kwargs:
+                        fast_ctx = getattr(workflow_self, "_mcp_request_context", None)
+                        if fast_ctx is None and app_context_param_name:
+                            fast_ctx = getattr(
+                                call_kwargs.get(app_context_param_name, None),
+                                "fastmcp",
+                                None,
+                            )
+                        call_kwargs[p.name] = fast_ctx
             except Exception:
                 pass
 

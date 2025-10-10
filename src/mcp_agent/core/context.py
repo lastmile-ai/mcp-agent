@@ -162,8 +162,36 @@ class Context(MCPContext):
         return None
 
     @property
-    def logger(self) -> "Logger | None":
-        return self.app.logger if self.app else None
+    def logger(self) -> "Logger":
+        if self.app:
+            return self.app.logger
+        namespace_components = ["mcp_agent", "context"]
+        try:
+            if getattr(self, "session_id", None):
+                namespace_components.append(str(self.session_id))
+        except Exception:
+            pass
+        namespace = ".".join(namespace_components)
+        logger = get_logger(
+            namespace, session_id=getattr(self, "session_id", None), context=self
+        )
+        try:
+            setattr(logger, "_bound_context", self)
+        except Exception:
+            pass
+        return logger
+
+    @property
+    def name(self) -> str | None:
+        if self.app and getattr(self.app, "name", None):
+            return self.app.name
+        return None
+
+    @property
+    def description(self) -> str | None:
+        if self.app and getattr(self.app, "description", None):
+            return self.app.description
+        return None
 
     # ---- FastMCP Context method fallbacks (safe outside requests) ---------
 

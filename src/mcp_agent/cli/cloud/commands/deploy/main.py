@@ -173,9 +173,7 @@ def deploy_config(
 
         if app_name is None:
             if default_app_name:
-                print_info(
-                    f"Using app name from config.yaml: '{default_app_name}'"
-                )
+                print_info(f"Using app name from config.yaml: '{default_app_name}'")
                 app_name = default_app_name
             else:
                 app_name = "default"
@@ -205,7 +203,7 @@ def deploy_config(
                 "  • Or use the --api-key flag with your key",
                 retriable=False,
             )
-        
+
         if settings.VERBOSE:
             print_info(f"Using API at {effective_api_url}")
 
@@ -231,9 +229,7 @@ def deploy_config(
                     print_info(f"New app id: `{app_id}`")
             else:
                 short_id = f"{app_id[:8]}…"
-                print_success(
-                    f"Found existing app '{app_name}' (ID: `{short_id}`)"
-                )
+                print_success(f"Found existing app '{app_name}' (ID: `{short_id}`)")
                 if not non_interactive:
                     use_existing = typer.confirm(
                         f"Deploy an update to '{app_name}' (ID: `{short_id}`)?",

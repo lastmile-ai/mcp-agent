@@ -2,6 +2,7 @@ import pytest
 from types import SimpleNamespace
 
 from mcp_agent.core.context import Context
+from mcp_agent.logging.logger import Logger as AgentLogger
 
 
 class _DummyLogger:
@@ -87,3 +88,36 @@ async def test_read_resource_without_mcp_raises():
 
     with pytest.raises(ValueError):
         await ctx.read_resource("resource://missing")
+
+
+def test_logger_property_uses_app_logger():
+    dummy_logger = _DummyLogger()
+    app = SimpleNamespace(mcp=None, logger=dummy_logger, name="demo-app")
+    ctx = _make_context(app=app)
+
+    assert ctx.logger is dummy_logger
+
+
+def test_logger_property_without_app_creates_logger():
+    ctx = _make_context()
+
+    logger = ctx.logger
+
+    assert isinstance(logger, AgentLogger)
+    assert getattr(logger, "_bound_context", None) is ctx
+
+
+def test_name_and_description_properties():
+    app = SimpleNamespace(
+        mcp=None, logger=_DummyLogger(), name="app-name", description="app-desc"
+    )
+    ctx = _make_context(app=app)
+    ctx.config = SimpleNamespace(name="config-name", description="config-desc")
+
+    assert ctx.name == "app-name"
+    assert ctx.description == "app-desc"
+
+    ctx_no_app = _make_context()
+
+    assert ctx_no_app.name is None
+    assert ctx_no_app.description is None
