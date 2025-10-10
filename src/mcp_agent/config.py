@@ -357,6 +357,26 @@ class GoogleSettings(BaseSettings, VertexAIMixin):
     )
 
 
+class LLMGatewaySettings(BaseSettings):
+    """Feature flag and budget controls for the shared LLM gateway."""
+
+    llm_default_provider: str | None = None
+    llm_default_model: str | None = None
+    llm_retry_max: int = 2
+    llm_retry_base_ms: int = 250
+    llm_retry_jitter_ms: int = 150
+    llm_tokens_cap: int | None = None
+    llm_cost_cap_usd: float | None = None
+
+    model_config = SettingsConfigDict(
+        env_prefix="MCP_",
+        extra="allow",
+        arbitrary_types_allowed=True,
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+
 class VertexAISettings(BaseSettings, VertexAIMixin):
     """Standalone Vertex AI settings (for future use)."""
 
@@ -632,6 +652,9 @@ class Settings(BaseSettings):
 
     google: GoogleSettings | None = Field(default_factory=GoogleSettings)
     """Settings for using Google models in the MCP Agent application"""
+
+    llm_gateway: LLMGatewaySettings | None = LLMGatewaySettings()
+    """Unified LLM gateway configuration (retries, caps, defaults)."""
 
     otel: OpenTelemetrySettings | None = OpenTelemetrySettings()
     """OpenTelemetry logging settings for the MCP Agent application"""

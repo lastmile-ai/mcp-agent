@@ -4,10 +4,14 @@ import os
 import time
 import uuid
 from typing import Dict, List, Tuple, Set
+
 import jwt
-from starlette.responses import JSONResponse, StreamingResponse
 from starlette.requests import Request
+from starlette.responses import JSONResponse, StreamingResponse
 from starlette.routing import Route, Router
+
+from mcp_agent.llm.events import emit_llm_event
+from mcp_agent.llm.gateway import LLMCallParams
 
 
 class PublicAPIState:
@@ -92,6 +96,50 @@ async def create_run(request: Request) -> JSONResponse:
 
     async def _simulate():
         try:
+            gateway = getattr(state, "llm_gateway", None)
+            prompt_text = body.get("prompt")
+            llm_enabled = os.getenv("MCP_LLM_GATEWAY_ENABLED", "").lower() in {"1", "true", "yes"}
+            if (
+                gateway
+                and llm_enabled
+                and isinstance(prompt_text, str)
+                and prompt_text.strip()
+            ):
+                params_payload = body.get("llm_params")
+                extra = params_payload if isinstance(params_payload, dict) else {}
+                llm_params = LLMCallParams(
+                    provider=body.get("provider"),
+                    model=body.get("model"),
+                    temperature=body.get("temperature"),
+                    top_p=body.get("top_p"),
+                    max_tokens=body.get("max_tokens"),
+                    extra=extra,
+                )
+                cancel_token = asyncio.Event()
+                try:
+                    await gateway.run(
+                        run_id=run_id,
+                        trace_id=body.get("trace_id") or str(uuid.uuid4()),
+                        prompt=prompt_text,
+                        params=llm_params,
+                        context_hash=body.get("context_hash"),
+                        cancel_token=cancel_token,
+                    )
+                except Exception as exc:  # pragma: no cover - defensive path
+                    state.runs[run_id]["status"] = "failed"
+                    await emit_llm_event(
+                        state,
+                        run_id,
+                        "llm/error",
+                        {
+                            "category": "gateway",
+                            "message": str(exc),
+                            "retryable": False,
+                            "attempt": 1,
+                            "violation": False,
+                        },
+                    )
+                    raise
             await asyncio.sleep(0.01)
             # Broadcast progress event to all consumers
             for q in list(state.queues.get(run_id, [])):
