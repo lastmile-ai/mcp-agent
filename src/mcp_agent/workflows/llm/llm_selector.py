@@ -8,11 +8,20 @@ from numpy import average
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from mcp.types import ModelHint, ModelPreferences
+from mcp_agent.config import LLMGatewaySettings
 from mcp_agent.core.context_dependent import ContextDependent
 from mcp_agent.tracing.telemetry import get_tracer
 
 if TYPE_CHECKING:
+    from mcp_agent.config import Settings
     from mcp_agent.core.context import Context
+
+
+class ProviderHandle(BaseModel):
+    """Resolved provider information returned by :func:`select_llm_provider`."""
+
+    provider: str
+    model: str | None = None
 
 
 class ModelBenchmarks(BaseModel):
@@ -494,3 +503,64 @@ def _fuzzy_match(str1: str, str2: str, threshold: float = 0.8) -> bool:
     """
     sequence_ratio = SequenceMatcher(None, str1.lower(), str2.lower()).ratio()
     return sequence_ratio >= threshold
+
+
+def select_llm_provider(model_hint: str | None, cfg: "Settings") -> ProviderHandle:
+    """Resolve the provider handle for the LLM gateway based on configuration."""
+
+    def _configured() -> Dict[str, str | None]:
+        providers: Dict[str, str | None] = {}
+        candidates = (
+            "openai",
+            "anthropic",
+            "azure",
+            "google",
+            "bedrock",
+            "cohere",
+        )
+        for name in candidates:
+            settings_obj = getattr(cfg, name, None)
+            if not settings_obj:
+                continue
+            key_name = "api_key"
+            if name == "bedrock":
+                key_name = "aws_access_key_id"
+            api_key = getattr(settings_obj, key_name, None)
+            if api_key:
+                providers[name] = getattr(settings_obj, "default_model", None)
+        return providers
+
+    available = _configured()
+    provider: str | None = None
+    model: str | None = None
+
+    if model_hint:
+        if ":" in model_hint:
+            prov, mdl = model_hint.split(":", 1)
+            provider = prov.strip() or None
+            model = mdl.strip() or None
+        else:
+            hint_lower = model_hint.strip().lower()
+            if hint_lower in available:
+                provider = hint_lower
+            else:
+                model = model_hint.strip()
+
+    gw_cfg = cfg.llm_gateway or LLMGatewaySettings()
+    if provider is None and gw_cfg.llm_default_provider:
+        provider = gw_cfg.llm_default_provider.lower()
+
+    if provider is None and available:
+        provider = next(iter(available.keys()))
+
+    if provider is None:
+        raise ValueError("No LLM providers are configured")
+
+    if provider not in available and available:
+        # fall back to the first configured provider if the requested one is unavailable
+        provider = next(iter(available.keys()))
+
+    if model is None:
+        model = gw_cfg.llm_default_model or available.get(provider)
+
+    return ProviderHandle(provider=provider, model=model)
