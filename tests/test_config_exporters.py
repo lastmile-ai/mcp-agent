@@ -359,7 +359,7 @@ def test_unsupported_exporter_type_raises():
 
 def test_invalid_exporter_format_raises():
     """Test that invalid exporter formats raise ValueError."""
-    with pytest.raises(ValueError, match="OpenTelemetry exporters must be strings"):
+    with pytest.raises(ValidationError, match="OpenTelemetry exporters must be strings"):
         OpenTelemetrySettings(exporters=[{"foo": "bar", "baz": "qux"}])  # Multi-key dict
 
 
