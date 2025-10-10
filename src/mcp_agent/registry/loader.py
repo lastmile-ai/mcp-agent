@@ -11,7 +11,7 @@ import string
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, List, Mapping, Optional, Sequence
+from typing import Any, Iterable, Mapping, Sequence
 from urllib.parse import urlparse
 
 import httpx
@@ -123,7 +123,7 @@ class LoaderConfig:
     tools_yaml_path: str = os.getenv("TOOLS_YAML_PATH", "tools/tools.yaml")
     discovery_timeout_ms: int = int(os.getenv("DISCOVERY_TIMEOUT_MS", "1500"))
     discovery_user_agent: str = os.getenv("DISCOVERY_UA", "agent-mcp/PR-06")
-    allowed_hosts: Optional[Sequence[str]] = tuple(
+    allowed_hosts: Sequence[str] | None = tuple(
         host.strip()
         for host in os.getenv("REGISTRY_ALLOWED_HOSTS", "").split(",")
         if host.strip()
@@ -135,7 +135,7 @@ def _load_yaml(path: str) -> Any:
         return yaml.safe_load(handle) or []
 
 
-def _normalize_inventory(raw: Any) -> List[ToolSource]:
+def _normalize_inventory(raw: Any) -> list[ToolSource]:
     if isinstance(raw, Mapping):
         candidates: Iterable[Any] = raw.get("tools") or raw.get("servers") or raw.values()
     elif isinstance(raw, Sequence):
@@ -143,7 +143,7 @@ def _normalize_inventory(raw: Any) -> List[ToolSource]:
     else:
         raise ValueError("tools inventory must be a list or mapping")
 
-    sources: List[ToolSource] = []
+    sources: list[ToolSource] = []
     for item in candidates:
         if not isinstance(item, Mapping):
             continue
@@ -177,12 +177,12 @@ def _normalize_inventory(raw: Any) -> List[ToolSource]:
     return sources
 
 
-def load_inventory(config: LoaderConfig) -> List[ToolSource]:
+def load_inventory(config: LoaderConfig) -> list[ToolSource]:
     raw = _load_yaml(config.tools_yaml_path)
     return _normalize_inventory(raw)
 
 
-def _parse_capabilities(data: Any) -> List[str]:
+def _parse_capabilities(data: Any) -> list[str]:
     if isinstance(data, Mapping):
         collected: set[str] = set()
         for key, value in data.items():
@@ -224,7 +224,7 @@ class ToolRegistryLoader:
     def __init__(self, config: LoaderConfig | None = None):
         self.config = config or LoaderConfig()
 
-    def load_sources(self) -> List[ToolSource]:
+    def load_sources(self) -> list[ToolSource]:
         logger.debug("tools.registry.load", phase="load", path=self.config.tools_yaml_path)
         return load_inventory(self.config)
 
@@ -247,10 +247,10 @@ class ToolRegistryLoader:
         await asyncio.sleep(0)  # allow cancellation before network I/O
         started = time.perf_counter()
         timestamp = _now()
-        failure_reason: Optional[str] = None
+        failure_reason: str | None = None
         name = _sanitize(source.name) or source.id
         version = "0.0.0"
-        capabilities: List[str] = []
+        capabilities: list[str] = []
         alive = False
 
         try:

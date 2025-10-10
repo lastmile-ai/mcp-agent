@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Iterable, List, Optional
+from typing import Iterable
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -26,15 +26,15 @@ class ToolItem(BaseModel):
     base_url: str
     alive: bool
     latency_ms: float = Field(default=0.0, ge=0.0)
-    capabilities: List[str] = Field(default_factory=list)
-    tags: List[str] = Field(default_factory=list)
+    capabilities: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
     last_checked_ts: datetime = Field(default_factory=lambda: _ensure_utc(datetime.now(timezone.utc)))
-    failure_reason: Optional[str] = None
+    failure_reason: str | None = None
     consecutive_failures: int = Field(default=0, ge=0)
 
     @field_validator("capabilities", "tags", mode="after")
     @classmethod
-    def _sort_list(cls, value: Iterable[str]) -> List[str]:
+    def _sort_list(cls, value: Iterable[str]) -> list[str]:
         return sorted({str(item) for item in value})
 
     @field_validator("last_checked_ts", mode="before")
@@ -59,7 +59,7 @@ class ToolsResponse(BaseModel):
 
     registry_hash: str
     generated_at: datetime
-    items: List[ToolItem] = Field(default_factory=list)
+    items: list[ToolItem] = Field(default_factory=list)
 
     @field_validator("generated_at", mode="before")
     @classmethod
@@ -86,7 +86,7 @@ class ToolSource:
     name: str
     base_url: str
     headers: dict[str, str]
-    tags: List[str]
+    tags: list[str]
 
 
 @dataclass
@@ -99,8 +99,8 @@ class ToolProbeResult:
     base_url: str
     alive: bool
     latency_ms: float
-    capabilities: List[str]
-    tags: List[str]
+    capabilities: list[str]
+    tags: list[str]
     timestamp: datetime
-    failure_reason: Optional[str]
+    failure_reason: str | None
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Iterable, List
+from typing import Iterable
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -37,11 +37,11 @@ def _filter_items(
     items: Iterable[ToolItem],
     *,
     alive: bool | None,
-    capabilities: List[str],
-    tags: List[str],
+    capabilities: list[str],
+    tags: list[str],
     query: str | None,
-) -> List[ToolItem]:
-    filtered: List[ToolItem] = []
+) -> list[ToolItem]:
+    filtered: list[ToolItem] = []
     q = query.lower().strip() if query else None
     for item in items:
         if alive is not None and item.alive is not alive:

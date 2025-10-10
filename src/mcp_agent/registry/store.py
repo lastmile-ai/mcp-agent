@@ -7,7 +7,7 @@ import os
 import random
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Iterable, List, Optional
+from typing import Iterable
 
 from mcp_agent.logging.logger import get_logger
 
@@ -44,13 +44,13 @@ def _now() -> datetime:
 class ToolState:
     source: ToolSource
     item: ToolItem
-    last_success: Optional[datetime] = None
-    last_capabilities: List[str] = field(default_factory=list)
+    last_success: datetime | None = None
+    last_capabilities: list[str] = field(default_factory=list)
     last_version: str = "0.0.0"
     last_name: str = ""
     consecutive_failures: int = 0
     next_refresh_at: datetime = field(default_factory=_now)
-    failure_reason: Optional[str] = None
+    failure_reason: str | None = None
     ever_succeeded: bool = False
 
 
@@ -71,11 +71,11 @@ class ToolRegistryStore:
 
     def __init__(
         self,
-        loader: Optional[ToolRegistryLoader] = None,
+        loader: ToolRegistryLoader | None = None,
         *,
-        refresh_interval_sec: Optional[int] = None,
-        stale_max_sec: Optional[int] = None,
-        enabled: Optional[bool] = None,
+        refresh_interval_sec: int | None = None,
+        stale_max_sec: int | None = None,
+        enabled: bool | None = None,
     ):
         self._loader = loader or ToolRegistryLoader()
         self._refresh_interval = refresh_interval_sec or _env_int("REGISTRY_REFRESH_SEC", 60)
@@ -85,12 +85,12 @@ class ToolRegistryStore:
             if enabled is None
             else enabled
         )
-        self._states: Dict[str, ToolState] = {}
-        self._snapshot: Optional[ToolsResponse] = None
+        self._states: dict[str, ToolState] = {}
+        self._snapshot: ToolsResponse | None = None
         self._lock = asyncio.Lock()
-        self._refresh_task: Optional[asyncio.Task] = None
+        self._refresh_task: asyncio.Task | None = None
         self._stop_event = asyncio.Event()
-        self._misconfigured: Optional[Exception] = None
+        self._misconfigured: Exception | None = None
         self._ever_succeeded = False
 
     async def start(self) -> None:
@@ -149,7 +149,7 @@ class ToolRegistryStore:
             update_registry_metrics(snapshot.items)
             return snapshot
 
-    async def _load_sources(self) -> List[ToolSource]:
+    async def _load_sources(self) -> list[ToolSource]:
         try:
             sources = self._loader.load_sources()
             self._misconfigured = None
@@ -173,8 +173,8 @@ class ToolRegistryStore:
 
     def _select_states_to_probe(
         self, sources: Iterable[ToolSource], *, force: bool
-    ) -> List[ToolState]:
-        states: List[ToolState] = []
+    ) -> list[ToolState]:
+        states: list[ToolState] = []
         now = _now()
         seen_ids = set()
         for source in sources:
@@ -238,7 +238,7 @@ class ToolRegistryStore:
             state.consecutive_failures += 1
             state.failure_reason = failure_reason or "unknown"
 
-        capabilities: List[str]
+        capabilities: list[str]
         last_success = state.last_success
         if success:
             capabilities = probe.capabilities
@@ -299,7 +299,7 @@ class ToolRegistryStore:
         return self._ever_succeeded
 
     @property
-    def misconfigured(self) -> Optional[Exception]:
+    def misconfigured(self) -> Exception | None:
         return self._misconfigured
 
 
