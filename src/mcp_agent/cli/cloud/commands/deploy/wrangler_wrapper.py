@@ -296,7 +296,9 @@ def wrangler_deploy(
             )
             meta_vars.update({"MCP_DEPLOY_WORKSPACE_HASH": bundle_hash})
             if settings.VERBOSE:
-                print_info(f"Deploying from non-git workspace (hash {bundle_hash[:12]}…)")
+                print_info(
+                    f"Deploying from non-git workspace (hash {bundle_hash[:12]}…)"
+                )
 
         # Write a breadcrumb file into the project so it ships with the bundle.
         # Use a Python file for guaranteed inclusion without renaming.

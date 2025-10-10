@@ -76,9 +76,13 @@ async def test_workflow_run_with_custom_workflow_id(
     )
 
     # Verify the workflow was created
-    mock_workflow_class.create.assert_called_once_with(
-        name=workflow_name,
-        context=mock_server_context.request_context.lifespan_context.context,
+    mock_workflow_class.create.assert_called_once()
+    create_kwargs = mock_workflow_class.create.call_args.kwargs
+    assert create_kwargs["name"] == workflow_name
+    # Bound context should be derived from the original lifespan context
+    assert (
+        create_kwargs["context"]
+        is not mock_server_context.request_context.lifespan_context.context
     )
 
     # Verify run_async was called with the custom workflow_id
