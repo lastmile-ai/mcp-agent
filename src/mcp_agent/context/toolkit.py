@@ -12,9 +12,7 @@ from mcp.types import (
     ListPromptsResult,
     ListResourcesResult,
     ListToolsResult,
-    Prompt,
     ReadResourceResult,
-    Resource,
     TextContent,
     Tool,
 )
