@@ -205,6 +205,52 @@
           "default": null,
           "title": "Endpoint"
         },
+        "api_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Api Version"
+        },
+        "azure_deployment": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Azure Deployment"
+        },
+        "azure_ad_token": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Azure Ad Token"
+        },
+        "azure_ad_token_provider": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Azure Ad Token Provider"
+        },
         "credential_scopes": {
           "anyOf": [
             {
@@ -221,6 +267,18 @@
             "https://cognitiveservices.azure.com/.default"
           ],
           "title": "Credential Scopes"
+        },
+        "default_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Default Model"
         }
       },
       "title": "AzureSettings",
@@ -316,26 +374,15 @@
     },
     "ConsoleExporterSettings": {
       "additionalProperties": true,
-      "properties": {
-        "type": {
-          "const": "console",
-          "default": "console",
-          "title": "Type",
-          "type": "string"
-        }
-      },
+      "description": "Console exporter uses stdout; no extra settings required.",
+      "properties": {},
       "title": "ConsoleExporterSettings",
       "type": "object"
     },
     "FileExporterSettings": {
       "additionalProperties": true,
+      "description": "File exporter settings for writing traces to a file.",
       "properties": {
-        "type": {
-          "const": "file",
-          "default": "file",
-          "title": "Type",
-          "type": "string"
-        },
         "path": {
           "anyOf": [
             {
@@ -838,12 +885,6 @@
     "OTLPExporterSettings": {
       "additionalProperties": true,
       "properties": {
-        "type": {
-          "const": "otlp",
-          "default": "otlp",
-          "title": "Type",
-          "type": "string"
-        },
         "endpoint": {
           "anyOf": [
             {
@@ -978,25 +1019,64 @@
                 "type": "string"
               },
               {
-                "discriminator": {
-                  "mapping": {
-                    "console": "#/$defs/ConsoleExporterSettings",
-                    "file": "#/$defs/FileExporterSettings",
-                    "otlp": "#/$defs/OTLPExporterSettings"
-                  },
-                  "propertyName": "type"
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/ConsoleExporterSettings"
+                    },
+                    {
+                      "additionalProperties": true,
+                      "type": "object"
+                    }
+                  ]
                 },
-                "oneOf": [
-                  {
-                    "$ref": "#/$defs/ConsoleExporterSettings"
-                  },
-                  {
-                    "$ref": "#/$defs/FileExporterSettings"
-                  },
-                  {
-                    "$ref": "#/$defs/OTLPExporterSettings"
-                  }
-                ]
+                "propertyNames": {
+                  "const": "console"
+                },
+                "type": "object"
+              },
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/FileExporterSettings"
+                    },
+                    {
+                      "additionalProperties": true,
+                      "type": "object"
+                    }
+                  ]
+                },
+                "propertyNames": {
+                  "const": "file"
+                },
+                "type": "object"
+              },
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/OTLPExporterSettings"
+                    },
+                    {
+                      "additionalProperties": true,
+                      "type": "object"
+                    }
+                  ]
+                },
+                "propertyNames": {
+                  "const": "otlp"
+                },
+                "type": "object"
+              },
+              {
+                "$ref": "#/$defs/ConsoleExporterSettings"
+              },
+              {
+                "$ref": "#/$defs/FileExporterSettings"
+              },
+              {
+                "$ref": "#/$defs/OTLPExporterSettings"
               }
             ]
           },
@@ -1037,18 +1117,6 @@
           "title": "Sample Rate",
           "type": "number",
           "description": "Sample rate for tracing (1.0 = sample everything)"
-        },
-        "otlp_settings": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/TraceOTLPSettings"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Deprecated single OTLP settings. Prefer exporters list with type \"otlp\"."
         }
       },
       "title": "OpenTelemetrySettings",
@@ -1179,38 +1247,6 @@
         "task_queue"
       ],
       "title": "TemporalSettings",
-      "type": "object"
-    },
-    "TraceOTLPSettings": {
-      "additionalProperties": true,
-      "description": "Settings for OTLP exporter in OpenTelemetry.",
-      "properties": {
-        "endpoint": {
-          "title": "Endpoint",
-          "type": "string",
-          "description": "OTLP endpoint for exporting traces."
-        },
-        "headers": {
-          "anyOf": [
-            {
-              "additionalProperties": {
-                "type": "string"
-              },
-              "type": "object"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Headers",
-          "description": "Optional headers for OTLP exporter."
-        }
-      },
-      "required": [
-        "endpoint"
-      ],
-      "title": "TraceOTLPSettings",
       "type": "object"
     },
     "TracePathSettings": {
@@ -1404,8 +1440,7 @@
         "service_name": "mcp-agent",
         "service_instance_id": null,
         "service_version": null,
-        "sample_rate": 1.0,
-        "otlp_settings": null
+        "sample_rate": 1.0
       },
       "description": "OpenTelemetry logging settings for the MCP Agent application"
     },
