@@ -1,0 +1,67 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "mcp-agent Public API",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/v1/tools": {
+      "get": {
+        "operationId": "listTools",
+        "summary": "List available MCP tools",
+        "parameters": [
+          {
+            "name": "alive",
+            "in": "query",
+            "schema": {"type": "boolean"},
+            "description": "Filter to only alive tools"
+          },
+          {
+            "name": "capability",
+            "in": "query",
+            "schema": {"type": "string"},
+            "description": "Require tools that advertise this capability",
+            "explode": true,
+            "style": "form"
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "schema": {"type": "string"},
+            "description": "Filter by tag",
+            "explode": true,
+            "style": "form"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {"type": "string"},
+            "description": "Case-insensitive search across id and name"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tools registry snapshot",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "../schemas/toolsResponse.json"}
+              }
+            }
+          },
+          "424": {
+            "description": "Registry misconfigured"
+          },
+          "503": {
+            "description": "Registry unavailable"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ToolItem": {"$ref": "../schemas/toolItem.json"},
+      "ToolsResponse": {"$ref": "../schemas/toolsResponse.json"}
+    }
+  }
+}

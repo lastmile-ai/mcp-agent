@@ -1,0 +1,4 @@
+- id: demo-mcp
+  name: Demo MCP Server
+  base_url: http://localhost:3000
+  tags: [demo, local]

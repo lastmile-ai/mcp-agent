@@ -1,9 +1,10 @@
 import hashlib
 import hmac
 import json
-import time
 import os
-from typing import Optional, Dict, Any
+import time
+from typing import Any, Dict, Optional
+
 import httpx
 from opentelemetry import metrics
 

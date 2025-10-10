@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://mcp-agent.ai/schemas/toolsResponse.json",
+  "title": "ToolsResponse",
+  "type": "object",
+  "required": ["registry_hash", "generated_at", "items"],
+  "properties": {
+    "registry_hash": {"type": "string", "pattern": "^sha256-[A-Za-z0-9+/=]+$"},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "items": {
+      "type": "array",
+      "items": {"$ref": "./toolItem.json"}
+    }
+  },
+  "additionalProperties": false
+}
