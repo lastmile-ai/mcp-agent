@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://mcp-agent.ai/schemas/toolItem.json",
+  "title": "ToolItem",
+  "type": "object",
+  "required": [
+    "id",
+    "name",
+    "version",
+    "base_url",
+    "alive",
+    "latency_ms",
+    "capabilities",
+    "tags",
+    "last_checked_ts",
+    "failure_reason",
+    "consecutive_failures"
+  ],
+  "properties": {
+    "id": {"type": "string"},
+    "name": {"type": "string"},
+    "version": {"type": "string"},
+    "base_url": {"type": "string", "format": "uri"},
+    "alive": {"type": "boolean"},
+    "latency_ms": {"type": "number", "minimum": 0},
+    "capabilities": {
+      "type": "array",
+      "items": {"type": "string"},
+      "uniqueItems": true
+    },
+    "tags": {
+      "type": "array",
+      "items": {"type": "string"},
+      "uniqueItems": true
+    },
+    "last_checked_ts": {"type": "string", "format": "date-time"},
+    "failure_reason": {"type": ["string", "null"]},
+    "consecutive_failures": {"type": "integer", "minimum": 0}
+  },
+  "additionalProperties": false
+}

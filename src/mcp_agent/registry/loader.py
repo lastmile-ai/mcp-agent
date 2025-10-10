@@ -1,196 +1,352 @@
+"""Discovery and normalization for the tools registry."""
+
+from __future__ import annotations
+
+import asyncio
+import base64
+import hashlib
+import json
 import os
-from typing import Any, Dict, List, Optional
+import string
+import time
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any, List, Mapping, Optional, Sequence
+from urllib.parse import urlparse
+
 import httpx
 import yaml
-from contextlib import contextmanager
-from mcp_agent.registry.store import ToolRegistryStore
 
-# Try to import opentelemetry, provide dummy classes if unavailable
-try:
-    from opentelemetry.metrics import get_meter
-    _meter = get_meter(__name__)
-except ImportError:
-    # Dummy classes for test collection without opentelemetry
-    class _DummyMeter:
-        def create_histogram(self, *args, **kwargs):
-            return _DummyHistogram()
-        
-        def create_counter(self, *args, **kwargs):
-            return _DummyCounter()
-    
-    class _DummyHistogram:
-        def record(self, value, attributes=None):
-            pass
-        
-        @contextmanager
-        def time(self):
-            yield
-    
-    class _DummyCounter:
-        def add(self, value, attributes=None):
-            pass
-    
-    _meter = _DummyMeter()
+from mcp_agent.logging.logger import get_logger
+
+from .models import ToolItem, ToolProbeResult, ToolSource, ToolsResponse
+
+
+logger = get_logger(__name__)
+
+
+def _sanitize(value: str) -> str:
+    allowed = string.printable
+    return "".join(ch for ch in value if ch in allowed).strip()
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+# --- OpenTelemetry metrics -------------------------------------------------
+
+
+class _NoopHistogram:
+    def record(self, *_args, **_kwargs) -> None:  # pragma: no cover - noop
+        return None
+
+
+class _NoopCounter:
+    def add(self, *_args, **_kwargs) -> None:  # pragma: no cover - noop
+        return None
+
+
+class _NoopGauge:
+    def set(self, *_args, **_kwargs) -> None:  # pragma: no cover - noop
+        return None
+
+
+class _AsyncGauge:
+    def __init__(self, name: str, unit: str, description: str):
+        try:  # pragma: no cover - optional dependency
+            from opentelemetry import metrics
+            from opentelemetry.metrics import Observation
+
+            self._value = 0
+            self._attributes: Mapping[str, str] | None = None
+            meter = metrics.get_meter("mcp_agent.registry")
+
+            def _callback(_options):
+                yield Observation(self._value, attributes=self._attributes or {})
+
+            meter.create_observable_gauge(
+                name,
+                unit=unit,
+                description=description,
+                callbacks=[_callback],
+            )
+        except Exception:  # pragma: no cover - instrumentation optional
+            self._value = 0
+            self._attributes = None
+
+    def set(self, value: int, attributes: Mapping[str, str] | None = None) -> None:
+        self._value = value
+        if attributes is not None:
+            self._attributes = attributes
+
+
+try:  # pragma: no cover - optional dependency
+    from opentelemetry import metrics
+
+    _meter = metrics.get_meter("mcp_agent.registry")
+    _discovery_latency = _meter.create_histogram(
+        "tools_discovery_latency_ms",
+        unit="ms",
+        description="Latency of MCP tool discovery probes",
+    )
+    _capabilities_counter = _meter.create_counter(
+        "tools_capabilities_total",
+        unit="1",
+        description="Count of capabilities discovered per tool",
+    )
+    _registry_size_gauge = _AsyncGauge(
+        "tools_registry_size",
+        unit="1",
+        description="Number of tools tracked in the registry",
+    )
+    _alive_gauge = _AsyncGauge(
+        "tools_alive_total",
+        unit="1",
+        description="Number of tools currently marked alive",
+    )
+    _discovery_failures = _meter.create_counter(
+        "tools_discovery_failures_total",
+        unit="1",
+        description="Number of discovery failures",
+    )
+except Exception:  # pragma: no cover - instrumentation optional
+    _discovery_latency = _NoopHistogram()
+    _capabilities_counter = _NoopCounter()
+    _registry_size_gauge = _AsyncGauge("noop", unit="1", description="noop")
+    _alive_gauge = _AsyncGauge("noop_alive", unit="1", description="noop")
+    _discovery_failures = _NoopCounter()
+
+
+@dataclass
+class LoaderConfig:
+    tools_yaml_path: str = os.getenv("TOOLS_YAML_PATH", "tools/tools.yaml")
+    discovery_timeout_ms: int = int(os.getenv("DISCOVERY_TIMEOUT_MS", "1500"))
+    discovery_user_agent: str = os.getenv("DISCOVERY_UA", "agent-mcp/PR-06")
+    allowed_hosts: Optional[Sequence[str]] = tuple(
+        host.strip()
+        for host in os.getenv("REGISTRY_ALLOWED_HOSTS", "").split(",")
+        if host.strip()
+    )
+
+
+def _load_yaml(path: str) -> Any:
+    with open(path, "r", encoding="utf-8") as handle:
+        return yaml.safe_load(handle) or []
+
+
+def _normalize_inventory(raw: Any) -> List[ToolSource]:
+    if isinstance(raw, Mapping):
+        candidates: Iterable[Any] = raw.get("tools") or raw.get("servers") or raw.values()
+    elif isinstance(raw, Sequence):
+        candidates = raw
+    else:
+        raise ValueError("tools inventory must be a list or mapping")
+
+    sources: List[ToolSource] = []
+    for item in candidates:
+        if not isinstance(item, Mapping):
+            continue
+        tool_id = str(item.get("id") or "").strip()
+        base_url = str(item.get("base_url") or "").strip()
+        name = str(item.get("name") or tool_id or base_url).strip()
+        if not tool_id or not base_url:
+            logger.warning(
+                "tools.registry.invalid_entry",
+                tool_id=tool_id or "<missing>",
+                base_url=base_url or "<missing>",
+            )
+            continue
+        headers = {
+            str(k): str(v)
+            for k, v in (item.get("headers") or {}).items()
+            if isinstance(k, str) and isinstance(v, (str, int, float))
+        }
+        tags = [str(tag) for tag in (item.get("tags") or []) if isinstance(tag, (str, int))]
+        sources.append(
+            ToolSource(
+                id=tool_id,
+                name=name or tool_id,
+                base_url=base_url,
+                headers=headers,
+                tags=sorted(set(tags)),
+            )
+        )
+
+    sources.sort(key=lambda entry: (entry.name.lower(), entry.id))
+    return sources
+
+
+def load_inventory(config: LoaderConfig) -> List[ToolSource]:
+    raw = _load_yaml(config.tools_yaml_path)
+    return _normalize_inventory(raw)
+
+
+def _parse_capabilities(data: Any) -> List[str]:
+    if isinstance(data, Mapping):
+        collected: set[str] = set()
+        for key, value in data.items():
+            if isinstance(value, Mapping):
+                collected.add(str(key))
+                collected.update(str(k) for k in value.keys())
+            elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+                for item in value:
+                    collected.add(str(item))
+            else:
+                collected.add(str(key))
+        return sorted(collected)
+    if isinstance(data, Sequence) and not isinstance(data, (str, bytes)):
+        return sorted({str(item) for item in data})
+    if isinstance(data, str):
+        return [data]
+    return []
+
+
+def _is_health_ok(payload: Any) -> bool:
+    if isinstance(payload, Mapping):
+        status = payload.get("status") or payload.get("state") or payload.get("ok")
+        if isinstance(status, str):
+            return status.lower() in {"ok", "pass", "healthy"}
+        if isinstance(status, bool):
+            return status
+    if isinstance(payload, bool):
+        return payload
+    return False
+
+
+class DiscoveryError(Exception):
+    """Raised when discovery fails for a tool."""
+
 
 class ToolRegistryLoader:
-    """
-    A class responsible for loading and registering MCP tools from various sources.
-    
-    This class handles:
-    - Discovering tools via .well-known/mcp.json
-    - Loading tool configurations from files
-    - Registering tools in the ToolRegistryStore
-    """
-    
-    def __init__(self, store: Optional[ToolRegistryStore] = None):
-        """Initialize the ToolRegistryLoader.
-        
-        Args:
-            store: Optional ToolRegistryStore instance. If not provided, creates a new one.
-        """
-        self.store = store or ToolRegistryStore()
-        self._discovery_duration_hist = _meter.create_histogram(
-            name="mcp_agent.registry.loader.discovery.duration",
-            unit="ms",
-            description="Discovery request duration in milliseconds"
-        )
-        self._discovery_counter = _meter.create_counter(
-            name="mcp_agent.registry.loader.discovery.count",
-            unit="1",
-            description="Number of discovery requests"
-        )
-    
-    async def discover_and_register_tools(
-        self,
-        entries: List[Dict[str, Any]],
-        timeout: float = 5.0
-    ) -> List[Dict[str, Any]]:
-        """
-        Discover tools from a list of server entries and register them.
-        
-        Args:
-            entries: List of server entries, each containing 'name' and 'base_url'.
-            timeout: Request timeout in seconds (default: 5.0).
-        
-        Returns:
-            List of discovery results for each entry.
-        """
-        results = await discover(entries, timeout=timeout)
-        
-        # Register discovered tools
-        for entry, result in zip(entries, results):
-            if result.get("alive") and result.get("capabilities"):
-                # Extract tools from capabilities if available
-                capabilities = result.get("capabilities", {})
-                tools = capabilities.get("tools", [])
-                
-                for tool in tools:
-                    self.store.register_tool(
-                        name=tool.get("name"),
-                        server_name=entry["name"],
-                        description=tool.get("description", ""),
-                        input_schema=tool.get("inputSchema", {}),
-                        metadata={"base_url": entry["base_url"]}
-                    )
-        
-        return results
+    """Loader responsible for discovering tool metadata."""
 
-def _load_config_from_file(path: str) -> Dict[str, Any]:
-    """Load configuration from a YAML file.
-    
-    Args:
-        path: Path to the YAML configuration file.
-    
-    Returns:
-        Parsed configuration as a dictionary.
-    
-    Raises:
-        FileNotFoundError: If the file doesn't exist.
-        yaml.YAMLError: If the file is not valid YAML.
-    """
-    if not os.path.exists(path):
-        raise FileNotFoundError(f"Configuration file not found: {path}")
-    
-    with open(path, 'r') as f:
-        return yaml.safe_load(f)
+    def __init__(self, config: LoaderConfig | None = None):
+        self.config = config or LoaderConfig()
 
-def _load_mcp_transport(base_url: str) -> Optional[Dict[str, Any]]:
-    """Load MCP transport configuration from a base URL.
-    
-    Args:
-        base_url: Base URL of the MCP server.
-    
-    Returns:
-        Transport configuration dictionary or None if unavailable.
-    """
-    # Placeholder implementation
-    return {"type": "http", "base_url": base_url}
+    def load_sources(self) -> List[ToolSource]:
+        logger.debug("tools.registry.load", phase="load", path=self.config.tools_yaml_path)
+        return load_inventory(self.config)
 
-# === Surgical patch: provide minimal loader APIs for tests ===
-__all__ = ['discover', 'load_tools_yaml']
+    def _build_client(self) -> httpx.AsyncClient:
+        timeout = httpx.Timeout(self.config.discovery_timeout_ms / 1000.0)
+        headers = {"User-Agent": self.config.discovery_user_agent}
+        return httpx.AsyncClient(timeout=timeout, headers=headers, follow_redirects=False)
 
-async def discover(entries: List[Dict[str, Any]], timeout: float = 2.0) -> List[Dict[str, Any]]:
-    """Probe each registry entry for /.well-known/mcp and /health.
-    
-    Args:
-        entries: List of {name, base_url}
-        timeout: per-request timeout in seconds
-    
-    Returns:
-        List of entries augmented with:
-          - alive: bool
-          - well_known: bool
-          - capabilities: dict
-    """
-    out: List[Dict[str, Any]] = []
-    # Use the httpx imported in this module so tests can monkeypatch AsyncClient
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        for e in entries:
-            base = e.get('base_url') or ''
-            info = dict(e)
-            info.setdefault('capabilities', {})
-            info['alive'] = False
-            info['well_known'] = False
-            
+    def _check_host(self, base_url: str) -> None:
+        if not self.config.allowed_hosts:
+            return
+        parsed = urlparse(base_url)
+        host = parsed.hostname or ""
+        if host not in self.config.allowed_hosts:
+            raise DiscoveryError(f"host_not_allowed:{host}")
+        if parsed.scheme not in {"http", "https"}:
+            raise DiscoveryError("invalid_scheme")
+
+    async def probe(self, source: ToolSource) -> ToolProbeResult:
+        await asyncio.sleep(0)  # allow cancellation before network I/O
+        started = time.perf_counter()
+        timestamp = _now()
+        failure_reason: Optional[str] = None
+        name = _sanitize(source.name) or source.id
+        version = "0.0.0"
+        capabilities: List[str] = []
+        alive = False
+
+        try:
+            self._check_host(source.base_url)
+        except DiscoveryError as exc:
+            failure_reason = str(exc)
+            latency_ms = (time.perf_counter() - started) * 1000.0
+            _discovery_latency.record(latency_ms, {"tool_id": source.id, "result": "fail"})
+            _discovery_failures.add(1, {"tool_id": source.id, "reason": failure_reason})
+            return ToolProbeResult(
+                id=source.id,
+                name=name,
+                version=version,
+                base_url=source.base_url,
+                alive=False,
+                latency_ms=latency_ms,
+                capabilities=[],
+                tags=source.tags,
+                timestamp=timestamp,
+                failure_reason=failure_reason,
+            )
+
+        async with self._build_client() as client:
+            headers = {**client.headers, **source.headers}
+            well_known_url = f"{source.base_url.rstrip('/')}/.well-known/mcp"
+            health_url = f"{source.base_url.rstrip('/')}/health"
             try:
-                wk = await client.get(f"{base}/.well-known/mcp")
-                if wk.status_code == 200:
-                    info['well_known'] = True
-                    try:
-                        data = wk.json()
-                        if isinstance(data, dict):
-                            caps = data.get('capabilities') or {}
-                            if isinstance(caps, dict):
-                                info['capabilities'] = caps
-                    except Exception:
-                        pass
-            except Exception:
-                # leave as defaults
-                pass
-            
-            try:
-                h = await client.get(f"{base}/health")
-                if h.status_code == 200:
-                    try:
-                        hj = h.json()
-                        ok = hj.get('ok') if isinstance(hj, dict) else None
-                        info['alive'] = bool(ok) if ok is not None else True
-                    except Exception:
-                        info['alive'] = True
-            except Exception:
-                info['alive'] = False
-            
-            out.append(info)
-    return out
+                response = await client.get(well_known_url, headers=headers)
+                if response.status_code == 200:
+                    payload = response.json()
+                    if isinstance(payload, Mapping):
+                        if payload.get("name"):
+                            name = _sanitize(str(payload.get("name"))) or name
+                        if payload.get("version"):
+                            version = _sanitize(str(payload.get("version"))) or version
+                        capabilities = _parse_capabilities(payload.get("capabilities"))
+                else:
+                    failure_reason = f"well_known_status:{response.status_code}"
+            except Exception as exc:  # pragma: no cover - httpx edge cases
+                failure_reason = f"well_known_error:{exc.__class__.__name__}"
 
-def load_tools_yaml(file_path: str) -> Dict[str, Any]:
-    """Load a tools.yaml and return the parsed mapping.
-    
-    Returns an empty dict if YAML content is empty.
-    Raises FileNotFoundError if the path does not exist.
-    """
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f"Tools YAML file not found: {file_path}")
-    with open(file_path, 'r') as f:
-        content = yaml.safe_load(f)
-    return content or {}
+            try:
+                health_response = await client.get(health_url, headers=headers)
+                if health_response.status_code == 200:
+                    alive = _is_health_ok(health_response.json()) or True
+                else:
+                    alive = False
+                    failure_reason = failure_reason or f"health_status:{health_response.status_code}"
+            except Exception as exc:  # pragma: no cover - httpx edge cases
+                alive = False
+                failure_reason = failure_reason or f"health_error:{exc.__class__.__name__}"
+
+        latency_ms = (time.perf_counter() - started) * 1000.0
+        result_label = "ok" if failure_reason is None and capabilities else "fail"
+        _discovery_latency.record(latency_ms, {"tool_id": source.id, "result": result_label})
+        if result_label == "ok":
+            for capability in capabilities:
+                _capabilities_counter.add(1, {"tool_id": source.id, "capability": capability})
+        else:
+            _discovery_failures.add(1, {"tool_id": source.id, "reason": failure_reason or "unknown"})
+
+        return ToolProbeResult(
+            id=source.id,
+            name=name or source.name,
+            version=version or "0.0.0",
+            base_url=source.base_url,
+            alive=bool(alive),
+            latency_ms=latency_ms,
+            capabilities=capabilities,
+            tags=source.tags,
+            timestamp=timestamp,
+            failure_reason=failure_reason,
+        )
+
+
+def compute_registry_hash(items: Sequence[ToolItem]) -> str:
+    payload = json.dumps(
+        [item.model_dump(mode="json") for item in items],
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    digest = hashlib.sha256(payload.encode("utf-8")).digest()
+    encoded = base64.b64encode(digest).decode("ascii")
+    return f"sha256-{encoded}"
+
+
+def build_response(items: Sequence[ToolItem]) -> ToolsResponse:
+    generated_at = _now()
+    registry_hash = compute_registry_hash(items)
+    return ToolsResponse(registry_hash=registry_hash, generated_at=generated_at, items=list(items))
+
+
+def update_registry_metrics(items: Sequence[ToolItem]) -> None:
+    try:
+        _registry_size_gauge.set(len(items))
+        _alive_gauge.set(sum(1 for item in items if item.alive))
+    except Exception:  # pragma: no cover - metrics optional
+        pass
+
