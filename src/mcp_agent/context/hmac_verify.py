@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from typing import Optional
 
-from .toolkit import RegistryToolKit
+from .toolkit import AggregatorToolKit
 from .telemetry import meter
 
 
@@ -15,7 +15,7 @@ async def verify_hmac_once(trace_id: Optional[str] = None) -> bool:
     """
     m = meter()
     try:
-        tk = RegistryToolKit(trace_id=trace_id)
+        tk = AggregatorToolKit(trace_id=trace_id)
         # A benign call. If a tool exists with 'patterns' capability it should accept an empty list.
         res = await asyncio.wait_for(tk.patterns([]), timeout=1.0)
         ok = isinstance(res, list)

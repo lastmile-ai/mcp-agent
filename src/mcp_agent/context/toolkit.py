@@ -1,186 +1,389 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
-import hmac
 import json
-import os
-from typing import Any, Dict, List, Optional, Tuple
+import hashlib
+from dataclasses import dataclass
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from .models import Span
-from .settings import ContextSettings
+from mcp.types import (
+    CallToolResult,
+    GetPromptResult,
+    ListPromptsResult,
+    ListResourcesResult,
+    ListToolsResult,
+    Prompt,
+    ReadResourceResult,
+    Resource,
+    TextContent,
+    Tool,
+)
 
-try:
-    from mcp_agent.registry.store import store as registry_store  # type: ignore
-except Exception:  # pragma: no cover
-    registry_store = None  # type: ignore
-
-try:
-    from mcp_agent.client.http import HTTPClient  # type: ignore
-except Exception:  # pragma: no cover
-    HTTPClient = None  # type: ignore
+from mcp_agent.context.models import Span
+from mcp_agent.context.settings import ContextSettings
+from mcp_agent.core.context import Context, get_current_context
+from mcp_agent.mcp.mcp_aggregator import MCPAggregator, SEP
 
 
-def _hash_params(payload: Dict[str, Any]) -> str:
+def _canonical_hash(payload: Dict[str, Any]) -> str:
     blob = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(blob).hexdigest()
 
 
-class MemoCache:
-    def __init__(self, max_items: int = 512):
-        self.max = max_items
-        self.data: Dict[Tuple[str, str, str], Any] = {}
-        self.order: List[Tuple[str, str, str]] = []
-
-    def get(self, key: Tuple[str, str, str]) -> Optional[Any]:
-        return self.data.get(key)
-
-    def put(self, key: Tuple[str, str, str], value: Any) -> None:
-        if key in self.data:
-            return
-        self.data[key] = value
-        self.order.append(key)
-        if len(self.order) > self.max:
-            oldest = self.order.pop(0)
-            self.data.pop(oldest, None)
+def _schema_version(schema: Dict[str, Any] | None) -> str:
+    if not schema:
+        return ""
+    for key in ("version", "$id", "$schema"):
+        value = schema.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return _canonical_hash(schema)
 
 
-class RegistryToolKit:
-    """
-    Registry-backed ToolKit using shared HTTPClient.
-    - HMAC signing on each request via X-Signature (same as Sentinel)
-    - Memoization keyed by (op, repo_sha|tool_versions, params_hash)
-    - Optional transport injection for tests
-    """
-    def __init__(self, repo_sha: Optional[str] = None, trace_id: Optional[str] = None, transport=None, tool_versions: Optional[Dict[str,str]] = None):
-        self.repo_sha = repo_sha or ""
+def _normalize_capability(name: str) -> str:
+    return name.replace("-", "_").lower()
+
+
+@dataclass(frozen=True)
+class _ToolRecord:
+    fqn: str
+    aggregator_name: str
+    server_name: str
+    local_name: str
+    schema_version: str
+    tool: Tool
+
+
+class AggregatorToolKit:
+    """Adapter that exposes ContextPack tool capabilities via an MCPAggregator."""
+
+    CAPABILITY_ALIASES: Dict[str, Tuple[str, ...]] = {
+        "semantic_search": ("semantic_search", "semantic-search"),
+        "symbols": ("symbols", "symbol_lookup", "symbols_lookup"),
+        "neighbors": ("neighbors", "neighbor_lines", "neighbor-context"),
+        "patterns": ("patterns", "pattern_search", "pattern-search"),
+    }
+
+    def __init__(
+        self,
+        *,
+        trace_id: Optional[str] = None,
+        repo_sha: Optional[str] = None,
+        tool_versions: Optional[Dict[str, str]] = None,
+        context: Optional[Context] = None,
+        aggregator: Optional[MCPAggregator] = None,
+    ) -> None:
         self.trace_id = trace_id or ""
-        self.tool_versions = tool_versions or {}
-        self.settings = ContextSettings()
-        self.cache = MemoCache()
-        self._tools: Dict[str, Dict[str, Any]] = {}
-        self.transport = transport
-        # HMAC key from env to reuse Sentinel scheme
-        self._hmac_key = os.getenv("MCP_CONTEXT_HMAC_KEY") or os.getenv("SENTINEL_SIGNING_KEY") or ""
-        try:
-            self._refresh_registry()
-        except Exception:
-            pass
+        self.repo_sha = repo_sha or ""
+        self._explicit_tool_versions = tool_versions or {}
+        self._context = context
+        self._settings = ContextSettings()
 
-    async def _to_thread(self, func, *args, **kwargs):
-        return await asyncio.to_thread(func, *args, **kwargs)
+        self._aggregator: Optional[MCPAggregator] = aggregator
+        self._aggregator_lock = asyncio.Lock()
 
-    def _refresh_registry(self):
-        if registry_store is None:
-            self._tools = {}
-            return
-        import asyncio
-        tools = asyncio.get_event_loop().run_until_complete(registry_store.get_all())  # type: ignore
-        self._tools = {}
-        for t in tools or []:
-            name = str(t.get("name") or t.get("tool") or t.get("id") or "")
-            base_url = str(t.get("base_url") or t.get("url") or "")
-            caps = set((t.get("capabilities") or []))
-            self._tools[name] = {"base_url": base_url, "caps": caps}
+        self._tool_records: Dict[str, _ToolRecord] | None = None
+        self._tool_order: List[str] = []
+        self._capability_index: Dict[str, List[_ToolRecord]] = {}
+        self._server_names: List[str] = []
+        self._tool_index_lock = asyncio.Lock()
 
-    def _pick(self, capability: str) -> Optional[Tuple[str, str]]:
-        for name, meta in self._tools.items():
-            if capability in meta.get("caps", set()):
-                return name, meta["base_url"]
-        # Fallback: assume a synthetic single tool if provided via env
-        single = os.getenv("MCP_CONTEXT_SINGLE_TOOL_BASE")
-        if single:
-            return "tool", single
-        return None
+    async def list_tools(self) -> List[Tool]:
+        await self._ensure_tool_index()
+        return [
+            self._tool_records[fqn].tool.model_copy(update={"name": fqn})
+            for fqn in self._tool_order
+        ]
 
-    def _client(self, tool: str, base_url: str):
-        if HTTPClient is None:
-            raise RuntimeError("HTTPClient unavailable")
-        return HTTPClient(tool=tool, base_url=base_url, transport=self.transport)
+    async def list_prompts(self, server_name: Optional[str] = None) -> ListPromptsResult:
+        agg = await self._ensure_aggregator()
+        if server_name:
+            normalized = self._normalize_server_filter(server_name)
+            res = await agg.list_prompts(server_name=normalized)
+        else:
+            res = await agg.list_prompts()
+        prompts = [
+            prompt.model_copy(update={"name": self._namespaced_to_fqn(prompt.name)})
+            for prompt in res.prompts or []
+        ]
+        return ListPromptsResult(prompts=prompts, nextCursor=getattr(res, "nextCursor", None))
 
-    def _sign(self, payload: Dict[str, Any]) -> Optional[str]:
-        if not self._hmac_key:
-            return None
-        msg = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
-        return hmac.new(self._hmac_key.encode("utf-8"), msg, hashlib.sha256).hexdigest()
+    async def get_prompt(
+        self,
+        name: str,
+        arguments: Optional[Dict[str, str]] = None,
+    ) -> GetPromptResult:
+        agg = await self._ensure_aggregator()
+        namespaced = self._fqn_to_namespaced(name)
+        server, _ = self._split_fqn(name)
+        result = await agg.get_prompt(name=namespaced, arguments=arguments)
+        if hasattr(result, "namespaced_name"):
+            result.namespaced_name = name  # type: ignore[attr-defined]
+        if hasattr(result, "server_name"):
+            result.server_name = server  # type: ignore[attr-defined]
+        if hasattr(result, "prompt_name"):
+            result.prompt_name = name.split(".", 1)[-1]  # type: ignore[attr-defined]
+        return result
 
-    async def _post_json(self, client, path: str, payload: Dict[str, Any], timeout_ms: int) -> Dict[str, Any]:
-        headers = {}
-        sig = self._sign(payload)
-        if sig:
-            headers["X-Signature"] = sig
-            headers["Authorization"] = f"Signature {sig}"
-        kwargs = {"headers": headers}
-        if timeout_ms:
-            kwargs["timeout"] = timeout_ms / 1000.0
-        return await self._to_thread(client.post_json, path, json=payload, **kwargs)
+    async def list_resources(self, server_name: Optional[str] = None) -> ListResourcesResult:
+        agg = await self._ensure_aggregator()
+        if server_name:
+            normalized = self._normalize_server_filter(server_name)
+            res = await agg.list_resources(server_name=normalized)
+        else:
+            res = await agg.list_resources()
+        resources = [
+            resource.model_copy(update={"name": self._namespaced_to_fqn(resource.name)})
+            for resource in res.resources or []
+        ]
+        return ListResourcesResult(
+            resources=resources,
+            nextCursor=getattr(res, "nextCursor", None),
+        )
 
-    def _cache_key(self, op: str, payload: Dict[str, Any]) -> Tuple[str, str, str]:
-        v = "|".join([f"{k}:{self.tool_versions.get(k,'')}" for k in sorted(self.tool_versions)])
-        return op, f"{self.repo_sha}|{v}", _hash_params(payload)
+    async def read_resource(self, uri: str) -> ReadResourceResult:
+        agg = await self._ensure_aggregator()
+        namespaced = self._fqn_to_namespaced(uri)
+        return await agg.read_resource(uri=namespaced)
 
-    # Public capabilities
+    async def call_tool(
+        self, name: str, arguments: Optional[Dict[str, Any]] = None
+    ) -> CallToolResult:
+        agg = await self._ensure_aggregator()
+        namespaced = self._fqn_to_namespaced(name)
+        return await agg.call_tool(name=namespaced, arguments=arguments)
+
+    async def tool_versions(self) -> Dict[str, str]:
+        if self._explicit_tool_versions:
+            return dict(self._explicit_tool_versions)
+        await self._ensure_tool_index()
+        return {fqn: self._tool_records[fqn].schema_version for fqn in self._tool_order}
 
     async def semantic_search(self, query: str, top_k: int) -> List[Span]:
-        pick = self._pick("semantic_search")
-        if not pick:
-            return []
-        tool, base = pick
-        payload = {"query": query, "top_k": int(top_k), "trace_id": self.trace_id, "repo_sha": self.repo_sha}
-        key = self._cache_key("semantic_search", payload)
-        cached = self.cache.get(key)
-        if cached is not None:
-            return cached
-        client = self._client(tool, base)
-        data = await self._post_json(client, "/semantic_search", payload, self.settings.SEMANTIC_TIMEOUT_MS)
-        res = [Span(**s) for s in data.get("spans", [])]
-        self.cache.put(key, res)
-        return res
+        payload = {
+            "query": query,
+            "top_k": int(top_k),
+            "trace_id": self.trace_id,
+            "repo_sha": self.repo_sha,
+        }
+        return await self._call_span_tool("semantic_search", payload)
 
     async def symbols(self, target: str) -> List[Span]:
-        pick = self._pick("symbols")
-        if not pick:
+        payload = {
+            "target": target,
+            "trace_id": self.trace_id,
+            "repo_sha": self.repo_sha,
+        }
+        return await self._call_span_tool("symbols", payload)
+
+    async def neighbors(
+        self, uri: str, line_or_start: int, radius: int
+    ) -> List[Span]:
+        payload = {
+            "uri": uri,
+            "line_or_start": int(line_or_start),
+            "radius": int(radius),
+            "trace_id": self.trace_id,
+            "repo_sha": self.repo_sha,
+        }
+        return await self._call_span_tool("neighbors", payload)
+
+    async def patterns(self, globs: Iterable[str]) -> List[Span]:
+        payload = {
+            "globs": list(globs or []),
+            "trace_id": self.trace_id,
+            "repo_sha": self.repo_sha,
+        }
+        return await self._call_span_tool("patterns", payload)
+
+    async def _call_span_tool(
+        self, capability: str, arguments: Dict[str, Any]
+    ) -> List[Span]:
+        record = await self._select_capability(capability)
+        if record is None:
             return []
-        tool, base = pick
-        payload = {"target": target, "trace_id": self.trace_id, "repo_sha": self.repo_sha}
-        key = self._cache_key("symbols", payload)
-        cached = self.cache.get(key)
-        if cached is not None:
-            return cached
-        client = self._client(tool, base)
-        data = await self._post_json(client, "/symbols", payload, self.settings.SYMBOLS_TIMEOUT_MS)
-        res = [Span(**s) for s in data.get("spans", [])]
-        self.cache.put(key, res)
-        return res
+        timeout_ms = {
+            "semantic_search": self._settings.SEMANTIC_TIMEOUT_MS,
+            "symbols": self._settings.SYMBOLS_TIMEOUT_MS,
+            "neighbors": self._settings.NEIGHBORS_TIMEOUT_MS,
+            "patterns": self._settings.PATTERNS_TIMEOUT_MS,
+        }.get(capability, 0)
+        if timeout_ms:
+            timeout = max(0.001, timeout_ms / 1000.0)
+        else:
+            timeout = None
+
+        async def _invoke() -> CallToolResult:
+            return await self.call_tool(record.fqn, arguments)
+
+        try:
+            if timeout is not None:
+                result = await asyncio.wait_for(_invoke(), timeout=timeout)
+            else:
+                result = await _invoke()
+        except Exception:
+            return []
+
+        data = self._extract_payload(result)
+        spans_payload = []
+        if isinstance(data, dict):
+            spans_payload = data.get("spans") or []
+        elif isinstance(data, list):
+            spans_payload = data
+
+        spans: List[Span] = []
+        for item in spans_payload:
+            if not isinstance(item, dict):
+                continue
+            span = Span(**item)
+            span.tool = record.fqn
+            spans.append(span)
+        return spans
+
+    def _extract_payload(self, result: CallToolResult) -> Any:
+        if result.structuredContent is not None:
+            return result.structuredContent
+        for content in result.content or []:
+            if isinstance(content, TextContent):
+                try:
+                    return json.loads(content.text or "null")
+                except json.JSONDecodeError:
+                    continue
+        return None
+
+    async def _select_capability(self, capability: str) -> Optional[_ToolRecord]:
+        await self._ensure_tool_index()
+        aliases = self.CAPABILITY_ALIASES.get(capability, (capability,))
+        for alias in aliases:
+            normalized = _normalize_capability(alias)
+            candidates = self._capability_index.get(normalized)
+            if candidates:
+                return candidates[0]
+        normalized_capability = _normalize_capability(capability)
+        candidates = self._capability_index.get(normalized_capability)
+        return candidates[0] if candidates else None
+
+    async def _ensure_tool_index(self) -> None:
+        if self._tool_records is not None:
+            return
+        async with self._tool_index_lock:
+            if self._tool_records is not None:
+                return
+            agg = await self._ensure_aggregator()
+            try:
+                server_names = await agg.list_servers()
+            except AttributeError:
+                server_names = getattr(agg, "server_names", [])
+            self._server_names = sorted(server_names)
+            server_set = set(self._server_names)
+
+            tool_records: Dict[str, _ToolRecord] = {}
+            order: List[str] = []
+            capability_map: Dict[str, List[_ToolRecord]] = {}
+
+            for server in self._server_names:
+                tools_result: ListToolsResult = await agg.list_tools(server_name=server)
+                for tool in tools_result.tools or []:
+                    namespaced = tool.name
+                    if namespaced.startswith(f"{server}{SEP}"):
+                        local_name = namespaced[len(server) + 1 :]
+                    else:
+                        local_name = self._strip_server_prefix(namespaced, server_set)
+                    fqn = f"{server}.{local_name}"
+                    record = _ToolRecord(
+                        fqn=fqn,
+                        aggregator_name=namespaced,
+                        server_name=server,
+                        local_name=local_name,
+                        schema_version=_schema_version(tool.inputSchema),
+                        tool=tool,
+                    )
+                    tool_records[fqn] = record
+                    order.append(fqn)
+                    normalized = _normalize_capability(local_name)
+                    capability_map.setdefault(normalized, []).append(record)
+
+            order.sort()
+            for candidates in capability_map.values():
+                candidates.sort(key=lambda rec: rec.fqn)
+
+            self._tool_records = tool_records
+            self._tool_order = order
+            self._capability_index = capability_map
+
+    async def _ensure_aggregator(self) -> MCPAggregator:
+        if self._aggregator is not None:
+            return self._aggregator
+        async with self._aggregator_lock:
+            if self._aggregator is not None:
+                return self._aggregator
+            context = self._context or get_current_context()
+            server_registry = getattr(context, "server_registry", None)
+            if server_registry is None:
+                server_names: List[str] = []
+            else:
+                server_names = sorted(server_registry.registry.keys())  # type: ignore[attr-defined]
+            aggregator = MCPAggregator(server_names=server_names, context=context)
+            await aggregator.initialize()
+            self._aggregator = aggregator
+            return aggregator
+
+    def _normalize_server_filter(self, server_name: str) -> str:
+        if "." in server_name:
+            return server_name.split(".", 1)[0]
+        return server_name
+
+    def _fqn_to_namespaced(self, fqn: str) -> str:
+        server, remainder = self._split_fqn(fqn)
+        if not remainder:
+            return server
+        return f"{server}{SEP}{remainder.replace('.', SEP)}"
+
+    def _namespaced_to_fqn(self, namespaced: str) -> str:
+        server, local = self._parse_namespaced(namespaced)
+        if not local:
+            return server
+        return f"{server}.{local}"
+
+    def _parse_namespaced(self, namespaced: str) -> Tuple[str, str]:
+        if not self._server_names:
+            return self._split_simple(namespaced)
+        parts = namespaced.split(SEP)
+        server_candidates = set(self._server_names)
+        for idx in range(len(parts), 0, -1):
+            prefix = SEP.join(parts[:idx])
+            if prefix in server_candidates:
+                remainder = SEP.join(parts[idx:])
+                return prefix, remainder
+        return self._split_simple(namespaced)
+
+    def _split_simple(self, value: str) -> Tuple[str, str]:
+        if SEP not in value:
+            return value, ""
+        head, tail = value.split(SEP, 1)
+        return head, tail
+
+    def _strip_server_prefix(self, namespaced: str, server_set: set[str]) -> str:
+        prefix, remainder = self._parse_namespaced(namespaced)
+        if prefix in server_set:
+            return remainder
+        return remainder or namespaced
+
+    def _split_fqn(self, fqn: str) -> Tuple[str, str]:
+        if "." not in fqn:
+            return fqn, ""
+        return fqn.split(".", 1)
+
+
+class NoopToolKit:
+    async def semantic_search(self, query: str, top_k: int) -> List[Span]:
+        return []
+
+    async def symbols(self, target: str) -> List[Span]:
+        return []
 
     async def neighbors(self, uri: str, line_or_start: int, radius: int) -> List[Span]:
-        pick = self._pick("neighbors")
-        if not pick:
-            return []
-        tool, base = pick
-        payload = {"uri": uri, "line_or_start": int(line_or_start), "radius": int(radius), "trace_id": self.trace_id, "repo_sha": self.repo_sha}
-        key = self._cache_key("neighbors", payload)
-        cached = self.cache.get(key)
-        if cached is not None:
-            return cached
-        client = self._client(tool, base)
-        data = await self._post_json(client, "/neighbors", payload, self.settings.NEIGHBORS_TIMEOUT_MS)
-        res = [Span(**s) for s in data.get("spans", [])]
-        self.cache.put(key, res)
-        return res
+        return []
 
-    async def patterns(self, globs: List[str]) -> List[Span]:
-        pick = self._pick("patterns")
-        if not pick:
-            return []
-        tool, base = pick
-        payload = {"globs": list(globs or []), "trace_id": self.trace_id, "repo_sha": self.repo_sha}
-        key = self._cache_key("patterns", payload)
-        cached = self.cache.get(key)
-        if cached is not None:
-            return cached
-        client = self._client(tool, base)
-        data = await self._post_json(client, "/patterns", payload, self.settings.PATTERNS_TIMEOUT_MS)
-        res = [Span(**s) for s in data.get("spans", [])]
-        self.cache.put(key, res)
-        return res
+    async def patterns(self, globs: Iterable[str]) -> List[Span]:
+        return []
