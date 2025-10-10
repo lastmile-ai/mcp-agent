@@ -1,1 +1,0 @@
-# Added in PR-15B: /bootstrap/repo endpoint hooks into tasks.bootstrap_repo.run
