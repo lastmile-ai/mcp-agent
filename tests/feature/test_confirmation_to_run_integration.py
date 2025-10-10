@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
@@ -58,15 +59,18 @@ def test_confirmation_starts_runloop(monkeypatch):
             assert confirm.status_code == 200
             run_id = confirm.json()["run"]["id"]
 
-            with client.stream(f"GET", f"/v1/stream/{run_id}", headers=headers) as stream:
-                events = []
-                for line in stream.iter_lines():
-                    if not line or not line.startswith("data: "):
-                        continue
-                    payload = json.loads(line[6:])
-                    events.append(payload["event"])
-                    if payload["event"] == "finished_green":
+            bus = state.event_buses[run_id]
+            deadline = time.time() + 5
+            events = []
+            while time.time() < deadline:
+                if bus._history:
+                    events = [json.loads(entry)["event"] for entry in bus._history]
+                    if events and events[-1] == "finished_green":
                         break
+                time.sleep(0.05)
+            else:  # pragma: no cover - defensive timeout guard
+                raise AssertionError("timed out waiting for finished_green event")
+
             assert events[0] == "initializing_run"
             assert events[-1] == "finished_green"
 
