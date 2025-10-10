@@ -240,6 +240,7 @@ class LLMGateway:
                         prompt=prompt,
                         params=effective_params,
                         handle=handle,
+                        provider_key=provider_key,
                         params_hash=params_hash,
                         prompt_hash=prompt_hash,
                         instructions_hash=instructions_hash,
@@ -285,6 +286,7 @@ class LLMGateway:
         prompt: str,
         params: LLMCallParams,
         handle: ProviderHandle,
+        provider_key: str,
         params_hash: str,
         prompt_hash: str,
         instructions_hash: str | None,
@@ -293,7 +295,6 @@ class LLMGateway:
         attempt: int,
         span,
     ) -> Dict[str, Any]:
-        provider = handle.provider.lower()
         model_name = params.model
         await emit_llm_event(
             self._state,
@@ -310,7 +311,7 @@ class LLMGateway:
             },
         )
 
-        factory = self._providers.get(provider)
+        factory = self._providers.get(provider_key)
         if factory is None:
             raise LLMProviderError(
                 f"No registered provider factory for '{handle.provider}'",
