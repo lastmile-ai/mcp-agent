@@ -162,7 +162,7 @@ class Context(MCPContext):
         return None
 
     @property
-    def logger(self) -> "Logger":
+    def logger(self) -> "Logger | None":
         return self.app.logger if self.app else None
 
     # ---- FastMCP Context method fallbacks (safe outside requests) ---------
