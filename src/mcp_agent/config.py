@@ -6,7 +6,7 @@ for the application configuration.
 import sys
 from io import StringIO
 from pathlib import Path
-from typing import Dict, List, Literal, Optional, Set
+from typing import Any, Dict, List, Literal, Optional, Set
 import threading
 import warnings
 
@@ -122,6 +122,11 @@ class MCPSettings(BaseModel):
     @field_validator("servers", mode="before")
     def none_to_dict(cls, v):
         return {} if v is None else v
+
+    def model_post_init(self, __context: Any) -> None:  # type: ignore[override]
+        for server_key, server in self.servers.items():
+            if server.name is None:
+                server.name = server_key
 
 
 class VertexAIMixin(BaseModel):

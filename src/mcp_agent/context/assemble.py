@@ -16,7 +16,7 @@ from .models import (
 from .settings import ContextSettings
 from .hash import compute_manifest_hash
 from .telemetry import meter
-from .toolkit import RegistryToolKit
+from .toolkit import AggregatorToolKit
 from .logutil import log_structured, redact_event
 class ToolKit(Protocol):
     async def semantic_search(self, query: str, top_k: int) -> List[Span]: ...
@@ -160,7 +160,11 @@ async def assemble_context(
     m = meter()
     settings = ContextSettings()
     options = opts or AssembleOptions()
-    tk: ToolKit = toolkit or RegistryToolKit(trace_id=(telemetry_attrs or {}).get('trace_id',''), tool_versions=tool_versions, repo_sha=(telemetry_attrs or {}).get('commit_sha'))
+    tk: ToolKit = toolkit or AggregatorToolKit(
+        trace_id=(telemetry_attrs or {}).get("trace_id", ""),
+        repo_sha=(telemetry_attrs or {}).get("commit_sha"),
+        tool_versions=tool_versions,
+    )
     report = AssembleReport()
     spans: List[Span] = []
     # Seeds

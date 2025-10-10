@@ -2,6 +2,7 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, Optional, Protocol, Tuple
 from .assemble import assemble_context, ToolKit, NoopToolKit, must_include_missing
+from .toolkit import AggregatorToolKit
 from .models import AssembleInputs, AssembleOptions, AssembleReport, Manifest
 from .settings import ContextSettings
 from .logutil import redact_event, redact_path
@@ -57,19 +58,23 @@ async def run_assembling_phase(
     Enforces non-droppable coverage when ENFORCE_NON_DROPPABLE=true.
     """
     cfg = ContextSettings()
-    tk = toolkit or NoopToolKit()
+    tk = toolkit or AggregatorToolKit(trace_id=trace_id, repo_sha=commit_sha)
     store = artifact_store or MemoryArtifactStore()
     sse_emitter = sse or MemorySSEEmitter()
 
     start_evt = {"phase": "ASSEMBLING", "status": "start", "run_id": run_id, "repo": repo, "commit_sha": commit_sha}
     await sse_emitter.emit(run_id, redact_event(start_evt, cfg.REDACT_PATH_GLOBS))
 
+    tool_versions_map = tool_versions
+    if tool_versions_map is None and isinstance(tk, AggregatorToolKit):
+        tool_versions_map = await tk.tool_versions()
+
     manifest, pack_hash, report = await assemble_context(
         inputs=inputs,
         opts=opts,
         toolkit=tk,
         code_version=code_version,
-        tool_versions=tool_versions,
+        tool_versions=tool_versions_map,
         telemetry_attrs={"run_id": run_id or "", "repo": repo or "", "commit_sha": commit_sha or "", "trace_id": trace_id or ""},
     )
 
