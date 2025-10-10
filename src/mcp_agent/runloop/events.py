@@ -89,11 +89,14 @@ class EventBus:
     def __init__(self) -> None:
         self._queues: Set[asyncio.Queue[str]] = set()
         self._closed = asyncio.Event()
+        self._history: list[str] = []
 
     def subscribe(self) -> asyncio.Queue[str]:
         """Create a new queue subscriber."""
 
         q: asyncio.Queue[str] = asyncio.Queue()
+        for message in self._history:
+            q.put_nowait(message)
         if self._closed.is_set():
             q.put_nowait("__EOF__")
         else:
@@ -107,6 +110,7 @@ class EventBus:
         if self._closed.is_set():
             return
         message = payload.as_json()
+        self._history.append(message)
         for queue in list(self._queues):
             try:
                 queue.put_nowait(message)

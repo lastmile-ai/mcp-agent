@@ -1,4 +1,3 @@
-import asyncio
 import json
 
 import pytest
@@ -38,12 +37,26 @@ async def test_event_bus_publishes_structured_payload() -> None:
 @pytest.mark.asyncio
 async def test_event_bus_close_notifies_subscribers() -> None:
     bus = EventBus()
+    payload = build_payload(
+        event="initializing_run",
+        trace_id="trace-xyz",
+        iteration=0,
+        pack_hash=None,
+        budget=BudgetSnapshot(),
+    )
+
+    await bus.publish(payload)
+
     queue = bus.subscribe()
+    cached = json.loads(await queue.get())
+    assert cached["event"] == "initializing_run"
 
     await bus.close()
     message = await queue.get()
     assert message == "__EOF__"
 
-    # New subscribers after closure receive terminal marker immediately.
+    # New subscribers after closure replay history before the terminal marker.
     other_queue = bus.subscribe()
+    replay = json.loads(await other_queue.get())
+    assert replay["event"] == "initializing_run"
     assert await other_queue.get() == "__EOF__"
