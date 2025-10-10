@@ -83,6 +83,15 @@ def build_payload(
     )
 
 
+FEATURE_EVENT_NAMES = [
+    "feature_drafting",
+    "feature_estimated",
+    "awaiting_budget_confirmation",
+    "budget_confirmed",
+    "feature_cancelled",
+    "starting_implementation",
+]
+
 class EventBus:
     """Simple fan-out event bus backed by asyncio queues."""
 
@@ -134,5 +143,6 @@ __all__ = [
     "BudgetSnapshot",
     "EventPayload",
     "EventBus",
+    "FEATURE_EVENT_NAMES",
     "build_payload",
 ]

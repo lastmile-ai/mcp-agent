@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from typing import Any, Dict
 
 from mcp_agent.budget.llm_budget import LLMBudget
 from mcp_agent.runloop.events import BudgetSnapshot, EventBus, build_payload
@@ -22,6 +23,9 @@ class RunConfig:
     trace_id: str
     iteration_count: int
     pack_hash: str | None = None
+    feature_spec: Dict[str, Any] | None = None
+    approved_budget_s: int | None = None
+    caps: Dict[str, Any] | None = None
 
 
 class RunController:
@@ -31,10 +35,14 @@ class RunController:
         config: RunConfig,
         event_bus: EventBus,
         llm_budget: LLMBudget | None = None,
+        feature_spec: Any | None = None,
+        approved_budget_s: int | None = None,
     ) -> None:
         self._config = config
         self._event_bus = event_bus
         self._budget = llm_budget or LLMBudget()
+        self._feature_spec = feature_spec or config.feature_spec
+        self._approved_budget_s = approved_budget_s or config.approved_budget_s
         self._stopped = asyncio.Event()
 
     async def run(self) -> None:

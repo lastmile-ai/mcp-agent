@@ -4,6 +4,8 @@ import os
 import uuid
 from typing import Dict, List, Set, Tuple
 
+from mcp_agent.feature.intake import FeatureIntakeManager
+
 import jwt
 from starlette.requests import Request
 from starlette.responses import JSONResponse, StreamingResponse
@@ -22,6 +24,7 @@ class PublicAPIState:
         self.event_buses: Dict[str, EventBus] = {}
         self.tasks: Set[asyncio.Task] = set()
         self.artifacts: Dict[str, tuple[bytes, str]] = {}
+        self.feature_manager = FeatureIntakeManager(artifact_sink=self.artifacts)
 
     async def cancel_all_tasks(self):
         """Cancel all tracked background tasks."""
@@ -35,11 +38,14 @@ class PublicAPIState:
         for bus in list(self.event_buses.values()):
             await bus.close()
         self.event_buses.clear()
+        await self.feature_manager.close()
+        self.feature_manager.reset()
 
     def clear(self):
         """Clear all state dictionaries."""
         self.runs.clear()
         self.event_buses.clear()
+        self.feature_manager.reset()
 
 
 def _env_list(name: str) -> List[str]:
@@ -226,4 +232,8 @@ routes = [
     Route("/runs/{id}/cancel", cancel_run, methods=["POST"]),
     Route("/artifacts/{id}", get_artifact, methods=["GET"]),
 ]
+
+from .feature import router as feature_router
+
 router = Router(routes=routes)
+router.mount("/features", feature_router)
