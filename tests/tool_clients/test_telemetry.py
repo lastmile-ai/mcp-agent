@@ -29,6 +29,12 @@ class _ListSpanExporter(SpanExporter):
 
 @pytest.fixture
 def otel_env(monkeypatch):
+    # Ensure test telemetry is not bypassed by global OTEL disablement toggles.
+    monkeypatch.delenv("OTEL_SDK_DISABLED", raising=False)
+    monkeypatch.delenv("OTEL_PYTHON_DISABLED", raising=False)
+    monkeypatch.delenv("OTEL_METRICS_EXPORTER", raising=False)
+    monkeypatch.delenv("OTEL_TRACES_EXPORTER", raising=False)
+
     metric_reader = InMemoryMetricReader()
     meter_provider = MeterProvider(resource=Resource.create({}), metric_readers=[metric_reader])
     metrics.set_meter_provider(meter_provider)
