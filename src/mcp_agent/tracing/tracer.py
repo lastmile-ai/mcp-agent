@@ -141,7 +141,9 @@ class TracingConfig:
                 )
             elif exporter_type == "otlp":
                 # Extract endpoint/headers from dict payload
-                endpoint = payload.get("endpoint") if isinstance(payload, dict) else None
+                endpoint = (
+                    payload.get("endpoint") if isinstance(payload, dict) else None
+                )
                 headers = payload.get("headers") if isinstance(payload, dict) else None
 
                 # Fall back to legacy otlp_settings if not provided in payload
@@ -166,7 +168,9 @@ class TracingConfig:
             elif exporter_type == "file":
                 # Extract path and path_settings from dict payload
                 custom_path = payload.get("path") if isinstance(payload, dict) else None
-                path_settings = payload.get("path_settings") if isinstance(payload, dict) else None
+                path_settings = (
+                    payload.get("path_settings") if isinstance(payload, dict) else None
+                )
 
                 # Fall back to legacy top-level fields if not provided in payload
                 if not custom_path:

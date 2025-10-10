@@ -35,7 +35,9 @@ def _assert_file_exporter(exporter, path=None, path_pattern=None):
             assert path_settings.path_pattern == path_pattern
 
 
-def _assert_otlp_exporter(exporter, endpoint: str | None = None, headers: dict | None = None):
+def _assert_otlp_exporter(
+    exporter, endpoint: str | None = None, headers: dict | None = None
+):
     """Assert that exporter is in key-discriminated OTLP format with optional field checks."""
     assert isinstance(exporter, dict)
     assert "otlp" in exporter
@@ -50,6 +52,7 @@ def _assert_otlp_exporter(exporter, endpoint: str | None = None, headers: dict |
 # ============================================================================
 # String Exporter Tests (with legacy top-level fields)
 # ============================================================================
+
 
 def test_v1_string_exporters_with_legacy_fields():
     """Test string exporters with top-level path/otlp_settings."""
@@ -142,6 +145,7 @@ def test_v1_string_exporters_without_legacy_fields():
 # Type-Discriminated Exporter Tests (using 'type' field)
 # ============================================================================
 
+
 def test_v2_type_discriminated_union():
     """Test exporters with 'type' discriminator field."""
     settings = OpenTelemetrySettings(
@@ -156,7 +160,9 @@ def test_v2_type_discriminated_union():
     assert len(settings.exporters) == 3
     _assert_console_exporter(settings.exporters[0])
     _assert_file_exporter(settings.exporters[1], path="/var/log/traces.jsonl")
-    _assert_otlp_exporter(settings.exporters[2], endpoint="http://collector:4318/v1/traces")
+    _assert_otlp_exporter(
+        settings.exporters[2], endpoint="http://collector:4318/v1/traces"
+    )
 
 
 def test_v2_multiple_otlp_exporters():
@@ -165,7 +171,11 @@ def test_v2_multiple_otlp_exporters():
         enabled=True,
         exporters=[
             {"type": "otlp", "endpoint": "http://collector1:4318"},
-            {"type": "otlp", "endpoint": "http://collector2:4318", "headers": {"X-API-Key": "secret"}},
+            {
+                "type": "otlp",
+                "endpoint": "http://collector2:4318",
+                "headers": {"X-API-Key": "secret"},
+            },
         ],
     )
 
@@ -213,6 +223,7 @@ def test_v2_file_exporter_with_path_settings():
 # Key-Discriminated Exporter Tests (dict key, no 'type' field)
 # ============================================================================
 
+
 def test_v3_dict_key_discriminator():
     """Test key-discriminated format: exporters use dict keys as discriminators."""
     settings = OpenTelemetrySettings(
@@ -227,7 +238,9 @@ def test_v3_dict_key_discriminator():
     assert len(settings.exporters) == 3
     _assert_console_exporter(settings.exporters[0])
     _assert_file_exporter(settings.exporters[1], path="/var/log/traces.jsonl")
-    _assert_otlp_exporter(settings.exporters[2], endpoint="http://collector:4318/v1/traces")
+    _assert_otlp_exporter(
+        settings.exporters[2], endpoint="http://collector:4318/v1/traces"
+    )
 
 
 def test_v3_multiple_exporters_same_type():
@@ -236,19 +249,28 @@ def test_v3_multiple_exporters_same_type():
         enabled=True,
         exporters=[
             {"otlp": {"endpoint": "http://primary-collector:4318"}},
-            {"otlp": {"endpoint": "http://backup-collector:4318", "headers": {"X-Region": "us-west"}}},
+            {
+                "otlp": {
+                    "endpoint": "http://backup-collector:4318",
+                    "headers": {"X-Region": "us-west"},
+                }
+            },
             {"otlp": {"endpoint": "https://cloud-collector.example.com:4318"}},
         ],
     )
 
     assert len(settings.exporters) == 3
-    _assert_otlp_exporter(settings.exporters[0], endpoint="http://primary-collector:4318")
+    _assert_otlp_exporter(
+        settings.exporters[0], endpoint="http://primary-collector:4318"
+    )
     _assert_otlp_exporter(
         settings.exporters[1],
         endpoint="http://backup-collector:4318",
         headers={"X-Region": "us-west"},
     )
-    _assert_otlp_exporter(settings.exporters[2], endpoint="https://cloud-collector.example.com:4318")
+    _assert_otlp_exporter(
+        settings.exporters[2], endpoint="https://cloud-collector.example.com:4318"
+    )
 
 
 def test_v3_file_exporter_with_advanced_path_settings():
@@ -300,6 +322,7 @@ def test_v3_console_exporter_empty_dict():
 # Cross-Version Compatibility Tests
 # ============================================================================
 
+
 def test_mixed_v1_and_v3_string_and_dict():
     """Test mixing string exporters with key-discriminated dict syntax in the same config."""
     settings = OpenTelemetrySettings(
@@ -321,7 +344,11 @@ def test_v2_to_v3_conversion():
         enabled=True,
         exporters=[
             {"type": "console"},
-            {"type": "otlp", "endpoint": "http://collector:4318", "headers": {"Auth": "Bearer xyz"}},
+            {
+                "type": "otlp",
+                "endpoint": "http://collector:4318",
+                "headers": {"Auth": "Bearer xyz"},
+            },
         ],
     )
 
@@ -351,6 +378,7 @@ def test_v1_legacy_fields_removed_after_finalization():
 # Error Handling Tests
 # ============================================================================
 
+
 def test_unsupported_exporter_type_raises():
     """Test that unsupported exporter types raise ValidationError from Pydantic."""
     with pytest.raises(ValidationError):
@@ -359,13 +387,19 @@ def test_unsupported_exporter_type_raises():
 
 def test_invalid_exporter_format_raises():
     """Test that invalid exporter formats raise ValueError."""
-    with pytest.raises(ValidationError, match="OpenTelemetry exporters must be strings"):
-        OpenTelemetrySettings(exporters=[{"foo": "bar", "baz": "qux"}])  # Multi-key dict
+    with pytest.raises(
+        ValidationError, match="OpenTelemetry exporters must be strings"
+    ):
+        OpenTelemetrySettings(
+            exporters=[{"foo": "bar", "baz": "qux"}]
+        )  # Multi-key dict
 
 
 def test_invalid_dict_exporter_with_multi_keys_raises():
     """Test that key-discriminated dict exporters with multiple keys raise ValueError."""
-    with pytest.raises(ValidationError, match="OpenTelemetry exporters must be strings"):
+    with pytest.raises(
+        ValidationError, match="OpenTelemetry exporters must be strings"
+    ):
         OpenTelemetrySettings(
             exporters=[
                 {"console": {}, "file": {}}  # Invalid: two keys in one dict
@@ -376,6 +410,7 @@ def test_invalid_dict_exporter_with_multi_keys_raises():
 # ============================================================================
 # Integration Tests with Full Settings
 # ============================================================================
+
 
 def test_settings_default_construction():
     """Test default Settings construction uses typed exporters."""
@@ -398,7 +433,9 @@ def test_v1_full_config_via_settings():
     assert settings.otel.enabled is True
     assert len(settings.otel.exporters) == 2
     _assert_console_exporter(settings.otel.exporters[0])
-    _assert_otlp_exporter(settings.otel.exporters[1], endpoint="http://collector:4318/v1/traces")
+    _assert_otlp_exporter(
+        settings.otel.exporters[1], endpoint="http://collector:4318/v1/traces"
+    )
 
 
 def test_v2_full_config_via_settings():
@@ -440,7 +477,9 @@ def test_v3_full_config_via_settings():
     assert settings.otel.sample_rate == 0.5
     assert len(settings.otel.exporters) == 2
     _assert_console_exporter(settings.otel.exporters[0])
-    _assert_otlp_exporter(settings.otel.exporters[1], endpoint="https://collector.example.com:4318")
+    _assert_otlp_exporter(
+        settings.otel.exporters[1], endpoint="https://collector.example.com:4318"
+    )
 
 
 def test_merge_otel_exporters_from_config_and_secrets():
@@ -450,10 +489,12 @@ def test_merge_otel_exporters_from_config_and_secrets():
     config_data = {
         "otel": {
             "exporters": [
-                {"otlp": {
-                    "endpoint": "https://us.cloud.langfuse.com/api/public/otel/v1/traces",
-                    "headers": {"Authorization": "Basic AUTH_STRING"}
-                }}
+                {
+                    "otlp": {
+                        "endpoint": "https://us.cloud.langfuse.com/api/public/otel/v1/traces",
+                        "headers": {"Authorization": "Basic AUTH_STRING"},
+                    }
+                }
             ]
         }
     }
@@ -462,9 +503,7 @@ def test_merge_otel_exporters_from_config_and_secrets():
     secrets_data = {
         "otel": {
             "enabled": True,
-            "exporters": [
-                {"otlp": {"endpoint": "https://some-other-otel-exporter"}}
-            ]
+            "exporters": [{"otlp": {"endpoint": "https://some-other-otel-exporter"}}],
         }
     }
 
@@ -508,18 +547,18 @@ def test_merge_otel_exporters_from_config_and_secrets():
     _assert_otlp_exporter(
         settings.otel.exporters[0],
         endpoint="https://us.cloud.langfuse.com/api/public/otel/v1/traces",
-        headers={"Authorization": "Basic AUTH_STRING"}
+        headers={"Authorization": "Basic AUTH_STRING"},
     )
 
     # Verify second exporter (from secrets.yaml)
     _assert_otlp_exporter(
-        settings.otel.exporters[1],
-        endpoint="https://some-other-otel-exporter"
+        settings.otel.exporters[1], endpoint="https://some-other-otel-exporter"
     )
 
 
 def test_merge_non_otel_lists_are_replaced_not_concatenated():
     """Test that non-OTEL lists are replaced, not concatenated (default behavior)."""
+
     # Manually perform deep merge as get_settings does internally
     def deep_merge(base: dict, update: dict, path: tuple = ()) -> dict:
         """Recursively merge two dictionaries, preserving nested structures.
@@ -550,16 +589,8 @@ def test_merge_non_otel_lists_are_replaced_not_concatenated():
         return merged
 
     # Test with logger.transports (should be replaced, not concatenated)
-    config_data = {
-        "logger": {
-            "transports": ["console", "file"]
-        }
-    }
-    secrets_data = {
-        "logger": {
-            "transports": ["http"]
-        }
-    }
+    config_data = {"logger": {"transports": ["console", "file"]}}
+    secrets_data = {"logger": {"transports": ["http"]}}
     merged = deep_merge(config_data, secrets_data)
     # Should be replaced, not concatenated
     assert merged["logger"]["transports"] == ["http"]
@@ -567,16 +598,15 @@ def test_merge_non_otel_lists_are_replaced_not_concatenated():
 
     # Test with mcp.servers (dict, should be merged)
     config_data = {
-        "mcp": {
-            "servers": {
-                "fetch": {"command": "uvx", "args": ["mcp-server-fetch"]}
-            }
-        }
+        "mcp": {"servers": {"fetch": {"command": "uvx", "args": ["mcp-server-fetch"]}}}
     }
     secrets_data = {
         "mcp": {
             "servers": {
-                "filesystem": {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem"]}
+                "filesystem": {
+                    "command": "npx",
+                    "args": ["-y", "@modelcontextprotocol/server-filesystem"],
+                }
             }
         }
     }
@@ -586,16 +616,8 @@ def test_merge_non_otel_lists_are_replaced_not_concatenated():
     assert "filesystem" in merged["mcp"]["servers"]
 
     # Test with a nested list that's NOT otel.exporters (should be replaced)
-    config_data = {
-        "agents": {
-            "search_paths": [".claude/agents", "~/.claude/agents"]
-        }
-    }
-    secrets_data = {
-        "agents": {
-            "search_paths": [".mcp-agent/agents"]
-        }
-    }
+    config_data = {"agents": {"search_paths": [".claude/agents", "~/.claude/agents"]}}
+    secrets_data = {"agents": {"search_paths": [".mcp-agent/agents"]}}
     merged = deep_merge(config_data, secrets_data)
     # Should be replaced, not concatenated
     assert merged["agents"]["search_paths"] == [".mcp-agent/agents"]

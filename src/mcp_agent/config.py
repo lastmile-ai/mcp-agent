@@ -534,6 +534,7 @@ class TraceOTLPSettings(BaseModel):
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
+
 class ConsoleExporterSettings(BaseModel):
     """Console exporter uses stdout; no extra settings required."""
 
@@ -542,6 +543,7 @@ class ConsoleExporterSettings(BaseModel):
 
 class FileExporterSettings(BaseModel):
     """File exporter settings for writing traces to a file."""
+
     path: str | None = None
     path_settings: TracePathSettings | None = None
 
@@ -638,7 +640,10 @@ class OpenTelemetrySettings(BaseModel):
 
             # Handle BaseModel instances passed directly (e.g., from tests or re-validation)
             # If already a typed exporter settings instance, keep as-is (already finalized)
-            if isinstance(entry, (ConsoleExporterSettings, FileExporterSettings, OTLPExporterSettings)):
+            if isinstance(
+                entry,
+                (ConsoleExporterSettings, FileExporterSettings, OTLPExporterSettings),
+            ):
                 normalized.append(entry)
                 continue
 
@@ -663,8 +668,8 @@ class OpenTelemetrySettings(BaseModel):
 
             raise ValueError(
                 "OpenTelemetry exporters must be strings, type-tagged dicts, or "
-                "keyed mappings (e.g. `- console`, `- {type: \"file\"}`, "
-                "`- {file: {path: \"trace.jsonl\"}}`)."
+                'keyed mappings (e.g. `- console`, `- {type: "file"}`, '
+                '`- {file: {path: "trace.jsonl"}}`).'
             )
 
         data["exporters"] = normalized
@@ -707,7 +712,9 @@ class OpenTelemetrySettings(BaseModel):
             legacy_path_settings, TracePathSettings
         ):
             legacy_path_settings = TracePathSettings.model_validate(
-                getattr(legacy_path_settings, "model_dump", lambda **_: legacy_path_settings)()
+                getattr(
+                    legacy_path_settings, "model_dump", lambda **_: legacy_path_settings
+                )()
             )
 
         # Extract legacy otlp_settings and normalize to dict
@@ -749,27 +756,36 @@ class OpenTelemetrySettings(BaseModel):
                     payload = payload.model_dump(exclude_none=True)
                 elif not isinstance(payload, dict):
                     raise ValueError(
-                        "Exporter configuration must be a dict. Example: `- file: {path: \"trace.jsonl\"}`"
+                        'Exporter configuration must be a dict. Example: `- file: {path: "trace.jsonl"}`'
                     )
             else:
                 raise TypeError(f"Unexpected exporter entry: {exporter!r}")
 
             if exporter_name == "console":
                 console_settings = ConsoleExporterSettings.model_validate(payload or {})
-                finalized_exporters.append({"console": console_settings.model_dump(exclude_none=True)})
+                finalized_exporters.append(
+                    {"console": console_settings.model_dump(exclude_none=True)}
+                )
             elif exporter_name == "file":
                 file_payload = payload.copy()
                 file_payload.setdefault("path", legacy_path)
-                if "path_settings" not in file_payload and legacy_path_settings is not None:
+                if (
+                    "path_settings" not in file_payload
+                    and legacy_path_settings is not None
+                ):
                     file_payload["path_settings"] = legacy_path_settings
                 file_settings = FileExporterSettings.model_validate(file_payload)
-                finalized_exporters.append({"file": file_settings.model_dump(exclude_none=True)})
+                finalized_exporters.append(
+                    {"file": file_settings.model_dump(exclude_none=True)}
+                )
             elif exporter_name == "otlp":
                 otlp_payload = payload.copy()
                 otlp_payload.setdefault("endpoint", legacy_otlp.get("endpoint"))
                 otlp_payload.setdefault("headers", legacy_otlp.get("headers"))
                 otlp_settings = OTLPExporterSettings.model_validate(otlp_payload)
-                finalized_exporters.append({"otlp": otlp_settings.model_dump(exclude_none=True)})
+                finalized_exporters.append(
+                    {"otlp": otlp_settings.model_dump(exclude_none=True)}
+                )
             else:
                 raise ValueError(
                     f"Unsupported OpenTelemetry exporter '{exporter_name}'. Supported exporters: console, file, otlp."
