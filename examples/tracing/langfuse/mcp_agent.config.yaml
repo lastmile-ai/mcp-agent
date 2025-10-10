@@ -26,8 +26,10 @@ openai:
 
 otel:
   enabled: true
-  exporters:
-    - otlp:
-        endpoint: "https://us.cloud.langfuse.com/api/public/otel/v1/traces"
+  # OTLP exporter (with headers) is defined in mcp_agent.secrets.yaml.
+  # For non-authenticated collectors, uncomment and configure below:
+  # exporters:
+  #   - otlp:
+  #       endpoint: "https://some.other.tracing.com"
   # Set Authorization header with API key in mcp_agent.secrets.yaml
   service_name: "BasicTracingLangfuseExample"

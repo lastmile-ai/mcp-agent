@@ -46,7 +46,7 @@ Obtain a secret and public API key for your desired Langfuse project and then ge
 echo -n "pk-your-public-key:sk-your-secret-key" | base64
 ```
 
-In `mcp_agent.secrets.yaml` set the OTLP with Authorization header (merged automatically with the typed exporter):
+In `mcp_agent.secrets.yaml` set the OTLP exporter with the Authorization header (this fully defines the exporter for Langfuse):
 
 ```yaml
 otel:
@@ -57,7 +57,7 @@ otel:
           Authorization: "Basic AUTH_STRING"
 ```
 
-Lastly, for non-authenticated otlps, configure them in the typed exporter in `mcp_agent.config.yaml`, e.g.:
+The default `mcp_agent.config.yaml` leaves the exporters list commented out so this secrets entry is the only OTLP exporter (preventing a duplicate without headers). For non-authenticated collectors, you can instead define the exporter directly in `mcp_agent.config.yaml` and omit it from `mcp_agent.secrets.yaml`, e.g.:
 
 ```yaml
 otel:
