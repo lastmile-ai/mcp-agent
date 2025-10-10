@@ -29,10 +29,10 @@ Then update the `mcp_agent.config.yaml` to include a typed OTLP exporter with th
 otel:
   enabled: true
   exporters:
-    - type: console
-    - type: file
-    - type: otlp
-      endpoint: "http://localhost:4318/v1/traces"
+    - console
+    - file
+    - otlp:
+        endpoint: "http://localhost:4318/v1/traces"
 ```
 
 <img width="2160" alt="Image" src="https://github.com/user-attachments/assets/f2d1cedf-6729-4ce1-9530-ec9d5653103d" />

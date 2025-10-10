@@ -53,8 +53,8 @@ To run any of these examples, you'll need to:
 otel:
   enabled: true
   exporters:
-    - type: otlp
-      endpoint: "http://localhost:4318/v1/traces"
+    - otlp:
+        endpoint: "http://localhost:4318/v1/traces"
 ```
 
 4. In a separate terminal, start the worker:
