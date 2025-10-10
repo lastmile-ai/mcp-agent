@@ -1,7 +1,14 @@
+import asyncio
 import importlib
+import inspect
 import sys
 import types
 from pathlib import Path
+
+import pytest
+
+
+_ASYNCIO_MARK_ATTR = "_mcp_asyncio_marker"
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -73,3 +80,41 @@ if "jwt" not in sys.modules:  # pragma: no cover - testing shim
     jwt_module.encode = lambda *args, **kwargs: ""
     jwt_module.decode = lambda *args, **kwargs: {}
     sys.modules["jwt"] = jwt_module
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line(
+        "markers",
+        "asyncio: run the marked test using an asyncio event loop",
+    )
+
+
+def pytest_collection_modifyitems(
+    session: pytest.Session, config: pytest.Config, items: list[pytest.Item]
+) -> None:
+    del session  # unused but kept for hook signature compatibility
+    has_anyio = config.pluginmanager.hasplugin("anyio")
+    for item in items:
+        if item.get_closest_marker("asyncio"):
+            setattr(item, _ASYNCIO_MARK_ATTR, True)
+            if has_anyio:
+                item.add_marker(pytest.mark.anyio)
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_pyfunc_call(pyfuncitem: pytest.Function) -> object:
+    if not getattr(pyfuncitem, _ASYNCIO_MARK_ATTR, False):
+        return None
+    test_func = pyfuncitem.obj
+    if not inspect.iscoroutinefunction(test_func):
+        return None
+    loop = asyncio.new_event_loop()
+    try:
+        asyncio.set_event_loop(loop)
+        coroutine = test_func(**pyfuncitem.funcargs)
+        loop.run_until_complete(coroutine)
+        loop.run_until_complete(loop.shutdown_asyncgens())
+    finally:
+        asyncio.set_event_loop(None)
+        loop.close()
+    return True
