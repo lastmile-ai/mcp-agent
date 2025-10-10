@@ -1,7 +1,7 @@
 from __future__ import annotations
 import json
 from typing import Any, Dict, Optional, Protocol, Tuple
-from .assemble import assemble_context, ToolKit, NoopToolKit, must_include_missing
+from .assemble import assemble_context, ToolKit, must_include_missing
 from .toolkit import AggregatorToolKit
 from .models import AssembleInputs, AssembleOptions, AssembleReport, Manifest
 from .settings import ContextSettings
