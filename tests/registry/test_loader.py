@@ -1,5 +1,4 @@
 import asyncio
-import pathlib
 import tempfile
 
 import httpx

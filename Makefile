@@ -8,8 +8,8 @@ format:
 	uv run scripts/format.py
 
 .PHONY: lint
-lint: 
-	uv run scripts/lint.py --fix
+lint:
+	uv run scripts/lint.py --fix || python scripts/lint.py --fix
 
 # Tests
 .PHONY: tests
