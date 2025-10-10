@@ -152,6 +152,7 @@ class LLMGateway:
         artifact_store: ArtifactStore | None = None,
         providers: Mapping[str, ProviderFactory] | None = None,
         sleep: Callable[[float], Awaitable[None]] | None = None,
+        on_active_window: Callable[[str, str, str], None] | None = None,
     ) -> None:
         self._settings = settings
         self._state = state
@@ -163,6 +164,7 @@ class LLMGateway:
         self._random = random.Random()
         self._transient_seq = 0
         self._tracer = trace.get_tracer("mcp-agent.llm")
+        self._active_window_hook = on_active_window
 
     def register_provider(self, name: str, factory: ProviderFactory) -> None:
         """Register a provider factory accessible via :class:`ProviderHandle` identifiers."""
@@ -183,6 +185,10 @@ class LLMGateway:
         Returns a summary dictionary with token usage, finish reason, and error information.
         Raises :class:`LLMProviderError` when all retry attempts fail.
         """
+
+        active_hook = self._active_window_hook
+        if active_hook:
+            active_hook(run_id, trace_id, "start")
 
         cfg = self._settings.llm_gateway or LLMGatewaySettings()
         provider_hint = None
@@ -277,6 +283,8 @@ class LLMGateway:
                     await self._sleep(self._compute_backoff(attempt - 1, cfg))
         finally:
             tracer_span.end()
+            if active_hook:
+                active_hook(run_id, trace_id, "stop")
 
     async def _run_attempt(
         self,

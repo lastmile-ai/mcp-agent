@@ -49,13 +49,19 @@ def test_api_key_and_sse(monkeypatch, public_api_state):
         events = []
         with c.stream("GET", f"/v1/stream/{run_id}", headers={"X-API-Key": "k1"}) as s:
             for line in s.iter_lines():
-                if line and line.startswith("data: "):
-                    # Fixed: iter_lines() returns strings, not bytes
-                    events.append(json.loads(line[6:]))
-                    if events[-1]["event"] in ("completed", "cancelled"):
-                        break
+                if not line or not line.startswith("data: "):
+                    continue
+                payload = json.loads(line[6:])
+                events.append(payload)
+                if payload["event"] in {"finished_green", "failed_after_max_repairs", "aborted"}:
+                    break
+
         names = [e["event"] for e in events]
-        assert names == ["started", "progress", "completed"]
+        assert names == ["initializing_run", "implementing_code", "finished_green"]
+
+        for payload in events:
+            assert "trace_id" in payload
+            assert "budget" in payload and set(payload["budget"]) == {"llm_active_ms", "remaining_s"}
 
 def test_jwt_hs256(monkeypatch, public_api_state):
     secret = "s3cr3t"

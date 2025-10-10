@@ -1,51 +1,51 @@
 import asyncio
 import json
-from importlib import import_module
 
-runtime = import_module("mcp_agent.context.runtime")
-models = import_module("mcp_agent.context.models")
-assemble_mod = import_module("mcp_agent.context.assemble")
+import pytest
 
-
-class TinyToolKit(assemble_mod.ToolKit):
-    async def semantic_search(self, query: str, top_k: int):
-        return []
-    async def symbols(self, target: str):
-        return []
-    async def neighbors(self, uri: str, line_or_start: int, radius: int):
-        return []
-    async def patterns(self, globs):
-        return []
+from mcp_agent.budget.llm_budget import LLMBudget
+from mcp_agent.runloop.controller import RunConfig, RunController
+from mcp_agent.runloop.events import EventBus
 
 
-def test_runloop_assembling_phase_persists_and_emits():
-    run_id = "r-123"
-    inputs = models.AssembleInputs(changed_paths=["file:///x.py"])
-    opts = models.AssembleOptions(neighbor_radius=0)
+@pytest.mark.asyncio
+async def test_run_controller_emits_sequence(monkeypatch: pytest.MonkeyPatch) -> None:
+    times = iter([0.0, 0.01, 0.02, 0.05])
 
-    store = runtime.MemoryArtifactStore()
-    sse = runtime.MemorySSEEmitter()
+    def fake_time() -> float:
+        return next(times)
 
-    m, h, r = asyncio.run(runtime.run_assembling_phase(
-        run_id=run_id,
-        inputs=inputs,
-        opts=opts,
-        toolkit=TinyToolKit(),
-        artifact_store=store,
-        sse=sse,
-        code_version="v1",
-        tool_versions={"tool":"1.0"},
-    ))
+    monkeypatch.setattr("mcp_agent.budget.llm_budget.time.time", fake_time)
 
-    # SSE events start and end
-    assert run_id in sse.events
-    evts = sse.events[run_id]
-    assert evts[0]["phase"] == "ASSEMBLING" and evts[0]["status"] == "start"
-    assert evts[-1]["status"] == "end"
-    assert evts[-1]["pack_hash"] == m.meta.pack_hash
+    bus = EventBus()
+    queue = bus.subscribe()
+    controller = RunController(
+        config=RunConfig(trace_id="trace", iteration_count=2, pack_hash="pack"),
+        event_bus=bus,
+        llm_budget=LLMBudget(),
+    )
 
-    # Artifact persisted
-    data = store.get(run_id, "artifacts/context/manifest.json")
-    payload = json.loads(data.decode("utf-8"))
-    assert payload["meta"]["pack_hash"] == m.meta.pack_hash
-    assert len(payload["slices"]) >= 1  # includes changed_paths seed
+    task = asyncio.create_task(controller.run())
+
+    events: list[dict] = []
+    while True:
+        message = await queue.get()
+        if message == "__EOF__":
+            break
+        events.append(json.loads(message))
+
+    await task
+
+    assert [event["event"] for event in events] == [
+        "initializing_run",
+        "implementing_code",
+        "implementing_code",
+        "finished_green",
+    ]
+
+    assert events[0]["budget"] == {"llm_active_ms": 0, "remaining_s": None}
+    assert events[1]["budget"]["llm_active_ms"] == 10
+    assert events[2]["budget"]["llm_active_ms"] == 40
+    assert events[3]["budget"]["llm_active_ms"] == 40
+    assert all(event["trace_id"] == "trace" for event in events)
+    assert all(event["pack_hash"] == "pack" for event in events)

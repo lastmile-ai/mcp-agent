@@ -30,6 +30,7 @@ from mcp_agent.config import (
     Settings,
 )
 
+from mcp_agent.github.token_manager import TokenManager
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
 from mcp_agent.mcp.mcp_connection_manager import MCPConnectionManager
@@ -89,6 +90,7 @@ class ServerRegistry:
         self.init_hooks: Dict[str, InitHookCallable] = {}
         self.pre_init_hooks: Dict[str, Callable] = {}
         self.connection_manager = MCPConnectionManager(self)
+        self._token_managers: Dict[str, TokenManager] = {}
 
     def load_registry_from_file(
         self, config_path: str | None = None
@@ -463,6 +465,23 @@ class ServerRegistry:
         res = hook(server_name, config, context)
         if inspect.isawaitable(res):
             await res
+
+
+    async def ensure_github_token(
+        self,
+        repo: str,
+        *,
+        min_required_ttl_s: float = 180,
+        trace_id: str | None = None,
+    ) -> str:
+        """Ensure a token for the requested repository is cached and valid."""
+
+        manager = self._token_managers.setdefault(repo, TokenManager(repo))
+        token = await manager.ensure_valid(
+            min_required_ttl_s=min_required_ttl_s,
+            trace_id=trace_id,
+        )
+        return token.token
 
 
     @staticmethod

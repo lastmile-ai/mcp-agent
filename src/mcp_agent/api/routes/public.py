@@ -1,17 +1,17 @@
 import asyncio
 import json
 import os
-import time
 import uuid
-from typing import Dict, List, Tuple, Set
+from typing import Dict, List, Set, Tuple
 
 import jwt
 from starlette.requests import Request
 from starlette.responses import JSONResponse, StreamingResponse
 from starlette.routing import Route, Router
 
-from mcp_agent.llm.events import emit_llm_event
-from mcp_agent.llm.gateway import LLMCallParams
+from mcp_agent.budget.llm_budget import LLMBudget
+from mcp_agent.runloop.controller import RunConfig, RunController
+from mcp_agent.runloop.events import BudgetSnapshot, EventBus, build_payload
 
 
 class PublicAPIState:
@@ -19,8 +19,7 @@ class PublicAPIState:
 
     def __init__(self):
         self.runs: Dict[str, Dict] = {}
-        # Changed: queues now maps run_id to a set of consumer queues
-        self.queues: Dict[str, Set["asyncio.Queue[str]"]] = {}
+        self.event_buses: Dict[str, EventBus] = {}
         self.tasks: Set[asyncio.Task] = set()
         self.artifacts: Dict[str, tuple[bytes, str]] = {}
 
@@ -33,11 +32,14 @@ class PublicAPIState:
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
         self.tasks.clear()
+        for bus in list(self.event_buses.values()):
+            await bus.close()
+        self.event_buses.clear()
 
     def clear(self):
         """Clear all state dictionaries."""
         self.runs.clear()
-        self.queues.clear()
+        self.event_buses.clear()
 
 
 def _env_list(name: str) -> List[str]:
@@ -83,88 +85,62 @@ async def create_run(request: Request) -> JSONResponse:
         body = await request.json()
     except Exception:
         return JSONResponse({"error": "invalid_json"}, status_code=400)
+
     project_id = body.get("project_id")
     run_type = body.get("run_type")
     if not isinstance(project_id, str) or not isinstance(run_type, str):
         return JSONResponse({"error": "invalid_schema"}, status_code=400)
+
     state = _get_state(request)
     run_id = str(uuid.uuid4())
-    now = int(time.time())
-    state.runs[run_id] = {"project_id": project_id, "run_type": run_type, "created": now, "status": "running"}
-    # Changed: Initialize the set of consumer queues for this run
-    state.queues[run_id] = set()
+    trace_id = body.get("trace_id") or str(uuid.uuid4())
+    budget_limit = body.get("llm_time_budget_s")
+    limit_seconds = float(budget_limit) if isinstance(budget_limit, (int, float)) else None
+    budget = LLMBudget(limit_seconds=limit_seconds)
+    event_bus = EventBus()
+    state.event_buses[run_id] = event_bus
 
-    async def _simulate():
+    state.runs[run_id] = {
+        "project_id": project_id,
+        "run_type": run_type,
+        "trace_id": trace_id,
+        "status": "running",
+    }
+
+    iterations = body.get("iterations")
+    try:
+        iteration_count = int(iterations)
+    except (TypeError, ValueError):
+        iteration_count = 1
+    iteration_count = max(1, iteration_count)
+
+    config = RunConfig(trace_id=trace_id, iteration_count=iteration_count, pack_hash=body.get("pack_hash"))
+
+    async def _run_controller() -> None:
+        controller = RunController(config=config, event_bus=event_bus, llm_budget=budget)
         try:
-            gateway = getattr(state, "llm_gateway", None)
-            prompt_text = body.get("prompt")
-            llm_enabled = os.getenv("MCP_LLM_GATEWAY_ENABLED", "").lower() in {"1", "true", "yes"}
-            if (
-                gateway
-                and llm_enabled
-                and isinstance(prompt_text, str)
-                and prompt_text.strip()
-            ):
-                params_payload = body.get("llm_params")
-                extra = params_payload if isinstance(params_payload, dict) else {}
-                llm_params = LLMCallParams(
-                    provider=body.get("provider"),
-                    model=body.get("model"),
-                    temperature=body.get("temperature"),
-                    top_p=body.get("top_p"),
-                    max_tokens=body.get("max_tokens"),
-                    extra=extra,
-                )
-                cancel_token = asyncio.Event()
-                try:
-                    await gateway.run(
-                        run_id=run_id,
-                        trace_id=body.get("trace_id") or str(uuid.uuid4()),
-                        prompt=prompt_text,
-                        params=llm_params,
-                        context_hash=body.get("context_hash"),
-                        cancel_token=cancel_token,
-                    )
-                except Exception as exc:  # pragma: no cover - defensive path
-                    state.runs[run_id]["status"] = "failed"
-                    await emit_llm_event(
-                        state,
-                        run_id,
-                        "llm/error",
-                        {
-                            "category": "gateway",
-                            "message": str(exc),
-                            "retryable": False,
-                            "attempt": 1,
-                            "violation": False,
-                        },
-                    )
-                    raise
-            await asyncio.sleep(0.01)
-            # Broadcast progress event to all consumers
-            for q in list(state.queues.get(run_id, [])):
-                try:
-                    await q.put(json.dumps({"event": "progress", "pct": 50, "ts": int(time.time())}))
-                except Exception:
-                    pass
-            await asyncio.sleep(0.01)
+            await controller.run()
             state.runs[run_id]["status"] = "completed"
-            # Broadcast completed event and EOF to all consumers
-            for q in list(state.queues.get(run_id, [])):
-                try:
-                    await q.put(json.dumps({"event": "completed", "ts": int(time.time())}))
-                    await q.put("__EOF__")
-                except Exception:
-                    pass
-        except Exception:
-            # On error, send EOF to all consumers
-            for q in list(state.queues.get(run_id, [])):
-                try:
-                    await q.put("__EOF__")
-                except Exception:
-                    pass
+        except Exception as exc:  # pragma: no cover - defensive
+            state.runs[run_id]["status"] = "failed"
+            snapshot = BudgetSnapshot(
+                llm_active_ms=budget.active_ms,
+                remaining_s=budget.remaining_seconds(),
+            )
+            await event_bus.publish(
+                build_payload(
+                    event="aborted",
+                    trace_id=trace_id,
+                    iteration=0,
+                    pack_hash=config.pack_hash,
+                    budget=snapshot,
+                    violation=True,
+                    reason=str(exc),
+                )
+            )
+            await event_bus.close()
 
-    task = asyncio.create_task(_simulate())
+    task = asyncio.create_task(_run_controller())
     state.tasks.add(task)
     task.add_done_callback(state.tasks.discard)
     return JSONResponse({"id": run_id, "status": "running"}, status_code=202)
@@ -176,23 +152,16 @@ async def stream_run(request: Request) -> StreamingResponse:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     run_id = request.path_params.get("id")
     state = _get_state(request)
-    if run_id not in state.queues:
+    event_bus = state.event_buses.get(run_id)
+    if event_bus is None:
         return JSONResponse({"error": "not_found"}, status_code=404)
 
-    # Changed: Create a new queue for this consumer and add it to the set
-    consumer_queue: asyncio.Queue[str] = asyncio.Queue()
-    state.queues[run_id].add(consumer_queue)
-
-    # Send initial started event to this consumer
-    run_data = state.runs.get(run_id)
-    if run_data:
-        await consumer_queue.put(json.dumps({"event": "started", "run_id": run_id, "ts": run_data.get("created", int(time.time()))}))
-
     async def event_source():
+        queue = event_bus.subscribe()
         try:
             while True:
                 try:
-                    data = await consumer_queue.get()
+                    data = await queue.get()
                     if data == "__EOF__":
                         break
                     yield f"data: {data}\n\n"
@@ -201,9 +170,7 @@ async def stream_run(request: Request) -> StreamingResponse:
                 except Exception:
                     break
         finally:
-            # Remove this consumer's queue from the set
-            if run_id in state.queues:
-                state.queues[run_id].discard(consumer_queue)
+            event_bus.unsubscribe(queue)
 
     headers = {"Cache-Control": "no-cache", "Content-Type": "text/event-stream"}
     return StreamingResponse(event_source(), headers=headers)
@@ -219,13 +186,19 @@ async def cancel_run(request: Request):
     if not run:
         return JSONResponse({"error": "not_found"}, status_code=404)
     run["status"] = "cancelled"
-    # Broadcast cancellation to all consumers
-    for q in list(state.queues.get(run_id, [])):
-        try:
-            await q.put(json.dumps({"event": "cancelled", "ts": int(time.time())}))
-            await q.put("__EOF__")
-        except Exception:
-            pass
+    bus = state.event_buses.get(run_id)
+    if bus is not None:
+        snapshot = BudgetSnapshot(llm_active_ms=0, remaining_s=None)
+        await bus.publish(
+            build_payload(
+                event="cancelled",
+                trace_id=run.get("trace_id", ""),
+                iteration=0,
+                pack_hash=None,
+                budget=snapshot,
+            )
+        )
+        await bus.close()
     return JSONResponse({"id": run_id, "status": "cancelled"}, status_code=200)
 
 
