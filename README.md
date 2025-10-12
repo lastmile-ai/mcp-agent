@@ -563,6 +563,29 @@ orchestrator = Orchestrator(
 
 </details>
 
+## Multi-language Test Runner
+
+The agent now provides a first-class, multi-language test runner abstraction that normalizes output across Python, JavaScript, Java, Go, Rust, and Bash projects. The runner automatically detects the best adapter for a project, executes the configured commands, synthesizes JUnit XML when necessary, and persists run artifacts (stdout/stderr, normalized JUnit, metadata) for downstream CI tooling. Telemetry events capture the exit state, duration, and artifact hashes for auditing.
+
+```python
+from pathlib import Path
+
+from mcp_agent.tests.runner import TestRunnerManager, TestRunnerSpec
+
+manager = TestRunnerManager()
+result = manager.run(
+    TestRunnerSpec(
+        project_root=Path("examples/project"),
+        language="javascript",  # Auto-detected when omitted
+    )
+)
+
+print("tests:", result.normalized.summary)
+print("artifacts:", result.artifacts)
+```
+
+See [`docs/test_runner.md`](docs/test_runner.md) for adapter coverage, configuration options, and CI integration examples.
+
 ### Signaling and Human Input
 
 **Signaling**: The framework can pause/resume tasks. The agent or LLM might “signal” that it needs user input, so the workflow awaits. A developer may signal during a workflow to seek approval or review before continuing with a workflow.
