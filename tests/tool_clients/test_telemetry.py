@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 from opentelemetry import metrics, trace
+from opentelemetry.metrics import _internal as metrics_internal
+from opentelemetry.util._once import Once
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.resources import Resource
@@ -41,10 +43,17 @@ def otel_env():
     for key in env_keys:
         os.environ.pop(key, None)
 
-    # Reset global providers to allow setting new ones in tests
-    # This is needed to prevent "Overriding of current TracerProvider is not allowed" warning
+    # Reset global providers and the corresponding guards so tests can install
+    # dedicated providers without hitting the once-only protections.
+    previous_tracer_provider = getattr(trace, "_TRACER_PROVIDER", None)
+    previous_tracer_once = getattr(trace, "_TRACER_PROVIDER_SET_ONCE", None)
     trace._TRACER_PROVIDER = None
-    metrics._METER_PROVIDER = None
+    trace._TRACER_PROVIDER_SET_ONCE = Once()
+
+    previous_meter_provider = getattr(metrics_internal, "_METER_PROVIDER", None)
+    previous_meter_once = getattr(metrics_internal, "_METER_PROVIDER_SET_ONCE", None)
+    metrics_internal._METER_PROVIDER = None
+    metrics_internal._METER_PROVIDER_SET_ONCE = metrics_internal.Once()
 
     span_exporter = _ListSpanExporter()
     tracer_provider = TracerProvider(resource=Resource.create({"service.name": "test"}))
@@ -64,8 +73,14 @@ def otel_env():
         }
     finally:
         # Cleanup after test
-        trace._TRACER_PROVIDER = None
-        metrics._METER_PROVIDER = None
+        trace._TRACER_PROVIDER = previous_tracer_provider
+        if previous_tracer_once is not None:
+            trace._TRACER_PROVIDER_SET_ONCE = previous_tracer_once
+
+        metrics_internal._METER_PROVIDER = previous_meter_provider
+        if previous_meter_once is not None:
+            metrics_internal._METER_PROVIDER_SET_ONCE = previous_meter_once
+
         for key, value in previous_env.items():
             if value is None:
                 os.environ.pop(key, None)
