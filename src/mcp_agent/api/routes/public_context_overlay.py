@@ -47,7 +47,7 @@ async def _create_run_with_context(request: Request) -> JSONResponse:
     run_id = payload.get("id") or payload.get("run_id")
     if not run_id:
         return base_resp
-    state = pub._get_state(request)  # type: ignore[attr-defined]
+    state = pub.get_public_state(request)  # type: ignore[attr-defined]
 
     # Derive inputs from request body; fall back to empty
     try:
@@ -108,11 +108,11 @@ async def _create_run_with_context(request: Request) -> JSONResponse:
     return base_resp
 
 async def _get_artifact_overlay(request: Request):
-    ok, _ = pub._authenticate(request)  # reuse same auth
+    ok, _ = pub.authenticate_request(request)  # reuse same auth
     if not ok:
         return JSONResponse({"error":"unauthorized"}, status_code=401)
     # Try overlay store first, then fall back to original handler
-    state = pub._get_state(request)
+    state = pub.get_public_state(request)
     art_id = request.path_params.get("id", "")
     blob = getattr(state, "artifacts", {}).get(art_id)
     if blob:

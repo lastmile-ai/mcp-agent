@@ -1,10 +1,7 @@
 import asyncio
 import json
-import os
 import uuid
-from typing import Dict, List, Set, Tuple
 
-import jwt
 from starlette.requests import Request
 from starlette.responses import JSONResponse, StreamingResponse
 from starlette.routing import Route, Router
@@ -13,72 +10,18 @@ from mcp_agent.budget.llm_budget import LLMBudget
 from mcp_agent.runloop.controller import RunConfig, RunController
 from mcp_agent.runloop.events import BudgetSnapshot, EventBus, build_payload
 
+from .feature import router as feature_router
+from .state import (
+    PublicAPIState as _PublicAPIState,
+    authenticate_request,
+    get_public_state,
+)
 
-class PublicAPIState:
-    """Encapsulates all mutable state for the public API."""
-
-    def __init__(self):
-        self.runs: Dict[str, Dict] = {}
-        self.event_buses: Dict[str, EventBus] = {}
-        self.tasks: Set[asyncio.Task] = set()
-        self.artifacts: Dict[str, tuple[bytes, str]] = {}
-
-    async def cancel_all_tasks(self):
-        """Cancel all tracked background tasks."""
-        tasks = list(self.tasks)
-        for task in tasks:
-            if not task.done():
-                task.cancel()
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
-        self.tasks.clear()
-        for bus in list(self.event_buses.values()):
-            await bus.close()
-        self.event_buses.clear()
-
-    def clear(self):
-        """Clear all state dictionaries."""
-        self.runs.clear()
-        self.event_buses.clear()
-
-
-def _env_list(name: str) -> List[str]:
-    val = os.getenv(name, "")
-    return [s.strip() for s in val.split(",") if s.strip()]
-
-
-def _authenticate(request: Request) -> Tuple[bool, str]:
-    api_keys = set(_env_list("STUDIO_API_KEYS"))
-    key = request.headers.get("x-api-key") or request.headers.get("X-API-Key")
-    if key and key in api_keys:
-        return True, "api_key"
-    auth = request.headers.get("authorization") or request.headers.get("Authorization")
-    if auth and auth.lower().startswith("bearer "):
-        token = auth.split(" ", 1)[1]
-        hs = os.getenv("JWT_HS256_SECRET")
-        if hs:
-            try:
-                jwt.decode(token, hs, algorithms=["HS256"], options={"verify_aud": False})
-                return True, "jwt_hs256"
-            except Exception:
-                pass
-        pub = os.getenv("JWT_PUBLIC_KEY_PEM")
-        if pub:
-            try:
-                jwt.decode(token, pub, algorithms=["RS256"], options={"verify_aud": False})
-                return True, "jwt_rs256"
-            except Exception:
-                pass
-    return False, "unauthorized"
-
-
-def _get_state(request: Request) -> PublicAPIState:
-    """Get state from request. Raises AttributeError if not injected."""
-    return request.state.public_api_state
+PublicAPIState = _PublicAPIState
 
 
 async def create_run(request: Request) -> JSONResponse:
-    ok, _ = _authenticate(request)
+    ok, _ = authenticate_request(request)
     if not ok:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     try:
@@ -91,7 +34,7 @@ async def create_run(request: Request) -> JSONResponse:
     if not isinstance(project_id, str) or not isinstance(run_type, str):
         return JSONResponse({"error": "invalid_schema"}, status_code=400)
 
-    state = _get_state(request)
+    state = get_public_state(request)
     run_id = str(uuid.uuid4())
     trace_id = body.get("trace_id") or str(uuid.uuid4())
     budget_limit = body.get("llm_time_budget_s")
@@ -147,11 +90,11 @@ async def create_run(request: Request) -> JSONResponse:
 
 
 async def stream_run(request: Request) -> StreamingResponse:
-    ok, _ = _authenticate(request)
+    ok, _ = authenticate_request(request)
     if not ok:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     run_id = request.path_params.get("id")
-    state = _get_state(request)
+    state = get_public_state(request)
     event_bus = state.event_buses.get(run_id)
     if event_bus is None:
         return JSONResponse({"error": "not_found"}, status_code=404)
@@ -177,11 +120,11 @@ async def stream_run(request: Request) -> StreamingResponse:
 
 
 async def cancel_run(request: Request):
-    ok, _ = _authenticate(request)
+    ok, _ = authenticate_request(request)
     if not ok:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     run_id = request.path_params.get("id")
-    state = _get_state(request)
+    state = get_public_state(request)
     run = state.runs.get(run_id)
     if not run:
         return JSONResponse({"error": "not_found"}, status_code=404)
@@ -203,10 +146,10 @@ async def cancel_run(request: Request):
 
 
 async def get_artifact(request: Request):
-    ok, _ = _authenticate(request)
+    ok, _ = authenticate_request(request)
     if not ok:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
-    state = _get_state(request)
+    state = get_public_state(request)
     art_id = request.path_params.get("id", "")
     blob = state.artifacts.get(art_id)
     if not blob:
@@ -227,3 +170,4 @@ routes = [
     Route("/artifacts/{id}", get_artifact, methods=["GET"]),
 ]
 router = Router(routes=routes)
+router.mount("/features", feature_router)

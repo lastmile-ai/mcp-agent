@@ -1,8 +1,13 @@
 import importlib
+import os
 import random
+from unittest.mock import AsyncMock, patch
+
 import httpx
 import pytest
 from opentelemetry import metrics, trace
+from opentelemetry.metrics import _internal as metrics_internal
+from opentelemetry.util._once import Once
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.resources import Resource
@@ -26,17 +31,29 @@ class _ListSpanExporter(SpanExporter):
 
 
 @pytest.fixture
-def otel_env(monkeypatch):
+def otel_env():
     # Ensure test telemetry is not bypassed by global OTEL disablement toggles.
-    monkeypatch.delenv("OTEL_SDK_DISABLED", raising=False)
-    monkeypatch.delenv("OTEL_PYTHON_DISABLED", raising=False)
-    monkeypatch.delenv("OTEL_METRICS_EXPORTER", raising=False)
-    monkeypatch.delenv("OTEL_TRACES_EXPORTER", raising=False)
+    env_keys = [
+        "OTEL_SDK_DISABLED",
+        "OTEL_PYTHON_DISABLED",
+        "OTEL_METRICS_EXPORTER",
+        "OTEL_TRACES_EXPORTER",
+    ]
+    previous_env = {key: os.environ.get(key) for key in env_keys}
+    for key in env_keys:
+        os.environ.pop(key, None)
 
-    # Reset global providers to allow setting new ones in tests
-    # This is needed to prevent "Overriding of current TracerProvider is not allowed" warning
+    # Reset global providers and the corresponding guards so tests can install
+    # dedicated providers without hitting the once-only protections.
+    previous_tracer_provider = getattr(trace, "_TRACER_PROVIDER", None)
+    previous_tracer_once = getattr(trace, "_TRACER_PROVIDER_SET_ONCE", None)
     trace._TRACER_PROVIDER = None
-    metrics._METER_PROVIDER = None
+    trace._TRACER_PROVIDER_SET_ONCE = Once()
+
+    previous_meter_provider = getattr(metrics_internal, "_METER_PROVIDER", None)
+    previous_meter_once = getattr(metrics_internal, "_METER_PROVIDER_SET_ONCE", None)
+    metrics_internal._METER_PROVIDER = None
+    metrics_internal._METER_PROVIDER_SET_ONCE = metrics_internal.Once()
 
     span_exporter = _ListSpanExporter()
     tracer_provider = TracerProvider(resource=Resource.create({"service.name": "test"}))
@@ -47,58 +64,82 @@ def otel_env(monkeypatch):
     meter_provider = MeterProvider(metric_readers=[metric_reader], resource=Resource.create({"service.name": "test"}))
     metrics.set_meter_provider(meter_provider)
 
-    yield {
-        "tracer_provider": tracer_provider,
-        "meter_provider": meter_provider,
-        "span_exporter": span_exporter,
-        "metric_reader": metric_reader,
-    }
+    try:
+        yield {
+            "tracer_provider": tracer_provider,
+            "meter_provider": meter_provider,
+            "span_exporter": span_exporter,
+            "metric_reader": metric_reader,
+        }
+    finally:
+        # Cleanup after test
+        trace._TRACER_PROVIDER = previous_tracer_provider
+        if previous_tracer_once is not None:
+            trace._TRACER_PROVIDER_SET_ONCE = previous_tracer_once
 
-    # Cleanup after test
-    trace._TRACER_PROVIDER = None
-    metrics._METER_PROVIDER = None
+        metrics_internal._METER_PROVIDER = previous_meter_provider
+        if previous_meter_once is not None:
+            metrics_internal._METER_PROVIDER_SET_ONCE = previous_meter_once
+
+        for key, value in previous_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
 
 @pytest.fixture
-def mock_httpx_post(mocker):
-    return mocker.patch("httpx.AsyncClient.post")
+def mock_httpx_request():
+    async_request = AsyncMock()
+    with patch.object(httpx.AsyncClient, "request", async_request):
+        yield async_request
 
 
 @pytest.mark.asyncio
-async def test_metrics_and_traces_emitted(otel_env, mock_httpx_post):
+async def test_metrics_and_traces_emitted(otel_env, mock_httpx_request):
     """Test that successful tool call emits metrics and traces."""
-    from mcp_agent.tool_clients import adapters
+    from mcp_agent.client import http as http_client_module
 
     # Reload to use the test providers
-    importlib.reload(adapters)
+    importlib.reload(http_client_module)
 
     random_id = random.randint(100000, 999999)
     tool_name = f"test_tool_{random_id}"
     tool_description = f"Test tool {random_id}"
 
     # Mock successful response
-    mock_httpx_post.return_value = httpx.Response(
+    mock_httpx_request.return_value = httpx.Response(
         200,
         json={"content": [{"type": "text", "text": f"Success {random_id}"}]},
     )
 
-    client = adapters.HTTPToolClient(base_url=f"http://test{random_id}.local")
-
-    result = await client.call_tool(
+    client = http_client_module.HTTPToolClient(
         tool_name,
-        {"arg": "value"},
-        description=tool_description,
+        base_url=f"http://test{random_id}.local",
     )
 
-    assert result["content"][0]["text"] == f"Success {random_id}"
+    response = await client.request(
+        "POST",
+        "/call",
+        json={"tool": tool_name, "arguments": {"arg": "value"}, "description": tool_description},
+    )
+
+    assert response.json()["content"][0]["text"] == f"Success {random_id}"
+
+    # Ensure pending telemetry is exported before inspecting the collectors.
+    otel_env["tracer_provider"].force_flush()
+    otel_env["meter_provider"].force_flush()
 
     # Verify metrics
     metrics_data = otel_env["metric_reader"].get_metrics_data()
+    assert metrics_data is not None
     resource_metrics = metrics_data.resource_metrics
     assert len(resource_metrics) > 0
 
     # Verify traces
     spans = otel_env["span_exporter"].get_finished_spans()
     assert len(spans) == 1
-    assert spans[0].name == f"call_tool {tool_name}"
-    assert spans[0].attributes["tool.name"] == tool_name
+    span = spans[0]
+    assert span.name == "tool.http"
+    assert span.attributes["tool"] == tool_name
+    assert span.attributes["http.method"] == "POST"
