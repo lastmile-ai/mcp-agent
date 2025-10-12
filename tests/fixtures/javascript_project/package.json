@@ -1,0 +1,6 @@
+{
+  "name": "fake-js-project",
+  "scripts": {
+    "test": "echo running"
+  }
+}
