@@ -8,7 +8,7 @@ import os
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, List
 
 from .utils import sha256_digest
 
