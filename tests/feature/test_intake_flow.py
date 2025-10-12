@@ -1,11 +1,13 @@
 import asyncio
 import json
+import time
 
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
 from mcp_agent.api.routes import add_public_api
 from mcp_agent.api.routes import public as public_module
+from mcp_agent.runloop.controller import RunController
 
 
 API_KEY = "test-key"
@@ -29,6 +31,13 @@ def test_full_intake_flow(monkeypatch):
     app = build_app(state)
 
     try:
+        run_started = {"value": False}
+
+        async def fake_run(self):
+            run_started["value"] = True
+
+        monkeypatch.setattr(RunController, "run", fake_run, raising=False)
+
         with TestClient(app) as client:
             headers = {"X-API-Key": API_KEY}
             create = client.post("/v1/features/", json={"project_id": "proj-1"}, headers=headers)
@@ -69,6 +78,12 @@ def test_full_intake_flow(monkeypatch):
             assert confirm.status_code == 200
             payload = confirm.json()
             run_id = payload["run"]["id"]
+
+            # Ensure the fake run has been invoked so background tasks complete.
+            for _ in range(100):
+                if run_started["value"]:
+                    break
+                time.sleep(0.01)
 
             with client.stream("GET", f"/v1/features/{feature_id}/events", headers=headers) as stream:
                 events = []
