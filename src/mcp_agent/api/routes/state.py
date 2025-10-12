@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from typing import Dict, List, Set, Tuple
+from typing import Any, Dict, List, Set, Tuple
 
 import jwt
 from starlette.requests import Request
@@ -13,6 +13,7 @@ from mcp_agent.artifacts.index import ArtifactIndex
 from mcp_agent.feature.intake import FeatureIntakeManager
 from mcp_agent.llm.events import LLMEventFanout
 from mcp_agent.runloop.events import EventBus
+from mcp_agent.api.events_sse import RunEventStream
 
 
 class PublicAPIState:
@@ -26,20 +27,33 @@ class PublicAPIState:
         self.artifact_index = ArtifactIndex()
         self.feature_manager = FeatureIntakeManager(artifact_sink=self.artifacts)
         self.llm_streams: Dict[str, LLMEventFanout] = {}
+        self.run_streams: Dict[str, RunEventStream] = {}
+        self.run_lifecycles: Dict[str, Any] = {}
+        self.run_cancel_events: Dict[str, asyncio.Event] = {}
+        self.run_tasks: Dict[str, asyncio.Task] = {}
 
     async def cancel_all_tasks(self):
         """Cancel all tracked background tasks."""
 
+        for cancel in self.run_cancel_events.values():
+            cancel.set()
         tasks = list(self.tasks)
+        tasks.extend(task for task in self.run_tasks.values() if task not in tasks)
         for task in tasks:
             if not task.done():
                 task.cancel()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
         self.tasks.clear()
+        self.run_tasks.clear()
         for bus in list(self.event_buses.values()):
             await bus.close()
         self.event_buses.clear()
+        for stream in list(self.run_streams.values()):
+            await stream.close()
+        self.run_streams.clear()
+        self.run_lifecycles.clear()
+        self.run_cancel_events.clear()
         for fanout in list(self.llm_streams.values()):
             await fanout.close()
         self.llm_streams.clear()
@@ -52,6 +66,10 @@ class PublicAPIState:
         self.runs.clear()
         self.event_buses.clear()
         self.llm_streams.clear()
+        self.run_streams.clear()
+        self.run_lifecycles.clear()
+        self.run_cancel_events.clear()
+        self.run_tasks.clear()
         self.feature_manager.reset()
 
     def ensure_llm_stream(self, run_id: str) -> LLMEventFanout:
