@@ -31,7 +31,7 @@ class MockMCPAppClient:
         """
         self.api_url = api_url
         self.api_key = api_key
-        self._createdApps: Dict[str, Dict[str, MCPApp]] = {}
+        self._createdApps: Dict[str, MCPApp] = {}
 
     async def get_app_id_by_name(self, name: str) -> Optional[str]:
         """Get a mock app ID by name. Deterministic for MOCK_APP_NAME name.
@@ -70,7 +70,10 @@ class MockMCPAppClient:
             uuid_str = str(raw_uuid)
             resolved_app_id = f"app_{uuid_str}"
 
-        return MCPApp(
+        if resolved_app_id in self._createdApps:
+            return self._createdApps[resolved_app_id]
+
+        app = MCPApp(
             appId=resolved_app_id,
             name="Test App",
             creatorId="u_12345678-1234-1234-1234-123456789012",
@@ -82,13 +85,21 @@ class MockMCPAppClient:
                 2025, 6, 16, 0, 0, 0, tzinfo=datetime.timezone.utc
             ),
         )
+        self._createdApps[resolved_app_id] = app
+        return app
 
-    async def create_app(self, name: str, description: Optional[str] = None) -> MCPApp:
+    async def create_app(
+        self,
+        name: str,
+        description: Optional[str] = None,
+        unauthenticated_access: Optional[bool] = None,
+    ) -> MCPApp:
         """Create a new mock MCP App.
 
         Args:
             name: The name of the MCP App
             description: Optional description for the app
+            unauthenticated_access: Optional flag indicating unauthenticated access
 
         Returns:
             MCPApp: The created mock MCP App
@@ -110,11 +121,12 @@ class MockMCPAppClient:
         # Add the prefix to identify this as an app entity
         prefixed_uuid = f"app_{uuid_str}"
 
-        return MCPApp(
+        created_app = MCPApp(
             appId=prefixed_uuid,
             name=name,
             creatorId="u_12345678-1234-1234-1234-123456789012",
             description=description,
+            unauthenticatedAccess=unauthenticated_access,
             createdAt=datetime.datetime(
                 2025, 6, 16, 0, 0, 0, tzinfo=datetime.timezone.utc
             ),
@@ -122,6 +134,39 @@ class MockMCPAppClient:
                 2025, 6, 16, 0, 0, 0, tzinfo=datetime.timezone.utc
             ),
         )
+        self._createdApps[prefixed_uuid] = created_app
+        return created_app
+
+    async def update_app(
+        self,
+        app_id: str,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        unauthenticated_access: Optional[bool] = None,
+    ) -> MCPApp:
+        """Update an existing mock MCP App."""
+        if not app_id or not app_id.startswith("app_"):
+            raise ValueError("Invalid app ID format")
+
+        app = self._createdApps.get(app_id)
+        if not app:
+            app = await self.get_app(app_id=app_id)
+
+        updated_fields = app.dict()
+        if name is not None:
+            updated_fields["name"] = name
+        if description is not None:
+            updated_fields["description"] = description
+        if unauthenticated_access is not None:
+            updated_fields["unauthenticatedAccess"] = unauthenticated_access
+
+        updated_fields["updatedAt"] = datetime.datetime(
+            2025, 6, 17, 0, 0, 0, tzinfo=datetime.timezone.utc
+        )
+
+        updated_app = MCPApp(**updated_fields)
+        self._createdApps[app_id] = updated_app
+        return updated_app
 
     async def configure_app(
         self,
