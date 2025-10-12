@@ -151,16 +151,32 @@ async def get_artifact(request: Request):
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     state = get_public_state(request)
     art_id = request.path_params.get("id", "")
-    blob = state.artifacts.get(art_id)
-    if not blob:
-        return JSONResponse({"error": "not_found"}, status_code=404)
-    data, content_type = blob
+    if ":" in art_id:
+        blob = state.artifacts.get(art_id)
+        if not blob:
+            return JSONResponse({"error": "not_found"}, status_code=404)
+        data, content_type = blob
+        try:
+            payload = json.loads(data.decode("utf-8"))
+            return JSONResponse(payload, media_type=content_type)
+        except Exception:
+            return JSONResponse({"error": "unsupported_content"}, status_code=415)
+
+    path = request.query_params.get("path")
+    if not path:
+        index = state.artifact_index.build_index(art_id)
+        return JSONResponse(index, status_code=200)
     try:
-        payload = json.loads(data.decode("utf-8"))
-        return JSONResponse(payload, media_type=content_type)
-    except Exception:
-        # Binary fallback
-        return JSONResponse({"error": "unsupported_content"}, status_code=415)
+        data, media_type = state.artifact_index.get_artifact(art_id, path)
+    except FileNotFoundError:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    if media_type == "application/json":
+        try:
+            payload = json.loads(data.decode("utf-8"))
+        except Exception:
+            return JSONResponse({"error": "unsupported_content"}, status_code=415)
+        return JSONResponse(payload, media_type=media_type)
+    return JSONResponse({"error": "unsupported_content"}, status_code=415)
 
 
 routes = [
