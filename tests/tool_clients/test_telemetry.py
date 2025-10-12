@@ -111,8 +111,13 @@ async def test_metrics_and_traces_emitted(otel_env, mock_httpx_request):
 
     assert response.json()["content"][0]["text"] == f"Success {random_id}"
 
+    # Ensure pending telemetry is exported before inspecting the collectors.
+    otel_env["tracer_provider"].force_flush()
+    otel_env["meter_provider"].force_flush()
+
     # Verify metrics
     metrics_data = otel_env["metric_reader"].get_metrics_data()
+    assert metrics_data is not None
     resource_metrics = metrics_data.resource_metrics
     assert len(resource_metrics) > 0
 
