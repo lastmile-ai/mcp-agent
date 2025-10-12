@@ -1,6 +1,6 @@
 import asyncio
 import json
-import time
+import threading
 
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
@@ -31,10 +31,10 @@ def test_full_intake_flow(monkeypatch):
     app = build_app(state)
 
     try:
-        run_started = {"value": False}
+        run_started = threading.Event()
 
         async def fake_run(self):
-            run_started["value"] = True
+            run_started.set()
 
         monkeypatch.setattr(RunController, "run", fake_run, raising=False)
 
@@ -80,10 +80,7 @@ def test_full_intake_flow(monkeypatch):
             run_id = payload["run"]["id"]
 
             # Ensure the fake run has been invoked so background tasks complete.
-            for _ in range(100):
-                if run_started["value"]:
-                    break
-                time.sleep(0.01)
+            assert run_started.wait(timeout=1.0)
 
             with client.stream("GET", f"/v1/features/{feature_id}/events", headers=headers) as stream:
                 events = []

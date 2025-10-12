@@ -1,6 +1,6 @@
 import asyncio
 import json
-import time
+import threading
 
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
@@ -55,10 +55,11 @@ def test_confirmation_starts_run(monkeypatch):
 
     monkeypatch.setattr(RunController, "__init__", capture_init)
 
-    run_called = {"value": False}
+    run_called = threading.Event()
+    run_finished = threading.Event()
 
     async def fake_run(self):
-        run_called["value"] = True
+        run_called.set()
         await self._event_bus.publish(
             build_payload(
                 event="finished_green",
@@ -69,6 +70,7 @@ def test_confirmation_starts_run(monkeypatch):
             )
         )
         await self._event_bus.close()
+        run_finished.set()
 
     monkeypatch.setattr(RunController, "run", fake_run, raising=False)
 
@@ -111,11 +113,7 @@ def test_confirmation_starts_run(monkeypatch):
             run_id = confirm_body["run"]["id"]
             assert confirm_body["decision"]["seconds"] == expected_seconds
 
-            for _ in range(100):
-                if run_called["value"]:
-                    break
-                time.sleep(0.01)
-            assert run_called["value"] is True
+            assert run_called.wait(timeout=1.0)
 
             with client.stream("GET", f"/v1/features/{feature_id}/events", headers=headers) as stream:
                 seen = []
@@ -138,10 +136,7 @@ def test_confirmation_starts_run(monkeypatch):
             data = detail.json()
             assert data["decision"]["seconds"] == expected_seconds
 
-            for _ in range(100):
-                if state.runs[run_id]["status"] == "completed":
-                    break
-                time.sleep(0.01)
+            assert run_finished.wait(timeout=1.0)
             assert state.runs[run_id]["feature_id"] == feature_id
             assert state.runs[run_id]["status"] == "completed"
 
