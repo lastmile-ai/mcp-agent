@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Mapping
 
 from mcp_agent.artifacts.index import ArtifactIndex
 

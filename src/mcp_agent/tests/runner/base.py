@@ -8,7 +8,7 @@ import subprocess
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Dict, Iterable, List, Mapping, MutableMapping, Tuple
+from typing import Dict, Iterable, List, Mapping
 
 from mcp_agent.artifacts.index import ArtifactIndex
 

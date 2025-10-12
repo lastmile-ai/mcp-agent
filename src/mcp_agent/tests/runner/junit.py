@@ -6,7 +6,7 @@ import hashlib
 import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Iterable, List, Tuple
+from typing import List, Tuple
 
 from .result import NormalizedTestCase, NormalizedTestRun, NormalizedTestSuite
 

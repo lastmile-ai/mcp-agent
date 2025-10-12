@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Mapping, Type
+from typing import Mapping, Type
 
 from .base import TestRunner
 from .spec import TestRunnerSpec
