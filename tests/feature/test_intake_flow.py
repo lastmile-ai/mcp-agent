@@ -92,5 +92,5 @@ def test_full_intake_flow(monkeypatch):
 
             assert state.runs[run_id]["status"] in {"running", "completed"}
     finally:
-        asyncio.get_event_loop().run_until_complete(state.cancel_all_tasks())
+        asyncio.run(state.cancel_all_tasks())
         state.clear()

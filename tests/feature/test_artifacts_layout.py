@@ -51,5 +51,5 @@ def test_feature_artifact_paths(monkeypatch):
             }
             assert set(state.artifacts.keys()) == expected
     finally:
-        asyncio.get_event_loop().run_until_complete(state.cancel_all_tasks())
+        asyncio.run(state.cancel_all_tasks())
         state.clear()

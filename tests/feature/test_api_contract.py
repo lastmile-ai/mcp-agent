@@ -67,5 +67,5 @@ def test_contract_and_errors(monkeypatch):
             assert cancel.status_code == 200
             assert cancel.json()["state"] == "feature_cancelled"
     finally:
-        asyncio.get_event_loop().run_until_complete(state.cancel_all_tasks())
+        asyncio.run(state.cancel_all_tasks())
         state.clear()

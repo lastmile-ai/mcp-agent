@@ -152,5 +152,5 @@ def test_confirmation_starts_run(monkeypatch):
             assert feature_spec.summary == "Add project summary endpoint"
             assert recorded["approved_budget_s"] == expected_seconds
     finally:
-        asyncio.get_event_loop().run_until_complete(state.cancel_all_tasks())
+        asyncio.run(state.cancel_all_tasks())
         state.clear()
