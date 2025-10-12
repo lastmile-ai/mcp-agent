@@ -11,6 +11,7 @@ from starlette.requests import Request
 
 from mcp_agent.artifacts.index import ArtifactIndex
 from mcp_agent.feature.intake import FeatureIntakeManager
+from mcp_agent.llm.events import LLMEventFanout
 from mcp_agent.runloop.events import EventBus
 
 
@@ -24,6 +25,7 @@ class PublicAPIState:
         self.artifacts: Dict[str, tuple[bytes, str]] = {}
         self.artifact_index = ArtifactIndex()
         self.feature_manager = FeatureIntakeManager(artifact_sink=self.artifacts)
+        self.llm_streams: Dict[str, LLMEventFanout] = {}
 
     async def cancel_all_tasks(self):
         """Cancel all tracked background tasks."""
@@ -38,6 +40,9 @@ class PublicAPIState:
         for bus in list(self.event_buses.values()):
             await bus.close()
         self.event_buses.clear()
+        for fanout in list(self.llm_streams.values()):
+            await fanout.close()
+        self.llm_streams.clear()
         await self.feature_manager.close()
         self.feature_manager.reset()
 
@@ -46,7 +51,17 @@ class PublicAPIState:
 
         self.runs.clear()
         self.event_buses.clear()
+        self.llm_streams.clear()
         self.feature_manager.reset()
+
+    def ensure_llm_stream(self, run_id: str) -> LLMEventFanout:
+        """Get or create the LLM fan-out for the given run."""
+
+        fanout = self.llm_streams.get(run_id)
+        if fanout is None:
+            fanout = LLMEventFanout()
+            self.llm_streams[run_id] = fanout
+        return fanout
 
 
 def _env_list(name: str) -> List[str]:

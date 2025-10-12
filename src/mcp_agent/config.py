@@ -362,6 +362,13 @@ class GoogleSettings(BaseSettings, VertexAIMixin):
     )
 
 
+class LLMProviderFallback(BaseModel):
+    provider: str
+    model: str | None = None
+
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
+
+
 class LLMGatewaySettings(BaseSettings):
     """Feature flag and budget controls for the shared LLM gateway."""
 
@@ -372,6 +379,7 @@ class LLMGatewaySettings(BaseSettings):
     llm_retry_jitter_ms: int = 150
     llm_tokens_cap: int | None = None
     llm_cost_cap_usd: float | None = None
+    llm_provider_chain: List["LLMProviderFallback"] = Field(default_factory=list)
 
     model_config = SettingsConfigDict(
         env_prefix="MCP_",

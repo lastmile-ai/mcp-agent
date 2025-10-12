@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import json
 import random
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import (
@@ -16,18 +17,27 @@ from typing import (
     Dict,
     Mapping,
     MutableMapping,
+    Sequence,
     Optional,
     Protocol,
 )
 
 from pydantic import BaseModel, Field
 from opentelemetry import trace
-from opentelemetry.trace import Status, StatusCode
+from opentelemetry.trace import Status, StatusCode, set_span_in_context
 
 from mcp_agent.config import LLMGatewaySettings, Settings
 from mcp_agent.llm.events import emit_llm_event
-from mcp_agent.telemetry import llm_failures_total, llm_tokens_total
-from mcp_agent.workflows.llm.llm_selector import ProviderHandle, select_llm_provider
+from mcp_agent.telemetry import (
+    llm_budget_abort_total,
+    llm_failures_total,
+    llm_provider_fallback_total,
+    llm_tokens_total,
+)
+from mcp_agent.workflows.llm.llm_selector import (
+    ProviderHandle,
+    select_llm_provider_chain,
+)
 
 
 class ArtifactStore(Protocol):
@@ -102,6 +112,28 @@ class LLMCapExceededError(LLMProviderError):
 
     def __init__(self, message: str, category: str = "cap_exceeded"):
         super().__init__(message, retryable=False, category=category, violation=True)
+
+
+class AllProvidersExhausted(LLMProviderError):
+    """Raised when the provider chain has no remaining fallbacks."""
+
+    def __init__(self, message: str, *, attempted: Sequence[str]):
+        super().__init__(message, retryable=False, category="provider_exhausted")
+        self.attempted = list(attempted)
+
+
+LOGGER = logging.getLogger("mcp_agent.llm.gateway")
+
+FAILOVER_CATEGORIES: set[str] = {
+    "provider_error",
+    "provider_unavailable",
+    "quota_exceeded",
+    "rate_limit",
+    "timeout",
+    "server_error",
+    "transient",
+    "api_error",
+}
 
 
 class _StateArtifactStore:
@@ -199,92 +231,370 @@ class LLMGateway:
         else:
             provider_hint = params.model
 
-        handle = select_llm_provider(provider_hint, self._settings)
-        provider_key = handle.provider.lower()
-        model_name = params.model or handle.model
-        effective_params = params.model_copy(update={"provider": handle.provider, "model": model_name})
+        provider_chain = select_llm_provider_chain(provider_hint, self._settings)
+        if not provider_chain:
+            raise ValueError("No LLM providers are configured")
 
-        redacted_params = _redact(effective_params.model_dump(exclude_none=True, by_alias=True))
-        params_hash = _hash_json(redacted_params)
         prompt_hash = _hash_text(prompt) or "sha256:" + hashlib.sha256(b"").hexdigest()
-        instructions_source = None
-        extra_payload = effective_params.extra or {}
-        for key in ("system", "system_prompt", "instructions"):
-            if isinstance(extra_payload.get(key), str):
-                instructions_source = extra_payload[key]
-                break
-        instructions_hash = _hash_text(instructions_source)
-
-        seq = self._next_call_seq(run_id)
-        await self._persist_request(
-            run_id=run_id,
-            provider=handle.provider,
-            model=model_name,
-            params_payload=redacted_params,
-            prompt_hash=prompt_hash,
-            instructions_hash=instructions_hash,
-            context_hash=context_hash,
-            sequence=seq,
-            trace_id=trace_id,
-        )
-
-        attempt = 0
         tracer_span = self._tracer.start_span("llm.call")
         tracer_span.set_attribute("run_id", run_id)
         tracer_span.set_attribute("trace_id", trace_id)
-        tracer_span.set_attribute("llm.provider", handle.provider)
-        if model_name:
-            tracer_span.set_attribute("llm.model", model_name)
+        tracer_span.set_attribute("llm.provider_chain_length", len(provider_chain))
+        tracer_span.set_attribute(
+            "llm.provider_chain",
+            ",".join(
+                f"{candidate.provider}:{candidate.model}" if candidate.model else candidate.provider
+                for candidate in provider_chain
+            ),
+        )
+
+        attempted_labels: list[str] = []
+        last_error: LLMProviderError | None = None
 
         try:
-            while True:
-                attempt += 1
+            for chain_index, handle in enumerate(provider_chain):
+                model_name = params.model or handle.model
+                effective_params = params.model_copy(
+                    update={"provider": handle.provider, "model": model_name}
+                )
+                redacted_params = _redact(
+                    effective_params.model_dump(exclude_none=True, by_alias=True)
+                )
+                params_hash = _hash_json(redacted_params)
+                instructions_source = None
+                extra_payload = effective_params.extra or {}
+                for key in ("system", "system_prompt", "instructions"):
+                    if isinstance(extra_payload.get(key), str):
+                        instructions_source = extra_payload[key]
+                        break
+                instructions_hash = _hash_text(instructions_source)
+
+                seq = self._next_call_seq(run_id)
+                await self._persist_request(
+                    run_id=run_id,
+                    provider=handle.provider,
+                    model=model_name,
+                    params_payload=redacted_params,
+                    prompt_hash=prompt_hash,
+                    instructions_hash=instructions_hash,
+                    context_hash=context_hash,
+                    sequence=seq,
+                    trace_id=trace_id,
+                )
+
+                provider_label = (
+                    f"{handle.provider}:{model_name}" if model_name else handle.provider
+                )
+                await emit_llm_event(
+                    self._state,
+                    run_id,
+                    "llm/provider_selected",
+                    {
+                        "provider": handle.provider,
+                        "model": model_name,
+                        "params_hash": params_hash,
+                        "prompt_hash": prompt_hash,
+                        "instructions_hash": instructions_hash,
+                        "chain_index": chain_index,
+                        "chain_length": len(provider_chain),
+                    },
+                )
+                LOGGER.info(
+                    "Selected LLM provider",
+                    extra={
+                        "run_id": run_id,
+                        "trace_id": trace_id,
+                        "provider": handle.provider,
+                        "model": model_name,
+                        "chain_index": chain_index,
+                    },
+                )
+
+                provider_key = handle.provider.lower()
+                provider_span = self._tracer.start_span(
+                    "llm.provider",
+                    context=set_span_in_context(tracer_span),
+                )
+                provider_span.set_attribute("llm.provider", handle.provider)
+                provider_span.set_attribute("llm.provider.index", chain_index)
+                if model_name:
+                    provider_span.set_attribute("llm.model", model_name)
+
+                attempt = 0
                 try:
-                    return await self._run_attempt(
-                        run_id=run_id,
-                        trace_id=trace_id,
-                        prompt=prompt,
-                        params=effective_params,
-                        handle=handle,
-                        provider_key=provider_key,
-                        params_hash=params_hash,
-                        prompt_hash=prompt_hash,
-                        instructions_hash=instructions_hash,
-                        cancel_token=cancel_token,
-                        cfg=cfg,
-                        attempt=attempt,
-                        span=tracer_span,
-                    )
-                except LLMProviderError as exc:
-                    await emit_llm_event(
-                        self._state,
-                        run_id,
-                        "llm/error",
-                        {
-                            "category": exc.category,
-                            "message": str(exc),
-                            "retryable": exc.retryable,
-                            "attempt": attempt,
-                            "violation": bool(exc.violation),
-                        },
-                    )
-                    llm_failures_total.add(
-                        1,
-                        {
-                            "provider": handle.provider,
-                            "model": model_name or "",
-                            "category": exc.category,
-                        },
-                    )
-                    tracer_span.record_exception(exc)
-                    if not exc.retryable or attempt > cfg.llm_retry_max:
-                        tracer_span.set_status(Status(StatusCode.ERROR))
-                        raise
-                    await self._sleep(self._compute_backoff(attempt - 1, cfg))
+                    while True:
+                        attempt += 1
+                        try:
+                            payload = await self._run_attempt(
+                                run_id=run_id,
+                                trace_id=trace_id,
+                                prompt=prompt,
+                                params=effective_params,
+                                handle=handle,
+                                provider_key=provider_key,
+                                params_hash=params_hash,
+                                prompt_hash=prompt_hash,
+                                instructions_hash=instructions_hash,
+                                cancel_token=cancel_token,
+                                cfg=cfg,
+                                attempt=attempt,
+                                span=provider_span,
+                                chain_index=chain_index,
+                                chain_length=len(provider_chain),
+                            )
+                            tracer_span.set_attribute("llm.provider", handle.provider)
+                            if model_name:
+                                tracer_span.set_attribute("llm.model", model_name)
+                            provider_span.set_status(Status(StatusCode.OK))
+                            await emit_llm_event(
+                                self._state,
+                                run_id,
+                                "llm/provider_succeeded",
+                                {
+                                    "provider": handle.provider,
+                                    "model": model_name,
+                                    "attempt": attempt,
+                                    "chain_index": chain_index,
+                                },
+                            )
+                            LOGGER.info(
+                                "LLM provider succeeded",
+                                extra={
+                                    "run_id": run_id,
+                                    "trace_id": trace_id,
+                                    "provider": handle.provider,
+                                    "model": model_name,
+                                    "attempt": attempt,
+                                },
+                            )
+                            return payload
+                        except LLMProviderError as exc:
+                            last_error = exc
+                            attempted_labels.append(provider_label)
+                            await self._record_failure(
+                                run_id=run_id,
+                                handle=handle,
+                                model_name=model_name,
+                                attempt=attempt,
+                                chain_index=chain_index,
+                                error=exc,
+                            )
+                            tracer_span.record_exception(exc)
+                            provider_span.record_exception(exc)
+                            if self._should_retry(exc, attempt, cfg):
+                                await self._sleep(self._compute_backoff(attempt - 1, cfg))
+                                continue
+                            provider_span.set_status(Status(StatusCode.ERROR))
+                            if (
+                                self._should_failover(exc)
+                                and chain_index + 1 < len(provider_chain)
+                            ):
+                                next_handle = provider_chain[chain_index + 1]
+                                await self._emit_failover(
+                                    run_id=run_id,
+                                    current=handle,
+                                    next_handle=next_handle,
+                                    model_name=model_name,
+                                    attempt=attempt,
+                                    error=exc,
+                                    chain_index=chain_index,
+                                )
+                                llm_provider_fallback_total.add(
+                                    1,
+                                    {
+                                        "from_provider": handle.provider,
+                                        "to_provider": next_handle.provider,
+                                    },
+                                )
+                                LOGGER.warning(
+                                    "Failing over to next LLM provider",
+                                    extra={
+                                        "run_id": run_id,
+                                        "trace_id": trace_id,
+                                        "from_provider": handle.provider,
+                                        "to_provider": next_handle.provider,
+                                        "error_category": exc.category,
+                                    },
+                                )
+                                break
+                            tracer_span.set_status(Status(StatusCode.ERROR))
+                            LOGGER.error(
+                                "LLM provider failed with no remaining fallback",
+                                extra={
+                                    "run_id": run_id,
+                                    "trace_id": trace_id,
+                                    "provider": handle.provider,
+                                    "error": str(exc),
+                                    "category": exc.category,
+                                },
+                            )
+                            raise
+                finally:
+                    provider_span.end()
+
+            if last_error is not None:
+                tracer_span.set_status(Status(StatusCode.ERROR))
+                raise AllProvidersExhausted(
+                    "All configured LLM providers failed",
+                    attempted=attempted_labels
+                    or [
+                        f"{candidate.provider}:{candidate.model}"
+                        if candidate.model
+                        else candidate.provider
+                        for candidate in provider_chain
+                    ],
+                ) from last_error
+            tracer_span.set_status(Status(StatusCode.ERROR))
+            raise AllProvidersExhausted(
+                "No LLM providers remained after failover attempts",
+                attempted=[
+                    f"{candidate.provider}:{candidate.model}"
+                    if candidate.model
+                    else candidate.provider
+                    for candidate in provider_chain
+                ],
+            )
         finally:
             tracer_span.end()
             if active_hook:
                 active_hook(run_id, trace_id, "stop")
+
+    async def _record_failure(
+        self,
+        *,
+        run_id: str,
+        handle: ProviderHandle,
+        model_name: str | None,
+        attempt: int,
+        chain_index: int,
+        error: LLMProviderError,
+    ) -> None:
+        await emit_llm_event(
+            self._state,
+            run_id,
+            "llm/error",
+            {
+                "category": error.category,
+                "message": str(error),
+                "retryable": error.retryable,
+                "attempt": attempt,
+                "violation": bool(error.violation),
+            },
+        )
+        await emit_llm_event(
+            self._state,
+            run_id,
+            "llm/provider_failed",
+            {
+                "provider": handle.provider,
+                "model": model_name,
+                "attempt": attempt,
+                "chain_index": chain_index,
+                "category": error.category,
+                "violation": bool(error.violation),
+            },
+        )
+        llm_failures_total.add(
+            1,
+            {
+                "provider": handle.provider,
+                "model": model_name or "",
+                "category": error.category,
+            },
+        )
+
+    async def _emit_failover(
+        self,
+        *,
+        run_id: str,
+        current: ProviderHandle,
+        next_handle: ProviderHandle,
+        model_name: str | None,
+        attempt: int,
+        error: LLMProviderError,
+        chain_index: int,
+    ) -> None:
+        await emit_llm_event(
+            self._state,
+            run_id,
+            "llm/provider_failover",
+            {
+                "from_provider": current.provider,
+                "from_model": model_name,
+                "to_provider": next_handle.provider,
+                "to_model": next_handle.model,
+                "attempt": attempt,
+                "chain_index": chain_index,
+                "category": error.category,
+            },
+        )
+
+    @staticmethod
+    def _should_retry(error: LLMProviderError, attempt: int, cfg: LLMGatewaySettings) -> bool:
+        return error.retryable and attempt <= cfg.llm_retry_max
+
+    @staticmethod
+    def _should_failover(error: LLMProviderError) -> bool:
+        if error.violation:
+            return False
+        if error.category in {"cap_exceeded", "budget_exhausted"}:
+            return False
+        return error.retryable or error.category in FAILOVER_CATEGORIES
+
+    async def _handle_budget_abort(
+        self,
+        *,
+        run_id: str,
+        stream: LLMProviderStream,
+        handle: ProviderHandle,
+        model_name: str | None,
+        reason: str,
+        attempt: int,
+        chain_index: int,
+        prompt_tokens: int,
+        completion_tokens: int,
+        cost_usd: float,
+        span,
+    ) -> None:
+        await self._cancel_stream(stream)
+        await emit_llm_event(
+            self._state,
+            run_id,
+            "llm/error",
+            {
+                "category": "budget_exhausted",
+                "message": f"{reason} exceeded",
+                "retryable": False,
+                "attempt": attempt,
+                "violation": False,
+            },
+        )
+        await emit_llm_event(
+            self._state,
+            run_id,
+            "llm/budget_exhausted",
+            {
+                "provider": handle.provider,
+                "model": model_name,
+                "reason": reason,
+                "chain_index": chain_index,
+                "tokens_prompt": prompt_tokens,
+                "tokens_completion": completion_tokens,
+                "cost_usd": cost_usd,
+            },
+        )
+        llm_budget_abort_total.add(
+            1,
+            {"provider": handle.provider, "model": model_name or "", "reason": reason},
+        )
+        span.add_event(
+            "llm.budget_exhausted",
+            {
+                "reason": reason,
+                "tokens_completion": completion_tokens,
+                "cost_usd": cost_usd,
+            },
+        )
 
     async def _run_attempt(
         self,
@@ -302,6 +612,8 @@ class LLMGateway:
         cfg: LLMGatewaySettings,
         attempt: int,
         span,
+        chain_index: int,
+        chain_length: int,
     ) -> Dict[str, Any]:
         model_name = params.model
         await emit_llm_event(
@@ -316,6 +628,8 @@ class LLMGateway:
                 "instructions_hash": instructions_hash,
                 "violation": False,
                 "attempt": attempt,
+                "chain_index": chain_index,
+                "chain_length": chain_length,
             },
         )
 
@@ -404,47 +718,38 @@ class LLMGateway:
                 if "cost_usd" in usage:
                     cost_usd = float(usage["cost_usd"])
                 if token_cap is not None and completion_tokens >= token_cap:
-                    await self._cancel_stream(stream)
-                    await emit_llm_event(
-                        self._state,
-                        run_id,
-                        "llm/error",
-                        {
-                            "category": "cap_exceeded",
-                            "message": "completion token cap exceeded",
-                            "retryable": False,
-                            "attempt": attempt,
-                            "violation": True,
-                        },
+                    completion_tokens = token_cap
+                    finish_reason = "stop_on_budget"
+                    await self._handle_budget_abort(
+                        run_id=run_id,
+                        stream=stream,
+                        handle=handle,
+                        model_name=model_name,
+                        reason="token_cap",
+                        attempt=attempt,
+                        chain_index=chain_index,
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        cost_usd=cost_usd,
+                        span=span,
                     )
-                    await emit_llm_event(
-                        self._state,
-                        run_id,
-                        "llm/canceled",
-                        {"reason": "token_cap"},
-                    )
-                    raise LLMCapExceededError("completion token cap exceeded")
+                    break
                 if cost_cap is not None and cost_usd >= cost_cap:
-                    await self._cancel_stream(stream)
-                    await emit_llm_event(
-                        self._state,
-                        run_id,
-                        "llm/error",
-                        {
-                            "category": "cap_exceeded",
-                            "message": "cost cap exceeded",
-                            "retryable": False,
-                            "attempt": attempt,
-                            "violation": True,
-                        },
+                    finish_reason = "stop_on_budget"
+                    await self._handle_budget_abort(
+                        run_id=run_id,
+                        stream=stream,
+                        handle=handle,
+                        model_name=model_name,
+                        reason="cost_cap",
+                        attempt=attempt,
+                        chain_index=chain_index,
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        cost_usd=cost_usd,
+                        span=span,
                     )
-                    await emit_llm_event(
-                        self._state,
-                        run_id,
-                        "llm/canceled",
-                        {"reason": "cost_cap"},
-                    )
-                    raise LLMCapExceededError("cost cap exceeded")
+                    break
             elif event_type == "complete":
                 finish_reason = event.finish_reason or finish_reason or "stop"
                 usage = event.usage or {}
@@ -466,7 +771,8 @@ class LLMGateway:
         if last_error:
             raise last_error
 
-        span.set_attribute("llm.finish_reason", finish_reason or "stop")
+        finish_reason = finish_reason or "stop"
+        span.set_attribute("llm.finish_reason", finish_reason)
         span.set_attribute("llm.completion_tokens", completion_tokens)
         span.set_attribute("llm.cost_usd", cost_usd)
 
@@ -483,6 +789,9 @@ class LLMGateway:
             "tokens_prompt": prompt_tokens,
             "tokens_completion": completion_tokens,
         }
+        if finish_reason == "stop_on_budget":
+            payload["error"] = "budget_exhausted"
+            complete_payload["budget_exhausted"] = True
         if cost_usd:
             complete_payload["cost_usd"] = cost_usd
             payload["cost_usd"] = cost_usd

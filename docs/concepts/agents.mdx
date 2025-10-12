@@ -198,6 +198,28 @@ result = await llm.generate_str(
 )
 ```
 
+### Gateway Failover, Budgets, and Streaming Observability
+
+The shared LLM gateway now supports ordered provider failover, strict budget enforcement, and richer telemetry. Configure an ordered chain of fallbacks directly in `Settings`:
+
+```yaml
+llm_gateway:
+  llm_default_provider: openai
+  llm_provider_chain:
+    - provider: openai
+      model: gpt-4o-mini
+    - provider: anthropic
+      model: claude-3-5-sonnet-latest
+```
+
+During streaming, the gateway automatically switches to the next provider when quota, rate-limit, or availability issues occur. Each failover is emitted over SSE (`llm/provider_failover`) and counted via the `llm_provider_fallback_total` metric so operators can audit provider selection decisions.
+
+Budget controls are enforced in real time. Configure `llm_tokens_cap` or `llm_cost_cap_usd` and the gateway will abort streaming as soon as a cap is reached, emitting `llm/budget_exhausted`, returning `finish_reason="stop_on_budget"`, and incrementing the `llm_budget_abort_total` metric. No extra tokens are generated once a budget is exhausted.
+
+All LLM events are now fanned out to every subscriber through `LLMEventFanout`, enabling dashboards, logs, and UIs to watch the same stream concurrently. Active subscriber counts are tracked via the `llm_sse_consumer_count` up/down counter.
+
+In addition to existing lifecycle events, the gateway produces detailed audit events (`llm/provider_selected`, `llm/provider_failed`, `llm/provider_succeeded`) and traces so you can observe provider choice, retry behaviour, and streaming completions across the full chain.
+
 ### Human Input Integration
 
 Agents can request human input during execution:

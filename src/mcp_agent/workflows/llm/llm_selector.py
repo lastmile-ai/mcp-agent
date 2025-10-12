@@ -505,8 +505,8 @@ def _fuzzy_match(str1: str, str2: str, threshold: float = 0.8) -> bool:
     return sequence_ratio >= threshold
 
 
-def select_llm_provider(model_hint: str | None, cfg: "Settings") -> ProviderHandle:
-    """Resolve the provider handle for the LLM gateway based on configuration."""
+def select_llm_provider_chain(model_hint: str | None, cfg: "Settings") -> List[ProviderHandle]:
+    """Resolve an ordered provider chain for the LLM gateway."""
 
     def _configured() -> Dict[str, str | None]:
         providers: Dict[str, str | None] = {}
@@ -531,9 +531,13 @@ def select_llm_provider(model_hint: str | None, cfg: "Settings") -> ProviderHand
         return providers
 
     available = _configured()
+    if not available:
+        return []
+
+    gw_cfg = cfg.llm_gateway or LLMGatewaySettings()
+
     provider: str | None = None
     model: str | None = None
-
     if model_hint:
         if ":" in model_hint:
             prov, mdl = model_hint.split(":", 1)
@@ -546,21 +550,51 @@ def select_llm_provider(model_hint: str | None, cfg: "Settings") -> ProviderHand
             else:
                 model = model_hint.strip()
 
-    gw_cfg = cfg.llm_gateway or LLMGatewaySettings()
-    if provider is None and gw_cfg.llm_default_provider:
-        provider = gw_cfg.llm_default_provider.lower()
+    chain: List[ProviderHandle] = []
+    seen: set[str] = set()
 
-    if provider is None and available:
-        provider = next(iter(available.keys()))
+    def _resolve_model(provider_name: str, explicit: str | None, prefer_hint: bool) -> str | None:
+        if explicit:
+            return explicit
+        if prefer_hint and model:
+            return model
+        if gw_cfg.llm_default_model and provider_name != (gw_cfg.llm_default_provider or "").lower():
+            return gw_cfg.llm_default_model
+        return available.get(provider_name)
 
-    if provider is None:
+    def _add_provider(provider_name: str | None, *, explicit_model: str | None = None, prefer_hint: bool = False) -> None:
+        if not provider_name:
+            return
+        key = provider_name.lower()
+        if key not in available or key in seen:
+            return
+        resolved_model = _resolve_model(key, explicit_model, prefer_hint)
+        chain.append(ProviderHandle(provider=key, model=resolved_model))
+        seen.add(key)
+
+    if provider:
+        _add_provider(provider, explicit_model=model, prefer_hint=True)
+
+    for fallback in gw_cfg.llm_provider_chain:
+        _add_provider(fallback.provider, explicit_model=fallback.model)
+
+    if gw_cfg.llm_default_provider:
+        _add_provider(
+            gw_cfg.llm_default_provider,
+            explicit_model=gw_cfg.llm_default_model,
+            prefer_hint=bool(model) and not chain,
+        )
+
+    for name, default_model in available.items():
+        _add_provider(name, explicit_model=default_model, prefer_hint=bool(model) and not chain)
+
+    return chain
+
+
+def select_llm_provider(model_hint: str | None, cfg: "Settings") -> ProviderHandle:
+    """Resolve the primary provider handle for backwards compatibility."""
+
+    chain = select_llm_provider_chain(model_hint, cfg)
+    if not chain:
         raise ValueError("No LLM providers are configured")
-
-    if provider not in available and available:
-        # fall back to the first configured provider if the requested one is unavailable
-        provider = next(iter(available.keys()))
-
-    if model is None:
-        model = gw_cfg.llm_default_model or available.get(provider)
-
-    return ProviderHandle(provider=provider, model=model)
+    return chain[0]
