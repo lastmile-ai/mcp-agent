@@ -70,7 +70,7 @@ def test_full_intake_flow(monkeypatch):
             payload = confirm.json()
             run_id = payload["run"]["id"]
 
-            with client.stream(f"GET", f"/v1/features/{feature_id}/events", headers=headers) as stream:
+            with client.stream("GET", f"/v1/features/{feature_id}/events", headers=headers) as stream:
                 events = []
                 for line in stream.iter_lines():
                     if not line or not line.startswith("data: "):

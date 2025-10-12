@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import uuid
 from typing import Any, Dict
@@ -17,7 +18,7 @@ from mcp_agent.feature.models import FeatureDraft, MessageRole
 from mcp_agent.runloop.controller import RunConfig, RunController
 from mcp_agent.runloop.events import EventBus
 
-from .public import _authenticate, _get_state
+from .state import authenticate_request, get_public_state
 
 
 def _bool_env(name: str) -> bool:
@@ -26,7 +27,7 @@ def _bool_env(name: str) -> bool:
 
 
 async def create_feature(request: Request) -> JSONResponse:
-    ok, _ = _authenticate(request)
+    ok, _ = authenticate_request(request)
     if not ok:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     try:
@@ -39,7 +40,7 @@ async def create_feature(request: Request) -> JSONResponse:
     if not isinstance(project_id, str):
         return JSONResponse({"error": "invalid_schema"}, status_code=400)
 
-    state = _get_state(request)
+    state = get_public_state(request)
     draft = state.feature_manager.create(project_id=project_id, trace_id=trace_id)
     await emit_drafting(state.feature_manager.bus(draft.feature_id), draft)
     return JSONResponse({"id": draft.feature_id, "state": draft.state.value}, status_code=201)
@@ -47,7 +48,7 @@ async def create_feature(request: Request) -> JSONResponse:
 
 async def _ensure_feature(request: Request) -> tuple[FeatureDraft | None, JSONResponse | None]:
     feature_id = request.path_params.get("id") or ""
-    state = _get_state(request)
+    state = get_public_state(request)
     draft = state.feature_manager.get(feature_id)
     if draft is None:
         return None, JSONResponse({"error": "not_found"}, status_code=404)
@@ -55,7 +56,7 @@ async def _ensure_feature(request: Request) -> tuple[FeatureDraft | None, JSONRe
 
 
 async def append_message(request: Request) -> JSONResponse:
-    ok, _ = _authenticate(request)
+    ok, _ = authenticate_request(request)
     if not ok:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     draft, error = await _ensure_feature(request)
@@ -79,13 +80,13 @@ async def append_message(request: Request) -> JSONResponse:
     if max_turns > 0 and len(draft.messages) >= max_turns:
         return JSONResponse({"error": "chat_limit_reached"}, status_code=400)
 
-    state = _get_state(request)
+    state = get_public_state(request)
     draft = await state.feature_manager.append_message(draft.feature_id, message_role, content)
     return JSONResponse(draft.as_dict(), status_code=200)
 
 
 async def estimate_feature(request: Request) -> JSONResponse:
-    ok, _ = _authenticate(request)
+    ok, _ = authenticate_request(request)
     if not ok:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     draft, error = await _ensure_feature(request)
@@ -100,7 +101,7 @@ async def estimate_feature(request: Request) -> JSONResponse:
     if not isinstance(spec_payload, dict):
         return JSONResponse({"error": "invalid_schema"}, status_code=400)
 
-    state = _get_state(request)
+    state = get_public_state(request)
     await state.feature_manager.freeze_spec(draft.feature_id, spec_payload)
     draft = await state.feature_manager.estimate(draft.feature_id)
 
@@ -113,7 +114,7 @@ async def estimate_feature(request: Request) -> JSONResponse:
 
 
 async def confirm_feature(request: Request) -> JSONResponse:
-    ok, _ = _authenticate(request)
+    ok, _ = authenticate_request(request)
     if not ok:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     draft, error = await _ensure_feature(request)
@@ -133,32 +134,32 @@ async def confirm_feature(request: Request) -> JSONResponse:
         except (TypeError, ValueError):
             return JSONResponse({"error": "invalid_schema"}, status_code=400)
 
-    state = _get_state(request)
+    state = get_public_state(request)
     draft = await state.feature_manager.confirm(draft.feature_id, seconds=override, rationale=rationale)
     run_payload = await _start_implementation(state, draft)
     return JSONResponse({"status": "confirmed", "decision": draft.decision.as_dict(), "run": run_payload}, status_code=200)
 
 
 async def cancel_feature(request: Request) -> JSONResponse:
-    ok, _ = _authenticate(request)
+    ok, _ = authenticate_request(request)
     if not ok:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     draft, error = await _ensure_feature(request)
     if error:
         return error
-    state = _get_state(request)
+    state = get_public_state(request)
     draft = await state.feature_manager.cancel(draft.feature_id)
     return JSONResponse({"status": "cancelled", "state": draft.state.value}, status_code=200)
 
 
 async def get_feature(request: Request) -> JSONResponse:
-    ok, _ = _authenticate(request)
+    ok, _ = authenticate_request(request)
     if not ok:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     draft, error = await _ensure_feature(request)
     if error:
         return error
-    state = _get_state(request)
+    state = get_public_state(request)
     data = draft.as_dict()
     artifact_prefix = f"mem://{draft.feature_id}/"
     artifacts = [aid for aid in state.artifacts.keys() if aid.startswith(artifact_prefix)]
@@ -167,23 +168,39 @@ async def get_feature(request: Request) -> JSONResponse:
 
 
 async def stream_feature_events(request: Request) -> StreamingResponse | JSONResponse:
-    ok, _ = _authenticate(request)
+    ok, _ = authenticate_request(request)
     if not ok:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     draft, error = await _ensure_feature(request)
     if error:
         return error
-    state = _get_state(request)
+    state = get_public_state(request)
     event_bus = state.feature_manager.bus(draft.feature_id)
 
     async def event_source():
         queue = event_bus.subscribe()
         try:
+            last_event = None
             while True:
-                data = await queue.get()
+                try:
+                    data = queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    data = await queue.get()
                 if data == "__EOF__":
                     break
+                try:
+                    payload = json.loads(data)
+                except json.JSONDecodeError:
+                    payload = None
+                event_name = payload.get("event") if payload else None
+                if event_name == last_event:
+                    continue
                 yield f"data: {data}\n\n"
+                last_event = event_name
+                if event_name in {"starting_implementation", "feature_cancelled"}:
+                    break
+        except asyncio.CancelledError:  # pragma: no cover - defensive
+            pass
         finally:
             event_bus.unsubscribe(queue)
 
