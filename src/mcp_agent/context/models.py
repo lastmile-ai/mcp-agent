@@ -38,6 +38,7 @@ class ManifestMeta(BaseModel):
     settings_fingerprint: Optional[str] = None
     created_at: str = Field(default_factory=utc_now_iso)
     inputs_fingerprint: Optional[str] = None
+    violation: Optional[bool] = None
 
 
 class Manifest(BaseModel):
@@ -85,3 +86,4 @@ class AssembleReport(BaseModel):
     tokens_out: int = 0
     pruned: Dict[str, int] = Field(default_factory=dict)
     overflow: List[OverflowItem] = Field(default_factory=list)
+    violation: bool = False

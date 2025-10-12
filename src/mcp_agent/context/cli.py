@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from .assemble import assemble_context, NoopToolKit, must_include_missing
+from .errors import BudgetError
 from .models import AssembleInputs, AssembleOptions
 from .settings import ContextSettings
 
@@ -57,13 +58,21 @@ def _cmd_assemble(args: argparse.Namespace) -> int:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
 
-    manifest, pack_hash, report = asyncio.run(
-        assemble_context(
-            inputs=inputs,
-            opts=opts,
-            toolkit=NoopToolKit(),
+    try:
+        manifest, pack_hash, report = asyncio.run(
+            assemble_context(
+                inputs=inputs,
+                opts=opts,
+                toolkit=NoopToolKit(),
+            )
         )
-    )
+    except BudgetError as exc:
+        print("ERROR: Resource budget exceeded during assembly", file=sys.stderr)
+        for item in exc.overflow:
+            uri = item.get("uri") if isinstance(item, dict) else item
+            reason = item.get("reason") if isinstance(item, dict) else ""
+            print(f"  {uri} - {reason}", file=sys.stderr)
+        return 2
 
     if args.out:
         out_path = Path(args.out)

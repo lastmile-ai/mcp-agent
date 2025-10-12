@@ -15,3 +15,4 @@ def test_overflow_victim_ordering():
     # First one should be kept, next two should overflow in deterministic order
     assert m.slices[0].uri.endswith("a.py")
     assert [ov["uri"] for ov in r.overflow] == ["file:///b.py", "file:///c.py"]
+    assert r.violation is True

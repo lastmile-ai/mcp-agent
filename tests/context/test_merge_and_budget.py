@@ -22,5 +22,6 @@ def test_merge_and_budget_and_filters():
     assert not any(s.uri.endswith("x.py") for s in m.slices)
     # Budget applied, only one file included
     assert r.files_out == 1
-    # Overflow recorded for token budget
+    # Overflow recorded for token budget (when triggered) and no violation when budget respected
     assert r.pruned.get("token_budget", 0) >= 0
+    assert r.violation is False
