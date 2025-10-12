@@ -23,16 +23,37 @@ class _Meter:
             self._ctr_overflow = _NoopInstrument()
             self._ctr_errors = _NoopInstrument()
         else:
-            meter = metrics.get_meter("mcp_agent.context")
-            self._hist = meter.create_histogram("mcp_assemble_duration_ms", unit="ms")
-            self._ctr_overflow = meter.create_counter("mcp_budget_overflow_total")
-            self._ctr_errors = meter.create_counter("mcp_assemble_errors_total")
+            meter = metrics.get_meter("context_assembly")
+            self._hist = meter.create_histogram(
+                "context_assembly_duration_ms",
+                unit="ms",
+                description="Distribution of context assembly durations",
+            )
+            self._ctr_overflow = meter.create_counter(
+                "budget_overflow_count",
+                unit="event",
+                description="Count of budget overflow/prune events",
+            )
+            self._ctr_errors = meter.create_counter(
+                "context_assembly_error_total",
+                unit="event",
+                description="Count of context assembly errors",
+            )
 
     def record_duration_ms(self, value: float, attrs: Optional[Mapping[str, str]] = None):
         self._hist.record(value, attributes=attrs or {})
 
     def inc_overflow(self, inc: int = 1, attrs: Optional[Mapping[str, str]] = None):
         self._ctr_overflow.add(inc, attributes=attrs or {})
+
+    def record_overflow(
+        self,
+        count: int,
+        reason: str,
+        attrs: Optional[Mapping[str, str]] = None,
+    ) -> None:
+        attributes = {"reason": reason, **(attrs or {})}
+        self._ctr_overflow.add(count, attributes=attributes)
 
     def inc_errors(self, inc: int = 1, attrs: Optional[Mapping[str, str]] = None):
         self._ctr_errors.add(inc, attributes=attrs or {})
@@ -46,6 +67,14 @@ def meter() -> _Meter:
     if _meter_singleton is None:
         _meter_singleton = _Meter()
     return _meter_singleton
+
+
+def record_overflow(
+    count: int,
+    reason: str,
+    attrs: Optional[Mapping[str, str]] = None,
+) -> None:
+    meter().record_overflow(count, reason, attrs)
 
 
 def setup_otel() -> None:

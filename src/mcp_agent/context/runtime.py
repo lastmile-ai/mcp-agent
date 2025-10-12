@@ -2,6 +2,7 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, Optional, Protocol, Tuple
 from .assemble import assemble_context, ToolKit, must_include_missing
+from .errors import BudgetError
 from .toolkit import AggregatorToolKit
 from .models import AssembleInputs, AssembleOptions, AssembleReport, Manifest
 from .settings import ContextSettings
@@ -69,14 +70,24 @@ async def run_assembling_phase(
     if tool_versions_map is None and isinstance(tk, AggregatorToolKit):
         tool_versions_map = await tk.tool_versions()
 
-    manifest, pack_hash, report = await assemble_context(
-        inputs=inputs,
-        opts=opts,
-        toolkit=tk,
-        code_version=code_version,
-        tool_versions=tool_versions_map,
-        telemetry_attrs={"run_id": run_id or "", "repo": repo or "", "commit_sha": commit_sha or "", "trace_id": trace_id or ""},
-    )
+    try:
+        manifest, pack_hash, report = await assemble_context(
+            inputs=inputs,
+            opts=opts,
+            toolkit=tk,
+            code_version=code_version,
+            tool_versions=tool_versions_map,
+            telemetry_attrs={"run_id": run_id or "", "repo": repo or "", "commit_sha": commit_sha or "", "trace_id": trace_id or ""},
+        )
+    except BudgetError as exc:
+        violation_evt = {
+            "phase": "ASSEMBLING",
+            "status": "violation",
+            "violation": True,
+            "overflow": list(exc.overflow),
+        }
+        await sse_emitter.emit(run_id, redact_event(violation_evt, cfg.REDACT_PATH_GLOBS))
+        raise
 
     manifest_bytes = json.dumps(json.loads(manifest.model_dump_json()), indent=2).encode("utf-8")
     art_id = await store.put(run_id, "artifacts/context/manifest.json", manifest_bytes, content_type="application/json")
@@ -99,6 +110,15 @@ async def run_assembling_phase(
         "example_uri": example_uri,
     }
     await sse_emitter.emit(run_id, redact_event(end_evt, cfg.REDACT_PATH_GLOBS))
+
+    if report.violation:
+        violation_evt = {
+            "phase": "ASSEMBLING",
+            "status": "violation",
+            "violation": True,
+            "overflow": [dict(item) for item in report.overflow],
+        }
+        await sse_emitter.emit(run_id, redact_event(violation_evt, cfg.REDACT_PATH_GLOBS))
 
     if cfg.ENFORCE_NON_DROPPABLE:
         missing = must_include_missing(inputs, manifest)

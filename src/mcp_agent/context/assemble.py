@@ -4,6 +4,8 @@ import json
 import math
 import time
 from typing import Dict, List, Optional, Protocol, Tuple
+from . import telemetry
+from .errors import BudgetError
 from .models import (
     AssembleInputs,
     AssembleOptions,
@@ -15,7 +17,6 @@ from .models import (
 )
 from .settings import ContextSettings
 from .hash import compute_manifest_hash
-from .telemetry import meter
 from .toolkit import AggregatorToolKit
 from .logutil import log_structured, redact_event
 class ToolKit(Protocol):
@@ -125,6 +126,7 @@ def _budget_and_build_slices(spans: List[Span], opts: AssembleOptions, report: A
         if opts.token_budget is not None and tokens_used + tokens > int(opts.token_budget):
             report.overflow.append(dict(uri=sp.uri, start=int(sp.start), end=int(sp.end), reason="token_budget", tool=sp.tool))  # type: ignore[arg-type]
             report.pruned["token_budget"] = report.pruned.get("token_budget", 0) + 1
+            telemetry.record_overflow(1, "token_budget", {"uri": _norm_uri(sp.uri or "")})
             continue
         sec = int(sp.section or 0)
         cap_for_sec = section_caps.get(sec)
@@ -134,12 +136,14 @@ def _budget_and_build_slices(spans: List[Span], opts: AssembleOptions, report: A
                 key = f"section_cap_{sec}"
                 report.overflow.append(dict(uri=sp.uri, start=int(sp.start), end=int(sp.end), reason=key, tool=sp.tool))  # type: ignore[arg-type]
                 report.pruned[key] = report.pruned.get(key, 0) + 1
+                telemetry.record_overflow(1, key, {"uri": _norm_uri(sp.uri or "")})
                 continue
             sections_used[sec] = used + 1
         if opts.max_files is not None:
             if files_seen.get(sp.uri, 0) == 0 and len(files_seen) >= int(opts.max_files):
                 report.overflow.append(dict(uri=sp.uri, start=int(sp.start), end=int(sp.end), reason="max_files", tool=sp.tool))  # type: ignore[arg-type]
                 report.pruned["max_files"] = report.pruned.get("max_files", 0) + 1
+                telemetry.record_overflow(1, "max_files", {"uri": _norm_uri(sp.uri or "")})
                 continue
         files_seen[sp.uri] = 1
         tokens_used += tokens
@@ -157,7 +161,7 @@ async def assemble_context(
     telemetry_attrs: Optional[Dict[str, str]] = None,
 ) -> Tuple[Manifest, str, AssembleReport]:
     t0 = time.perf_counter()
-    m = meter()
+    m = telemetry.meter()
     settings = ContextSettings()
     options = opts or AssembleOptions()
     tk: ToolKit = toolkit or AggregatorToolKit(
@@ -195,10 +199,13 @@ async def assemble_context(
             b = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
             if len(b) > settings.MAX_RESPONSE_BYTES or len(spans_list) > settings.MAX_SPANS_PER_CALL:
                 cut = min(len(spans_list), settings.MAX_SPANS_PER_CALL)
-                report.pruned["resp_truncated"] = report.pruned.get("resp_truncated", 0) + (len(spans_list)-cut)
+                overflow_count = max(0, len(spans_list) - cut)
+                report.pruned["resp_truncated"] = report.pruned.get("resp_truncated", 0) + overflow_count
                 # annotate overflow with tool+reason
                 for s in spans_list[cut:]:
                     report.overflow.append({"uri": s.uri, "start": int(s.start), "end": int(s.end), "reason": "resp_truncated", "tool": tool})
+                if overflow_count:
+                    telemetry.record_overflow(overflow_count, "resp_truncated", {"tool": tool})
                 return spans_list[:cut]
         except Exception:
             pass
@@ -248,8 +255,14 @@ async def assemble_context(
     report.spans_merged = len(spans)
     spans_sorted = sorted(spans, key=_span_key)
     slices = _budget_and_build_slices(spans_sorted, options, report)
+    report.violation = bool(report.overflow)
+    if report.violation and options.enforce_non_droppable:
+        dur_ms = (time.perf_counter() - t0) * 1000.0
+        m.record_duration_ms(dur_ms, {"phase": "assemble", "violation": "True", **(telemetry_attrs or {})})
+        raise BudgetError(report.overflow)
 
     manifest = Manifest(slices=slices, meta=ManifestMeta())
+    manifest.meta.violation = report.violation or None
     pack_hash = compute_manifest_hash(manifest, code_version=code_version, tool_versions=tool_versions, settings_fingerprint=settings.fingerprint())
     manifest.meta.pack_hash = pack_hash
     manifest.meta.code_version = code_version
@@ -258,9 +271,9 @@ async def assemble_context(
 
     dur_ms = (time.perf_counter() - t0) * 1000.0
     attrs = {"phase": "assemble", "pack_hash": pack_hash, **(telemetry_attrs or {})}
+    if report.violation:
+        attrs = {**attrs, "violation": "True"}
     m.record_duration_ms(dur_ms, attrs)
-    if report.overflow:
-        m.inc_overflow(len(report.overflow), attrs=attrs)
 
     event = {
         "event": "context.assembled",
@@ -272,6 +285,7 @@ async def assemble_context(
             "tokens_out": report.tokens_out,
             "pruned": report.pruned,
         },
+        "violation": report.violation,
         **(telemetry_attrs or {}),
     }
     red_evt = redact_event(event, ContextSettings().REDACT_PATH_GLOBS)

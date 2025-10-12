@@ -60,6 +60,18 @@
           },
           "title": "Tool Versions",
           "type": "object"
+        },
+        "violation": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Violation"
         }
       },
       "title": "ManifestMeta",

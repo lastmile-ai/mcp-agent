@@ -19,3 +19,4 @@ def test_mixed_overflow_ordering():
     reasons = {ov["uri"]: ov["reason"] for ov in r.overflow}
     assert reasons["file:///b.py"] in ("token_budget","max_files")
     assert reasons["file:///c.py"].startswith("section_cap_")
+    assert r.violation is True
