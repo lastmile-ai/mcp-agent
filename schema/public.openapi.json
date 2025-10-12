@@ -13,13 +13,17 @@
           {
             "name": "alive",
             "in": "query",
-            "schema": {"type": "boolean"},
+            "schema": {
+              "type": "boolean"
+            },
             "description": "Filter to only alive tools"
           },
           {
             "name": "capability",
             "in": "query",
-            "schema": {"type": "string"},
+            "schema": {
+              "type": "string"
+            },
             "description": "Require tools that advertise this capability",
             "explode": true,
             "style": "form"
@@ -27,7 +31,9 @@
           {
             "name": "tag",
             "in": "query",
-            "schema": {"type": "string"},
+            "schema": {
+              "type": "string"
+            },
             "description": "Filter by tag",
             "explode": true,
             "style": "form"
@@ -35,7 +41,9 @@
           {
             "name": "q",
             "in": "query",
-            "schema": {"type": "string"},
+            "schema": {
+              "type": "string"
+            },
             "description": "Case-insensitive search across id and name"
           }
         ],
@@ -44,7 +52,9 @@
             "description": "Tools registry snapshot",
             "content": {
               "application/json": {
-                "schema": {"$ref": "../schemas/toolsResponse.json"}
+                "schema": {
+                  "$ref": "../schemas/toolsResponse.json"
+                }
               }
             }
           },
@@ -56,12 +66,237 @@
           }
         }
       }
+    },
+    "/v1/runs": {
+      "post": {
+        "operationId": "createRun",
+        "summary": "Create a new run",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Run accepted and queued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request payload"
+          },
+          "401": {
+            "description": "Missing or invalid credentials"
+          }
+        }
+      }
+    },
+    "/v1/stream/{id}": {
+      "get": {
+        "operationId": "streamRun",
+        "summary": "Stream lifecycle events for a run",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Run identifier"
+          },
+          {
+            "name": "Last-Event-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Replay events after this SSE id"
+          },
+          {
+            "name": "last_event_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Replay events after this id (query alternative)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lifecycle SSE stream",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunStateEvent"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials"
+          },
+          "404": {
+            "description": "Run not found"
+          }
+        }
+      }
+    },
+    "/v1/runs/{id}/cancel": {
+      "post": {
+        "operationId": "cancelRun",
+        "summary": "Cancel an active run",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Run identifier"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Run canceled or already terminal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials"
+          },
+          "404": {
+            "description": "Run not found"
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
-      "ToolItem": {"$ref": "../schemas/toolItem.json"},
-      "ToolsResponse": {"$ref": "../schemas/toolsResponse.json"}
+      "ToolItem": {
+        "$ref": "../schemas/toolItem.json"
+      },
+      "ToolsResponse": {
+        "$ref": "../schemas/toolsResponse.json"
+      },
+      "RunState": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "preparing",
+          "assembling",
+          "prompting",
+          "applying",
+          "testing",
+          "repairing",
+          "green",
+          "failed",
+          "canceled"
+        ]
+      },
+      "RunSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "state"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Run identifier"
+          },
+          "status": {
+            "type": "string",
+            "description": "High level run status",
+            "enum": [
+              "running",
+              "completed",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/RunState"
+          }
+        }
+      },
+      "RunCreateRequest": {
+        "type": "object",
+        "required": [
+          "project_id",
+          "run_type"
+        ],
+        "properties": {
+          "project_id": {
+            "type": "string"
+          },
+          "run_type": {
+            "type": "string"
+          },
+          "trace_id": {
+            "type": "string"
+          },
+          "iterations": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "llm_time_budget_s": {
+            "type": "number",
+            "minimum": 0
+          },
+          "pack_hash": {
+            "type": "string"
+          }
+        }
+      },
+      "RunStateEvent": {
+        "type": "object",
+        "required": [
+          "run_id",
+          "state",
+          "timestamp",
+          "details"
+        ],
+        "properties": {
+          "run_id": {
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/RunState"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "details": {
+            "type": "object",
+            "description": "Arbitrary structured metadata for the state",
+            "additionalProperties": true
+          }
+        }
+      }
     }
   }
 }

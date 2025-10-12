@@ -7,6 +7,7 @@ from starlette.testclient import TestClient
 from mcp_agent.api.routes import add_public_api
 from mcp_agent.api.routes import public as public_module
 from mcp_agent.runloop.controller import RunController
+from mcp_agent.runloop.lifecyclestate import RunState
 
 API_KEY = "artifact-key"
 
@@ -33,6 +34,10 @@ def test_feature_artifact_paths(monkeypatch):
 
         async def fake_run(self):
             run_started.set()
+            await self._lifecycle.transition_to(
+                RunState.GREEN,
+                details={"iterations": self._config.iteration_count},
+            )
 
         monkeypatch.setattr(RunController, "run", fake_run, raising=False)
 

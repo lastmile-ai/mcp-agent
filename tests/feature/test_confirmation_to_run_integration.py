@@ -8,7 +8,7 @@ from starlette.testclient import TestClient
 from mcp_agent.api.routes import add_public_api
 from mcp_agent.api.routes import public as public_module
 from mcp_agent.runloop.controller import RunController
-from mcp_agent.runloop.events import build_payload
+from mcp_agent.runloop.lifecyclestate import RunState
 
 API_KEY = "test-key"
 
@@ -36,7 +36,8 @@ def test_confirmation_starts_run(monkeypatch):
         self,
         *,
         config,
-        event_bus,
+        lifecycle,
+        cancel_event=None,
         llm_budget=None,
         feature_spec=None,
         approved_budget_s=None,
@@ -44,10 +45,12 @@ def test_confirmation_starts_run(monkeypatch):
         recorded["config"] = config
         recorded["feature_spec"] = feature_spec
         recorded["approved_budget_s"] = approved_budget_s
+        recorded["lifecycle"] = lifecycle
         original_init(
             self,
             config=config,
-            event_bus=event_bus,
+            lifecycle=lifecycle,
+            cancel_event=cancel_event,
             llm_budget=llm_budget,
             feature_spec=feature_spec,
             approved_budget_s=approved_budget_s,
@@ -60,16 +63,30 @@ def test_confirmation_starts_run(monkeypatch):
 
     async def fake_run(self):
         run_called.set()
-        await self._event_bus.publish(
-            build_payload(
-                event="finished_green",
-                trace_id=self._config.trace_id,
-                iteration=self._config.iteration_count,
-                pack_hash=self._config.pack_hash,
-                budget=self._snapshot(),
-            )
+        await self._lifecycle.transition_to(
+            RunState.PREPARING,
+            details={"trace_id": self._config.trace_id},
         )
-        await self._event_bus.close()
+        await self._lifecycle.transition_to(
+            RunState.ASSEMBLING,
+            details={"has_feature_spec": bool(self._feature_spec)},
+        )
+        await self._lifecycle.transition_to(
+            RunState.PROMPTING,
+            details={"iteration": 1, "budget": self._snapshot().as_dict()},
+        )
+        await self._lifecycle.transition_to(
+            RunState.APPLYING,
+            details={"iteration": 1, "budget": self._snapshot().as_dict()},
+        )
+        await self._lifecycle.transition_to(
+            RunState.TESTING,
+            details={"iteration": 1, "budget": self._snapshot().as_dict()},
+        )
+        await self._lifecycle.transition_to(
+            RunState.GREEN,
+            details={"iterations": self._config.iteration_count},
+        )
         run_finished.set()
 
     monkeypatch.setattr(RunController, "run", fake_run, raising=False)

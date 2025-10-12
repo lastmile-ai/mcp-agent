@@ -13,10 +13,11 @@ from starlette.responses import JSONResponse, StreamingResponse
 from starlette.routing import Route, Router
 
 from mcp_agent.budget.llm_budget import LLMBudget
+from mcp_agent.api.events_sse import RunEventStream
 from mcp_agent.feature.events import emit_drafting, emit_starting_implementation
 from mcp_agent.feature.models import FeatureDraft, MessageRole
-from mcp_agent.runloop.controller import RunConfig, RunController
-from mcp_agent.runloop.events import EventBus
+from mcp_agent.runloop.controller import RunCanceled, RunConfig, RunController
+from mcp_agent.runloop.lifecyclestate import RunLifecycle, RunState
 
 from .state import authenticate_request, get_public_state
 
@@ -216,14 +217,27 @@ async def _start_implementation(state, draft) -> Dict[str, Any]:
     run_id = str(uuid.uuid4())
     trace_id = draft.trace_id
     budget = LLMBudget(limit_seconds=decision.seconds)
-    event_bus = EventBus()
-    state.event_buses[run_id] = event_bus
+    stream = RunEventStream()
+    lifecycle = RunLifecycle(run_id=run_id, stream=stream)
+    await lifecycle.transition_to(
+        RunState.QUEUED,
+        details={
+            "project_id": draft.project_id,
+            "feature_id": draft.feature_id,
+            "run_type": "feature_implementation",
+        },
+    )
+    cancel_event = asyncio.Event()
+    state.run_streams[run_id] = stream
+    state.run_lifecycles[run_id] = lifecycle
+    state.run_cancel_events[run_id] = cancel_event
     state.runs[run_id] = {
         "project_id": draft.project_id,
         "run_type": "feature_implementation",
         "trace_id": trace_id,
         "status": "running",
         "feature_id": draft.feature_id,
+        "state": lifecycle.state.value if lifecycle.state else None,
     }
     config = RunConfig(
         trace_id=trace_id,
@@ -237,7 +251,8 @@ async def _start_implementation(state, draft) -> Dict[str, Any]:
     async def _run_controller() -> None:
         controller = RunController(
             config=config,
-            event_bus=event_bus,
+            lifecycle=lifecycle,
+            cancel_event=cancel_event,
             llm_budget=budget,
             feature_spec=draft.spec,
             approved_budget_s=decision.seconds,
@@ -245,13 +260,26 @@ async def _start_implementation(state, draft) -> Dict[str, Any]:
         try:
             await controller.run()
             state.runs[run_id]["status"] = "completed"
+            state.runs[run_id]["state"] = RunState.GREEN.value
+        except RunCanceled:
+            state.runs[run_id]["status"] = "cancelled"
+            state.runs[run_id]["state"] = RunState.CANCELED.value
         except Exception:  # pragma: no cover - defensive
             state.runs[run_id]["status"] = "failed"
-            await event_bus.close()
+            if not lifecycle.is_terminal():
+                await lifecycle.transition_to(RunState.FAILED, details={"reason": "runtime_error"})
+            state.runs[run_id]["state"] = RunState.FAILED.value
 
     task = asyncio.create_task(_run_controller())
     state.tasks.add(task)
-    task.add_done_callback(state.tasks.discard)
+    state.run_tasks[run_id] = task
+
+    def _cleanup(_task: asyncio.Task) -> None:
+        state.tasks.discard(task)
+        state.run_tasks.pop(run_id, None)
+        state.run_cancel_events.pop(run_id, None)
+
+    task.add_done_callback(_cleanup)
     await emit_starting_implementation(state.feature_manager.bus(draft.feature_id), draft, run_id)
     return {"id": run_id, "iterations": estimate.iterations, "seconds": decision.seconds}
 

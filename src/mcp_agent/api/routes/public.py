@@ -7,8 +7,9 @@ from starlette.responses import JSONResponse, StreamingResponse
 from starlette.routing import Route, Router
 
 from mcp_agent.budget.llm_budget import LLMBudget
-from mcp_agent.runloop.controller import RunConfig, RunController
-from mcp_agent.runloop.events import BudgetSnapshot, EventBus, build_payload
+from mcp_agent.api.events_sse import RunEventStream
+from mcp_agent.runloop.controller import RunCanceled, RunConfig, RunController
+from mcp_agent.runloop.lifecyclestate import RunLifecycle, RunState
 
 from .feature import router as feature_router
 from .state import (
@@ -40,14 +41,23 @@ async def create_run(request: Request) -> JSONResponse:
     budget_limit = body.get("llm_time_budget_s")
     limit_seconds = float(budget_limit) if isinstance(budget_limit, (int, float)) else None
     budget = LLMBudget(limit_seconds=limit_seconds)
-    event_bus = EventBus()
-    state.event_buses[run_id] = event_bus
+    stream = RunEventStream()
+    lifecycle = RunLifecycle(run_id=run_id, stream=stream)
+    await lifecycle.transition_to(
+        RunState.QUEUED,
+        details={"project_id": project_id, "run_type": run_type},
+    )
+    cancel_event = asyncio.Event()
+    state.run_streams[run_id] = stream
+    state.run_lifecycles[run_id] = lifecycle
+    state.run_cancel_events[run_id] = cancel_event
 
     state.runs[run_id] = {
         "project_id": project_id,
         "run_type": run_type,
         "trace_id": trace_id,
         "status": "running",
+        "state": lifecycle.state.value if lifecycle.state else None,
     }
 
     iterations = body.get("iterations")
@@ -57,36 +67,49 @@ async def create_run(request: Request) -> JSONResponse:
         iteration_count = 1
     iteration_count = max(1, iteration_count)
 
-    config = RunConfig(trace_id=trace_id, iteration_count=iteration_count, pack_hash=body.get("pack_hash"))
+    config = RunConfig(
+        trace_id=trace_id,
+        iteration_count=iteration_count,
+        pack_hash=body.get("pack_hash"),
+    )
 
     async def _run_controller() -> None:
-        controller = RunController(config=config, event_bus=event_bus, llm_budget=budget)
+        controller = RunController(
+            config=config,
+            lifecycle=lifecycle,
+            cancel_event=cancel_event,
+            llm_budget=budget,
+        )
         try:
             await controller.run()
             state.runs[run_id]["status"] = "completed"
+            state.runs[run_id]["state"] = RunState.GREEN.value
+        except RunCanceled:
+            state.runs[run_id]["status"] = "cancelled"
+            state.runs[run_id]["state"] = RunState.CANCELED.value
         except Exception as exc:  # pragma: no cover - defensive
             state.runs[run_id]["status"] = "failed"
-            snapshot = BudgetSnapshot(
-                llm_active_ms=budget.active_ms,
-                remaining_s=budget.remaining_seconds(),
-            )
-            await event_bus.publish(
-                build_payload(
-                    event="aborted",
-                    trace_id=trace_id,
-                    iteration=0,
-                    pack_hash=config.pack_hash,
-                    budget=snapshot,
-                    violation=True,
-                    reason=str(exc),
+            if not lifecycle.is_terminal():
+                await lifecycle.transition_to(
+                    RunState.FAILED,
+                    details={"reason": str(exc)},
                 )
-            )
-            await event_bus.close()
+            state.runs[run_id]["state"] = RunState.FAILED.value
 
     task = asyncio.create_task(_run_controller())
     state.tasks.add(task)
-    task.add_done_callback(state.tasks.discard)
-    return JSONResponse({"id": run_id, "status": "running"}, status_code=202)
+    state.run_tasks[run_id] = task
+
+    def _cleanup(_task: asyncio.Task) -> None:
+        state.tasks.discard(task)
+        state.run_tasks.pop(run_id, None)
+        state.run_cancel_events.pop(run_id, None)
+
+    task.add_done_callback(_cleanup)
+    return JSONResponse(
+        {"id": run_id, "status": "running", "state": RunState.QUEUED.value},
+        status_code=202,
+    )
 
 
 async def stream_run(request: Request) -> StreamingResponse:
@@ -95,25 +118,34 @@ async def stream_run(request: Request) -> StreamingResponse:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     run_id = request.path_params.get("id")
     state = get_public_state(request)
-    event_bus = state.event_buses.get(run_id)
-    if event_bus is None:
+    stream = state.run_streams.get(run_id)
+    if stream is None:
         return JSONResponse({"error": "not_found"}, status_code=404)
 
     async def event_source():
-        queue = event_bus.subscribe()
+        last_event_id_header = (
+            request.headers.get("Last-Event-ID")
+            or request.headers.get("last-event-id")
+            or request.query_params.get("last_event_id")
+        )
+        try:
+            last_event_id = int(last_event_id_header) if last_event_id_header else None
+        except ValueError:
+            last_event_id = None
+        queue = stream.subscribe(last_event_id)
         try:
             while True:
                 try:
-                    data = await queue.get()
-                    if data == "__EOF__":
+                    event_id, data = await queue.get()
+                    if event_id == -1 and data == "__EOF__":
                         break
-                    yield f"data: {data}\n\n"
+                    yield f"id: {event_id}\ndata: {data}\n\n"
                 except asyncio.CancelledError:
                     break
                 except Exception:
                     break
         finally:
-            event_bus.unsubscribe(queue)
+            stream.unsubscribe(queue)
 
     headers = {"Cache-Control": "no-cache", "Content-Type": "text/event-stream"}
     return StreamingResponse(event_source(), headers=headers)
@@ -128,21 +160,41 @@ async def cancel_run(request: Request):
     run = state.runs.get(run_id)
     if not run:
         return JSONResponse({"error": "not_found"}, status_code=404)
-    run["status"] = "cancelled"
-    bus = state.event_buses.get(run_id)
-    if bus is not None:
-        snapshot = BudgetSnapshot(llm_active_ms=0, remaining_s=None)
-        await bus.publish(
-            build_payload(
-                event="cancelled",
-                trace_id=run.get("trace_id", ""),
-                iteration=0,
-                pack_hash=None,
-                budget=snapshot,
-            )
+    lifecycle = state.run_lifecycles.get(run_id)
+    cancel_event = state.run_cancel_events.get(run_id)
+    if lifecycle and lifecycle.is_terminal():
+        return JSONResponse(
+            {
+                "id": run_id,
+                "status": run.get("status", "cancelled"),
+                "state": run.get("state", RunState.CANCELED.value),
+            },
+            status_code=200,
         )
-        await bus.close()
-    return JSONResponse({"id": run_id, "status": "cancelled"}, status_code=200)
+
+    if cancel_event:
+        cancel_event.set()
+    run["status"] = "cancelled"
+
+    task = state.run_tasks.get(run_id)
+    if task and not task.done():
+        try:
+            await asyncio.wait_for(asyncio.shield(task), timeout=5)
+        except asyncio.TimeoutError:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
+    if lifecycle and not lifecycle.is_terminal():
+        await lifecycle.transition_to(
+            RunState.CANCELED,
+            details={"trigger": "api", "reason": "cancel_endpoint"},
+        )
+    state.runs[run_id]["state"] = RunState.CANCELED.value
+
+    return JSONResponse(
+        {"id": run_id, "status": "cancelled", "state": RunState.CANCELED.value},
+        status_code=200,
+    )
 
 
 async def get_artifact(request: Request):

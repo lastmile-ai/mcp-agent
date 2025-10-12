@@ -8,6 +8,7 @@ from starlette.testclient import TestClient
 from mcp_agent.api.routes import add_public_api
 from mcp_agent.api.routes import public as public_module
 from mcp_agent.runloop.controller import RunController
+from mcp_agent.runloop.lifecyclestate import RunState
 
 
 API_KEY = "test-key"
@@ -35,6 +36,30 @@ def test_full_intake_flow(monkeypatch):
 
         async def fake_run(self):
             run_started.set()
+            await self._lifecycle.transition_to(
+                RunState.PREPARING,
+                details={"trace_id": self._config.trace_id},
+            )
+            await self._lifecycle.transition_to(
+                RunState.ASSEMBLING,
+                details={"has_feature_spec": bool(self._feature_spec)},
+            )
+            await self._lifecycle.transition_to(
+                RunState.PROMPTING,
+                details={"iteration": 1, "budget": self._snapshot().as_dict()},
+            )
+            await self._lifecycle.transition_to(
+                RunState.APPLYING,
+                details={"iteration": 1, "budget": self._snapshot().as_dict()},
+            )
+            await self._lifecycle.transition_to(
+                RunState.TESTING,
+                details={"iteration": 1, "budget": self._snapshot().as_dict()},
+            )
+            await self._lifecycle.transition_to(
+                RunState.GREEN,
+                details={"iterations": self._config.iteration_count},
+            )
 
         monkeypatch.setattr(RunController, "run", fake_run, raising=False)
 
