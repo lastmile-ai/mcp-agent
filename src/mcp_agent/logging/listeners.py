@@ -10,6 +10,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Protocol, TYPE_CHECKING
 
 from mcp_agent.logging.events import Event, EventFilter, EventType
+from mcp_agent.logging.redact import install_redaction_filter
 from mcp_agent.logging.event_progress import convert_log_event
 
 if TYPE_CHECKING:  # pragma: no cover - for type checking only
@@ -89,6 +90,7 @@ class LoggingListener(FilteredListener):
         """
         super().__init__(event_filter=event_filter)
         self.logger = logger or logging.getLogger("mcp_agent")
+        install_redaction_filter(self.logger)
 
     async def handle_matched_event(self, event):
         level_map: Dict[EventType, int] = {

@@ -9,6 +9,7 @@ from typing import Dict, List, Set, Tuple
 import jwt
 from starlette.requests import Request
 
+from mcp_agent.artifacts.index import ArtifactIndex
 from mcp_agent.feature.intake import FeatureIntakeManager
 from mcp_agent.runloop.events import EventBus
 
@@ -21,6 +22,7 @@ class PublicAPIState:
         self.event_buses: Dict[str, EventBus] = {}
         self.tasks: Set[asyncio.Task] = set()
         self.artifacts: Dict[str, tuple[bytes, str]] = {}
+        self.artifact_index = ArtifactIndex()
         self.feature_manager = FeatureIntakeManager(artifact_sink=self.artifacts)
 
     async def cancel_all_tasks(self):
