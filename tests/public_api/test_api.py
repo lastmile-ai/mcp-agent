@@ -180,12 +180,10 @@ def test_cancel_run_emits_canceled_state(monkeypatch, public_api_state):
         events: list[str] = []
         stream_headers = {"X-API-Key": "k1", "Last-Event-ID": "0"}
         with c.stream("GET", f"/v1/stream/{run_id}", headers=stream_headers) as s:
-            current_id = None
             for line in s.iter_lines():
                 if not line:
                     continue
                 if line.startswith("id: "):
-                    current_id = int(line[4:])
                     continue
                 if not line.startswith("data: "):
                     continue
