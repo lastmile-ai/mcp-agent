@@ -302,6 +302,13 @@ The following are the building blocks of the mcp-agent framework:
 
 Everything in the framework is a derivative of these core capabilities.
 
+### LLM Gateway Enhancements
+
+- **Provider failover**: Configure an ordered `llm_provider_chain` so the gateway automatically retries alternate providers (OpenAI → Anthropic → …) on quota exhaustion or outages. Each switch is surfaced via `llm/provider_failover` SSE events and the `llm_provider_fallback_total` metric.
+- **Strict streaming budgets**: Set `llm_tokens_cap` or `llm_cost_cap_usd` and the gateway aborts as soon as limits are hit, returning `finish_reason="stop_on_budget"`, emitting `llm/budget_exhausted`, and incrementing `llm_budget_abort_total`.
+- **Multi-subscriber SSE fan-out**: All LLM events are distributed to every interested UI/log consumer through a thread-safe fan-out. Active consumers are tracked with the `llm_sse_consumer_count` up/down counter.
+- **Audit-grade telemetry**: Additional SSE events (`llm/provider_selected`, `llm/provider_failed`, `llm/provider_succeeded`) and OpenTelemetry spans capture provider selection, retries, fallback decisions, and completion summaries for full observability.
+
 ## Workflows
 
 mcp-agent provides implementations for every pattern in Anthropic’s [Building Effective Agents](https://www.anthropic.com/research/building-effective-agents), as well as the OpenAI [Swarm](https://github.com/openai/swarm) pattern.

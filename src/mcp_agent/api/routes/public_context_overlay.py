@@ -18,7 +18,11 @@ class _StateSSEEmitter:
 
     async def emit(self, run_id: str, event: Dict[str, Any]) -> None:
         # Put onto all queues subscribed to this run
-        queues = self.state.queues.get(run_id, [])
+        fanout = getattr(self.state, "llm_streams", {}).get(run_id)
+        if fanout is not None:
+            queues = await fanout.snapshot()
+        else:
+            queues = list(getattr(self.state, "queues", {}).get(run_id, []))
         evt = json.dumps({"event": "context", **event})
         for q in list(queues):
             try:
@@ -86,7 +90,11 @@ async def _create_run_with_context(request: Request) -> JSONResponse:
                 except Exception:
                     pass
             # Signal violation or error via SSE
-            queues = state.queues.get(run_id, [])
+            fanout = getattr(state, "llm_streams", {}).get(run_id)
+            if fanout is not None:
+                queues = await fanout.snapshot()
+            else:
+                queues = list(getattr(state, "queues", {}).get(run_id, []))
             evt = json.dumps({"event":"context","phase":"ASSEMBLING","status":"error","violation": True})
             for q in list(queues):
                 try:
@@ -95,7 +103,11 @@ async def _create_run_with_context(request: Request) -> JSONResponse:
                     pass
 
     # Announce start immediately
-    queues = state.queues.get(run_id, [])
+    fanout = getattr(state, "llm_streams", {}).get(run_id)
+    if fanout is not None:
+        queues = await fanout.snapshot()
+    else:
+        queues = list(getattr(state, "queues", {}).get(run_id, []))
     start_evt = {"phase":"ASSEMBLING","status":"start","run_id":run_id}
     red = redact_event(start_evt, cfg.REDACT_PATH_GLOBS)
     for q in list(queues):
