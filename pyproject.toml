@@ -121,4 +121,7 @@ mcp-agent = [ # TODO: should this be mcp_agent?
 ]
 
 [tool.pytest.ini_options]
-pythonpath = ["."]
+pythonpath = [
+    "src",
+    ".",
+]
