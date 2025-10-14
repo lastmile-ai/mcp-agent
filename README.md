@@ -723,6 +723,38 @@ async with aggregator:
 
 </details>
 
+## Docker images
+
+We ship a Dockerfile that can be used for both local development and production deployments. Local builds stay on your machine by default, while maintainers can explicitly publish trusted images to GitHub's Container Registry (GHCR).
+
+### Local development builds
+
+- Run `make docker-build` to build the image locally. By default this produces an image tagged `mcp-agent:dev` in your local Docker cache.
+- Override the tag or name when needed:
+
+  ```bash
+  make docker-build DOCKER_IMAGE_NAME=mcp-agent DOCKER_IMAGE_TAG=feature-x
+  ```
+
+- Start the container for manual testing using `make docker-run`, which maps port `8080` so the health endpoint is reachable at `http://localhost:8080/health`.
+
+These commands never push images; they only update the local Docker store on your workstation, CI runner, or VPS.
+
+### Publishing to GHCR
+
+For production releases, a dedicated GitHub Actions workflow (`Push Production Docker Image`) rebuilds the Docker image from the repository and pushes it to GHCR on demand. This keeps the registry free from experimental builds while guaranteeing that published images are reproducible from version-controlled sources.
+
+1. Ensure the repository has a `GHCR_TOKEN` secret with `write:packages` scope.
+2. Build and test the image locally using the commands above (optional but recommended).
+3. From the GitHub **Actions** tab, run the "Push Production Docker Image" workflow.
+   - Supply the desired tag (for example, `v1.2.3` or `latest`).
+   - Optionally override the image name; it defaults to `mcp-agent` and publishes to `ghcr.io/<org>/mcp-agent:<tag>`.
+   - Choose where the workflow runs by setting the `runner_labels` input. It accepts a JSON array, so you can keep the default
+     `["ubuntu-latest"]` for GitHub-hosted runners or provide something like `["self-hosted", "linux", "x64"]` to use your own
+     VPS runner.
+
+The workflow automatically adds a content-addressable `sha` tag for traceability alongside the manual tag you provide.
+
 ## Contributing
 
 We welcome any and all kinds of contributions. Please see the [CONTRIBUTING guidelines](./CONTRIBUTING.md) to get started.
