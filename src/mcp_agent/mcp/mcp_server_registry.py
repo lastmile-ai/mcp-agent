@@ -39,6 +39,15 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+
+def _resolve_identity_from_context():
+    try:
+        from mcp_agent.server import app_server  # local import to avoid circular dependency
+
+        return app_server.get_current_identity()
+    except Exception:
+        return None
+
 InitHookCallable = Callable[[ClientSession | None, MCPServerAuthSettings | None], bool]
 """
 A type alias for an initialization hook function that is invoked after MCP server initialization.
@@ -230,6 +239,7 @@ class ServerRegistry:
                         server_name=server_name,
                         server_config=config,
                         scopes=oauth_cfg.scopes,
+                        identity_resolver=_resolve_identity_from_context,
                     )
             if auth_handler:
                 kwargs["auth"] = auth_handler

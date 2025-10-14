@@ -85,6 +85,7 @@ class MCPApp:
         signal_notification: SignalWaitCallback | None = None,
         upstream_session: Optional["ServerSession"] = None,
         model_selector: ModelSelector | None = None,
+        session_id: str | None = None,
     ):
         """
         Initialize the application with a name and optional settings.
@@ -135,6 +136,7 @@ class MCPApp:
         self._signal_notification = signal_notification
         self._upstream_session = upstream_session
         self._model_selector = model_selector
+        self._session_id_override = session_id
 
         self._workflows: Dict[str, Type["Workflow"]] = {}  # id to workflow class
         # Deferred tool declarations to register with MCP server when available
@@ -239,6 +241,7 @@ class MCPApp:
             decorator_registry=self._decorator_registry,
             signal_registry=self._signal_registry,
             store_globally=True,
+            session_id=self._session_id_override,
         )
 
         # Store the app-specific tracer provider
@@ -265,7 +268,32 @@ class MCPApp:
 
         if oauth_settings:
             self.logger.debug("Initializing OAuth token management")
-            token_store = InMemoryTokenStore()
+            backend = (
+                oauth_settings.token_store.backend
+                if oauth_settings.token_store
+                else "memory"
+            )
+            if backend == "redis":
+                from mcp_agent.oauth.store import RedisTokenStore
+
+                if RedisTokenStore is None:
+                    raise ImportError(
+                        "Redis token store requires the 'redis' optional dependency. "
+                        "Install with `pip install mcp-agent[redis]`."
+                    )
+
+                redis_url = oauth_settings.token_store.redis_url
+                if not redis_url:
+                    raise ValueError(
+                        "redis_url must be configured when using the Redis token store"
+                    )
+                token_store = RedisTokenStore(
+                    url=redis_url,
+                    prefix=oauth_settings.token_store.redis_prefix,
+                )
+            else:
+                token_store = InMemoryTokenStore()
+
             token_manager = TokenManager(
                 token_store=token_store,
                 settings=oauth_settings,
@@ -390,23 +418,15 @@ class MCPApp:
             self.logger.debug(f"Server '{server_name}' has pre-configured OAuth token")
             servers_with_tokens.append((server_name, server_config))
 
-        # If we have any servers with pre-configured tokens, create a single synthetic user
         if servers_with_tokens:
-            synthetic_user = (
-                token_manager.create_default_user_for_preconfigured_tokens()
-            )
-            self._context.current_user = synthetic_user
-            self.logger.info(
-                f"Created synthetic user for pre-configured OAuth tokens: {synthetic_user.cache_key}"
-            )
-
-            # Second pass: store all tokens using the same synthetic user
             for server_name, server_config in servers_with_tokens:
                 self.logger.info(
-                    f"Storing pre-configured OAuth token for server: {server_name}"
+                    "Storing pre-configured OAuth token for server: %s", server_name
                 )
                 await token_manager.store_preconfigured_token(
-                    server_name, server_config, synthetic_user
+                    context=self._context,
+                    server_name=server_name,
+                    server_config=server_config,
                 )
 
     async def get_token_node(self):

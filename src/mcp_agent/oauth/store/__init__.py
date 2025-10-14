@@ -9,3 +9,10 @@ __all__ = [
     "scope_fingerprint",
     "InMemoryTokenStore",
 ]
+
+try:  # Optional dependency
+    from .redis import RedisTokenStore
+except ImportError:  # pragma: no cover - redis extra not installed
+    RedisTokenStore = None  # type: ignore[assignment]
+else:
+    __all__.append("RedisTokenStore")

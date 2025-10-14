@@ -13,11 +13,14 @@
 2. **Protected Resource Metadata** – Serve `/.well-known/oauth-protected-resource` using FastMCP hooks so clients can discover the auth server.
 3. **Access Token Validation** – Enforce bearer tokens on every inbound MCP request via `RequireAuthMiddleware`, populating the request context with the authenticated user.
 4. **OAuth Token Service** – New `mcp_agent.oauth` package with:
-   - `TokenStore`/`TokenRecord` abstractions
-   - `InMemoryTokenStore` and Redis-backed implementation (second pass)
+  - `TokenStore`/`TokenRecord` abstractions
+  - `InMemoryTokenStore` and Redis-backed implementation (optional for multi-instance)
    - `TokenManager` orchestration (acquire, refresh, revoke)
    - `OAuthHttpxAuth` for attaching tokens to downstream HTTP transports
-   - `AuthorizationFlowCoordinator` that interacts with the user via MCP `auth/request`
+   - `AuthorizationFlowCoordinator` that interacts with the user via MCP `auth/request`.
+     When no upstream client session is available, a client-only loopback flow starts a
+     temporary local callback listener on 127.0.0.1 using a configurable fixed port list
+     (default: 33418, 33419, 33420), opens the browser, and completes the PKCE code flow.
 5. **Delegated Authorization UI Flow** – Extend the gateway/session relay so servers can send `auth/request` messages to MCP clients, capturing authorization codes via either:
    - Client-returned callback URL (preferred, works with SEP-capable clients)
    - MCP Agent hosted callback endpoint (`/internal/oauth/callback/{flow_id}`) as a fallback / native-app style loopback.
@@ -59,7 +62,7 @@ src/mcp_agent/oauth/
 
 Integration touchpoints:
 - `mcp_agent/config.py` – add OAuth settings models.
-- `mcp_agent/core/context.py` – add `current_user`, `token_manager`, `token_store`, `oauth_config` fields.
+- `mcp_agent/core/context.py` – add `token_manager`, `token_store`, `oauth_config` fields.
 - `mcp_agent/app.py` – initialize token store/manager based on settings.
 - `mcp_agent/server/app_server.py` – configure FastMCP auth settings, register callback route, surface user identity, extend relay to handle `auth/request`.
 - `mcp_agent/mcp/mcp_server_registry.py` & `mcp_agent/mcp/mcp_connection_manager.py` – wire `OAuthHttpxAuth` into HTTP transports and expose helper for manual token teardown.
@@ -95,7 +98,7 @@ Integration touchpoints:
    - Provide method to revoke tokens via authorization server when supported.
 
 ## Open Questions / Follow-ups
-- Redis-backed `TokenStore` (requires deployment secrets) – planned second phase.
+- Additional operational hardening (token rotation policies, rate limits).
 - How LastMile auth server exposes token introspection + JWKS; need concrete endpoint specs to finalize `MCPAgentTokenVerifier`.
 - MCP client adoption of `auth/request` SEP – need capability detection; until widely supported we rely on hosted callback fallback & manual instructions.
 - Access control DSL (include/exclude by email/domain) – to be evaluated once token identity payload finalized.
@@ -105,4 +108,3 @@ Integration touchpoints:
 - Metadata discovery + PKCE generation (pure python tests).
 - Integration-style test for delegated flow using mocked HTTP server + fake MCP client (ensures `auth/request` plumbing works end-to-end).
 - Tests around server 401 enforcement + WWW-Authenticate header.
-
