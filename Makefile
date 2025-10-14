@@ -35,3 +35,15 @@ schema:
 prompt:
 	rm -f prompt.md
 	uv run scripts/promptify.py -x "**/src/mcp_agent/cli/**" -x "**/src/mcp_agent/utils/**" -x "**/src/mcp_agent/tracing/**" -x "**/src/mcp_agent/executor/temporal/**" -x "**/src/mcp_agent/core/**" -x "**/src/mcp_agent/logging/**" -x "**/scripts/**" -x "**/tests/**" -x "**/.github/**" -x "**/dist/**" -x "**/examples/mcp*" -x "**/data/**" -x "*.jsonl" -x "**/schema/" -x CONTRIBUTING.md
+
+DOCKER_IMAGE_NAME ?= mcp-agent
+DOCKER_IMAGE_TAG ?= dev
+DOCKER_IMAGE ?= $(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)
+
+.PHONY: docker-build
+docker-build:
+	docker build --pull --tag $(DOCKER_IMAGE) .
+
+.PHONY: docker-run
+docker-run:
+	docker run --rm -it -p 8080:8080 $(DOCKER_IMAGE)
