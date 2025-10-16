@@ -1,0 +1,37 @@
+# OAuth MCP Agent Example Requirements
+#
+# This file specifies the Python dependencies needed to run the OAuth examples.
+# Install with: pip install -r requirements.txt
+
+# Core MCP Agent with OAuth support
+mcp-agent[oauth,cli]>=0.1.27
+
+# Additional dependencies for OAuth flow and HTTP handling
+aiohttp>=3.11.13
+# For OAuth flow demonstration and token management
+urllib3>=2.0.0
+
+# GitHub MCP Server (install separately with uvx or npm)
+# Note: The GitHub MCP server is installed via uvx, not pip
+# Run: uvx install github-mcp-server
+
+# Optional: Enhanced JSON handling
+ujson>=5.0.0
+
+# Optional: Enhanced async support
+trio>=0.30.0
+
+# Optional: Redis for production token storage
+redis>=4.0.0
+
+# Development and testing dependencies (optional)
+pytest>=7.4.0
+pytest-asyncio>=0.21.1
+
+# For the interactive OAuth demo
+webbrowser  # Standard library - no explicit install needed
+
+# Note: Additional MCP servers can be installed as needed:
+# - Filesystem server: npm install -g @modelcontextprotocol/server-filesystem
+# - Fetch server: uvx install mcp-server-fetch
+# - Other servers: See https://github.com/modelcontextprotocol/servers

@@ -123,6 +123,49 @@ mcp-agent uses two configuration files:
   </Tab>
 </Tabs>
 
+## OAuth Configuration
+
+MCP Agent exposes two complementary OAuth configuration blocks:
+
+- `authorization` describes how the MCP Agent server validates inbound bearer tokens and publishes protected resource metadata.
+- `oauth` configures delegated authorization when the agent connects to downstream MCP servers.
+
+```yaml
+authorization:
+  enabled: true
+  issuer_url: https://auth.example.com
+  resource_server_url: https://agent.example.com/mcp
+  required_scopes: ["mcp.read", "mcp.write"]
+  introspection_endpoint: https://auth.example.com/oauth/introspect
+  introspection_client_id: ${INTROSPECTION_CLIENT_ID}
+  introspection_client_secret: ${INTROSPECTION_CLIENT_SECRET}
+
+oauth:
+  callback_base_url: https://agent.example.com
+  flow_timeout_seconds: 180
+  token_store:
+    backend: memory   # use "redis" for multi-instance deployments
+    refresh_leeway_seconds: 90
+
+mcp:
+  servers:
+    github:
+      transport: streamable_http
+      url: https://github.mcp.example.com/mcp
+      auth:
+        oauth:
+          enabled: true
+          scopes: ["repo", "user:email"]
+          client_id: ${GITHUB_MCP_CLIENT_ID}
+          client_secret: ${GITHUB_MCP_CLIENT_SECRET}
+          redirect_uri_options:
+            - https://agent.example.com/internal/oauth/callback
+```
+
+- When `authorization.enabled` is true the MCP server advertises `/.well-known/oauth-protected-resource` and enforces bearer tokens using the provided introspection or JWKS configuration.
+- `oauth` enables delegated authorization flows; the default in-memory token store is ideal for local development while Redis is recommended for production clusters.
+- Downstream servers opt into OAuth via `mcp.servers.<name>.auth.oauth`. Supplying a `client_id`/`client_secret` allows immediate usage; support for dynamic client registration is planned as a follow-up.
+
 ## Configuration Reference
 
 ### Execution Engine
