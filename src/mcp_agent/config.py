@@ -66,7 +66,6 @@ class MCPAuthorizationServerSettings(BaseModel):
                 missing.append("issuer_url")
             if self.resource_server_url is None:
                 missing.append("resource_server_url")
-            # introspection_endpoint is optional - will be fetched from well-known endpoint if not provided
             # Validate audience configuration for RFC 9068 compliance
             if not self.expected_audiences:
                 missing.append("expected_audiences (required for RFC 9068 compliance)")
