@@ -1198,6 +1198,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         if "token_verifier" not in kwargs and token_verifier is not None:
             kwargs["token_verifier"] = token_verifier
             owns_token_verifier = True
+
         mcp = FastMCP(
             name=app.name or "mcp_agent_server",
             # TODO: saqadri (MAC) - create a much more detailed description
