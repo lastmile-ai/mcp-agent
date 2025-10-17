@@ -31,6 +31,33 @@ async def fetch_authorization_server_metadata(
     return OAuthMetadata.model_validate(response.json())
 
 
+async def fetch_authorization_server_metadata_from_issuer(
+    client: httpx.AsyncClient,
+    issuer_url: str,
+) -> OAuthMetadata:
+    """Fetch OAuth authorization server metadata from the well-known endpoint.
+
+    Given an issuer URL, constructs the well-known OAuth authorization server
+    metadata URL and fetches the metadata.
+
+    Args:
+        client: HTTP client to use for the request
+        issuer_url: The issuer URL (e.g., "https://auth.example.com")
+
+    Returns:
+        OAuthMetadata containing authorization server metadata including introspection_endpoint
+    """
+    from httpx import URL
+
+    parsed_url = URL(issuer_url)
+    metadata_url = str(
+        parsed_url.copy_with(
+            path="/.well-known/oauth-authorization-server" + parsed_url.path
+        )
+    )
+    return await fetch_authorization_server_metadata(client, metadata_url)
+
+
 def select_authorization_server(
     metadata: ProtectedResourceMetadata,
     preferred: str | None = None,

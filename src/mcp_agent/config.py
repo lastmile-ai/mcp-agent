@@ -44,9 +44,8 @@ class MCPAuthorizationServerSettings(BaseModel):
     service_documentation_url: AnyHttpUrl | None = None
     required_scopes: List[str] = Field(default_factory=list)
     jwks_uri: AnyHttpUrl | None = None
-    introspection_endpoint: AnyHttpUrl | None = None
-    introspection_client_id: str | None = None
-    introspection_client_secret: str | None = None
+    client_id: str | None = None
+    client_secret: str | None = None
     token_cache_ttl_seconds: int = Field(300, ge=0)
 
     # RFC 9068 audience validation settings
@@ -67,6 +66,7 @@ class MCPAuthorizationServerSettings(BaseModel):
                 missing.append("issuer_url")
             if self.resource_server_url is None:
                 missing.append("resource_server_url")
+            # introspection_endpoint is optional - will be fetched from well-known endpoint if not provided
             # Validate audience configuration for RFC 9068 compliance
             if not self.expected_audiences:
                 missing.append("expected_audiences (required for RFC 9068 compliance)")
