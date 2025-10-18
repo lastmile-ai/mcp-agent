@@ -490,6 +490,42 @@ class Agent(BaseModel):
         # No non_namespaced_tools key and no wildcard - include by default (no filter for non-namespaced)
         return True, None
 
+    async def _sync_with_aggregator_state(self) -> None:
+        if self._agent_tasks is None:
+            return
+
+        executor = self.context.executor if self.context else None
+        if executor is None:
+            return
+
+        response = await executor.execute(
+            self._agent_tasks.get_aggregator_state_task,
+            GetAggregatorStateRequest(agent_name=self.name),
+        )
+
+        if isinstance(response, BaseException):  # pragma: no cover - defensive
+            raise response
+
+        self.initialized = response.initialized
+
+        self._namespaced_tool_map.clear()
+        self._namespaced_tool_map.update(response.namespaced_tool_map)
+
+        self._server_to_tool_map.clear()
+        self._server_to_tool_map.update(response.server_to_tool_map)
+
+        self._namespaced_prompt_map.clear()
+        self._namespaced_prompt_map.update(response.namespaced_prompt_map)
+
+        self._server_to_prompt_map.clear()
+        self._server_to_prompt_map.update(response.server_to_prompt_map)
+
+        self._namespaced_resource_map.clear()
+        self._namespaced_resource_map.update(response.namespaced_resource_map)
+
+        self._server_to_resource_map.clear()
+        self._server_to_resource_map.update(response.server_to_resource_map)
+
     async def list_tools(
         self,
         server_name: str | None = None,
@@ -507,6 +543,8 @@ class Agent(BaseModel):
         """
         if not self.initialized:
             await self.initialize()
+
+        await self._sync_with_aggregator_state()
 
         tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
@@ -731,6 +769,8 @@ class Agent(BaseModel):
         if not self.initialized:
             await self.initialize()
 
+        await self._sync_with_aggregator_state()
+
         tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.list_resources"
@@ -753,6 +793,8 @@ class Agent(BaseModel):
         """
         if not self.initialized:
             await self.initialize()
+
+        await self._sync_with_aggregator_state()
 
         tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
@@ -871,6 +913,8 @@ class Agent(BaseModel):
         if not self.initialized:
             await self.initialize()
 
+        await self._sync_with_aggregator_state()
+
         tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.list_prompts"
@@ -918,6 +962,8 @@ class Agent(BaseModel):
     ) -> GetPromptResult:
         if not self.initialized:
             await self.initialize()
+
+        await self._sync_with_aggregator_state()
 
         tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
@@ -1077,6 +1123,8 @@ class Agent(BaseModel):
         if not self.initialized:
             await self.initialize()
 
+        await self._sync_with_aggregator_state()
+
         tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.call_tool"
@@ -1192,6 +1240,14 @@ class InitAggregatorResponse(BaseModel):
     server_to_resource_map: Dict[str, List[NamespacedResource]] = Field(
         default_factory=dict
     )
+
+
+class GetAggregatorStateRequest(BaseModel):
+    """
+    Request to fetch the current cached state from an agent's aggregator.
+    """
+
+    agent_name: str
 
 
 class ListToolsRequest(BaseModel):
@@ -1434,6 +1490,41 @@ class AgentTasks:
             namespaced_resource_map=aggregator._namespaced_resource_map,
             server_to_resource_map=aggregator._server_to_resource_map,
         )
+
+    async def get_aggregator_state_task(
+        self, request: GetAggregatorStateRequest
+    ) -> InitAggregatorResponse:
+        async with self._with_aggregator(request.agent_name) as aggregator:
+            async with aggregator._tool_map_lock:
+                namespaced_tool_map = dict(aggregator._namespaced_tool_map)
+                server_to_tool_map = {
+                    server: list(tools)
+                    for server, tools in aggregator._server_to_tool_map.items()
+                }
+
+            async with aggregator._prompt_map_lock:
+                namespaced_prompt_map = dict(aggregator._namespaced_prompt_map)
+                server_to_prompt_map = {
+                    server: list(prompts)
+                    for server, prompts in aggregator._server_to_prompt_map.items()
+                }
+
+            async with aggregator._resource_map_lock:
+                namespaced_resource_map = dict(aggregator._namespaced_resource_map)
+                server_to_resource_map = {
+                    server: list(resources)
+                    for server, resources in aggregator._server_to_resource_map.items()
+                }
+
+            return InitAggregatorResponse(
+                initialized=aggregator.initialized,
+                namespaced_tool_map=namespaced_tool_map,
+                server_to_tool_map=server_to_tool_map,
+                namespaced_prompt_map=namespaced_prompt_map,
+                server_to_prompt_map=server_to_prompt_map,
+                namespaced_resource_map=namespaced_resource_map,
+                server_to_resource_map=server_to_resource_map,
+            )
 
     async def shutdown_aggregator_task(self, agent_name: str) -> bool:
         """
