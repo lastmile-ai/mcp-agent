@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import os
 import sys
 import functools
@@ -18,11 +19,11 @@ from typing import (
 )
 from datetime import timedelta
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from mcp import ServerSession
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations, Icon
-
 from mcp_agent.core.context import Context, initialize_context, cleanup_context
 from mcp_agent.config import Settings, get_settings
 from mcp_agent.executor.signal_registry import SignalRegistry
@@ -86,6 +87,7 @@ class MCPApp:
         signal_notification: SignalWaitCallback | None = None,
         upstream_session: Optional["ServerSession"] = None,
         model_selector: ModelSelector | None = None,
+        icons: list[Icon] | None = None,
     ):
         """
         Initialize the application with a name and optional settings.
@@ -136,6 +138,14 @@ class MCPApp:
         self._signal_notification = signal_notification
         self._upstream_session = upstream_session
         self._model_selector = model_selector
+        if icons:
+            self._icons = icons
+        else:
+            icon_path = Path(__file__).parent.parent.parent / "phetch.png"
+            icon_data = base64.standard_b64encode(icon_path.read_bytes()).decode()
+            icon_data_uri = f"data:image/png;base64,{icon_data}"
+
+            self.icons = [Icon(src=icon_data_uri, mimeType="image/png", sizes=["48x48"])]
 
         self._workflows: Dict[str, Type["Workflow"]] = {}  # id to workflow class
         # Deferred tool declarations to register with MCP server when available
