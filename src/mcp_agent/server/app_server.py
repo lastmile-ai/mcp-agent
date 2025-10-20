@@ -2,24 +2,22 @@
 MCPAgentServer - Exposes MCPApp as MCP server, and
 mcp-agent workflows and agents as MCP tools.
 """
-import base64
 import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, Type, TYPE_CHECKING
 import os
 import secrets
 import asyncio
 
-from mcp.server.fastmcp import Context as MCPContext, FastMCP, Icon
+from mcp.server.fastmcp import Context as MCPContext, FastMCP
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.fastmcp.tools import Tool as FastTool
 
-from mcp_agent.app import MCPApp
+from mcp_agent.app import MCPApp, phetch
 from mcp_agent.agents.agent import Agent
 from mcp_agent.core.context_dependent import ContextDependent
 from mcp_agent.executor.workflow import Workflow
@@ -46,11 +44,6 @@ _PENDING_PROMPTS: Dict[str, Dict[str, Any]] = {}
 _PENDING_PROMPTS_LOCK = asyncio.Lock()
 _IDEMPOTENCY_KEYS_SEEN: Dict[str, Set[str]] = {}
 _IDEMPOTENCY_KEYS_LOCK = asyncio.Lock()
-
-icon_path = Path(__file__).parent.parent.parent.parent / "phetch.png"
-icon_data = base64.standard_b64encode(icon_path.read_bytes()).decode()
-icon_data_uri = f"data:image/png;base64,{icon_data}"
-phetch = Icon(src=icon_data_uri, mimeType="image/png", sizes=["48x48"])
 
 
 async def _register_session(run_id: str, execution_id: str, session: Any) -> None:
@@ -1667,7 +1660,6 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
                 icons=icons,
                 # meta=meta, TODO: saqadri - add this after https://github.com/modelcontextprotocol/python-sdk/pull/1463 is pushed to pypi
                 structured_output=structured_output,
-                icons=icons,
             )
             registered.add(name_local)
 

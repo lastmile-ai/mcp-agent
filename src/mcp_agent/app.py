@@ -19,7 +19,7 @@ from typing import (
 )
 from datetime import timedelta
 from contextlib import asynccontextmanager
-from pathlib import Path
+from importlib import resources
 
 from mcp import ServerSession
 from mcp.server.fastmcp import FastMCP
@@ -54,6 +54,10 @@ if TYPE_CHECKING:
 P = ParamSpec("P")
 R = TypeVar("R")
 
+with (resources.files("mcp_agent.data").joinpath("phetch.png").open("rb")) as icon_file:
+    icon_data = base64.standard_b64encode(icon_file.read()).decode()
+    icon_data_uri = f"data:image/png;base64,{icon_data}"
+    phetch = Icon(src=icon_data_uri, mimeType="image/png", sizes=["48x48"])
 
 class MCPApp:
     """
@@ -141,11 +145,7 @@ class MCPApp:
         if icons:
             self._icons = icons
         else:
-            icon_path = Path(__file__).parent.parent.parent / "phetch.png"
-            icon_data = base64.standard_b64encode(icon_path.read_bytes()).decode()
-            icon_data_uri = f"data:image/png;base64,{icon_data}"
-
-            self._icons = [Icon(src=icon_data_uri, mimeType="image/png", sizes=["48x48"])]
+            self._icons = [phetch]
 
         self._workflows: Dict[str, Type["Workflow"]] = {}  # id to workflow class
         # Deferred tool declarations to register with MCP server when available
@@ -845,6 +845,8 @@ class MCPApp:
                         icons_list.append(Icon(**icon))
                     else:
                         raise TypeError("icons entries must be Icon or mapping")
+            else:
+                icons_list = [phetch]
 
             meta_payload: Dict[str, Any] | None = None
             if meta is not None:
@@ -953,6 +955,8 @@ class MCPApp:
                         icons_list.append(Icon(**icon))
                     else:
                         raise TypeError("icons entries must be Icon or mapping")
+            else:
+                icons_list = [phetch]
 
             meta_payload: Dict[str, Any] | None = None
             if meta is not None:
@@ -964,6 +968,7 @@ class MCPApp:
                 description=description,
                 mark_sync_tool=False,
             )
+
             # Defer alias tool registration for run/get_status
             self._declared_tools.append(
                 {

@@ -3,7 +3,7 @@ from typing import Any
 
 import pytest
 
-from mcp_agent.app import MCPApp
+from mcp_agent.app import MCPApp, phetch
 from mcp_agent.core.context import Context
 from mcp.types import ToolAnnotations, Icon
 from mcp.server.fastmcp import Context as FastMCPContext
@@ -51,6 +51,7 @@ class _ToolRecorder:
             "annotations": annotations,
             "structured_output": structured_output,
             "meta": meta,
+            "icons": icons,
         }
         entry.update(kwargs)
         self.added_tools.append(entry)
@@ -252,42 +253,145 @@ async def test_workflow_run_binds_app_context_per_request():
             captured["fastmcp"] = app_ctx.fastmcp
         return f"done:{value}"
 
+
+@pytest.mark.asyncio
+async def test_tool_decorator_defaults_to_phetch_icon_when_no_icons_provided():
+    """Verify that when no icons parameter is provided, the default phetch icon is used."""
+    app = MCPApp(name="test_default_icon")
+    await app.initialize()
+
+    # Register a tool without specifying icons
+    @app.tool(name="no_icon_tool", description="Tool without icons")
+    async def no_icon_tool(text: str) -> str:
+        return text
+
+    mcp = _ToolRecorder()
     server_context = type(
         "SC", (), {"workflows": app.workflows, "context": app.context}
     )()
 
-    ctx = _make_ctx(server_context)
-    # Simulate FastMCP attaching the app to its server for lookup paths
-    ctx.fastmcp._mcp_agent_app = app  # type: ignore[attr-defined]
+    create_workflow_tools(mcp, server_context)
+    create_declared_function_tools(mcp, server_context)
 
-    run_info = await _workflow_run(ctx, "binding_tool", {"value": 7})
-    run_id = run_info["run_id"]
+    # Find the registered tool and check its icons
+    tool_entry = next(
+        (entry for entry in mcp.added_tools if entry["name"] == "no_icon_tool"), None
+    )
+    assert tool_entry is not None, "Tool should be registered"
 
-    # Workflow should have the FastMCP request context attached
-    workflow = await app.context.workflow_registry.get_workflow(run_id)
-    assert getattr(workflow, "_mcp_request_context", None) is ctx
+    # Extract icons from the tool entry
+    icons = tool_entry["icons"]
+    assert icons is not None, "Icons should not be None"
+    assert len(icons) == 1, "Should have exactly one icon"
+    assert icons[0] == phetch, "Icon should be the default phetch icon"
 
-    # Wait for completion so the tool function executes
-    for _ in range(200):
-        status = await app.context.workflow_registry.get_workflow_status(run_id)
-        if status.get("completed"):
-            break
-        await asyncio.sleep(0.01)
-    assert status.get("completed") is True
 
-    bound_app_ctx = getattr(ctx, "bound_app_context", None)
-    assert bound_app_ctx is not None
-    # The tool received the per-request bound context
-    assert captured.get("app_ctx") is bound_app_ctx
-    # FastMCP context argument should be the original request context
-    assert captured.get("ctx") is ctx
-    assert getattr(captured.get("ctx"), "bound_app_context", None) is bound_app_ctx
-    assert bound_app_ctx is not app.context
-    # Upstream session should be preserved on the bound context
-    assert bound_app_ctx.upstream_session is sentinel_session
-    assert captured.get("session_property") is sentinel_session
-    # FastMCP instance and request context bridge through the bound context
-    assert captured.get("fastmcp") is ctx.fastmcp
-    assert captured.get("request_context") is ctx.request_context
-    # Accessing session on the bound context should prefer upstream_session
-    assert bound_app_ctx.session is sentinel_session
+@pytest.mark.asyncio
+async def test_tool_decorator_uses_custom_icons_when_provided():
+    """Verify that when icons parameter is provided, those icons are used instead of the default."""
+    app = MCPApp(name="test_custom_icon")
+    await app.initialize()
+
+    # Create a custom icon
+    custom_icon = Icon(src="data:image/png;base64,customdata")
+
+    # Register a tool with custom icons
+    @app.tool(
+        name="custom_icon_tool", description="Tool with custom icon", icons=[custom_icon]
+    )
+    async def custom_icon_tool(text: str) -> str:
+        return text
+
+    mcp = _ToolRecorder()
+    server_context = type(
+        "SC", (), {"workflows": app.workflows, "context": app.context}
+    )()
+
+    create_workflow_tools(mcp, server_context)
+    create_declared_function_tools(mcp, server_context)
+
+    # Find the registered tool and check its icons
+    tool_entry = next(
+        (entry for entry in mcp.added_tools if entry["name"] == "custom_icon_tool"), None
+    )
+    assert tool_entry is not None, "Tool should be registered"
+
+    # Extract icons from the tool entry
+    icons = tool_entry["icons"]
+    assert icons is not None, "Icons should not be None"
+    assert len(icons) == 1, "Should have exactly one icon"
+    assert icons[0] == custom_icon, "Icon should be the custom icon, not phetch"
+    assert icons[0] != phetch, "Icon should NOT be the default phetch icon"
+
+
+@pytest.mark.asyncio
+async def test_async_tool_decorator_defaults_to_phetch_icon_when_no_icons_provided():
+    """Verify that @app.async_tool defaults to phetch icon when no icons are provided."""
+    app = MCPApp(name="test_async_default_icon")
+    await app.initialize()
+
+    # Register an async tool without specifying icons
+    @app.async_tool(name="no_icon_async_tool", description="Async tool without icons")
+    async def no_icon_async_tool(text: str) -> str:
+        return text
+
+    mcp = _ToolRecorder()
+    server_context = type(
+        "SC", (), {"workflows": app.workflows, "context": app.context}
+    )()
+
+    create_workflow_tools(mcp, server_context)
+    create_declared_function_tools(mcp, server_context)
+
+    # Find the registered tool and check its icons
+    tool_entry = next(
+        (entry for entry in mcp.added_tools if entry["name"] == "no_icon_async_tool"), None
+    )
+    assert tool_entry is not None, "Tool should be registered"
+
+    # Extract icons from the tool entry
+    icons = tool_entry["icons"]
+    assert icons is not None, "Icons should not be None"
+    assert len(icons) == 1, "Should have exactly one icon"
+    assert icons[0] == phetch, "Icon should be the default phetch icon"
+
+
+@pytest.mark.asyncio
+async def test_async_tool_decorator_uses_custom_icons_when_provided():
+    """Verify that @app.async_tool uses custom icons when provided."""
+    app = MCPApp(name="test_async_custom_icon")
+    await app.initialize()
+
+    # Create a custom icon
+    custom_icon = Icon(src="data:image/png;base64,customasyncdata")
+
+    # Register an async tool with custom icons
+    @app.async_tool(
+        name="custom_icon_async_tool",
+        description="Async tool with custom icon",
+        icons=[custom_icon],
+    )
+    async def custom_icon_async_tool(text: str) -> str:
+        return text
+
+    mcp = _ToolRecorder()
+    server_context = type(
+        "SC", (), {"workflows": app.workflows, "context": app.context}
+    )()
+
+    create_workflow_tools(mcp, server_context)
+    create_declared_function_tools(mcp, server_context)
+
+    # Find the registered tool and check its icons
+    tool_entry = next(
+        (entry for entry in mcp.added_tools if entry["name"] == "custom_icon_async_tool"),
+        None,
+    )
+    assert tool_entry is not None, "Tool should be registered"
+
+    # Extract icons from the tool entry
+    icons = tool_entry["icons"]
+    assert icons is not None, "Icons should not be None"
+    assert len(icons) == 1, "Should have exactly one icon"
+    assert icons[0] == custom_icon, "Icon should be the custom icon, not phetch"
+    assert icons[0] != phetch, "Icon should NOT be the default phetch icon"

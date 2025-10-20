@@ -598,10 +598,14 @@ You can add icons to your agents for better visualization in UIs that support it
 To do so, you can add an `icons` parameter to your `MCPApp` or `@app.tool` definitions.
 
 ```python
-icon_path = "my-icon.png"
+# load an icon from file and serve it as a data URI
+icon_path = Path("my-icon.png")
 icon_data = base64.standard_b64encode(icon_path.read_bytes()).decode()
 icon_data_uri = f"data:image/png;base64,{icon_data}"
 icon = Icon(src=icon_data_uri, mimeType="image/png", sizes=["64x64"])
+
+# alternatively, one can use an external URL:
+web_icon = Icon(src="https://example.com/my-icon.png", mimeType="image/png", sizes=["64x64"])
 
 app = MCPApp(
     name="my_app_with_icon",
