@@ -1562,7 +1562,10 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
         fn = decl.get("source_fn")
         description = decl.get("description")
         structured_output = decl.get("structured_output")
-
+        title = decl.get("title")
+        annotations = decl.get("annotations")
+        icons = decl.get("icons")
+        meta = decl.get("meta")
         # Bind per-iteration values to avoid late-binding closure bugs
         name_local = name
         wname_local = workflow_name
@@ -1641,7 +1644,11 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
             mcp.add_tool(
                 _adapter,
                 name=name_local,
+                title=title,
                 description=description or (fn.__doc__ or ""),
+                annotations=annotations,
+                icons=icons,
+                meta=meta,
                 structured_output=structured_output,
             )
             registered.add(name_local)
@@ -1745,7 +1752,11 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
                 mcp.add_tool(
                     _async_adapter,
                     name=run_tool_name,
+                    title=title,
                     description=full_desc,
+                    annotations=annotations,
+                    icons=icons,
+                    meta=meta,
                     structured_output=False,
                 )
                 registered.add(run_tool_name)

@@ -2,11 +2,12 @@ import asyncio
 import os
 import sys
 import functools
-
 from types import MethodType
 from typing import (
     Any,
     Dict,
+    Iterable,
+    Mapping,
     Optional,
     Type,
     TypeVar,
@@ -20,6 +21,8 @@ from contextlib import asynccontextmanager
 
 from mcp import ServerSession
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations, Icon
+
 from mcp_agent.core.context import Context, initialize_context, cleanup_context
 from mcp_agent.config import Settings, get_settings
 from mcp_agent.executor.signal_registry import SignalRegistry
@@ -767,7 +770,11 @@ class MCPApp:
         self,
         name: str | None = None,
         *,
+        title: str | None = None,
         description: str | None = None,
+        annotations: ToolAnnotations | Mapping[str, Any] | None = None,
+        icons: Iterable[Icon | Mapping[str, Any]] | None = None,
+        meta: Mapping[str, Any] | None = None,
         structured_output: bool | None = None,
     ) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
 
@@ -775,7 +782,11 @@ class MCPApp:
         self,
         name: str | None = None,
         *,
+        title: str | None = None,
         description: str | None = None,
+        annotations: ToolAnnotations | Mapping[str, Any] | None = None,
+        icons: Iterable[Icon | Mapping[str, Any]] | None = None,
+        meta: Mapping[str, Any] | None = None,
         structured_output: bool | None = None,
     ):
         """
@@ -793,6 +804,28 @@ class MCPApp:
             # that the transformed function can be converted to JSON schema
 
             validate_tool_schema(fn, tool_name)
+
+            annotations_obj: ToolAnnotations | None = None
+            if annotations is not None:
+                if isinstance(annotations, ToolAnnotations):
+                    annotations_obj = annotations
+                else:
+                    annotations_obj = ToolAnnotations(**dict(annotations))
+
+            icons_list: list[Icon] | None = None
+            if icons is not None:
+                icons_list = []
+                for icon in icons:
+                    if isinstance(icon, Icon):
+                        icons_list.append(icon)
+                    elif isinstance(icon, Mapping):
+                        icons_list.append(Icon(**icon))
+                    else:
+                        raise TypeError("icons entries must be Icon or mapping")
+
+            meta_payload: Dict[str, Any] | None = None
+            if meta is not None:
+                meta_payload = dict(meta)
 
             # Construct the workflow from function
             workflow_cls = self._create_workflow_from_function(
@@ -812,13 +845,25 @@ class MCPApp:
                     "source_fn": fn,
                     "structured_output": structured_output,
                     "description": description or (fn.__doc__ or ""),
+                    "title": title,
+                    "annotations": annotations_obj,
+                    "icons": icons_list,
+                    "meta": meta_payload,
                 }
             )
 
             return fn
 
         # Support bare usage: @app.tool without parentheses
-        if callable(name) and description is None and structured_output is None:
+        if (
+            callable(name)
+            and title is None
+            and description is None
+            and annotations is None
+            and icons is None
+            and meta is None
+            and structured_output is None
+        ):
             _fn = name  # type: ignore[assignment]
             name = None
             return decorator(_fn)  # type: ignore[arg-type]
@@ -833,14 +878,24 @@ class MCPApp:
         self,
         name: str | None = None,
         *,
+        title: str | None = None,
         description: str | None = None,
+        annotations: ToolAnnotations | Mapping[str, Any] | None = None,
+        icons: Iterable[Icon | Mapping[str, Any]] | None = None,
+        meta: Mapping[str, Any] | None = None,
+        structured_output: bool | None = None,
     ) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
 
     def async_tool(
         self,
         name: str | None = None,
         *,
+        title: str | None = None,
         description: str | None = None,
+        annotations: ToolAnnotations | Mapping[str, Any] | None = None,
+        icons: Iterable[Icon | Mapping[str, Any]] | None = None,
+        meta: Mapping[str, Any] | None = None,
+        structured_output: bool | None = None,
     ):
         """
         Decorator to declare an asynchronous MCP tool.
@@ -858,6 +913,28 @@ class MCPApp:
 
             validate_tool_schema(fn, workflow_name)
 
+            annotations_obj: ToolAnnotations | None = None
+            if annotations is not None:
+                if isinstance(annotations, ToolAnnotations):
+                    annotations_obj = annotations
+                else:
+                    annotations_obj = ToolAnnotations(**dict(annotations))
+
+            icons_list: list[Icon] | None = None
+            if icons is not None:
+                icons_list = []
+                for icon in icons:
+                    if isinstance(icon, Icon):
+                        icons_list.append(icon)
+                    elif isinstance(icon, Mapping):
+                        icons_list.append(Icon(**icon))
+                    else:
+                        raise TypeError("icons entries must be Icon or mapping")
+
+            meta_payload: Dict[str, Any] | None = None
+            if meta is not None:
+                meta_payload = dict(meta)
+
             workflow_cls = self._create_workflow_from_function(
                 fn,
                 workflow_name=workflow_name,
@@ -872,14 +949,26 @@ class MCPApp:
                     "workflow_name": workflow_name,
                     "workflow_cls": workflow_cls,
                     "source_fn": fn,
-                    "structured_output": None,
+                    "structured_output": structured_output,
                     "description": description or (fn.__doc__ or ""),
+                    "title": title,
+                    "annotations": annotations_obj,
+                    "icons": icons_list,
+                    "meta": meta_payload,
                 }
             )
             return fn
 
         # Support bare usage: @app.async_tool without parentheses
-        if callable(name) and description is None:
+        if (
+            callable(name)
+            and title is None
+            and description is None
+            and annotations is None
+            and icons is None
+            and meta is None
+            and structured_output is None
+        ):
             _fn = name  # type: ignore[assignment]
             name = None
             return decorator(_fn)  # type: ignore[arg-type]

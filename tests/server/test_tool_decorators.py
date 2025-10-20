@@ -5,6 +5,7 @@ import pytest
 
 from mcp_agent.app import MCPApp
 from mcp_agent.core.context import Context
+from mcp.types import ToolAnnotations, Icon
 from mcp.server.fastmcp import Context as FastMCPContext
 from mcp_agent.server.app_server import (
     create_workflow_tools,
@@ -38,8 +39,21 @@ class _ToolRecorder:
         description=None,
         annotations=None,
         structured_output=None,
+        meta=None,
+        **kwargs,
     ):
-        self.added_tools.append((name, fn, description, structured_output))
+        entry = {
+            "name": name,
+            "fn": fn,
+            "title": title,
+            "description": description,
+            "annotations": annotations,
+            "structured_output": structured_output,
+            "meta": meta,
+        }
+        entry.update(kwargs)
+        self.added_tools.append(entry)
+        return fn
 
 
 def _make_ctx(server_context):
@@ -64,7 +78,15 @@ async def test_app_tool_registers_and_executes_sync_tool():
     app = MCPApp(name="test_app_tool")
     await app.initialize()
 
-    @app.tool(name="echo", description="Echo input")
+    @app.tool(
+        name="echo",
+        title="Echo Title",
+        description="Echo input",
+        annotations={"idempotentHint": True},
+        icons=[{"src": "emoji:wave"}],
+        meta={"source": "test"},
+        structured_output=True,
+    )
     async def echo(text: str) -> str:
         return text + "!"
 
@@ -80,14 +102,17 @@ async def test_app_tool_registers_and_executes_sync_tool():
 
     # Verify tool names: only the sync tool endpoint is added
     _decorated_names = {name for name, _ in mcp.decorated_tools}
-    added_names = {name for name, *_ in mcp.added_tools}
+    added_names = {entry["name"] for entry in mcp.added_tools}
 
     # No workflows-* aliases for sync tools; check only echo
     assert "echo" in added_names  # synchronous tool
 
     # Execute the synchronous tool function and ensure it returns unwrapped value
     # Find the registered sync tool function
-    sync_tool_fn = next(fn for name, fn, *_ in mcp.added_tools if name == "echo")
+    sync_tool_entry = next(
+        entry for entry in mcp.added_tools if entry["name"] == "echo"
+    )
+    sync_tool_fn = sync_tool_entry["fn"]
     ctx = _make_ctx(server_context)
     result = await sync_tool_fn(text="hi", ctx=ctx)
     assert result == "hi!"  # unwrapped (not WorkflowResult)
@@ -95,6 +120,12 @@ async def test_app_tool_registers_and_executes_sync_tool():
     assert bound_app_ctx is not None
     assert bound_app_ctx is not server_context.context
     assert bound_app_ctx.fastmcp == ctx.fastmcp
+    assert sync_tool_entry["title"] == "Echo Title"
+    assert isinstance(sync_tool_entry["annotations"], ToolAnnotations)
+    assert sync_tool_entry["annotations"].idempotentHint is True
+    assert sync_tool_entry["icons"] == [Icon(src="emoji:wave")]
+    assert sync_tool_entry["meta"] == {"source": "test"}
+    assert sync_tool_entry["structured_output"] is True
 
     # Also ensure the underlying workflow returned a WorkflowResult
     # Start via workflow_run to get run_id, then wait for completion and inspect
@@ -120,7 +151,14 @@ async def test_app_async_tool_registers_aliases_and_workflow_tools():
     app = MCPApp(name="test_app_async_tool")
     await app.initialize()
 
-    @app.async_tool(name="long")
+    @app.async_tool(
+        name="long",
+        title="Long Task",
+        annotations={"readOnlyHint": True},
+        icons=[Icon(src="emoji:check")],
+        meta={"async": True},
+        structured_output=None,
+    )
     async def long_task(x: int) -> str:
         return f"done:{x}"
 
@@ -133,10 +171,16 @@ async def test_app_async_tool_registers_aliases_and_workflow_tools():
     create_declared_function_tools(mcp, server_context)
 
     decorated_names = {name for name, _ in mcp.decorated_tools}
-    added_names = {name for name, *_ in mcp.added_tools}
+    added_names = {entry["name"] for entry in mcp.added_tools}
 
     # We register the async tool under its given name via add_tool
     assert "long" in added_names
+    long_entry = next(entry for entry in mcp.added_tools if entry["name"] == "long")
+    assert long_entry["title"] == "Long Task"
+    assert isinstance(long_entry["annotations"], ToolAnnotations)
+    assert long_entry["annotations"].readOnlyHint is True
+    assert long_entry["icons"] == [Icon(src="emoji:check")]
+    assert long_entry["meta"] == {"async": True}
     # And we suppress workflows-* for async auto tools
     assert "workflows-long-run" not in decorated_names
 
