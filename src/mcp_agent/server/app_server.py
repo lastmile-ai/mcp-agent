@@ -1046,7 +1046,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         except Exception:
             pass
     else:
-        if not "icons" in kwargs and app._icons:
+        if "icons" not in kwargs and app._icons:
             kwargs["icons"] = app._icons
 
         mcp = FastMCP(
