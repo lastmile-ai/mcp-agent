@@ -710,11 +710,8 @@ class Agent(BaseModel):
                         + ("..." if len(filtered_out_tools) > 10 else "")
                     )
 
-                    # Check that logger.isEnabledFor exists to avoid crashing 
-                    # Log detailed reasons at trace level (if trace logging is available)
-                    if hasattr(logger, "isEnabledFor") and logger.isEnabledFor(10):  # TRACE level is usually 10
-                        for tool_name, reason in filtered_out_tools:
-                            logger.log(10, f"Filtered out '{tool_name}': {reason}")
+                    for tool_name, reason in filtered_out_tools:
+                        logger.debug(f"Filtered out '{tool_name}': {reason}")
                 else:
                     logger.debug(
                         f"Tool filter applied: All {len(result.tools)} tools passed the filter"
