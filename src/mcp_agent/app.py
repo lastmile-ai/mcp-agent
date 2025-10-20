@@ -145,7 +145,7 @@ class MCPApp:
             icon_data = base64.standard_b64encode(icon_path.read_bytes()).decode()
             icon_data_uri = f"data:image/png;base64,{icon_data}"
 
-            self.icons = [Icon(src=icon_data_uri, mimeType="image/png", sizes=["48x48"])]
+            self._icons = [Icon(src=icon_data_uri, mimeType="image/png", sizes=["48x48"])]
 
         self._workflows: Dict[str, Type["Workflow"]] = {}  # id to workflow class
         # Deferred tool declarations to register with MCP server when available

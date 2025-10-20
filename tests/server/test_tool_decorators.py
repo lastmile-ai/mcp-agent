@@ -40,6 +40,7 @@ class _ToolRecorder:
         annotations=None,
         structured_output=None,
         meta=None,
+        icons=None,
         **kwargs,
     ):
         entry = {
