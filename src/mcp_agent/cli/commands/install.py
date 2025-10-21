@@ -120,30 +120,39 @@ def _write_json(path: Path, data: dict) -> None:
     path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
-def _build_server_config(server_url: str, transport: str = "http", for_claude_desktop: bool = False) -> dict:
+def _build_server_config(server_url: str, transport: str = "http", for_claude_desktop: bool = False, api_key: str = None) -> dict:
     """Build server configuration dictionary with auth header.
 
-    For Claude Desktop, wraps HTTP/SSE servers with mcp-remote stdio wrapper.
-    For other clients, uses direct HTTP/SSE connection.
+    For Claude Desktop, wraps HTTP/SSE servers with mcp-remote stdio wrapper with actual API key.
+    For other clients, uses direct HTTP/SSE connection with actual API key embedded.
+
+    Args:
+        server_url: The server URL
+        transport: Transport type (http or sse)
+        for_claude_desktop: Whether to use Claude Desktop format with mcp-remote
+        api_key: The actual API key (required for all clients)
     """
+    if not api_key:
+        raise ValueError("API key is required for server configuration")
+
     if for_claude_desktop:
-        # Claude Desktop requires stdio wrapper using mcp-remote
+        # Claude Desktop requires stdio wrapper using mcp-remote with actual API key
         return {
             "command": "npx",
             "args": [
                 "mcp-remote",
                 server_url,
                 "--header",
-                "Authorization: Bearer ${MCP_API_KEY}"
+                f"Authorization: Bearer {api_key}"
             ]
         }
     else:
-        # Direct HTTP/SSE connection for other clients
+        # Direct HTTP/SSE connection for other clients with embedded API key
         return {
             "url": server_url,
             "transport": transport,
             "headers": {
-                "Authorization": "Bearer ${MCP_API_KEY}"
+                "Authorization": f"Bearer {api_key}"
             }
         }
 
@@ -255,18 +264,29 @@ def install(
         print_info(f"Using SSE transport: {server_url}")
 
     console.print(f"\n[bold cyan]Installing MCP Server[/bold cyan]\n")
-    print_info(f"Server: {server_url}")
+    print_info(f"Server URL: {server_url}")
     print_info(f"Client: {CLIENT_CONFIGS.get(client_lc, {}).get('description', client_lc)}")
+
+    # Fetch app info to get the actual app name
+    mcp_client = MCPAppClient(
+        api_url=api_url or DEFAULT_API_BASE_URL, api_key=effective_api_key
+    )
+
+    try:
+        app_info = run_async(mcp_client.get_app(server_url=server_url))
+        app_name = app_info.name if app_info else None
+        print_info(f"App name: {app_name}")
+    except Exception as e:
+        print_info(f"Warning: Could not fetch app info: {e}")
+        app_name = None
 
     # For ChatGPT, check if server has unauthenticated access enabled
     if client_lc == "chatgpt":
-        mcp_client = MCPAppClient(
-            api_url=api_url or DEFAULT_API_BASE_URL, api_key=effective_api_key
-        )
-
         try:
-            # Try to get app info to check unauthenticated access
-            app_info = run_async(mcp_client.get_app(server_url=server_url))
+            # Check unauthenticated access from app_info we already fetched
+            if not app_info:
+                # Try to fetch again if we don't have it
+                app_info = run_async(mcp_client.get_app(server_url=server_url))
 
             has_unauth_access = (
                 app_info.unauthenticatedAccess == True or
@@ -327,8 +347,8 @@ def install(
     client_config = CLIENT_CONFIGS[client_lc]
     config_path = client_config["path"]()
 
-    # Generate server name
-    server_name = name or _generate_server_name(server_url)
+    # Use app name from API, fallback to custom name or generated name
+    server_name = name or app_name or _generate_server_name(server_url)
 
     # Determine if we're using Claude Desktop format
     use_claude_format = client_lc == "claude_desktop"
@@ -354,8 +374,13 @@ def install(
     # Determine transport type
     transport = "sse" if server_url.rstrip("/").endswith("/sse") else "http"
 
-    # Build server config (with mcp-remote wrapper for Claude Desktop)
-    server_config = _build_server_config(server_url, transport, for_claude_desktop=use_claude_format)
+    # Build server config with embedded API key (all clients)
+    server_config = _build_server_config(
+        server_url,
+        transport,
+        for_claude_desktop=use_claude_format,
+        api_key=effective_api_key
+    )
 
     # Merge with existing config
     merged_config = _merge_mcp_json(existing_config, server_name, server_config, use_claude_format)
@@ -373,11 +398,16 @@ def install(
             raise CLIError(f"Failed to write config file: {e}") from e
 
         # Success message
-        auth_note = (
-            "[bold]Note:[/bold] Claude Desktop uses [cyan]mcp-remote[/cyan] to connect to HTTP/SSE servers"
-            if use_claude_format
-            else "[bold]Authentication:[/bold] Set [cyan]MCP_API_KEY[/cyan] environment variable"
-        )
+        if use_claude_format:
+            auth_note = (
+                f"[bold]Note:[/bold] Claude Desktop uses [cyan]mcp-remote[/cyan] to connect to HTTP/SSE servers\n"
+                f"[dim]API key embedded in config[/dim]"
+            )
+        else:
+            auth_note = (
+                f"[bold]Authentication:[/bold] API key embedded in config\n"
+                f"[dim]To update the key, re-run install with --force[/dim]"
+            )
 
         console.print(
             Panel(
@@ -386,8 +416,7 @@ def install(
                 f"URL: [cyan]{server_url}[/cyan]\n"
                 f"Client: [cyan]{client_config['description']}[/cyan]\n"
                 f"Config: [cyan]{config_path}[/cyan]\n\n"
-                f"{auth_note}\n"
-                f"[dim]The server will authenticate using: Authorization: Bearer $MCP_API_KEY[/dim]",
+                f"{auth_note}",
                 title="MCP Server Installed",
                 border_style="green",
             )

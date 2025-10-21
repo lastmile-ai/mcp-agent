@@ -50,33 +50,33 @@ def test_generate_server_name():
 
 def test_build_server_config():
     """Test server configuration building with auth header."""
-    config = _build_server_config("https://example.com/mcp", "http")
+    config = _build_server_config("https://example.com/mcp", "http", api_key="test-key")
     assert config == {
         "url": "https://example.com/mcp",
         "transport": "http",
         "headers": {
-            "Authorization": "Bearer ${MCP_API_KEY}"
+            "Authorization": "Bearer test-key"
         }
     }
 
-    config_sse = _build_server_config("https://example.com/sse", "sse")
+    config_sse = _build_server_config("https://example.com/sse", "sse", api_key="test-key")
     assert config_sse == {
         "url": "https://example.com/sse",
         "transport": "sse",
         "headers": {
-            "Authorization": "Bearer ${MCP_API_KEY}"
+            "Authorization": "Bearer test-key"
         }
     }
 
-    # Claude Desktop uses mcp-remote wrapper
-    config_claude = _build_server_config("https://example.com/sse", "sse", for_claude_desktop=True)
+    # Claude Desktop uses mcp-remote wrapper with actual API key
+    config_claude = _build_server_config("https://example.com/sse", "sse", for_claude_desktop=True, api_key="test-api-key-123")
     assert config_claude == {
         "command": "npx",
         "args": [
             "mcp-remote",
             "https://example.com/sse",
             "--header",
-            "Authorization: Bearer ${MCP_API_KEY}"
+            "Authorization: Bearer test-api-key-123"
         ]
     }
 
@@ -86,7 +86,7 @@ def test_merge_mcp_json_empty():
     result = _merge_mcp_json({}, "test-server", {
         "url": "https://example.com",
         "transport": "http",
-        "headers": {"Authorization": "Bearer ${MCP_API_KEY}"}
+        "headers": {"Authorization": "Bearer test-key"}
     })
     assert result == {
         "mcp": {
@@ -94,7 +94,7 @@ def test_merge_mcp_json_empty():
                 "test-server": {
                     "url": "https://example.com",
                     "transport": "http",
-                    "headers": {"Authorization": "Bearer ${MCP_API_KEY}"}
+                    "headers": {"Authorization": "Bearer test-key"}
                 }
             }
         }
@@ -106,14 +106,14 @@ def test_merge_mcp_json_claude_format():
     result = _merge_mcp_json({}, "test-server", {
         "url": "https://example.com",
         "transport": "http",
-        "headers": {"Authorization": "Bearer ${MCP_API_KEY}"}
+        "headers": {"Authorization": "Bearer test-key"}
     }, use_claude_format=True)
     assert result == {
         "mcpServers": {
             "test-server": {
                 "url": "https://example.com",
                 "transport": "http",
-                "headers": {"Authorization": "Bearer ${MCP_API_KEY}"}
+                "headers": {"Authorization": "Bearer test-key"}
             }
         }
     }
@@ -134,7 +134,7 @@ def test_merge_mcp_json_existing():
     result = _merge_mcp_json(
         existing,
         "new-server",
-        {"url": "https://new.com", "transport": "http", "headers": {"Authorization": "Bearer ${MCP_API_KEY}"}},
+        {"url": "https://new.com", "transport": "http", "headers": {"Authorization": "Bearer test-key"}},
     )
     assert result == {
         "mcp": {
@@ -146,7 +146,7 @@ def test_merge_mcp_json_existing():
                 "new-server": {
                     "url": "https://new.com",
                     "transport": "http",
-                    "headers": {"Authorization": "Bearer ${MCP_API_KEY}"}
+                    "headers": {"Authorization": "Bearer test-key"}
                 },
             }
         }
@@ -168,7 +168,7 @@ def test_merge_mcp_json_overwrite():
     result = _merge_mcp_json(
         existing,
         "test-server",
-        {"url": "https://new.com", "transport": "sse", "headers": {"Authorization": "Bearer ${MCP_API_KEY}"}},
+        {"url": "https://new.com", "transport": "sse", "headers": {"Authorization": "Bearer test-key"}},
     )
     assert result == {
         "mcp": {
@@ -176,7 +176,7 @@ def test_merge_mcp_json_overwrite():
                 "test-server": {
                     "url": "https://new.com",
                     "transport": "sse",
-                    "headers": {"Authorization": "Bearer ${MCP_API_KEY}"}
+                    "headers": {"Authorization": "Bearer test-key"}
                 }
             }
         }
@@ -271,7 +271,7 @@ def test_install_vscode(tmp_path):
                 server = config["mcp"]["servers"]["test-server"]
                 assert server["url"] == MOCK_APP_SERVER_URL
                 assert server["transport"] == "sse"
-                assert server["headers"]["Authorization"] == "Bearer ${MCP_API_KEY}"
+                assert server["headers"]["Authorization"] == "Bearer test-key"
 
 
 def test_install_cursor_with_existing_config(tmp_path):
