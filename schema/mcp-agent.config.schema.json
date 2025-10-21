@@ -620,6 +620,308 @@
       "title": "LoggerSettings",
       "type": "object"
     },
+    "MCPAuthorizationServerSettings": {
+      "additionalProperties": true,
+      "description": "Configuration for exposing the MCP Agent server as an OAuth protected resource.",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean",
+          "description": "Whether to expose this MCP app as an OAuth-protected resource server."
+        },
+        "issuer_url": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Issuer Url",
+          "description": "Issuer URL advertised to clients (must resolve to provider metadata)."
+        },
+        "resource_server_url": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Resource Server Url",
+          "description": "Base URL of the protected resource (used for discovery and validation)."
+        },
+        "service_documentation_url": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Service Documentation Url",
+          "description": "Optional URL pointing to resource server documentation for clients."
+        },
+        "required_scopes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Scopes",
+          "type": "array",
+          "description": "Scopes that clients must present when accessing this resource."
+        },
+        "jwks_uri": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Jwks Uri",
+          "description": "Optional JWKS endpoint for validating JWT access tokens."
+        },
+        "introspection_endpoint": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Introspection Endpoint",
+          "description": "Optional OAuth introspection endpoint for opaque tokens."
+        },
+        "introspection_client_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Introspection Client Id",
+          "description": "Client id to use when calling the introspection endpoint."
+        },
+        "introspection_client_secret": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Introspection Client Secret",
+          "description": "Client secret to use when calling the introspection endpoint."
+        },
+        "token_cache_ttl_seconds": {
+          "default": 300,
+          "minimum": 0,
+          "title": "Token Cache Ttl Seconds",
+          "type": "integer",
+          "description": "How long (in seconds) to cache positive introspection/JWT validation results."
+        },
+        "expected_audiences": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Expected Audiences",
+          "type": "array"
+        }
+      },
+      "title": "MCPAuthorizationServerSettings",
+      "type": "object"
+    },
+    "MCPOAuthClientSettings": {
+      "additionalProperties": true,
+      "description": "Configuration for authenticating to downstream OAuth-protected MCP servers.",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean",
+          "description": "Whether OAuth auth is enabled for this downstream server."
+        },
+        "scopes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Scopes",
+          "type": "array",
+          "description": "OAuth scopes to request when authorizing."
+        },
+        "resource": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Resource",
+          "description": "Protected resource identifier to include in token/authorize requests (RFC 8707)."
+        },
+        "authorization_server": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Authorization Server",
+          "description": "Authorization server base URL (provider metadata is discovered from this root)."
+        },
+        "client_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Client Id",
+          "description": "OAuth client identifier registered with the authorization server."
+        },
+        "client_secret": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Client Secret",
+          "description": "OAuth client secret for confidential clients."
+        },
+        "access_token": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Access Token",
+          "description": "Optional pre-seeded access token that bypasses the interactive flow."
+        },
+        "refresh_token": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Refresh Token",
+          "description": "Optional refresh token stored alongside a pre-seeded access token."
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires At",
+          "description": "Epoch timestamp (seconds) when the pre-seeded token expires."
+        },
+        "token_type": {
+          "default": "Bearer",
+          "title": "Token Type",
+          "type": "string",
+          "description": "Token type returned by the provider; defaults to Bearer."
+        },
+        "redirect_uri_options": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Redirect Uri Options",
+          "type": "array",
+          "description": "Allowed redirect URI values; the flow selects from this list."
+        },
+        "extra_authorize_params": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Extra Authorize Params",
+          "type": "object",
+          "description": "Additional query parameters to append to the authorize request."
+        },
+        "extra_token_params": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Extra Token Params",
+          "type": "object",
+          "description": "Additional form parameters to append to the token request."
+        },
+        "require_pkce": {
+          "default": true,
+          "title": "Require Pkce",
+          "type": "boolean",
+          "description": "Whether to enforce PKCE when initiating the authorization code flow."
+        },
+        "use_internal_callback": {
+          "default": true,
+          "title": "Use Internal Callback",
+          "type": "boolean",
+          "description": "When true, attempt to use the app's internal callback URL before loopback."
+        },
+        "include_resource_parameter": {
+          "default": true,
+          "title": "Include Resource Parameter",
+          "type": "boolean",
+          "description": "Whether to include the RFC 8707 `resource` parameter in authorize/token requests."
+        }
+      },
+      "title": "MCPOAuthClientSettings",
+      "type": "object"
+    },
     "MCPRootSettings": {
       "additionalProperties": true,
       "description": "Represents a root directory configuration for an MCP server.",
@@ -662,154 +964,6 @@
       "title": "MCPRootSettings",
       "type": "object"
     },
-    "MCPOAuthClientSettings": {
-      "additionalProperties": true,
-      "properties": {
-        "enabled": {
-          "default": false,
-          "title": "Enabled",
-          "type": "boolean"
-        },
-        "scopes": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Scopes",
-          "type": "array",
-          "default": []
-        },
-        "resource": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Resource"
-        },
-        "authorization_server": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Authorization Server"
-        },
-        "client_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Client Id"
-        },
-        "client_secret": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Client Secret"
-        },
-        "access_token": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Access Token"
-        },
-        "refresh_token": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Refresh Token"
-        },
-        "expires_at": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Expires At"
-        },
-        "token_type": {
-          "default": "Bearer",
-          "title": "Token Type",
-          "type": "string"
-        },
-        "redirect_uri_options": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Redirect Uri Options",
-          "type": "array",
-          "default": []
-        },
-        "extra_authorize_params": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "title": "Extra Authorize Params",
-          "type": "object",
-          "default": {}
-        },
-        "extra_token_params": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "title": "Extra Token Params",
-          "type": "object",
-          "default": {}
-        },
-        "require_pkce": {
-          "default": true,
-          "title": "Require Pkce",
-          "type": "boolean"
-        },
-        "use_internal_callback": {
-          "default": true,
-          "title": "Use Internal Callback",
-          "type": "boolean"
-        },
-        "include_resource_parameter": {
-          "default": true,
-          "title": "Include Resource Parameter",
-          "type": "boolean"
-        }
-      },
-      "title": "MCPOAuthClientSettings",
-      "type": "object"
-    },
     "MCPServerAuthSettings": {
       "additionalProperties": true,
       "description": "Represents authentication configuration for a server.",
@@ -835,8 +989,7 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "title": "Oauth"
+          "default": null
         }
       },
       "title": "MCPServerAuthSettings",
@@ -1053,6 +1206,91 @@
         }
       },
       "title": "MCPSettings",
+      "type": "object"
+    },
+    "OAuthSettings": {
+      "additionalProperties": true,
+      "description": "Global OAuth-related settings for MCP Agent.",
+      "properties": {
+        "token_store": {
+          "$ref": "#/$defs/OAuthTokenStoreSettings"
+        },
+        "flow_timeout_seconds": {
+          "default": 300,
+          "minimum": 30,
+          "title": "Flow Timeout Seconds",
+          "type": "integer",
+          "description": "Maximum number of seconds to wait for an authorization callback before timing out."
+        },
+        "callback_base_url": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Callback Base Url",
+          "description": "Base URL for internal callbacks (used when `use_internal_callback` is true)."
+        },
+        "loopback_ports": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Loopback Ports",
+          "type": "array",
+          "description": "Ports to use for local loopback callbacks when internal callbacks are unavailable."
+        }
+      },
+      "title": "OAuthSettings",
+      "type": "object"
+    },
+    "OAuthTokenStoreSettings": {
+      "additionalProperties": true,
+      "description": "Settings for OAuth token persistence.",
+      "properties": {
+        "backend": {
+          "default": "memory",
+          "enum": [
+            "memory",
+            "redis"
+          ],
+          "title": "Backend",
+          "type": "string",
+          "description": "Persistence backend to use for storing tokens."
+        },
+        "redis_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Redis Url",
+          "description": "Connection URL for Redis when using the redis backend."
+        },
+        "redis_prefix": {
+          "default": "mcp_agent:oauth_tokens",
+          "title": "Redis Prefix",
+          "type": "string",
+          "description": "Key prefix used when writing tokens to Redis."
+        },
+        "refresh_leeway_seconds": {
+          "default": 60,
+          "minimum": 0,
+          "title": "Refresh Leeway Seconds",
+          "type": "integer",
+          "description": "Seconds before expiry when tokens should be refreshed."
+        }
+      },
+      "title": "OAuthTokenStoreSettings",
       "type": "object"
     },
     "OTLPExporterSettings": {
@@ -1678,6 +1916,29 @@
         "definitions": []
       },
       "description": "Settings for defining and loading subagents for the MCP Agent application"
+    },
+    "authorization": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MCPAuthorizationServerSettings"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Settings for exposing this MCP application as an OAuth protected resource"
+    },
+    "oauth": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OAuthSettings"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Global OAuth client configuration (token store, delegated auth defaults)"
     }
   },
   "title": "MCP Agent Configuration Schema",
