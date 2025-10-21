@@ -25,23 +25,23 @@ uv run mcp-agent deploy hello-world --no-auth
 
 Note the use of `--no-auth` flag here will allow unauthenticated access to this server using its URL.
 
-The `deploy` command will bundle the app files and deploy them, producing a server URL like the following:
-`https://17tp6d6s3l6zcq9oy1441nzlpo7a8gb9.deployments.mcp-agent.com`.
+The `deploy` command will bundle the app files and deploy them, producing a server URL:
+`https://<server_id>.deployments.mcp-agent.com`.
 
 ## Test
 
 Use MCP Inspector to explore and test this server:
 
 ```bash
-npx @modelcontextprotocol/inspector
+npx @modelcontextprotocol/inspector --transport sse --server-url https://<server_id>.deployments.mcp-agent.com/sse
 ```
 
-Make sure to fill out the following settings:
+Make sure Inspector is configured with the following settings:
 
-| Setting          | Value                                                                           |
-| ---------------- | ------------------------------------------------------------------------------- |
-| _Transport Type_ | _SSE_                                                                           |
-| _SSE_            | _https://[your-agent-server-id].deployments.mcp-agent-cloud.lastmileai.dev/sse_ |
+| Setting          | Value                                                                |
+| ---------------- | -------------------------------------------------------------------- |
+| _Transport Type_ | _SSE_                                                                |
+| _SSE_            | _https://[server_id].deployments.mcp-agent-cloud.lastmileai.dev/sse_ |
 
-> [!TIP]
-> In the Configuration, change the request timeout to a longer time period. Since your agents are making LLM calls, it is expected that it should take longer than simple API calls.
+In MCP Inspector, click Tools > List Tools to view the tools available on the server.
+There are a number of default tools for interacting with workflows. There will also be a `hello_world` tool in the list. Select it and then click the 'Run Tool' button to run it. The result will show a `run_id` which can be used as input to the `workflows-get_status` tool to get the status (and result) of the workflow run for the `hello_world` tool.
