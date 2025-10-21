@@ -24,9 +24,7 @@ from mcp_agent.cli.core.constants import (
 from mcp_agent.cli.core.utils import run_async
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.mcp_app.api_client import MCPAppClient
-from mcp_agent.cli.secrets.processor import (
-    process_config_secrets,
-)
+from mcp_agent.cli.secrets import processor as secrets_processor
 from mcp_agent.cli.utils.retry import retry_async_with_exponential_backoff, RetryError
 from mcp_agent.cli.utils.ux import (
     print_deployment_header,
@@ -312,7 +310,7 @@ def deploy_config(
             secrets_transformed_path = config_dir / MCP_DEPLOYED_SECRETS_FILENAME
 
             run_async(
-                process_config_secrets(
+                secrets_processor.process_config_secrets(
                     input_path=secrets_file,
                     output_path=secrets_transformed_path,
                     api_url=effective_api_url,

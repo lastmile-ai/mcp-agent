@@ -7,6 +7,7 @@ app_ctx and adding required MCP Context parameters.
 """
 
 import inspect
+import typing as _typing
 from typing import Any, Callable, Optional
 from mcp.server.fastmcp import Context as _Ctx
 
@@ -36,26 +37,70 @@ def create_tool_adapter_signature(
     signature can be converted to JSON schema.
     """
     sig = inspect.signature(fn)
+
+    def _annotation_is_fast_ctx(annotation) -> bool:
+        if _Ctx is None or annotation is inspect._empty:
+            return False
+        if annotation is _Ctx:
+            return True
+        try:
+            origin = _typing.get_origin(annotation)
+            if origin is not None:
+                return any(
+                    _annotation_is_fast_ctx(arg) for arg in _typing.get_args(annotation)
+                )
+        except Exception:
+            pass
+        try:
+            return "fastmcp" in str(annotation)
+        except Exception:
+            return False
+
+    existing_ctx_param = None
+    for param in sig.parameters.values():
+        if param.name == "app_ctx":
+            continue
+        annotation = param.annotation
+        if annotation is inspect._empty and param.name in ("ctx", "context"):
+            existing_ctx_param = param.name
+            break
+        if _annotation_is_fast_ctx(annotation):
+            existing_ctx_param = param.name
+            break
     return_ann = sig.return_annotation
 
     # Copy annotations and remove app_ctx
     ann = dict(getattr(fn, "__annotations__", {}))
     ann.pop("app_ctx", None)
 
-    # Add ctx parameter annotation
-    ctx_param_name = "ctx"
-    ann[ctx_param_name] = _Ctx
+    # Determine context parameter name
+    ctx_param_name = existing_ctx_param or "ctx"
+    if _Ctx is not None:
+        ann[ctx_param_name] = _Ctx
     ann["return"] = getattr(fn, "__annotations__", {}).get("return", return_ann)
 
-    # Filter parameters to remove app_ctx
-    params = [p for p in sig.parameters.values() if p.name != "app_ctx"]
+    # Filter parameters to remove app_ctx and, when needed, ctx/context placeholders
+    params = []
+    for p in sig.parameters.values():
+        if p.name == "app_ctx":
+            continue
+        if existing_ctx_param is None and (
+            (p.annotation is inspect._empty and p.name in ("ctx", "context"))
+            or _annotation_is_fast_ctx(p.annotation)
+        ):
+            continue
+        params.append(p)
 
-    # Create ctx parameter
-    ctx_param = inspect.Parameter(
-        ctx_param_name,
-        kind=inspect.Parameter.KEYWORD_ONLY,
-        annotation=_Ctx,
-    )
+    # Create ctx parameter when not already present
+    if existing_ctx_param is None:
+        ctx_param = inspect.Parameter(
+            ctx_param_name,
+            kind=inspect.Parameter.KEYWORD_ONLY,
+            annotation=_Ctx,
+        )
+        signature_params = params + [ctx_param]
+    else:
+        signature_params = params
 
     # Create a dummy function with the transformed signature
     async def _transformed(**kwargs):
@@ -68,7 +113,7 @@ def create_tool_adapter_signature(
 
     # Create new signature with filtered params + ctx param
     _transformed.__signature__ = inspect.Signature(
-        parameters=params + [ctx_param], return_annotation=return_ann
+        parameters=signature_params, return_annotation=return_ann
     )
 
     return _transformed

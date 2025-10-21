@@ -1,13 +1,16 @@
-from mcp.server.fastmcp import FastMCP
-from mcp.types import ModelPreferences, ModelHint, SamplingMessage, TextContent
+from mcp.server.fastmcp import Context, FastMCP
+from mcp.types import ModelHint, ModelPreferences, SamplingMessage, TextContent
 
 mcp = FastMCP("Nested Sampling Server")
 
 
 @mcp.tool()
-async def get_haiku(topic: str) -> str:
+async def get_haiku(topic: str, ctx: Context | None = None) -> str:
     """Use MCP sampling to generate a haiku about the given topic."""
-    result = await mcp.get_context().session.create_message(
+    context = ctx or mcp.get_context()
+    await context.info(f"[nested_sampling] generating haiku for '{topic}'")
+    await context.report_progress(0.25, total=1.0, message="Requesting sampling run")
+    result = await context.session.create_message(
         messages=[
             SamplingMessage(
                 role="user",
@@ -28,6 +31,7 @@ async def get_haiku(topic: str) -> str:
     )
 
     if isinstance(result.content, TextContent):
+        await context.report_progress(1.0, total=1.0, message="Haiku complete")
         return result.content.text
     return "Haiku generation failed"
 

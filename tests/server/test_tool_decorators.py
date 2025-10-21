@@ -1,7 +1,12 @@
 import asyncio
+from typing import Any
+
 import pytest
 
 from mcp_agent.app import MCPApp
+from mcp_agent.core.context import Context
+from mcp.types import ToolAnnotations, Icon
+from mcp.server.fastmcp import Context as FastMCPContext
 from mcp_agent.server.app_server import (
     create_workflow_tools,
     create_declared_function_tools,
@@ -34,8 +39,21 @@ class _ToolRecorder:
         description=None,
         annotations=None,
         structured_output=None,
+        meta=None,
+        **kwargs,
     ):
-        self.added_tools.append((name, fn, description, structured_output))
+        entry = {
+            "name": name,
+            "fn": fn,
+            "title": title,
+            "description": description,
+            "annotations": annotations,
+            "structured_output": structured_output,
+            "meta": meta,
+        }
+        entry.update(kwargs)
+        self.added_tools.append(entry)
+        return fn
 
 
 def _make_ctx(server_context):
@@ -60,7 +78,15 @@ async def test_app_tool_registers_and_executes_sync_tool():
     app = MCPApp(name="test_app_tool")
     await app.initialize()
 
-    @app.tool(name="echo", description="Echo input")
+    @app.tool(
+        name="echo",
+        title="Echo Title",
+        description="Echo input",
+        annotations={"idempotentHint": True},
+        icons=[{"src": "emoji:wave"}],
+        meta={"source": "test"},
+        structured_output=True,
+    )
     async def echo(text: str) -> str:
         return text + "!"
 
@@ -76,17 +102,31 @@ async def test_app_tool_registers_and_executes_sync_tool():
 
     # Verify tool names: only the sync tool endpoint is added
     _decorated_names = {name for name, _ in mcp.decorated_tools}
-    added_names = {name for name, *_ in mcp.added_tools}
+    added_names = {entry["name"] for entry in mcp.added_tools}
 
     # No workflows-* aliases for sync tools; check only echo
     assert "echo" in added_names  # synchronous tool
 
     # Execute the synchronous tool function and ensure it returns unwrapped value
     # Find the registered sync tool function
-    sync_tool_fn = next(fn for name, fn, *_ in mcp.added_tools if name == "echo")
+    sync_tool_entry = next(
+        entry for entry in mcp.added_tools if entry["name"] == "echo"
+    )
+    sync_tool_fn = sync_tool_entry["fn"]
     ctx = _make_ctx(server_context)
     result = await sync_tool_fn(text="hi", ctx=ctx)
     assert result == "hi!"  # unwrapped (not WorkflowResult)
+    bound_app_ctx = getattr(ctx, "bound_app_context", None)
+    assert bound_app_ctx is not None
+    assert bound_app_ctx is not server_context.context
+    assert bound_app_ctx.fastmcp == ctx.fastmcp
+    assert sync_tool_entry["title"] == "Echo Title"
+    assert isinstance(sync_tool_entry["annotations"], ToolAnnotations)
+    assert sync_tool_entry["annotations"].idempotentHint is True
+    assert sync_tool_entry["icons"] == [Icon(src="emoji:wave")]
+    # meta support in FastMCP add_tool pending upstream release; expect None for now
+    assert sync_tool_entry.get("meta") in ({"source": "test"}, None)
+    assert sync_tool_entry["structured_output"] is True
 
     # Also ensure the underlying workflow returned a WorkflowResult
     # Start via workflow_run to get run_id, then wait for completion and inspect
@@ -112,7 +152,14 @@ async def test_app_async_tool_registers_aliases_and_workflow_tools():
     app = MCPApp(name="test_app_async_tool")
     await app.initialize()
 
-    @app.async_tool(name="long")
+    @app.async_tool(
+        name="long",
+        title="Long Task",
+        annotations={"readOnlyHint": True},
+        icons=[Icon(src="emoji:check")],
+        meta={"async": True},
+        structured_output=None,
+    )
     async def long_task(x: int) -> str:
         return f"done:{x}"
 
@@ -125,10 +172,16 @@ async def test_app_async_tool_registers_aliases_and_workflow_tools():
     create_declared_function_tools(mcp, server_context)
 
     decorated_names = {name for name, _ in mcp.decorated_tools}
-    added_names = {name for name, *_ in mcp.added_tools}
+    added_names = {entry["name"] for entry in mcp.added_tools}
 
     # We register the async tool under its given name via add_tool
     assert "long" in added_names
+    long_entry = next(entry for entry in mcp.added_tools if entry["name"] == "long")
+    assert long_entry["title"] == "Long Task"
+    assert isinstance(long_entry["annotations"], ToolAnnotations)
+    assert long_entry["annotations"].readOnlyHint is True
+    assert long_entry["icons"] == [Icon(src="emoji:check")]
+    assert long_entry.get("meta") in ({"async": True}, None)
     # And we suppress workflows-* for async auto tools
     assert "workflows-long-run" not in decorated_names
 
@@ -171,3 +224,69 @@ async def test_auto_workflow_wraps_plain_return_in_workflowresult():
         assert result_payload["value"] == 42
     else:
         assert result_payload in (42, {"result": 42})
+
+
+@pytest.mark.asyncio
+async def test_workflow_run_binds_app_context_per_request():
+    app = MCPApp(name="test_request_binding")
+    await app.initialize()
+
+    sentinel_session = object()
+    app.context.upstream_session = sentinel_session
+
+    captured: dict[str, Any] = {}
+
+    @app.async_tool(name="binding_tool")
+    async def binding_tool(
+        value: int,
+        app_ctx: Context | None = None,
+        ctx: FastMCPContext | None = None,
+    ) -> str:
+        captured["app_ctx"] = app_ctx
+        captured["ctx"] = ctx
+        if app_ctx is not None:
+            # Access session property to confirm fallback path works during execution
+            captured["session_property"] = app_ctx.session
+            captured["request_context"] = getattr(app_ctx, "_request_context", None)
+            captured["fastmcp"] = app_ctx.fastmcp
+        return f"done:{value}"
+
+    server_context = type(
+        "SC", (), {"workflows": app.workflows, "context": app.context}
+    )()
+
+    ctx = _make_ctx(server_context)
+    # Simulate FastMCP attaching the app to its server for lookup paths
+    ctx.fastmcp._mcp_agent_app = app  # type: ignore[attr-defined]
+
+    run_info = await _workflow_run(ctx, "binding_tool", {"value": 7})
+    run_id = run_info["run_id"]
+
+    # Workflow should have the FastMCP request context attached
+    workflow = await app.context.workflow_registry.get_workflow(run_id)
+    assert getattr(workflow, "_mcp_request_context", None) is ctx
+
+    # Wait for completion so the tool function executes
+    for _ in range(200):
+        status = await app.context.workflow_registry.get_workflow_status(run_id)
+        if status.get("completed"):
+            break
+        await asyncio.sleep(0.01)
+    assert status.get("completed") is True
+
+    bound_app_ctx = getattr(ctx, "bound_app_context", None)
+    assert bound_app_ctx is not None
+    # The tool received the per-request bound context
+    assert captured.get("app_ctx") is bound_app_ctx
+    # FastMCP context argument should be the original request context
+    assert captured.get("ctx") is ctx
+    assert getattr(captured.get("ctx"), "bound_app_context", None) is bound_app_ctx
+    assert bound_app_ctx is not app.context
+    # Upstream session should be preserved on the bound context
+    assert bound_app_ctx.upstream_session is sentinel_session
+    assert captured.get("session_property") is sentinel_session
+    # FastMCP instance and request context bridge through the bound context
+    assert captured.get("fastmcp") is ctx.fastmcp
+    assert captured.get("request_context") is ctx.request_context
+    # Accessing session on the bound context should prefer upstream_session
+    assert bound_app_ctx.session is sentinel_session

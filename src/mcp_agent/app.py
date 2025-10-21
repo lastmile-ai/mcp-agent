@@ -2,11 +2,12 @@ import asyncio
 import os
 import sys
 import functools
-
 from types import MethodType
 from typing import (
     Any,
     Dict,
+    Iterable,
+    Mapping,
     Optional,
     Type,
     TypeVar,
@@ -20,6 +21,8 @@ from contextlib import asynccontextmanager
 
 from mcp import ServerSession
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations, Icon
+
 from mcp_agent.core.context import Context, initialize_context, cleanup_context
 from mcp_agent.config import Settings, get_settings
 from mcp_agent.executor.signal_registry import SignalRegistry
@@ -586,6 +589,7 @@ class MCPApp:
         async def _invoke_target(workflow_self, *args, **kwargs):
             # Inject app_ctx (AppContext) and shim ctx (FastMCP Context) if requested by the function
             import inspect as _inspect
+            import typing as _typing
 
             call_kwargs = dict(kwargs)
 
@@ -622,24 +626,64 @@ class MCPApp:
             except Exception:
                 pass
 
-            # If the function expects a FastMCP Context (ctx/context), ensure it's present (None inside workflow)
+            # If the function expects a FastMCP Context (ctx/context), ensure it's present.
             try:
                 from mcp.server.fastmcp import Context as _Ctx  # type: ignore
             except Exception:
                 _Ctx = None  # type: ignore
 
+            def _is_fast_ctx_annotation(annotation) -> bool:
+                if _Ctx is None or annotation is _inspect._empty:
+                    return False
+                if annotation is _Ctx:
+                    return True
+                if _inspect.isclass(annotation):
+                    try:
+                        if issubclass(annotation, _Ctx):  # type: ignore[misc]
+                            return True
+                    except TypeError:
+                        pass
+                try:
+                    origin = _typing.get_origin(annotation)
+                    if origin is not None:
+                        return any(
+                            _is_fast_ctx_annotation(arg)
+                            for arg in _typing.get_args(annotation)
+                        )
+                except Exception:
+                    pass
+                try:
+                    return "fastmcp" in str(annotation)
+                except Exception:
+                    return False
+
             try:
                 sig = sig if "sig" in locals() else _inspect.signature(fn)
                 for p in sig.parameters.values():
-                    if (
-                        p.annotation is not _inspect._empty
-                        and _Ctx is not None
-                        and p.annotation is _Ctx
+                    needs_fast_ctx = False
+                    if _is_fast_ctx_annotation(p.annotation):
+                        needs_fast_ctx = True
+                    elif p.annotation is _inspect._empty and p.name in (
+                        "ctx",
+                        "context",
                     ):
-                        if p.name not in call_kwargs:
-                            call_kwargs[p.name] = None
-                    if p.name in ("ctx", "context") and p.name not in call_kwargs:
-                        call_kwargs[p.name] = None
+                        needs_fast_ctx = True
+                    if needs_fast_ctx and p.name not in call_kwargs:
+                        fast_ctx = getattr(workflow_self, "_mcp_request_context", None)
+                        if fast_ctx is None and app_context_param_name:
+                            _app_ctx = call_kwargs.get(app_context_param_name, None)
+                            if _Ctx is not None and isinstance(_app_ctx, _Ctx):
+                                fast_ctx = _app_ctx
+                            _fastmcp = getattr(_app_ctx, "fastmcp", None)
+                            if _fastmcp is not None and hasattr(
+                                _fastmcp, "get_context"
+                            ):
+                                try:
+                                    fast_ctx = _fastmcp.get_context()
+                                except Exception:
+                                    fast_ctx = None
+                        if fast_ctx is not None:
+                            call_kwargs[p.name] = fast_ctx
             except Exception:
                 pass
 
@@ -739,7 +783,11 @@ class MCPApp:
         self,
         name: str | None = None,
         *,
+        title: str | None = None,
         description: str | None = None,
+        annotations: ToolAnnotations | Mapping[str, Any] | None = None,
+        icons: Iterable[Icon | Mapping[str, Any]] | None = None,
+        meta: Mapping[str, Any] | None = None,
         structured_output: bool | None = None,
     ) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
 
@@ -747,7 +795,11 @@ class MCPApp:
         self,
         name: str | None = None,
         *,
+        title: str | None = None,
         description: str | None = None,
+        annotations: ToolAnnotations | Mapping[str, Any] | None = None,
+        icons: Iterable[Icon | Mapping[str, Any]] | None = None,
+        meta: Mapping[str, Any] | None = None,
         structured_output: bool | None = None,
     ):
         """
@@ -765,6 +817,28 @@ class MCPApp:
             # that the transformed function can be converted to JSON schema
 
             validate_tool_schema(fn, tool_name)
+
+            annotations_obj: ToolAnnotations | None = None
+            if annotations is not None:
+                if isinstance(annotations, ToolAnnotations):
+                    annotations_obj = annotations
+                else:
+                    annotations_obj = ToolAnnotations(**dict(annotations))
+
+            icons_list: list[Icon] | None = None
+            if icons is not None:
+                icons_list = []
+                for icon in icons:
+                    if isinstance(icon, Icon):
+                        icons_list.append(icon)
+                    elif isinstance(icon, Mapping):
+                        icons_list.append(Icon(**icon))
+                    else:
+                        raise TypeError("icons entries must be Icon or mapping")
+
+            meta_payload: Dict[str, Any] | None = None
+            if meta is not None:
+                meta_payload = dict(meta)
 
             # Construct the workflow from function
             workflow_cls = self._create_workflow_from_function(
@@ -784,13 +858,25 @@ class MCPApp:
                     "source_fn": fn,
                     "structured_output": structured_output,
                     "description": description or (fn.__doc__ or ""),
+                    "title": title,
+                    "annotations": annotations_obj,
+                    "icons": icons_list,
+                    "meta": meta_payload,
                 }
             )
 
             return fn
 
         # Support bare usage: @app.tool without parentheses
-        if callable(name) and description is None and structured_output is None:
+        if (
+            callable(name)
+            and title is None
+            and description is None
+            and annotations is None
+            and icons is None
+            and meta is None
+            and structured_output is None
+        ):
             _fn = name  # type: ignore[assignment]
             name = None
             return decorator(_fn)  # type: ignore[arg-type]
@@ -805,14 +891,24 @@ class MCPApp:
         self,
         name: str | None = None,
         *,
+        title: str | None = None,
         description: str | None = None,
+        annotations: ToolAnnotations | Mapping[str, Any] | None = None,
+        icons: Iterable[Icon | Mapping[str, Any]] | None = None,
+        meta: Mapping[str, Any] | None = None,
+        structured_output: bool | None = None,
     ) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
 
     def async_tool(
         self,
         name: str | None = None,
         *,
+        title: str | None = None,
         description: str | None = None,
+        annotations: ToolAnnotations | Mapping[str, Any] | None = None,
+        icons: Iterable[Icon | Mapping[str, Any]] | None = None,
+        meta: Mapping[str, Any] | None = None,
+        structured_output: bool | None = None,
     ):
         """
         Decorator to declare an asynchronous MCP tool.
@@ -830,6 +926,28 @@ class MCPApp:
 
             validate_tool_schema(fn, workflow_name)
 
+            annotations_obj: ToolAnnotations | None = None
+            if annotations is not None:
+                if isinstance(annotations, ToolAnnotations):
+                    annotations_obj = annotations
+                else:
+                    annotations_obj = ToolAnnotations(**dict(annotations))
+
+            icons_list: list[Icon] | None = None
+            if icons is not None:
+                icons_list = []
+                for icon in icons:
+                    if isinstance(icon, Icon):
+                        icons_list.append(icon)
+                    elif isinstance(icon, Mapping):
+                        icons_list.append(Icon(**icon))
+                    else:
+                        raise TypeError("icons entries must be Icon or mapping")
+
+            meta_payload: Dict[str, Any] | None = None
+            if meta is not None:
+                meta_payload = dict(meta)
+
             workflow_cls = self._create_workflow_from_function(
                 fn,
                 workflow_name=workflow_name,
@@ -844,14 +962,26 @@ class MCPApp:
                     "workflow_name": workflow_name,
                     "workflow_cls": workflow_cls,
                     "source_fn": fn,
-                    "structured_output": None,
+                    "structured_output": structured_output,
                     "description": description or (fn.__doc__ or ""),
+                    "title": title,
+                    "annotations": annotations_obj,
+                    "icons": icons_list,
+                    "meta": meta_payload,
                 }
             )
             return fn
 
         # Support bare usage: @app.async_tool without parentheses
-        if callable(name) and description is None:
+        if (
+            callable(name)
+            and title is None
+            and description is None
+            and annotations is None
+            and icons is None
+            and meta is None
+            and structured_output is None
+        ):
             _fn = name  # type: ignore[assignment]
             name = None
             return decorator(_fn)  # type: ignore[arg-type]
