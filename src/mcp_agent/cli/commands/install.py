@@ -11,7 +11,7 @@ Supported clients:
  - vscode: writes .vscode/mcp.json in project
  - claude_code: writes ~/.claude/claude_code_config.json
  - cursor: writes ~/.cursor/mcp.json
- - claude_desktop: writes platform-specific Claude Desktop config
+ - claude_desktop: writes platform-specific Claude Desktop config using mcp-remote wrapper
    - macOS: ~/Library/Application Support/Claude/claude_desktop_config.json
    - Windows: ~/AppData/Roaming/Claude/claude_desktop_config.json
    - Linux: ~/.config/Claude/claude_desktop_config.json
@@ -120,15 +120,32 @@ def _write_json(path: Path, data: dict) -> None:
     path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
-def _build_server_config(server_url: str, transport: str = "http") -> dict:
-    """Build server configuration dictionary with auth header."""
-    return {
-        "url": server_url,
-        "transport": transport,
-        "headers": {
-            "Authorization": "Bearer ${MCP_API_KEY}"
+def _build_server_config(server_url: str, transport: str = "http", for_claude_desktop: bool = False) -> dict:
+    """Build server configuration dictionary with auth header.
+
+    For Claude Desktop, wraps HTTP/SSE servers with mcp-remote stdio wrapper.
+    For other clients, uses direct HTTP/SSE connection.
+    """
+    if for_claude_desktop:
+        # Claude Desktop requires stdio wrapper using mcp-remote
+        return {
+            "command": "npx",
+            "args": [
+                "mcp-remote",
+                server_url,
+                "--header",
+                "Authorization: Bearer ${MCP_API_KEY}"
+            ]
         }
-    }
+    else:
+        # Direct HTTP/SSE connection for other clients
+        return {
+            "url": server_url,
+            "transport": transport,
+            "headers": {
+                "Authorization": "Bearer ${MCP_API_KEY}"
+            }
+        }
 
 
 def _generate_server_name(server_url: str) -> str:
@@ -216,6 +233,7 @@ def install(
         raise CLIError(
             f"Unsupported client: {client}. Supported clients: vscode, claude_code, cursor, claude_desktop, chatgpt"
         )
+
 
     # Authenticate
     effective_api_key = api_key or settings.API_KEY or load_api_key_credentials()
@@ -336,8 +354,8 @@ def install(
     # Determine transport type
     transport = "sse" if server_url.rstrip("/").endswith("/sse") else "http"
 
-    # Build server config with auth header
-    server_config = _build_server_config(server_url, transport)
+    # Build server config (with mcp-remote wrapper for Claude Desktop)
+    server_config = _build_server_config(server_url, transport, for_claude_desktop=use_claude_format)
 
     # Merge with existing config
     merged_config = _merge_mcp_json(existing_config, server_name, server_config, use_claude_format)
@@ -355,6 +373,12 @@ def install(
             raise CLIError(f"Failed to write config file: {e}") from e
 
         # Success message
+        auth_note = (
+            "[bold]Note:[/bold] Claude Desktop uses [cyan]mcp-remote[/cyan] to connect to HTTP/SSE servers"
+            if use_claude_format
+            else "[bold]Authentication:[/bold] Set [cyan]MCP_API_KEY[/cyan] environment variable"
+        )
+
         console.print(
             Panel(
                 f"[bold green]✅ Installation Complete![/bold green]\n\n"
@@ -362,7 +386,7 @@ def install(
                 f"URL: [cyan]{server_url}[/cyan]\n"
                 f"Client: [cyan]{client_config['description']}[/cyan]\n"
                 f"Config: [cyan]{config_path}[/cyan]\n\n"
-                f"[bold]Authentication:[/bold] Set [cyan]MCP_API_KEY[/cyan] environment variable\n"
+                f"{auth_note}\n"
                 f"[dim]The server will authenticate using: Authorization: Bearer $MCP_API_KEY[/dim]",
                 title="MCP Server Installed",
                 border_style="green",

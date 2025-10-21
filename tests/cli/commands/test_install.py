@@ -68,6 +68,18 @@ def test_build_server_config():
         }
     }
 
+    # Claude Desktop uses mcp-remote wrapper
+    config_claude = _build_server_config("https://example.com/sse", "sse", for_claude_desktop=True)
+    assert config_claude == {
+        "command": "npx",
+        "args": [
+            "mcp-remote",
+            "https://example.com/sse",
+            "--header",
+            "Authorization: Bearer ${MCP_API_KEY}"
+        ]
+    }
+
 
 def test_merge_mcp_json_empty():
     """Test merging into empty config."""
