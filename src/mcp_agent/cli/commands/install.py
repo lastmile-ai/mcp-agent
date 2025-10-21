@@ -21,7 +21,6 @@ from pathlib import Path
 from typing import Optional, Union
 
 import typer
-from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
@@ -240,7 +239,7 @@ def install(
             f"Treating '{server_identifier}' as server URL. If this is an app ID/name, URL resolution is not yet implemented."
         )
 
-    console.print(f"\n[bold cyan]Installing MCP Server[/bold cyan]\n")
+    console.print("\n[bold cyan]Installing MCP Server[/bold cyan]\n")
     print_info(f"Server: {app_server_url}")
     print_info(f"Client: {CLIENT_CONFIGS.get(client_lc, {}).get('description', client_lc)}")
 
