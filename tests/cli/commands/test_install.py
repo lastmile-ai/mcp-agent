@@ -104,18 +104,35 @@ def test_merge_mcp_json_empty():
 def test_merge_mcp_json_claude_format():
     """Test merging with Claude Desktop format."""
     result = _merge_mcp_json({}, "test-server", {
-        "url": "https://example.com",
-        "transport": "http",
-        "headers": {"Authorization": "Bearer test-key"}
-    }, use_claude_format=True)
+        "command": "npx",
+        "args": ["mcp-remote", "https://example.com/sse"]
+    }, format_type="mcpServers")
     assert result == {
         "mcpServers": {
             "test-server": {
-                "url": "https://example.com",
-                "transport": "http",
-                "headers": {"Authorization": "Bearer test-key"}
+                "command": "npx",
+                "args": ["mcp-remote", "https://example.com/sse"]
             }
         }
+    }
+
+
+def test_merge_mcp_json_vscode_format():
+    """Test merging with VSCode format."""
+    result = _merge_mcp_json({}, "test-server", {
+        "type": "sse",
+        "url": "https://example.com",
+        "headers": {"Authorization": "Bearer test-key"}
+    }, format_type="vscode")
+    assert result == {
+        "servers": {
+            "test-server": {
+                "type": "sse",
+                "url": "https://example.com",
+                "headers": {"Authorization": "Bearer test-key"}
+            }
+        },
+        "inputs": []
     }
 
 
@@ -263,14 +280,14 @@ def test_install_vscode(tmp_path):
                 # Verify config file was created
                 assert vscode_config.exists()
 
-                # Verify config contents
+                # Verify config contents (VSCode format)
                 config = json.loads(vscode_config.read_text())
-                assert "mcp" in config
-                assert "servers" in config["mcp"]
-                assert "test-server" in config["mcp"]["servers"]
-                server = config["mcp"]["servers"]["test-server"]
+                assert "servers" in config
+                assert "inputs" in config
+                assert "test-server" in config["servers"]
+                server = config["servers"]["test-server"]
                 assert server["url"] == MOCK_APP_SERVER_URL
-                assert server["transport"] == "sse"
+                assert server["type"] == "sse"
                 assert server["headers"]["Authorization"] == "Bearer test-key"
 
 
@@ -320,16 +337,15 @@ def test_install_duplicate_without_force(tmp_path):
     vscode_config = tmp_path / ".vscode" / "mcp.json"
     vscode_config.parent.mkdir(parents=True, exist_ok=True)
 
-    # Create existing config with same server name
+    # Create existing config with same server name (VSCode format)
     existing = {
-        "mcp": {
-            "servers": {
-                "test-server": {
-                    "url": "https://old.com/mcp",
-                    "transport": "http",
-                }
+        "servers": {
+            "test-server": {
+                "url": "https://old.com/mcp",
+                "type": "http",
             }
-        }
+        },
+        "inputs": []
     }
     vscode_config.write_text(json.dumps(existing, indent=2))
 
@@ -356,16 +372,15 @@ def test_install_duplicate_with_force(tmp_path):
     vscode_config = tmp_path / ".vscode" / "mcp.json"
     vscode_config.parent.mkdir(parents=True, exist_ok=True)
 
-    # Create existing config with same server name
+    # Create existing config with same server name (VSCode format)
     existing = {
-        "mcp": {
-            "servers": {
-                "test-server": {
-                    "url": "https://old.com/mcp",
-                    "transport": "http",
-                }
+        "servers": {
+            "test-server": {
+                "url": "https://old.com/mcp",
+                "type": "http",
             }
-        }
+        },
+        "inputs": []
     }
     vscode_config.write_text(json.dumps(existing, indent=2))
 
@@ -385,9 +400,9 @@ def test_install_duplicate_with_force(tmp_path):
                     api_key="test-key",
                 )
 
-                # Verify config was updated
+                # Verify config was updated (VSCode format)
                 config = json.loads(vscode_config.read_text())
-                assert config["mcp"]["servers"]["test-server"]["url"] == MOCK_APP_SERVER_URL
+                assert config["servers"]["test-server"]["url"] == MOCK_APP_SERVER_URL
 
 
 def test_install_chatgpt_requires_unauth_access(mock_app_with_auth):
@@ -485,9 +500,9 @@ def test_install_sse_transport_detection(tmp_path):
                     api_key="test-key",
                 )
 
-                # Verify SSE transport was used
+                # Verify SSE type was used (VSCode format)
                 config = json.loads(vscode_config.read_text())
-                assert config["mcp"]["servers"]["test-server"]["transport"] == "sse"
+                assert config["servers"]["test-server"]["type"] == "sse"
 
 
 def test_install_http_transport_detection(tmp_path):
@@ -510,6 +525,6 @@ def test_install_http_transport_detection(tmp_path):
                     api_key="test-key",
                 )
 
-                # Verify HTTP transport was used
+                # Verify HTTP type was used (VSCode format)
                 config = json.loads(vscode_config.read_text())
-                assert config["mcp"]["servers"]["test-server"]["transport"] == "http"
+                assert config["servers"]["test-server"]["type"] == "http"

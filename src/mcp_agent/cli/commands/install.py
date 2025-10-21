@@ -78,7 +78,7 @@ CLIENT_CONFIGS = {
 }
 
 
-def _merge_mcp_json(existing: dict, server_name: str, server_config: dict, use_claude_format: bool = False) -> dict:
+def _merge_mcp_json(existing: dict, server_name: str, server_config: dict, format_type: str = "mcp") -> dict:
     """
     Merge a server configuration into existing MCP JSON.
 
@@ -86,30 +86,48 @@ def _merge_mcp_json(existing: dict, server_name: str, server_config: dict, use_c
         existing: Existing config dict
         server_name: Name of the server to add/update
         server_config: Server configuration dict
-        use_claude_format: If True, use Claude Desktop format {"mcpServers": {...}}
-                          If False, use standard format {"mcp": {"servers": {...}}}
+        format_type: Format to use:
+                    - "mcpServers" for Claude Desktop/Claude Code
+                    - "vscode" for VSCode (top-level "servers" + "inputs")
+                    - "mcp" for Cursor (standard {"mcp": {"servers": {...}}})
     """
     servers: dict = {}
+    other_keys: dict = {}
+
     if isinstance(existing, dict):
-        # Check for Claude Desktop format first
+        # Check for Claude Desktop/Code format
         if "mcpServers" in existing and isinstance(existing.get("mcpServers"), dict):
             servers = dict(existing["mcpServers"])
+        # Check for VSCode format
+        elif "servers" in existing and isinstance(existing.get("servers"), dict):
+            servers = dict(existing["servers"])
+            # Preserve other VSCode keys like "inputs"
+            for k, v in existing.items():
+                if k != "servers":
+                    other_keys[k] = v
+        # Check for standard MCP format
         elif "mcp" in existing and isinstance(existing.get("mcp"), dict):
             servers = dict(existing["mcp"].get("servers") or {})
-        elif "servers" in existing and isinstance(existing.get("servers"), dict):
-            servers = dict(existing.get("servers") or {})
         else:
             # Treat top-level mapping as servers if it looks like name->obj
             for k, v in existing.items():
-                if isinstance(v, dict) and ("url" in v or "transport" in v or "command" in v):
+                if isinstance(v, dict) and ("url" in v or "transport" in v or "command" in v or "type" in v):
                     servers[k] = v
 
     # Add/update the new server
     servers[server_name] = server_config
 
     # Return in appropriate format
-    if use_claude_format:
+    if format_type == "mcpServers":
         return {"mcpServers": servers}
+    elif format_type == "vscode":
+        result = {"servers": servers}
+        # Add inputs array if not present
+        if "inputs" not in other_keys:
+            result["inputs"] = []
+        # Merge in other keys
+        result.update(other_keys)
+        return result
     else:
         return {"mcp": {"servers": servers}}
 
@@ -120,18 +138,18 @@ def _write_json(path: Path, data: dict) -> None:
     path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
-def _build_server_config(server_url: str, transport: str = "http", for_claude_desktop: bool = False, for_claude_code: bool = False, api_key: str = None) -> dict:
+def _build_server_config(server_url: str, transport: str = "http", for_claude_desktop: bool = False, for_vscode: bool = False, api_key: str = None) -> dict:
     """Build server configuration dictionary with auth header.
 
     For Claude Desktop, wraps HTTP/SSE servers with mcp-remote stdio wrapper with actual API key.
-    For Claude Code, uses "type" field instead of "transport".
-    For other clients, uses direct HTTP/SSE connection with actual API key embedded.
+    For VSCode, uses "type" field and top-level "servers" structure.
+    For other clients (Cursor), uses "transport" field with "mcp.servers" structure.
 
     Args:
         server_url: The server URL
         transport: Transport type (http or sse)
         for_claude_desktop: Whether to use Claude Desktop format with mcp-remote
-        for_claude_code: Whether to use Claude Code format with "type" field
+        for_vscode: Whether to use VSCode format with "type" field
         api_key: The actual API key (required for all clients)
     """
     if not api_key:
@@ -148,8 +166,8 @@ def _build_server_config(server_url: str, transport: str = "http", for_claude_de
                 f"Authorization: Bearer {api_key}"
             ]
         }
-    elif for_claude_code:
-        # Claude Code uses "type" instead of "transport"
+    elif for_vscode:
+        # VSCode uses "type" instead of "transport"
         return {
             "type": transport,
             "url": server_url,
@@ -158,7 +176,7 @@ def _build_server_config(server_url: str, transport: str = "http", for_claude_de
             }
         }
     else:
-        # Direct HTTP/SSE connection for other clients with embedded API key
+        # Direct HTTP/SSE connection for Cursor with embedded API key
         return {
             "url": server_url,
             "transport": transport,
@@ -391,8 +409,9 @@ def install(
     config_path = client_config["path"]()
 
     # Determine config format based on client
-    use_claude_format = client_lc == "claude_desktop"
-    use_claude_code_format = client_lc == "claude_code"
+    is_vscode = client_lc == "vscode"
+    is_claude_desktop = client_lc == "claude_desktop"
+    is_cursor = client_lc == "cursor"
 
     # Check existing config
     existing_config = {}
@@ -400,9 +419,11 @@ def install(
         try:
             existing_config = json.loads(config_path.read_text(encoding="utf-8"))
             # Check in appropriate location based on format
-            if use_claude_format or use_claude_code_format:
+            if is_claude_desktop:
                 servers = existing_config.get("mcpServers", {})
-            else:
+            elif is_vscode:
+                servers = existing_config.get("servers", {})
+            else:  # cursor
                 servers = existing_config.get("mcp", {}).get("servers", {})
 
             if server_name in servers and not force:
@@ -415,18 +436,24 @@ def install(
     # Determine transport type
     transport = "sse" if server_url.rstrip("/").endswith("/sse") else "http"
 
-    # Build server config with embedded API key (all clients)
+    # Build server config with embedded API key
     server_config = _build_server_config(
         server_url,
         transport,
-        for_claude_desktop=use_claude_format,
-        for_claude_code=use_claude_code_format,
+        for_claude_desktop=is_claude_desktop,
+        for_vscode=is_vscode,
         api_key=effective_api_key
     )
 
-    # Merge with existing config (Claude Code and Claude Desktop both use mcpServers format)
-    use_mcp_servers_format = use_claude_format or use_claude_code_format
-    merged_config = _merge_mcp_json(existing_config, server_name, server_config, use_mcp_servers_format)
+    # Determine merge format
+    if is_claude_desktop:
+        format_type = "mcpServers"
+    elif is_vscode:
+        format_type = "vscode"
+    else:  # cursor
+        format_type = "mcp"
+
+    merged_config = _merge_mcp_json(existing_config, server_name, server_config, format_type)
 
     # Write or show config
     if dry_run:
@@ -441,14 +468,14 @@ def install(
             raise CLIError(f"Failed to write config file: {e}") from e
 
         # Success message
-        if use_claude_format:
+        if is_claude_desktop:
             auth_note = (
                 f"[bold]Note:[/bold] Claude Desktop uses [cyan]mcp-remote[/cyan] to connect to HTTP/SSE servers\n"
                 f"[dim]API key embedded in config[/dim]"
             )
-        elif use_claude_code_format:
+        elif is_vscode:
             auth_note = (
-                f"[bold]Note:[/bold] Claude Code format uses [cyan]type[/cyan] field\n"
+                f"[bold]Note:[/bold] VSCode uses [cyan]type: sse[/cyan] format\n"
                 f"[dim]API key embedded in config. To update, re-run install with --force[/dim]"
             )
         else:
