@@ -11,7 +11,13 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from mcp_agent.cli.config import settings
 from mcp_agent.cli.core.constants import MCP_SECRETS_FILENAME
-from mcp_agent.cli.utils.ux import console, print_error, print_warning, print_info
+from mcp_agent.cli.utils.ux import (
+    console,
+    print_error,
+    print_warning,
+    print_info,
+    print_verbose,
+)
 from mcp_agent.cli.utils.git_utils import (
     get_git_metadata,
     compute_directory_fingerprint,
@@ -116,7 +122,6 @@ def wrangler_deploy(
     api_key: str,
     project_dir: Path,
     ignore_file: Path | None = None,
-    verbose: bool = False,
 ) -> None:
     """Bundle the MCP Agent using Wrangler.
 
@@ -188,8 +193,7 @@ def wrangler_deploy(
             else:
                 print_info(f"Using ignore patterns from {ignore_file}")
         else:
-            if verbose:
-                print_info("No ignore file provided; applying default excludes only")
+            print_verbose("No ignore file provided; applying default excludes only")
 
         # Copy the entire project to temp directory, excluding unwanted directories and the live secrets file
         def ignore_patterns(path_str, names):
@@ -299,10 +303,9 @@ def wrangler_deploy(
                 },
             )
             meta_vars.update({"MCP_DEPLOY_WORKSPACE_HASH": bundle_hash})
-            if verbose:
-                print_info(
-                    f"Deploying from non-git workspace (hash {bundle_hash[:12]}…)"
-                )
+            print_verbose(
+                f"Deploying from non-git workspace (hash {bundle_hash[:12]}…)"
+            )
 
         # Write a breadcrumb file into the project so it ships with the bundle.
         # Use a Python file for guaranteed inclusion without renaming.

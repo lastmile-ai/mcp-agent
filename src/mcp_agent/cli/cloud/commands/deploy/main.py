@@ -31,6 +31,8 @@ from mcp_agent.cli.utils.ux import (
     print_error,
     print_info,
     print_success,
+    LOG_VERBOSE,
+    print_verbose,
 )
 from mcp_agent.cli.utils.git_utils import (
     get_git_metadata,
@@ -130,6 +132,12 @@ def deploy_config(
         file_okay=True,
         resolve_path=True,
     ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable verbose output for this command",
+    ),
 ) -> str:
     """Deploy an mcp-agent using the specified configuration.
 
@@ -152,6 +160,9 @@ def deploy_config(
     Returns:
         Newly-deployed MCP App ID
     """
+    if verbose:
+        LOG_VERBOSE.set(True)
+
     try:
         if config_dir is None:
             resolved_config_dir = working_dir
@@ -209,15 +220,13 @@ def deploy_config(
                 retriable=False,
             )
 
-        if ctx.obj.get("verbose", False):
-            print_info(f"Using API at {effective_api_url}")
+        print_verbose(f"Using API at {effective_api_url}")
 
         mcp_app_client = MCPAppClient(
             api_url=effective_api_url, api_key=effective_api_key
         )
 
-        if ctx.obj.get("verbose", False):
-            print_info(f"Checking for existing app ID for '{app_name}'...")
+        print_verbose(f"Checking for existing app ID for '{app_name}'...")
 
         try:
             app_id = run_async(mcp_app_client.get_app_id_by_name(app_name))
@@ -232,8 +241,7 @@ def deploy_config(
                 )
                 app_id = app.appId
                 print_success(f"Created new app '{app_name}'")
-                if ctx.obj.get("verbose", False):
-                    print_info(f"New app id: `{app_id}`")
+                print_verbose(f"New app id: `{app_id}`")
             else:
                 short_id = f"{app_id[:8]}…"
                 print_success(f"Found existing app '{app_name}' (ID: `{short_id}`)")
@@ -243,8 +251,7 @@ def deploy_config(
                         default=True,
                     )
                     if use_existing:
-                        if ctx.obj.get("verbose", False):
-                            print_info(f"Will deploy an update to app ID: `{app_id}`")
+                        print_verbose(f"Will deploy an update to app ID: `{app_id}`")
                     else:
                         print_error(
                             "Cancelling deployment. Please choose a different app name."
@@ -261,8 +268,7 @@ def deploy_config(
                     update_payload["unauthenticated_access"] = unauthenticated_access
 
                 if update_payload:
-                    if ctx.obj.get("verbose", False):
-                        print_info("Updating app settings before deployment...")
+                    print_verbose("Updating app settings before deployment...")
                     run_async(
                         mcp_app_client.update_app(
                             app_id=app_id,
@@ -280,10 +286,9 @@ def deploy_config(
         # If a deployed secrets file already exists, determine if it should be used or overwritten
         if deployed_secrets_file:
             if secrets_file:
-                if ctx.obj.get("verbose", False):
-                    print_info(
-                        f"Both '{MCP_SECRETS_FILENAME}' and '{MCP_DEPLOYED_SECRETS_FILENAME}' found in {config_dir}."
-                    )
+                print_verbose(
+                    f"Both '{MCP_SECRETS_FILENAME}' and '{MCP_DEPLOYED_SECRETS_FILENAME}' found in {config_dir}."
+                )
                 if non_interactive:
                     print_info(
                         "Running in non-interactive mode — reusing previously deployed secrets."
@@ -320,10 +325,9 @@ def deploy_config(
             )
 
             print_success("Secrets file processed successfully")
-            if ctx.obj.get("verbose", False):
-                print_info(
-                    f"Transformed secrets file written to {secrets_transformed_path}"
-                )
+            print_verbose(
+                f"Transformed secrets file written to {secrets_transformed_path}"
+            )
 
         else:
             print_info("Skipping secrets processing...")
@@ -367,7 +371,6 @@ def deploy_config(
                 mcp_app_client=mcp_app_client,
                 retry_count=retry_count,
                 ignore=ignore_path,
-                verbose=ctx.obj.get("verbose", False),
             )
         )
 
@@ -390,7 +393,7 @@ def deploy_config(
         return app_id
 
     except Exception as e:
-        if ctx.obj.get("verbose", False):
+        if LOG_VERBOSE.get():
             import traceback
 
             typer.echo(traceback.format_exc())
@@ -404,7 +407,6 @@ async def _deploy_with_retry(
     mcp_app_client: MCPAppClient,
     retry_count: int,
     ignore: Optional[Path],
-    verbose: bool = False,
 ):
     """Execute the deployment operations with retry logic.
 
@@ -425,7 +427,6 @@ async def _deploy_with_retry(
             api_key=api_key,
             project_dir=project_dir,
             ignore_file=ignore,
-            verbose=verbose,
         )
     except Exception as e:
         raise CLIError(f"Bundling failed: {str(e)}") from e
@@ -485,8 +486,7 @@ async def _deploy_with_retry(
                 raise
 
     if retry_count > 1:
-        if verbose:
-            print_info(f"Deployment API configured with up to {retry_count} attempts")
+        print_verbose(f"Deployment API configured with up to {retry_count} attempts")
 
     try:
         return await retry_async_with_exponential_backoff(

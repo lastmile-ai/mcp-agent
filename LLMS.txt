@@ -1406,7 +1406,7 @@ Example usage:
 
 ### src/mcp_agent/cli/main.py
 
-**Function:** `main(verbose: bool = typer.Option(False, '--verbose', '-v', help='Enable verbose mode'), quiet: bool = typer.Option(False, '--quiet', '-q', help='Disable output'), color: bool = typer.Option(True, '--color/--no-color', help='Enable/disable color output'))`
+**Function:** `main(verbose: bool = typer.Option(False, '--verbose', '-v', help='Enable verbose mode'), color: bool = typer.Option(True, '--color/--no-color', help='Enable/disable color output'))`
 
 - **Description**: Main entry point for the MCP Agent CLI.
 - **Parameters**

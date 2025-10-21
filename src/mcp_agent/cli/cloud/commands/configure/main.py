@@ -35,6 +35,7 @@ from mcp_agent.cli.utils.ux import (
     print_configuration_header,
     print_info,
     print_success,
+    LOG_VERBOSE,
 )
 
 
@@ -85,6 +86,12 @@ def configure_app(
         help="API key for authentication. Defaults to MCP_API_KEY environment variable.",
         envvar=ENV_API_KEY,
     ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable verbose output for this command",
+    ),
 ) -> str:
     """Configure an MCP app with the required params (e.g. user secrets).
 
@@ -99,6 +106,9 @@ def configure_app(
     Returns:
         Configured app ID.
     """
+    if verbose:
+        LOG_VERBOSE.set(True)
+
     # Check what params the app requires (doubles as an access check)
     if not app_server_url:
         raise CLIError("You must provide a server URL to configure.")
@@ -214,7 +224,7 @@ def configure_app(
             print_success("User secrets processed successfully")
 
         except Exception as e:
-            if ctx.obj.get("verbose", False):
+            if LOG_VERBOSE.get():
                 import traceback
 
                 typer.echo(traceback.format_exc())

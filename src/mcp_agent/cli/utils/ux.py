@@ -9,6 +9,10 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.theme import Theme
 
+from contextvars import ContextVar
+
+LOG_VERBOSE = ContextVar("log_verbose")
+
 # Define a custom theme for consistent styling
 CUSTOM_THEME = Theme(
     {
@@ -47,6 +51,21 @@ def print_info(
         console.print(f"[info]INFO:[/info] {message}", *args, **kwargs)
     if log:
         logger.info(message)
+
+
+def print_verbose(
+    message: str,
+    *args: Any,
+    log: bool = True,
+    console_output: bool = True,
+    **kwargs: Any,
+):
+    """
+    Print debug-like verbose content as info only if configured for verbose logging,
+    i.e. replaces "if verbose then print_info"
+    """
+    if LOG_VERBOSE.get():
+        print_info(message, *args, log=log, console_output=console_output, **kwargs)
 
 
 def print_success(

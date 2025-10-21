@@ -15,8 +15,7 @@ from pathlib import Path
 import typer
 from rich.console import Console
 
-from mcp_agent.cli.config import settings
-from mcp_agent.cli.utils.ux import print_error
+from mcp_agent.cli.utils.ux import print_error, LOG_VERBOSE
 from mcp_agent.cli.utils.version_check import maybe_warn_newer_version
 
 # Mount existing cloud CLI
@@ -108,7 +107,6 @@ def main(
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Enable verbose output"
     ),
-    quiet: bool = typer.Option(False, "--quiet", "-q", help="Reduce output"),
     color: bool = typer.Option(
         True, "--color/--no-color", help="Enable/disable color output"
     ),
@@ -122,12 +120,10 @@ def main(
     ),
 ) -> None:
     """mcp-agent command line interface."""
-    # Persist global options on context for subcommands
-    unified_verbose = verbose or settings.VERBOSE
+    if verbose:
+        LOG_VERBOSE.set(True)
 
     ctx.obj = {
-        "verbose": unified_verbose,
-        "quiet": quiet,
         "color": color,
         "format": format.lower(),
     }

@@ -19,6 +19,7 @@ from rich.table import Table
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
+from mcp_agent.cli.utils.ux import LOG_VERBOSE
 from mcp_agent.config import get_settings, Settings
 
 
@@ -200,6 +201,9 @@ def build(
     ),
 ) -> None:
     """Run comprehensive preflight checks and generate build manifest."""
+    if verbose:
+        LOG_VERBOSE.set(True)
+    verbose = LOG_VERBOSE.get()
 
     console.print("\n[bold cyan]🔍 MCP-Agent Build Preflight Checks[/bold cyan]\n")
 
