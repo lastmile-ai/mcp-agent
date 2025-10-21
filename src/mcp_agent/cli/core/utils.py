@@ -170,5 +170,6 @@ def attach_stdio_servers(
             transport="stdio",
             command=desc.get("command"),
             args=desc.get("args", []),
+            cwd=desc.get("cwd"),
         )
         app.context.config.mcp.servers[name] = settings

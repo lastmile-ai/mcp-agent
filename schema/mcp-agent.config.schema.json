@@ -745,6 +745,19 @@
           "type": "array",
           "description": "The arguments for the server command in stdio mode."
         },
+        "cwd": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cwd",
+          "description": "The working directory to use when spawning the server process in stdio mode."
+        },
         "url": {
           "anyOf": [
             {

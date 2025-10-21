@@ -442,6 +442,7 @@ class MCPConnectionManager(ContextDependent):
                     command=config.command,
                     args=config.args or [],
                     env={**get_default_environment(), **(config.env or {})},
+                    cwd=config.cwd or None,
                 )
                 # Create stdio client config with redirected stderr
                 return stdio_client(server=server_params)
