@@ -11,9 +11,9 @@ reuse the stored token—after the first run, re-run
 `uv run examples/oauth/interactive_tool/client.py` (with the server still
 running) and you should see the result immediately with no additional prompt.
 
-## workflow_pre_auth
+## pre_authorize
 
-Demonstrates seeding tokens via the `workflows-pre-auth` tool before running
+Demonstrates seeding tokens via the `workflows-store-credentials` tool before running
 an asynchronous workflow. This is useful when workflows execute in the
 background (e.g., Temporal) and cannot perform interactive authentication on
 their own.

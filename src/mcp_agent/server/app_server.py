@@ -1888,16 +1888,15 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
 
         return result
 
-    @mcp.tool(name="workflows-pre-auth")
-    async def workflow_pre_auth(
+    @mcp.tool(name="workflows-store-credentials")
+    async def workflow_store_credentials(
         ctx: MCPContext, workflow_name: str, tokens: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """
-        Pre-authorize OAuth tokens for a workflow to use with MCP servers.
+        Store OAuth tokens for a workflow to use with MCP servers.
 
-        Stores OAuth tokens that the workflow can use when connecting to various MCP servers.
-        This allows workflows to authenticate with external services without requiring
-        interactive OAuth flows during execution.
+        Persisting tokens ahead of time lets workflows authenticate with external services
+        without needing an interactive OAuth flow at execution time.
 
         Args:
             workflow_name: The name of the workflow that will use these tokens.

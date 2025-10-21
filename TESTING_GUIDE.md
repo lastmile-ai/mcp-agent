@@ -30,7 +30,7 @@ temporal server start-dev
 ```bash
 export GITHUB_CLIENT_ID=your_client_id
 export GITHUB_CLIENT_SECRET=your_client_secret
-export GITHUB_ACCESS_TOKEN=ghp_your_pat   # for pre-auth / pre-seeded flows
+  export GITHUB_ACCESS_TOKEN=ghp_your_pat   # for token bootstrap flows
 ```
 
 ### 0.5 (Optional) Start Redis for Redis-backed tests
@@ -64,21 +64,21 @@ uv run python -m pytest tests/test_oauth_utils.py tests/test_audience_validation
   uv run python examples/oauth/preconfigured/main.py
   ```
 
-#### 1.2.2 Workflow Pre-Auth
+#### 1.2.2 Workflow Pre-Authorize
 
 - Terminal 1:
   ```bash
-  uv run python examples/oauth/workflow_pre_auth/worker.py
+  uv run python examples/oauth/pre_authorize/worker.py
   ```
 - Terminal 2:
   ```bash
-  uv run python examples/oauth/workflow_pre_auth/main.py
+  uv run python examples/oauth/pre_authorize/main.py
   ```
 - Terminal 3:
   ```bash
-  uv run python examples/oauth/workflow_pre_auth/client.py
+  uv run python examples/oauth/pre_authorize/client.py
   ```
-  Optional: rerun the client with `--skip-pre-auth` to confirm cached token reuse.
+  Optional: rerun the client with `--skip-store-credentials` to confirm cached token reuse.
 
 #### 1.2.3 Dynamic Interactive Flow
 
@@ -144,21 +144,21 @@ _(Fix pytest/pytest_asyncio integration if you still have the autoload error bef
   ```
   On first run the browser opens to GitHub; authorize and the agent completes. Run the same command again and it should reuse the cached token without prompting. To choose different loopback ports, set `oauth.loopback_ports` in `mcp_agent.config.yaml`.
 
-#### 2.2.2 Workflow Pre-Auth
+#### 2.2.2 Workflow Pre-Authorize
 
 - Terminal 1:
   ```bash
-  uv run python examples/oauth/workflow_pre_auth/worker.py
+  uv run python examples/oauth/pre_authorize/worker.py
   ```
 - Terminal 2:
   ```bash
-  uv run python examples/oauth/workflow_pre_auth/main.py
+  uv run python examples/oauth/pre_authorize/main.py
   ```
 - Terminal 3:
   ```bash
-  uv run python examples/oauth/workflow_pre_auth/client.py
+  uv run python examples/oauth/pre_authorize/client.py
   ```
-  Repeat with `--skip-pre-auth` to verify cached token reuse after the workflow has been seeded once.
+  Repeat with `--skip-store-credentials` to verify cached token reuse after the workflow has been seeded once.
 
 #### 2.2.3 Redis-backed Token Cache (optional)
 
@@ -171,7 +171,7 @@ _(Fix pytest/pytest_asyncio integration if you still have the autoload error bef
 
 | Scenario                             | Terminal(s)                               | Expected outcome                                                            |
 | ------------------------------------ | ----------------------------------------- | --------------------------------------------------------------------------- |
-| Static pre-auth (both branches)      | Worker + server + client                  | First run seeds token, subsequent run with `--skip-pre-auth` reuses it.     |
+| Workflow pre-authorize (both branches) | Worker + server + client                | First run seeds token, subsequent run with `--skip-store-credentials` reuses it. |
 | Interactive flow (both branches)     | Server + client                           | First run asks for auth; immediate re-run uses cached token without prompt. |
 | Redis token caching (current branch) | Same as above but with Redis env vars set | Tokens survive server restart thanks to Redis-backed store.                 |
 

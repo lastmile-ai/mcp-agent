@@ -1,7 +1,8 @@
 import asyncio
-import time
+import json
 import os
 import sys
+import time
 
 from datetime import timedelta
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
@@ -61,9 +62,9 @@ async def main():
         logger.info("Connecting to workflow server...")
 
         # Override the server configuration to point to our local script
-        context.server_registry.registry["basic_agent_server"] = MCPServerSettings(
-            name="basic_agent_server",
-            description="Local workflow server running the basic agent example",
+        context.server_registry.registry["pre_authorize_server"] = MCPServerSettings(
+            name="pre_authorize_server",
+            description="Local workflow server running the pre-authorize example",
             transport="sse",
             url="http://127.0.0.1:8000/sse",
             # command="uv",
@@ -111,7 +112,7 @@ async def main():
 
         try:
             async with gen_client(
-                "basic_agent_server",
+                "pre_authorize_server",
                 context.server_registry,
                 client_session_factory=make_session,
             ) as server:
@@ -128,10 +129,10 @@ async def main():
                     data={"tools": [tool.name for tool in tools_result.tools]},
                 )
 
-                if len(sys.argv) < 2 or sys.argv[1] != "--skip-pre-auth":
-                    print("Performing pre-auth")
+                if len(sys.argv) < 2 or sys.argv[1] != "--skip-store-credentials":
+                    print("Storing workflow credentials")
                     await server.call_tool(
-                        "workflows-pre-auth",
+                        "workflows-store-credentials",
                         arguments={
                             "workflow_name": "github_org_search",
                             "tokens": [
@@ -143,9 +144,14 @@ async def main():
                         },
                     )
 
-                print(
-                    await server.call_tool("github_org_search", {"query": "lastmileai"})
+                tool_result = await server.call_tool(
+                    "github_org_search", {"query": "lastmile-ai"}
                 )
+                parsed = _tool_result_to_json(tool_result)
+                if parsed is not None:
+                    print(json.dumps(parsed, indent=2))
+                else:
+                    print(tool_result)
         except Exception as e:
             # Tolerate benign shutdown races from stdio client (BrokenResourceError within ExceptionGroup)
             if _ExceptionGroup is not None and isinstance(e, _ExceptionGroup):
@@ -187,8 +193,6 @@ def _tool_result_to_json(tool_result: CallToolResult):
         text = tool_result.content[0].text
         try:
             # Try to parse the response as JSON if it's a string
-            import json
-
             return json.loads(text)
         except (json.JSONDecodeError, TypeError):
             # If it's not valid JSON, just use the text

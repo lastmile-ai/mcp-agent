@@ -1,72 +1,55 @@
 import asyncio
+import inspect
 import os
 import time
 
 from mcp_agent.app import MCPApp
-from mcp_agent.config import (
-    Settings,
-    LoggerSettings,
-    MCPSettings,
-    MCPServerSettings,
-    OpenAISettings,
-    AnthropicSettings,
-    MCPServerAuthSettings,
-    MCPOAuthClientSettings,
-    OAuthSettings,
-)
+from mcp_agent.config import get_settings, OAuthTokenStoreSettings, OAuthSettings
 from mcp_agent.agents.agent import Agent
-from mcp_agent.workflows.llm.augmented_llm import RequestParams
-from mcp_agent.workflows.llm.llm_selector import ModelPreferences
 from mcp_agent.workflows.llm.augmented_llm_anthropic import AnthropicAugmentedLLM
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 from mcp_agent.tracing.token_counter import TokenSummary
 
 
-client_id = os.environ.get("GITHUB_CLIENT_ID")
-client_secret = os.environ.get("GITHUB_CLIENT_SECRET")
+def _load_settings():
+    signature = inspect.signature(get_settings)
+    if "set_global" in signature.parameters:
+        return get_settings(set_global=False)
+    return get_settings()
 
-settings = Settings(
-    execution_engine="asyncio",
-    logger=LoggerSettings(type="file", level="debug"),
-    oauth=OAuthSettings(),
-    mcp=MCPSettings(
-        servers={
-            "fetch": MCPServerSettings(
-                command="uvx",
-                args=["mcp-server-fetch"],
-            ),
-            "filesystem": MCPServerSettings(
-                command="npx",
-                args=["-y", "@modelcontextprotocol/server-filesystem"],
-            ),
-            "github": MCPServerSettings(
-                name="github",
-                transport="streamable_http",
-                url="https://api.githubcopilot.com/mcp/",
-                auth=MCPServerAuthSettings(
-                    oauth=MCPOAuthClientSettings(
-                        enabled=True,
-                        client_id=client_id,
-                        client_secret=client_secret,
-                        scopes=["read:org", "public_repo", "user:email"],
-                        authorization_server="https://github.com/login/oauth",
-                        resource="https://api.githubcopilot.com/mcp",
-                        use_internal_callback=False,
-                    )
-                ),
-            ),
-        }
-    ),
-    openai=OpenAISettings(
-        api_key="sk-my-openai-api-key",
-        default_model="gpt-4o-mini",
-    ),
-    anthropic=AnthropicSettings(
-        api_key="sk-my-anthropic-api-key",
-    ),
+
+settings = _load_settings()
+
+redis_url = os.environ.get("OAUTH_REDIS_URL")
+if redis_url:
+    settings.oauth = settings.oauth or OAuthSettings()
+    settings.oauth.token_store = OAuthTokenStoreSettings(
+        backend="redis",
+        redis_url=redis_url,
+    )
+elif not getattr(settings.oauth, "token_store", None):
+    settings.oauth = settings.oauth or OAuthSettings()
+    settings.oauth.token_store = OAuthTokenStoreSettings()
+
+github_settings = (
+    settings.mcp.servers.get("github")
+    if settings.mcp and settings.mcp.servers
+    else None
+)
+github_oauth = (
+    github_settings.auth.oauth
+    if github_settings and github_settings.auth and github_settings.auth.oauth
+    else None
 )
 
-app = MCPApp(name="oauth_basic_agent")
+if not github_oauth or not github_oauth.client_id or not github_oauth.client_secret:
+    raise SystemExit(
+        "GitHub OAuth client_id/client_secret must be provided via mcp_agent.config.yaml or mcp_agent.secrets.yaml."
+    )
+
+app = MCPApp(
+    name="oauth_basic_agent", settings=settings, session_id="oauth-basic-agent"
+)
 
 
 @app.tool()
@@ -95,27 +78,35 @@ async def example_usage() -> str:
             logger.info("Tools available:", data=tools_list.model_dump())
 
             llm = await finder_agent.attach_llm(OpenAIAugmentedLLM)
-            result += await llm.generate_str(
+
+            # GitHub MCP server use
+            github_repos = await llm.generate_str(
+                message="Use the GitHub MCP server to find the top 3 public repositories for the GitHub organization lastmile-ai and list their names.",
+            )
+            logger.info(
+                f"Top 3 public repositories for the GitHub organization lastmile-ai: {github_repos}"
+            )
+
+            result += f"\n\nTop 3 public repositories for the GitHub organization lastmile-ai: {github_repos}"
+
+            # Filesystem MCP server use
+            config_contents = await llm.generate_str(
                 message="Print the contents of mcp_agent.config.yaml verbatim",
             )
-            logger.info(f"mcp_agent.config.yaml contents: {result}")
+            logger.info(f"mcp_agent.config.yaml contents: {config_contents}")
+            result += f"\n\nContents of mcp_agent.config.yaml: {config_contents}"
 
+            # Switch to Anthropic LLM
             llm = await finder_agent.attach_llm(AnthropicAugmentedLLM)
 
-            result += await llm.generate_str(
+            # fetch MCP server use
+            mcp_introduction = await llm.generate_str(
                 message="Print the first 2 paragraphs of https://modelcontextprotocol.io/introduction",
             )
-            logger.info(f"First 2 paragraphs of Model Context Protocol docs: {result}")
-            result += "\n\n"
-
-            result += await llm.generate_str(
-                message="Summarize those paragraphs in a 128 character tweet",
-                request_params=RequestParams(
-                    modelPreferences=ModelPreferences(
-                        costPriority=0.1, speedPriority=0.2, intelligencePriority=0.7
-                    ),
-                ),
+            logger.info(
+                f"First 2 paragraphs of Model Context Protocol docs: {mcp_introduction}"
             )
+            result += f"\n\nFirst 2 paragraphs of Model Context Protocol docs: {mcp_introduction}"
 
         await display_token_summary(agent_app)
     return result

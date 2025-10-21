@@ -120,7 +120,12 @@ async def github_org_search(query: str, app_ctx: Optional[AppContext] = None) ->
         try:
             result = await github_client.call_tool(
                 "search_repositories",
-                {"query": f"org:{query}", "per_page": 5, "sort": "best-match", "order": "desc"},
+                {
+                    "query": f"org:{query}",
+                    "per_page": 5,
+                    "sort": "best-match",
+                    "order": "desc",
+                },
             )
         except Exception as exc:
             context.logger.error(

@@ -16,7 +16,18 @@ This example mirrors `mcp_basic_agent` but adds GitHub MCP with OAuth using the 
 cp mcp_agent.secrets.yaml.example mcp_agent.secrets.yaml
 ```
 
-3. Install deps and run:
+3. Configuration is loaded from `mcp_agent.config.yaml` and secrets from
+   `mcp_agent.secrets.yaml`. Populate the secrets file (or export the matching
+   environment variables) with your GitHub OAuth credentials before running.
+
+4. (Optional) To persist tokens across runs, start Redis and set `OAUTH_REDIS_URL`:
+
+```bash
+docker run --rm -p 6379:6379 redis:7-alpine
+export OAUTH_REDIS_URL="redis://127.0.0.1:6379"
+```
+
+5. Install deps and run:
 
 ```bash
 uv pip install -r requirements.txt

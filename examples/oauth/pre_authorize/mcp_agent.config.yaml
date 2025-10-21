@@ -1,6 +1,12 @@
 $schema: ../../../schema/mcp-agent.config.schema.json
 
-execution_engine: asyncio
+execution_engine: temporal
+temporal:
+  host: localhost:7233
+  namespace: default
+  task_queue: mcp-agent
+  max_concurrent_activities: 10
+
 logger:
   transports: [console, file]
   level: info
@@ -13,12 +19,6 @@ oauth:
 
 mcp:
   servers:
-    fetch:
-      command: "uvx"
-      args: ["mcp-server-fetch"]
-    filesystem:
-      command: "npx"
-      args: ["-y", "@modelcontextprotocol/server-filesystem"]
     github:
       transport: streamable_http
       url: "https://api.githubcopilot.com/mcp/"
@@ -29,8 +29,3 @@ mcp:
           authorization_server: "https://github.com/login/oauth"
           use_internal_callback: false
           include_resource_parameter: false
-
-openai:
-  default_model: "gpt-4o-mini"
-anthropic:
-  default_model: claude-sonnet-4-20250514
