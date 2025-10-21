@@ -304,14 +304,14 @@ async def grade_story(story: str, app_ctx: Optional[AppContext] = None) -> str:
         )
     except Exception as e:
         await context.error(f"grade_story: Error generating result: {e}")
-        return None
+        return ""
 
     if not result:
         await context.error("grade_story: No result from parallel LLM")
+        return ""
     else:
         await context.info(f"grade_story: Result: {result}")
-
-    return result
+        return result
 
 
 @app.async_tool(name="grade_story_async")
@@ -372,7 +372,11 @@ async def grade_story_async(story: str, app_ctx: Optional[AppContext] = None) ->
         )
     except Exception as e:
         logger.error(f"grade_story_async: Error generating result: {e}")
-        return None
+        return ""
+
+    if not result:
+        logger.error("grade_story_async: No result from parallel LLM")
+        return ""
 
     return result
 

@@ -121,10 +121,8 @@ async def finder_tool(
         To create this as an async tool, use @app.async_tool instead, which will return the workflow ID and run ID.
     """
 
-    app = app_ctx.app
-
-    context = app_ctx or app.context
-    logger = app.logger
+    context = app_ctx if app_ctx is not None else app.context
+    logger = context.logger
     logger.info("[workflow-mode] Running finder_tool", data={"input": request})
 
     finder_agent = Agent(
@@ -133,7 +131,6 @@ async def finder_tool(
         server_names=["fetch", "filesystem"],
     )
 
-    context = app.context
     context.config.mcp.servers["filesystem"].args.extend([os.getcwd()])
 
     async with finder_agent:

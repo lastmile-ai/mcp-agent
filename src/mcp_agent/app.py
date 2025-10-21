@@ -637,6 +637,12 @@ class MCPApp:
                     return False
                 if annotation is _Ctx:
                     return True
+                if _inspect.isclass(annotation):
+                    try:
+                        if issubclass(annotation, _Ctx):  # type: ignore[misc]
+                            return True
+                    except TypeError:
+                        pass
                 try:
                     origin = _typing.get_origin(annotation)
                     if origin is not None:
@@ -665,12 +671,19 @@ class MCPApp:
                     if needs_fast_ctx and p.name not in call_kwargs:
                         fast_ctx = getattr(workflow_self, "_mcp_request_context", None)
                         if fast_ctx is None and app_context_param_name:
-                            fast_ctx = getattr(
-                                call_kwargs.get(app_context_param_name, None),
-                                "fastmcp",
-                                None,
-                            )
-                        call_kwargs[p.name] = fast_ctx
+                            _app_ctx = call_kwargs.get(app_context_param_name, None)
+                            if _Ctx is not None and isinstance(_app_ctx, _Ctx):
+                                fast_ctx = _app_ctx
+                            _fastmcp = getattr(_app_ctx, "fastmcp", None)
+                            if _fastmcp is not None and hasattr(
+                                _fastmcp, "get_context"
+                            ):
+                                try:
+                                    fast_ctx = _fastmcp.get_context()
+                                except Exception:
+                                    fast_ctx = None
+                        if fast_ctx is not None:
+                            call_kwargs[p.name] = fast_ctx
             except Exception:
                 pass
 

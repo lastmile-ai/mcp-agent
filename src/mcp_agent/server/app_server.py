@@ -1461,6 +1461,12 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
             return False
         if annotation is _Ctx:
             return True
+        if inspect.isclass(annotation):
+            try:
+                if issubclass(annotation, _Ctx):  # type: ignore[misc]
+                    return True
+            except TypeError:
+                pass
         try:
             origin = _typing.get_origin(annotation)
             if origin is not None:
