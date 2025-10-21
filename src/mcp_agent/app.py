@@ -1,5 +1,4 @@
 import asyncio
-import base64
 import os
 import sys
 import functools
@@ -19,7 +18,6 @@ from typing import (
 )
 from datetime import timedelta
 from contextlib import asynccontextmanager
-from importlib import resources
 
 from mcp import ServerSession
 from mcp.server.fastmcp import FastMCP

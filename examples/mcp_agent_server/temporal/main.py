@@ -12,7 +12,6 @@ import asyncio
 import base64
 import logging
 import os
-from importlib import resources
 from pathlib import Path
 
 from mcp.types import Icon, ModelHint, ModelPreferences, SamplingMessage, TextContent
