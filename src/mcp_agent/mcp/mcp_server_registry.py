@@ -42,11 +42,14 @@ logger = get_logger(__name__)
 
 def _resolve_identity_from_context():
     try:
-        from mcp_agent.server import app_server  # local import to avoid circular dependency
+        from mcp_agent.server import (
+            app_server,
+        )  # local import to avoid circular dependency
 
         return app_server.get_current_identity()
     except Exception:
         return None
+
 
 InitHookCallable = Callable[[ClientSession | None, MCPServerAuthSettings | None], bool]
 """

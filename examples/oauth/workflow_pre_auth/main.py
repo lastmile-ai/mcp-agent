@@ -16,7 +16,8 @@ from mcp_agent.config import (
     MCPSettings,
     OAuthSettings,
     OAuthTokenStoreSettings,
-    Settings, TemporalSettings,
+    Settings,
+    TemporalSettings,
 )
 from mcp_agent.core.context import Context as AppContext
 from mcp_agent.mcp.gen_client import gen_client
@@ -109,7 +110,6 @@ app = MCPApp(
 
 @app.workflow_task(name="github_org_search_activity")
 async def github_org_search_activity(query: str) -> str:
-
     print("running activity)")
     try:
         async with gen_client(
@@ -141,7 +141,6 @@ async def github_org_search_activity(query: str) -> str:
 
         traceback.print_exc()
         return f"Error: {e}"
-
 
 
 @app.tool(name="github_org_search")

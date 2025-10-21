@@ -787,6 +787,7 @@ class TokenManager:
                 from mcp_agent.executor.temporal.temporal_context import (
                     get_execution_id as _get_exec_id,
                 )
+
                 session_id = _get_exec_id()
             except Exception:
                 pass
@@ -797,4 +798,3 @@ class TokenManager:
         if not session_id:
             return None
         return OAuthUserIdentity(provider="mcp-session", subject=str(session_id))
-

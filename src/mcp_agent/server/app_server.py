@@ -780,8 +780,12 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             return None
 
         async def _handle_specific_request(
-            session: Any, method: str, params: dict, identity: OAuthUserIdentity,
-            context: "Context", log_prefix: str = "request"
+            session: Any,
+            method: str,
+            params: dict,
+            identity: OAuthUserIdentity,
+            context: "Context",
+            log_prefix: str = "request",
         ):
             """Handle specific request types with structured request/response."""
             from mcp.types import (
@@ -808,7 +812,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                 callback_data = await session.send_request(
                     request=req, result_type=CreateMessageResult
                 )  # type: ignore[attr-defined]
-                return callback_data.model_dump(by_alias=True, mode="json", exclude_none=True)
+                return callback_data.model_dump(
+                    by_alias=True, mode="json", exclude_none=True
+                )
             elif method == "elicitation/create":
                 req = ServerRequest(
                     ElicitRequest(
@@ -819,19 +825,25 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                 callback_data = await session.send_request(
                     request=req, result_type=ElicitResult
                 )  # type: ignore[attr-defined]
-                return callback_data.model_dump(by_alias=True, mode="json", exclude_none=True)
+                return callback_data.model_dump(
+                    by_alias=True, mode="json", exclude_none=True
+                )
             elif method == "roots/list":
                 req = ServerRequest(ListRootsRequest(method="roots/list"))
                 callback_data = await session.send_request(
                     request=req, result_type=ListRootsResult
                 )  # type: ignore[attr-defined]
-                return callback_data.model_dump(by_alias=True, mode="json", exclude_none=True)
+                return callback_data.model_dump(
+                    by_alias=True, mode="json", exclude_none=True
+                )
             elif method == "ping":
                 req = ServerRequest(PingRequest(method="ping"))
                 callback_data = await session.send_request(
                     request=req, result_type=EmptyResult
                 )  # type: ignore[attr-defined]
-                return callback_data.model_dump(by_alias=True, mode="json", exclude_none=True)
+                return callback_data.model_dump(
+                    by_alias=True, mode="json", exclude_none=True
+                )
             elif method == "auth/request":
                 # TODO: special handling of auth request, should be replaced by future URL elicitation
 
@@ -842,14 +854,17 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                     if context and hasattr(context, "token_manager"):
                         manager = context.token_manager
                         if manager:
-                            server_config = context.server_registry.get_server_config(server_name)
+                            server_config = context.server_registry.get_server_config(
+                                server_name
+                            )
 
                             token = await manager.get_access_token_if_present(
                                 context=context,
                                 server_name=server_name,
                                 server_config=server_config,
                                 scopes=scopes,
-                                identity=identity)
+                                identity=identity,
+                            )
                             if token:
                                 return token
                 except Exception:
@@ -864,13 +879,15 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                     if context and hasattr(context, "token_manager"):
                         manager = context.token_manager
                         if manager:
-                            server_config = context.server_registry.get_server_config(server_name)
+                            server_config = context.server_registry.get_server_config(
+                                server_name
+                            )
 
                             token_data = {
                                 "access_token": record.access_token,
                                 "refresh_token": record.refresh_token,
                                 "scopes": record.scopes,
-                                "authorization_server":  record.authorization_server,
+                                "authorization_server": record.authorization_server,
                                 "expires_at": record.expires_at,
                                 "token_type": "Bearer",
                             }
@@ -879,8 +896,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                                 context=context,
                                 user=identity,
                                 server_name=server_name,
-                                server_config = server_config,
-                                token_data = token_data)
+                                server_config=server_config,
+                                token_data=token_data,
+                            )
                 except Exception:
                     pass
 
@@ -921,14 +939,10 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                     requestedSchema=AuthToken.model_json_schema(),
                 ),
             )
-            await session.send_request(
-                request=req, result_type=ElicitResult
-            )  # type: ignore[attr-defined]
+            await session.send_request(request=req, result_type=ElicitResult)  # type: ignore[attr-defined]
             timeout = 300
             try:
-                callback_data = await asyncio.wait_for(
-                    callback_future, timeout=timeout
-                )
+                callback_data = await asyncio.wait_for(callback_future, timeout=timeout)
             except asyncio.TimeoutError as exc:
                 raise CallbackTimeoutError(
                     f"Timed out waiting for OAuth callback after {timeout} seconds"
@@ -962,7 +976,9 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             error = callback_data.get("error")
             if error:
                 description = callback_data.get("error_description") or error
-                raise OAuthFlowError(f"Authorization server returned error: {description}")
+                raise OAuthFlowError(
+                    f"Authorization server returned error: {description}"
+                )
             returned_state = callback_data.get("state")
             if returned_state != state:
                 raise OAuthFlowError("State mismatch detected in OAuth callback")
@@ -995,7 +1011,10 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             if not http_client:
                 http_client = httpx.AsyncClient(timeout=30.0)
             token_response = await http_client.post(
-                token_endpoint, data=data, auth=auth, headers={"Accept": "application/json"}
+                token_endpoint,
+                data=data,
+                auth=auth,
+                headers={"Accept": "application/json"},
             )
             token_response.raise_for_status()
             try:
@@ -2720,6 +2739,7 @@ async def _workflow_status(
 
 
 # endregion
+
 
 def _parse_callback_params(url: str) -> Dict[str, str]:
     parsed = urlparse(url)
