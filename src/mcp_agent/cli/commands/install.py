@@ -9,7 +9,7 @@ For ChatGPT, the server must have unauthenticated access enabled.
 
 Supported clients:
  - vscode: writes .vscode/mcp.json in project
- - claude_code: writes ~/.claude/claude_code_config.json
+ - claude_code: writes ~/.claude.json (uses "type" field instead of "transport")
  - cursor: writes ~/.cursor/mcp.json
  - claude_desktop: writes platform-specific Claude Desktop config using mcp-remote wrapper
    - macOS: ~/Library/Application Support/Claude/claude_desktop_config.json
@@ -64,7 +64,7 @@ CLIENT_CONFIGS = {
         "description": "VSCode (project-local)",
     },
     "claude_code": {
-        "path": lambda: Path.home() / ".claude" / "claude_code_config.json",
+        "path": lambda: Path.home() / ".claude.json",
         "description": "Claude Code",
     },
     "cursor": {
@@ -120,16 +120,18 @@ def _write_json(path: Path, data: dict) -> None:
     path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
-def _build_server_config(server_url: str, transport: str = "http", for_claude_desktop: bool = False, api_key: str = None) -> dict:
+def _build_server_config(server_url: str, transport: str = "http", for_claude_desktop: bool = False, for_claude_code: bool = False, api_key: str = None) -> dict:
     """Build server configuration dictionary with auth header.
 
     For Claude Desktop, wraps HTTP/SSE servers with mcp-remote stdio wrapper with actual API key.
+    For Claude Code, uses "type" field instead of "transport".
     For other clients, uses direct HTTP/SSE connection with actual API key embedded.
 
     Args:
         server_url: The server URL
         transport: Transport type (http or sse)
         for_claude_desktop: Whether to use Claude Desktop format with mcp-remote
+        for_claude_code: Whether to use Claude Code format with "type" field
         api_key: The actual API key (required for all clients)
     """
     if not api_key:
@@ -145,6 +147,15 @@ def _build_server_config(server_url: str, transport: str = "http", for_claude_de
                 "--header",
                 f"Authorization: Bearer {api_key}"
             ]
+        }
+    elif for_claude_code:
+        # Claude Code uses "type" instead of "transport"
+        return {
+            "type": transport,
+            "url": server_url,
+            "headers": {
+                "Authorization": f"Bearer {api_key}"
+            }
         }
     else:
         # Direct HTTP/SSE connection for other clients with embedded API key
@@ -340,6 +351,38 @@ def install(
         )
         return
 
+    # Use app name from API, fallback to custom name or generated name
+    server_name = name or app_name or _generate_server_name(server_url)
+
+    # For Claude Code, use the `claude mcp add` command instead of editing JSON
+    if client_lc == "claude_code":
+        if dry_run:
+            console.print(f"\n[bold yellow]DRY RUN - Would run:[/bold yellow]")
+            console.print(f"claude mcp add {server_name} {server_url} -t sse -H 'Authorization: Bearer <api-key>' -s user")
+            return
+
+        import subprocess
+        try:
+            cmd = [
+                "claude", "mcp", "add",
+                server_name,
+                server_url,
+                "-t", "sse",
+                "-H", f"Authorization: Bearer {effective_api_key}",
+                "-s", "user"
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            print_success(f"Server '{server_name}' installed to Claude Code")
+            console.print(result.stdout)
+            return
+        except subprocess.CalledProcessError as e:
+            raise CLIError(f"Failed to add server to Claude Code: {e.stderr}") from e
+        except FileNotFoundError:
+            raise CLIError(
+                "Claude Code CLI not found. Make sure 'claude' command is available in your PATH.\n"
+                "Install from: https://docs.claude.com/en/docs/claude-code"
+            )
+
     # For other clients, write to config file
     if dry_run:
         print_info("[bold yellow]DRY RUN - No files will be written[/bold yellow]")
@@ -347,11 +390,9 @@ def install(
     client_config = CLIENT_CONFIGS[client_lc]
     config_path = client_config["path"]()
 
-    # Use app name from API, fallback to custom name or generated name
-    server_name = name or app_name or _generate_server_name(server_url)
-
-    # Determine if we're using Claude Desktop format
+    # Determine config format based on client
     use_claude_format = client_lc == "claude_desktop"
+    use_claude_code_format = client_lc == "claude_code"
 
     # Check existing config
     existing_config = {}
@@ -359,7 +400,7 @@ def install(
         try:
             existing_config = json.loads(config_path.read_text(encoding="utf-8"))
             # Check in appropriate location based on format
-            if use_claude_format:
+            if use_claude_format or use_claude_code_format:
                 servers = existing_config.get("mcpServers", {})
             else:
                 servers = existing_config.get("mcp", {}).get("servers", {})
@@ -379,11 +420,13 @@ def install(
         server_url,
         transport,
         for_claude_desktop=use_claude_format,
+        for_claude_code=use_claude_code_format,
         api_key=effective_api_key
     )
 
-    # Merge with existing config
-    merged_config = _merge_mcp_json(existing_config, server_name, server_config, use_claude_format)
+    # Merge with existing config (Claude Code and Claude Desktop both use mcpServers format)
+    use_mcp_servers_format = use_claude_format or use_claude_code_format
+    merged_config = _merge_mcp_json(existing_config, server_name, server_config, use_mcp_servers_format)
 
     # Write or show config
     if dry_run:
@@ -402,6 +445,11 @@ def install(
             auth_note = (
                 f"[bold]Note:[/bold] Claude Desktop uses [cyan]mcp-remote[/cyan] to connect to HTTP/SSE servers\n"
                 f"[dim]API key embedded in config[/dim]"
+            )
+        elif use_claude_code_format:
+            auth_note = (
+                f"[bold]Note:[/bold] Claude Code format uses [cyan]type[/cyan] field\n"
+                f"[dim]API key embedded in config. To update, re-run install with --force[/dim]"
             )
         else:
             auth_note = (
