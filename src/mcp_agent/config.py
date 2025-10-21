@@ -1013,6 +1013,9 @@ class Settings(BaseSettings):
         return None
 
 
+Settings.model_rebuild()
+
+
 class PreloadSettings(BaseSettings):
     """
     Class for preloaded settings of the MCP Agent application.

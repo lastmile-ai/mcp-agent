@@ -205,6 +205,52 @@
           "default": null,
           "title": "Endpoint"
         },
+        "api_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Api Version"
+        },
+        "azure_deployment": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Azure Deployment"
+        },
+        "azure_ad_token": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Azure Ad Token"
+        },
+        "azure_ad_token_provider": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Azure Ad Token Provider"
+        },
         "credential_scopes": {
           "anyOf": [
             {
@@ -221,6 +267,18 @@
             "https://cognitiveservices.azure.com/.default"
           ],
           "title": "Credential Scopes"
+        },
+        "default_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Default Model"
         }
       },
       "title": "AzureSettings",
@@ -573,6 +631,263 @@
       "title": "LoggerSettings",
       "type": "object"
     },
+    "MCPAuthorizationServerSettings": {
+      "additionalProperties": true,
+      "description": "Configuration for exposing the MCP Agent server as an OAuth protected resource.",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "issuer_url": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Issuer Url"
+        },
+        "resource_server_url": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Resource Server Url"
+        },
+        "service_documentation_url": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Service Documentation Url"
+        },
+        "required_scopes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Scopes",
+          "type": "array"
+        },
+        "jwks_uri": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Jwks Uri"
+        },
+        "client_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Client Id"
+        },
+        "client_secret": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Client Secret"
+        },
+        "token_cache_ttl_seconds": {
+          "default": 300,
+          "minimum": 0,
+          "title": "Token Cache Ttl Seconds",
+          "type": "integer"
+        },
+        "expected_audiences": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Expected Audiences",
+          "type": "array"
+        }
+      },
+      "title": "MCPAuthorizationServerSettings",
+      "type": "object"
+    },
+    "MCPOAuthClientSettings": {
+      "additionalProperties": true,
+      "description": "Configuration for authenticating to downstream OAuth-protected MCP servers.",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "scopes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Scopes",
+          "type": "array"
+        },
+        "resource": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Resource"
+        },
+        "authorization_server": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Authorization Server"
+        },
+        "client_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Client Id"
+        },
+        "client_secret": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Client Secret"
+        },
+        "access_token": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Access Token"
+        },
+        "refresh_token": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Refresh Token"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires At"
+        },
+        "token_type": {
+          "default": "Bearer",
+          "title": "Token Type",
+          "type": "string"
+        },
+        "redirect_uri_options": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Redirect Uri Options",
+          "type": "array"
+        },
+        "extra_authorize_params": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Extra Authorize Params",
+          "type": "object"
+        },
+        "extra_token_params": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Extra Token Params",
+          "type": "object"
+        },
+        "require_pkce": {
+          "default": true,
+          "title": "Require Pkce",
+          "type": "boolean"
+        },
+        "use_internal_callback": {
+          "default": true,
+          "title": "Use Internal Callback",
+          "type": "boolean"
+        }
+      },
+      "title": "MCPOAuthClientSettings",
+      "type": "object"
+    },
     "MCPRootSettings": {
       "additionalProperties": true,
       "description": "Represents a root directory configuration for an MCP server.",
@@ -630,6 +945,17 @@
           ],
           "default": null,
           "title": "Api Key"
+        },
+        "oauth": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MCPOAuthClientSettings"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "title": "MCPServerAuthSettings",
@@ -833,6 +1159,77 @@
         }
       },
       "title": "MCPSettings",
+      "type": "object"
+    },
+    "OAuthSettings": {
+      "additionalProperties": true,
+      "description": "Global OAuth-related settings for MCP Agent.",
+      "properties": {
+        "token_store": {
+          "$ref": "#/$defs/OAuthTokenStoreSettings"
+        },
+        "flow_timeout_seconds": {
+          "default": 300,
+          "minimum": 30,
+          "title": "Flow Timeout Seconds",
+          "type": "integer"
+        },
+        "callback_base_url": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Callback Base Url"
+        }
+      },
+      "title": "OAuthSettings",
+      "type": "object"
+    },
+    "OAuthTokenStoreSettings": {
+      "additionalProperties": true,
+      "description": "Settings for OAuth token persistence.",
+      "properties": {
+        "backend": {
+          "default": "memory",
+          "enum": [
+            "memory",
+            "redis"
+          ],
+          "title": "Backend",
+          "type": "string"
+        },
+        "redis_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Redis Url"
+        },
+        "redis_prefix": {
+          "default": "mcp_agent:oauth_tokens",
+          "title": "Redis Prefix",
+          "type": "string"
+        },
+        "refresh_leeway_seconds": {
+          "default": 60,
+          "minimum": 0,
+          "title": "Refresh Leeway Seconds",
+          "type": "integer"
+        }
+      },
+      "title": "OAuthTokenStoreSettings",
       "type": "object"
     },
     "OTLPExporterSettings": {
@@ -1470,6 +1867,29 @@
         "definitions": []
       },
       "description": "Settings for defining and loading subagents for the MCP Agent application"
+    },
+    "authorization": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MCPAuthorizationServerSettings"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Settings for exposing this MCP application as an OAuth protected resource"
+    },
+    "oauth": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OAuthSettings"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Global OAuth client configuration (token store, delegated auth defaults)"
     }
   },
   "title": "MCP Agent Configuration Schema",
