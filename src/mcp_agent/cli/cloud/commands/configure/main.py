@@ -39,6 +39,7 @@ from mcp_agent.cli.utils.ux import (
 
 
 def configure_app(
+    ctx: typer.Context,
     app_server_url: str = typer.Option(
         None,
         "--id",
@@ -213,7 +214,7 @@ def configure_app(
             print_success("User secrets processed successfully")
 
         except Exception as e:
-            if settings.VERBOSE:
+            if ctx.obj.get("verbose", False):
                 import traceback
 
                 typer.echo(traceback.format_exc())

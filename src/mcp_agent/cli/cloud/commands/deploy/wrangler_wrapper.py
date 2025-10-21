@@ -112,7 +112,11 @@ def _handle_wrangler_error(e: subprocess.CalledProcessError) -> None:
 
 
 def wrangler_deploy(
-    app_id: str, api_key: str, project_dir: Path, ignore_file: Path | None = None
+    app_id: str,
+    api_key: str,
+    project_dir: Path,
+    ignore_file: Path | None = None,
+    verbose: bool = False,
 ) -> None:
     """Bundle the MCP Agent using Wrangler.
 
@@ -184,7 +188,7 @@ def wrangler_deploy(
             else:
                 print_info(f"Using ignore patterns from {ignore_file}")
         else:
-            if settings.VERBOSE:
+            if verbose:
                 print_info("No ignore file provided; applying default excludes only")
 
         # Copy the entire project to temp directory, excluding unwanted directories and the live secrets file
@@ -295,7 +299,7 @@ def wrangler_deploy(
                 },
             )
             meta_vars.update({"MCP_DEPLOY_WORKSPACE_HASH": bundle_hash})
-            if settings.VERBOSE:
+            if verbose:
                 print_info(
                     f"Deploying from non-git workspace (hash {bundle_hash[:12]}…)"
                 )

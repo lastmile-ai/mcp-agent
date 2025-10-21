@@ -209,14 +209,14 @@ def deploy_config(
                 retriable=False,
             )
 
-        if settings.VERBOSE:
+        if ctx.obj.get("verbose", False):
             print_info(f"Using API at {effective_api_url}")
 
         mcp_app_client = MCPAppClient(
             api_url=effective_api_url, api_key=effective_api_key
         )
 
-        if settings.VERBOSE:
+        if ctx.obj.get("verbose", False):
             print_info(f"Checking for existing app ID for '{app_name}'...")
 
         try:
@@ -232,7 +232,7 @@ def deploy_config(
                 )
                 app_id = app.appId
                 print_success(f"Created new app '{app_name}'")
-                if settings.VERBOSE:
+                if ctx.obj.get("verbose", False):
                     print_info(f"New app id: `{app_id}`")
             else:
                 short_id = f"{app_id[:8]}…"
@@ -243,7 +243,7 @@ def deploy_config(
                         default=True,
                     )
                     if use_existing:
-                        if settings.VERBOSE:
+                        if ctx.obj.get("verbose", False):
                             print_info(f"Will deploy an update to app ID: `{app_id}`")
                     else:
                         print_error(
@@ -261,7 +261,7 @@ def deploy_config(
                     update_payload["unauthenticated_access"] = unauthenticated_access
 
                 if update_payload:
-                    if settings.VERBOSE:
+                    if ctx.obj.get("verbose", False):
                         print_info("Updating app settings before deployment...")
                     run_async(
                         mcp_app_client.update_app(
@@ -280,7 +280,7 @@ def deploy_config(
         # If a deployed secrets file already exists, determine if it should be used or overwritten
         if deployed_secrets_file:
             if secrets_file:
-                if settings.VERBOSE:
+                if ctx.obj.get("verbose", False):
                     print_info(
                         f"Both '{MCP_SECRETS_FILENAME}' and '{MCP_DEPLOYED_SECRETS_FILENAME}' found in {config_dir}."
                     )
@@ -320,7 +320,7 @@ def deploy_config(
             )
 
             print_success("Secrets file processed successfully")
-            if settings.VERBOSE:
+            if ctx.obj.get("verbose", False):
                 print_info(
                     f"Transformed secrets file written to {secrets_transformed_path}"
                 )
@@ -367,6 +367,7 @@ def deploy_config(
                 mcp_app_client=mcp_app_client,
                 retry_count=retry_count,
                 ignore=ignore_path,
+                verbose=ctx.obj.get("verbose", False),
             )
         )
 
@@ -389,7 +390,7 @@ def deploy_config(
         return app_id
 
     except Exception as e:
-        if settings.VERBOSE:
+        if ctx.obj.get("verbose", False):
             import traceback
 
             typer.echo(traceback.format_exc())
@@ -403,6 +404,7 @@ async def _deploy_with_retry(
     mcp_app_client: MCPAppClient,
     retry_count: int,
     ignore: Optional[Path],
+    verbose: bool = False,
 ):
     """Execute the deployment operations with retry logic.
 
@@ -423,6 +425,7 @@ async def _deploy_with_retry(
             api_key=api_key,
             project_dir=project_dir,
             ignore_file=ignore,
+            verbose=verbose,
         )
     except Exception as e:
         raise CLIError(f"Bundling failed: {str(e)}") from e
@@ -482,7 +485,7 @@ async def _deploy_with_retry(
                 raise
 
     if retry_count > 1:
-        if settings.VERBOSE:
+        if verbose:
             print_info(f"Deployment API configured with up to {retry_count} attempts")
 
     try:
