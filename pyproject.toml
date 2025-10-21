@@ -1,6 +1,6 @@
 [project]
 name = "mcp-agent"
-version = "0.1.32"
+version = "0.1.36"
 description = "Build effective agents with Model Context Protocol (MCP) using simple, composable patterns."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -18,13 +18,12 @@ dependencies = [
     "fastapi>=0.115.6",
     "httpx>=0.28.1",
     "jsonref>=1.1.0",
-    "mcp>=1.13.1",
+    "mcp>=1.18.0",
     "numpy>=2.1.3",
     "opentelemetry-distro>=0.50b0",
     "opentelemetry-exporter-otlp-proto-http>=1.29.0",
     "opentelemetry-instrumentation-anthropic>=0.39.3",
     "opentelemetry-instrumentation-openai>=0.39.3",
-    "pathspec>=0.12.1",
     "prompt-toolkit>=3.0.50",
     "pydantic-settings>=2.7.0",
     "pydantic-yaml>=1.5.1",
@@ -33,11 +32,15 @@ dependencies = [
     "rich>=13.9.4",
     "scikit-learn>=1.6.0",
     "typer>=0.15.3",
-    "watchdog>=6.0.0",
     "websockets>=12.0",
 ]
 
 [project.optional-dependencies]
+cli = [
+    "pathspec>=0.12.1",
+    "python-dotenv>=1.0.0",
+    "watchdog>=6.0.0",
+]
 temporal = [
     "temporalio[opentelemetry]>=1.10.0",
 ]
@@ -100,11 +103,10 @@ dev = [
 ]
 
 [project.scripts]
-mcp-agent = "mcp_agent.cli.main:run"
-mcp_agent = "mcp_agent.cli.main:run"
-mcpagent = "mcp_agent.cli.main:run"
-silsila = "mcp_agent.cli.cloud.main:run"
-prompt-server = "mcp_agent.mcp.prompts.__main__:main"
+silsila = "mcp_agent.cli.main:run [cli]"
+mcp-agent = "mcp_agent.cli.main:run [cli]"
+mcp-cloud = "mcp_agent.cli.cloud.main:run [cli]"
+mcpc = "mcp_agent.cli.cloud.main:run [cli]"
 
 [tool.setuptools.packages.find]
 include = ["mcp-agent"]

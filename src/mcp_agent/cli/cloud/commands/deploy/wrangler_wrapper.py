@@ -184,7 +184,8 @@ def wrangler_deploy(
             else:
                 print_info(f"Using ignore patterns from {ignore_file}")
         else:
-            print_info("No ignore file provided; applying default excludes only")
+            if settings.VERBOSE:
+                print_info("No ignore file provided; applying default excludes only")
 
         # Copy the entire project to temp directory, excluding unwanted directories and the live secrets file
         def ignore_patterns(path_str, names):
@@ -294,7 +295,10 @@ def wrangler_deploy(
                 },
             )
             meta_vars.update({"MCP_DEPLOY_WORKSPACE_HASH": bundle_hash})
-            print_info(f"Deploying from non-git workspace (hash {bundle_hash[:12]}…)")
+            if settings.VERBOSE:
+                print_info(
+                    f"Deploying from non-git workspace (hash {bundle_hash[:12]}…)"
+                )
 
         # Write a breadcrumb file into the project so it ships with the bundle.
         # Use a Python file for guaranteed inclusion without renaming.

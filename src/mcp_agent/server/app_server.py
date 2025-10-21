@@ -2046,6 +2046,46 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
     import inspect
     import asyncio
     import time
+    import typing as _typing
+
+    try:
+        from mcp.server.fastmcp import Context as _Ctx
+    except Exception:
+        _Ctx = None  # type: ignore
+
+    def _annotation_is_fast_ctx(annotation) -> bool:
+        if _Ctx is None or annotation is inspect._empty:
+            return False
+        if annotation is _Ctx:
+            return True
+        if inspect.isclass(annotation):
+            try:
+                if issubclass(annotation, _Ctx):  # type: ignore[misc]
+                    return True
+            except TypeError:
+                pass
+        try:
+            origin = _typing.get_origin(annotation)
+            if origin is not None:
+                return any(
+                    _annotation_is_fast_ctx(arg) for arg in _typing.get_args(annotation)
+                )
+        except Exception:
+            pass
+        try:
+            return "fastmcp" in str(annotation)
+        except Exception:
+            return False
+
+    def _detect_context_param(signature: inspect.Signature) -> str | None:
+        for param in signature.parameters.values():
+            if param.name == "app_ctx":
+                continue
+            if _annotation_is_fast_ctx(param.annotation):
+                return param.name
+            if param.annotation is inspect._empty and param.name in {"ctx", "context"}:
+                return param.name
+        return None
 
     async def _wait_for_completion(
         ctx: MCPContext,
@@ -2125,7 +2165,10 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
         fn = decl.get("source_fn")
         description = decl.get("description")
         structured_output = decl.get("structured_output")
-
+        title = decl.get("title")
+        annotations = decl.get("annotations")
+        icons = decl.get("icons")
+        _meta = decl.get("meta")
         # Bind per-iteration values to avoid late-binding closure bugs
         name_local = name
         wname_local = workflow_name
@@ -2161,23 +2204,29 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
             ann = dict(getattr(fn, "__annotations__", {}))
             ann.pop("app_ctx", None)
 
-            ctx_param_name = "ctx"
-            from mcp.server.fastmcp import Context as _Ctx
+            existing_ctx_param = _detect_context_param(sig)
+            ctx_param_name = existing_ctx_param or "ctx"
 
-            ann[ctx_param_name] = _Ctx
+            if _Ctx is not None:
+                ann[ctx_param_name] = _Ctx
             ann["return"] = getattr(fn, "__annotations__", {}).get("return", return_ann)
             _wrapper.__annotations__ = ann
             _wrapper.__name__ = name_local
             _wrapper.__doc__ = description or (fn.__doc__ or "")
 
             params = [p for p in sig.parameters.values() if p.name != "app_ctx"]
-            ctx_param = inspect.Parameter(
-                ctx_param_name,
-                kind=inspect.Parameter.KEYWORD_ONLY,
-                annotation=_Ctx,
-            )
+            if existing_ctx_param is None:
+                ctx_param = inspect.Parameter(
+                    ctx_param_name,
+                    kind=inspect.Parameter.KEYWORD_ONLY,
+                    annotation=_Ctx,
+                )
+                signature_params = params + [ctx_param]
+            else:
+                signature_params = params
+
             _wrapper.__signature__ = inspect.Signature(
-                parameters=params + [ctx_param], return_annotation=return_ann
+                parameters=signature_params, return_annotation=return_ann
             )
 
             def _make_adapter(context_param_name: str, inner_wrapper):
@@ -2198,7 +2247,11 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
             mcp.add_tool(
                 _adapter,
                 name=name_local,
+                title=title,
                 description=description or (fn.__doc__ or ""),
+                annotations=annotations,
+                icons=icons,
+                # meta=meta, TODO: saqadri - add this after https://github.com/modelcontextprotocol/python-sdk/pull/1463 is pushed to pypi
                 structured_output=structured_output,
             )
             registered.add(name_local)
@@ -2217,13 +2270,16 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
                 # Mirror original signature and annotations similar to sync path
                 ann = dict(getattr(fn, "__annotations__", {}))
                 ann.pop("app_ctx", None)
-                try:
-                    from mcp.server.fastmcp import Context as _Ctx
-                except Exception:
-                    _Ctx = None  # type: ignore
 
-                # Choose context kw-only parameter
-                ctx_param_name = "ctx"
+                try:
+                    sig_async = inspect.signature(fn)
+                except Exception:
+                    sig_async = None
+                existing_ctx_param = (
+                    _detect_context_param(sig_async) if sig_async else None
+                )
+
+                ctx_param_name = existing_ctx_param or "ctx"
                 if _Ctx is not None:
                     ann[ctx_param_name] = _Ctx
 
@@ -2247,38 +2303,36 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
 
                 # Build mirrored signature: drop app_ctx and any FastMCP Context params
                 params = []
-                try:
-                    sig_async = inspect.signature(fn)
+                if sig_async is not None:
                     for p in sig_async.parameters.values():
                         if p.name == "app_ctx":
                             continue
-                        if p.name in ("ctx", "context"):
-                            continue
-                        if (
-                            _Ctx is not None
-                            and p.annotation is not inspect._empty
-                            and p.annotation is _Ctx
+                        if existing_ctx_param is None and (
+                            _annotation_is_fast_ctx(p.annotation)
+                            or p.name in ("ctx", "context")
                         ):
                             continue
                         params.append(p)
-                except Exception:
-                    params = []
 
                 # Append kw-only context param
-                if _Ctx is not None:
-                    ctx_param = inspect.Parameter(
-                        ctx_param_name,
-                        kind=inspect.Parameter.KEYWORD_ONLY,
-                        annotation=_Ctx,
-                    )
+                if existing_ctx_param is None:
+                    if _Ctx is not None:
+                        ctx_param = inspect.Parameter(
+                            ctx_param_name,
+                            kind=inspect.Parameter.KEYWORD_ONLY,
+                            annotation=_Ctx,
+                        )
+                    else:
+                        ctx_param = inspect.Parameter(
+                            ctx_param_name,
+                            kind=inspect.Parameter.KEYWORD_ONLY,
+                        )
+                    signature_params = params + [ctx_param]
                 else:
-                    ctx_param = inspect.Parameter(
-                        ctx_param_name,
-                        kind=inspect.Parameter.KEYWORD_ONLY,
-                    )
+                    signature_params = params
 
                 _async_wrapper.__signature__ = inspect.Signature(
-                    parameters=params + [ctx_param], return_annotation=ann.get("return")
+                    parameters=signature_params, return_annotation=ann.get("return")
                 )
 
                 # Adapter to map injected FastMCP context kwarg without additional propagation
@@ -2301,7 +2355,11 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
                 mcp.add_tool(
                     _async_adapter,
                     name=run_tool_name,
+                    title=title,
                     description=full_desc,
+                    annotations=annotations,
+                    icons=icons,
+                    # meta=meta, TODO: saqadri - add this after https://github.com/modelcontextprotocol/python-sdk/pull/1463 is pushed to pypi
                     structured_output=False,
                 )
                 registered.add(run_tool_name)
@@ -2426,6 +2484,33 @@ async def _workflow_run(
     if not workflows_dict or not app_context:
         raise ToolError("Server context not available for MCPApp Server.")
 
+    # Bind the app context to this FastMCP request so request-scoped methods
+    # (client_id, request_id, log/progress/resource reads) work seamlessly.
+    bound_app_context = app_context
+    try:
+        request_ctx = getattr(ctx, "request_context", None)
+    except Exception:
+        request_ctx = None
+    if request_ctx is not None and hasattr(app_context, "bind_request"):
+        try:
+            bound_app_context = app_context.bind_request(
+                request_ctx,
+                getattr(ctx, "fastmcp", None),
+            )
+            # Preserve upstream_session if the copy drops it for any reason
+            if (
+                getattr(bound_app_context, "upstream_session", None) is None
+                and getattr(app_context, "upstream_session", None) is not None
+            ):
+                bound_app_context.upstream_session = app_context.upstream_session
+        except Exception:
+            bound_app_context = app_context
+    # Expose the per-request bound context on the FastMCP context for adapters
+    try:
+        object.__setattr__(ctx, "bound_app_context", bound_app_context)
+    except Exception:
+        pass
+
     if workflow_name not in workflows_dict:
         raise ToolError(f"Workflow '{workflow_name}' not found.")
 
@@ -2439,14 +2524,20 @@ async def _workflow_run(
         if app is not None and getattr(app, "name", None):
             from mcp_agent.logging.logger import get_logger as _get_logger
 
-            _get_logger(f"mcp_agent.{app.name}", context=app_context)
+            _get_logger(f"mcp_agent.{app.name}", context=bound_app_context)
     except Exception:
         pass
 
     # Create and initialize the workflow instance using the factory method
     try:
         # Create workflow instance with context that has upstream_session
-        workflow = await workflow_cls.create(name=workflow_name, context=app_context)
+        workflow = await workflow_cls.create(
+            name=workflow_name, context=bound_app_context
+        )
+        try:
+            setattr(workflow, "_mcp_request_context", ctx)
+        except Exception:
+            pass
 
         run_parameters = run_parameters or {}
 

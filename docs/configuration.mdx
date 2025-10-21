@@ -40,7 +40,7 @@ mcp-agent uses two configuration files:
               args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
 
         openai:
-          default_model: gpt-4o
+          default_model: gpt-5
         ```
       </Step>
 
@@ -102,7 +102,7 @@ mcp-agent uses two configuration files:
             ),
             openai=OpenAISettings(
                 api_key="your-openai-api-key",
-                default_model="gpt-4o",
+                default_model="gpt-5",
             ),
         )
         ```
@@ -314,7 +314,7 @@ mcp:
 <CodeGroup>
 ```yaml Config File
 openai:
-  default_model: gpt-4o
+  default_model: gpt-5
   max_tokens: 4096
   temperature: 0.7
 ```
@@ -897,7 +897,7 @@ mcp:
       args: ["mcp-server-fetch"]
 
 openai:
-  default_model: gpt-4o
+  default_model: gpt-5
   reasoning_effort: "medium"  # For o-series models: low, medium, high
   api_key: "${OPENAI_API_KEY}"
 ```
@@ -946,7 +946,7 @@ mcp:
 
 # Configure multiple providers
 openai:
-  default_model: gpt-4o
+  default_model: gpt-5
   api_key: "${OPENAI_API_KEY}"
 
 anthropic:

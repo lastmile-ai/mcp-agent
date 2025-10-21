@@ -196,7 +196,7 @@ def print_deployment_header(
             f"Configuration: [cyan]{config_file}[/cyan]\n"
             f"Secrets file: [cyan]{secrets_file or 'N/A'}[/cyan]\n"
             f"Deployed secrets file: [cyan]{deployed_secrets_file or 'Pending creation'}[/cyan]\n",
-            title="MCP Agent Deployment",
+            title="mcp-agent deployment",
             subtitle="LastMile AI",
             border_style="blue",
             expand=False,
