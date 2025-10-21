@@ -36,7 +36,7 @@ class LoggingClientSession(MCPAgentClientSession):
         return await super()._received_notification(notification)
 
 
-async def make_session(
+def make_session(
     read_stream: MemoryObjectReceiveStream,
     write_stream: MemoryObjectSendStream,
     read_timeout_seconds: timedelta | None,

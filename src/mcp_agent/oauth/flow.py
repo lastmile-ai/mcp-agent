@@ -107,6 +107,16 @@ class AuthorizationFlowCoordinator:
         state = generate_state()
         scope_param = " ".join(scopes)
 
+        include_resource = getattr(oauth_config, "include_resource_parameter", True)
+        logger.debug(
+            "Starting OAuth authorization",
+            data={
+                "server": server_name,
+                "include_resource_param": include_resource,
+                "resource": resource,
+            },
+        )
+
         params = {
             "response_type": "code",
             "client_id": client_id,
@@ -115,8 +125,9 @@ class AuthorizationFlowCoordinator:
             "state": state,
             "code_challenge": code_challenge,
             "code_challenge_method": "S256",
-            "resource": resource,
         }
+        if include_resource and resource:
+            params["resource"] = resource
 
         # add extra params if any
         if oauth_config.extra_authorize_params:
@@ -147,13 +158,16 @@ class AuthorizationFlowCoordinator:
             "redirect_uri": redirect_uri,
             "client_id": client_id,
             "code_verifier": code_verifier,
-            "resource": resource,
-            "scope_param": scope_param,
-            "extra_token_params": oauth_config.extra_token_params or {},
-            "client_secret": oauth_config.client_secret,
-            "issuer_str": str(getattr(auth_metadata, "issuer", "") or ""),
-            "authorization_server_url": authorization_server_url,
         }
+        if include_resource and resource:
+            request_payload["resource"] = resource
+        if scope_param:
+            request_payload["scope_param"] = scope_param
+        if oauth_config.extra_token_params:
+            request_payload["extra_token_params"] = oauth_config.extra_token_params
+        request_payload["client_secret"] = oauth_config.client_secret
+        request_payload["issuer_str"] = str(getattr(auth_metadata, "issuer", "") or "")
+        request_payload["authorization_server_url"] = authorization_server_url
 
         # Try to send an auth/request upstream if available. If not available,
         # fall back to a local loopback server using the configured ports.
@@ -167,6 +181,9 @@ class AuthorizationFlowCoordinator:
                 authorize_url=authorize_url,
                 loopback_candidates=loopback_candidates,
             )
+            if result and result.get("_loopback_redirect_uri"):
+                redirect_uri = result.pop("_loopback_redirect_uri")
+                request_payload["redirect_uri"] = redirect_uri
 
         try:
             if result and result.get("url"):
@@ -221,12 +238,13 @@ class AuthorizationFlowCoordinator:
             "redirect_uri": redirect_uri,
             "client_id": client_id,
             "code_verifier": code_verifier,
-            "resource": resource,
         }
         if scope_param:
             data["scope"] = scope_param
         if oauth_config.extra_token_params:
             data.update(oauth_config.extra_token_params)
+        if include_resource and resource:
+            data["resource"] = resource
 
         auth = None
         if oauth_config.client_secret:
@@ -244,6 +262,10 @@ class AuthorizationFlowCoordinator:
 
         access_token = callback_data.get("access_token")
         if not access_token:
+            logger.error(
+                "Token endpoint response missing access_token",
+                data={"response": callback_data, "text": token_response.text},
+            )
             raise OAuthFlowError("Token endpoint response missing access_token")
         refresh_token = callback_data.get("refresh_token")
         expires_in = callback_data.get("expires_in")
@@ -470,6 +492,8 @@ async def _run_loopback_flow(
         server.close()
         with contextlib.suppress(Exception):
             await server.wait_closed()
+
+    payload["_loopback_redirect_uri"] = redirect_url
 
     # Try to deliver via flow id first, else by state
     delivered = await callback_registry.deliver(flow_id, payload)

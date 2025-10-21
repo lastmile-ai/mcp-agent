@@ -662,6 +662,154 @@
       "title": "MCPRootSettings",
       "type": "object"
     },
+    "MCPOAuthClientSettings": {
+      "additionalProperties": true,
+      "properties": {
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "scopes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Scopes",
+          "type": "array",
+          "default": []
+        },
+        "resource": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Resource"
+        },
+        "authorization_server": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Authorization Server"
+        },
+        "client_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Client Id"
+        },
+        "client_secret": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Client Secret"
+        },
+        "access_token": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Access Token"
+        },
+        "refresh_token": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Refresh Token"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires At"
+        },
+        "token_type": {
+          "default": "Bearer",
+          "title": "Token Type",
+          "type": "string"
+        },
+        "redirect_uri_options": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Redirect Uri Options",
+          "type": "array",
+          "default": []
+        },
+        "extra_authorize_params": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Extra Authorize Params",
+          "type": "object",
+          "default": {}
+        },
+        "extra_token_params": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Extra Token Params",
+          "type": "object",
+          "default": {}
+        },
+        "require_pkce": {
+          "default": true,
+          "title": "Require Pkce",
+          "type": "boolean"
+        },
+        "use_internal_callback": {
+          "default": true,
+          "title": "Use Internal Callback",
+          "type": "boolean"
+        },
+        "include_resource_parameter": {
+          "default": true,
+          "title": "Include Resource Parameter",
+          "type": "boolean"
+        }
+      },
+      "title": "MCPOAuthClientSettings",
+      "type": "object"
+    },
     "MCPServerAuthSettings": {
       "additionalProperties": true,
       "description": "Represents authentication configuration for a server.",
@@ -677,6 +825,18 @@
           ],
           "default": null,
           "title": "Api Key"
+        },
+        "oauth": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MCPOAuthClientSettings"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Oauth"
         }
       },
       "title": "MCPServerAuthSettings",

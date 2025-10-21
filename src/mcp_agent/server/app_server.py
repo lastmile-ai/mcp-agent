@@ -147,6 +147,9 @@ def _resolve_identity_for_request(
     identity = _CURRENT_IDENTITY.get()
     if identity is None and execution_id:
         identity = _get_identity_for_execution(execution_id)
+    if identity is None and app_context is not None:
+        session_id = getattr(app_context, "session_id", None)
+        identity = _session_identity_from_value(session_id)
     if identity is None and ctx is not None:
         session_id = _extract_session_id_from_context(ctx)
         identity = _session_identity_from_value(session_id)
@@ -281,6 +284,25 @@ def _set_upstream_from_request_ctx_if_available(ctx: MCPContext) -> None:
             except Exception:
                 identity = None
 
+    app: MCPApp | None = _get_attached_app(ctx.fastmcp)
+    if app is not None and getattr(app, "context", None) is not None:
+        if session is not None:
+            app.context.upstream_session = session
+        if session_id and not getattr(app.context, "session_id", None):
+            app.context.session_id = session_id
+
+        app_session_id = getattr(app.context, "session_id", None)
+    else:
+        app_session_id = None
+
+    if app_session_id:
+        app_identity = _session_identity_from_value(app_session_id)
+        if identity is None or (
+            isinstance(identity, OAuthUserIdentity)
+            and identity.provider == "mcp-session"
+        ):
+            identity = app_identity
+
     if identity is None:
         identity = _session_identity_from_value(session_id)
 
@@ -288,13 +310,6 @@ def _set_upstream_from_request_ctx_if_available(ctx: MCPContext) -> None:
         identity = DEFAULT_PRECONFIGURED_IDENTITY
 
     _set_current_identity(identity)
-
-    app: MCPApp | None = _get_attached_app(ctx.fastmcp)
-    if app is not None and getattr(app, "context", None) is not None:
-        if session is not None:
-            app.context.upstream_session = session
-        if session_id:
-            app.context.session_id = session_id
 
 
 def _resolve_workflows_and_context(

@@ -9,7 +9,11 @@ the browser so you can complete the GitHub sign-in.
 ## Prerequisites
 
 1. Create a GitHub OAuth App (Settings → Developer settings → OAuth Apps)
-   with callback URL `http://localhost:8000/internal/oauth/callback`.
+   and set the **Authorization callback URL** to `http://127.0.0.1:33418/callback`.
+   (The example pins its loopback listener to that port, so the value must
+   match exactly.)
+   GitHub does not accept the RFC 8707 `resource` parameter, so the example
+   disables it via `include_resource_parameter: false` in the server config.
 2. Export the client credentials:
 
    ```bash
@@ -41,5 +45,33 @@ The client will display an authorization prompt. Approve it in the browser
 and GitHub will redirect back to the local callback handler. Once completed,
 the tool result is printed in the client terminal.
 
-Subsequent tool invocations reuse the stored token until it expires or is
-revoked.
+The server and client use stable session IDs so the OAuth token is cached and
+reused across runs. Once the first authorization completes, subsequent
+invocations should return immediately without reopening the browser.
+
+## Optional: Redis-backed token store
+
+By default the example keeps tokens in memory. To persist tokens across server
+restarts, switch to the Redis token store:
+
+1. Install the Redis extra:
+
+   ```bash
+   pip install -e .[redis]
+   ```
+
+2. Start a Redis instance (for example, Docker):
+
+   ```bash
+   docker run --rm -p 6379:6379 redis:7-alpine
+   ```
+
+3. Export `OAUTH_REDIS_URL` before launching the server:
+
+   ```bash
+   export OAUTH_REDIS_URL="redis://127.0.0.1:6379"
+   ```
+
+With the environment variable set, the server automatically switches to Redis
+(`mcp_agent:oauth_tokens` prefix by default) and will reuse tokens even after
+restarts.

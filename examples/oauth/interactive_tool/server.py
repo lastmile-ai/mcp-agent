@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import traceback
 from typing import Optional
 
 from pydantic import AnyHttpUrl
@@ -24,6 +25,7 @@ from mcp_agent.config import (
     MCPServerSettings,
     MCPSettings,
     OAuthSettings,
+    OAuthTokenStoreSettings,
     Settings,
 )
 from mcp_agent.core.context import Context as AppContext
@@ -46,12 +48,23 @@ mcp = FastMCP(
     instructions="Demo GitHub search tool that requires OAuth authentication.",
 )
 
+redis_url = os.getenv("OAUTH_REDIS_URL")
+if redis_url:
+    token_store = OAuthTokenStoreSettings(
+        backend="redis",
+        redis_url=redis_url,
+    )
+else:
+    token_store = OAuthTokenStoreSettings()
+
 settings = Settings(
     execution_engine="asyncio",
     logger=LoggerSettings(level="info"),
     oauth=OAuthSettings(
         callback_base_url=AnyHttpUrl("http://localhost:8000"),
         flow_timeout_seconds=300,
+        loopback_ports=[33418],
+        token_store=token_store,
     ),
     mcp=MCPSettings(
         servers={
@@ -72,8 +85,8 @@ settings = Settings(
                         authorization_server=AnyHttpUrl(
                             "https://github.com/login/oauth"
                         ),
-                        resource=AnyHttpUrl("https://api.githubcopilot.com/mcp"),
                         use_internal_callback=True,
+                        include_resource_parameter=False,
                     )
                 ),
             )
@@ -86,6 +99,7 @@ app = MCPApp(
     description="Example MCP server that performs GitHub organization searches.",
     mcp=mcp,
     settings=settings,
+    session_id="github-oauth-demo",
 )
 
 
@@ -98,10 +112,23 @@ async def github_org_search(query: str, app_ctx: Optional[AppContext] = None) ->
         server_registry=context.server_registry,
         context=context,
     ) as github_client:
-        result = await github_client.call_tool(
-            "search_orgs",
-            {"query": query, "perPage": 5, "sort": "best-match", "order": "desc"},
+        tools = await github_client.list_tools()
+        context.logger.info(
+            "github_org_search: available tools from GitHub MCP",
+            data={"tools": [tool.name for tool in tools.tools]},
         )
+        try:
+            result = await github_client.call_tool(
+                "search_repositories",
+                {"query": f"org:{query}", "per_page": 5, "sort": "best-match", "order": "desc"},
+            )
+        except Exception as exc:
+            context.logger.error(
+                "github_org_search: call to remote GitHub MCP failed",
+                exception=repr(exc),
+                traceback=traceback.format_exc(),
+            )
+            raise
 
         orgs: list[dict] = []
         if result.content:

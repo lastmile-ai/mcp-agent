@@ -794,6 +794,10 @@ class TokenManager:
 
         if not session_id:
             session_id = getattr(context, "session_id", None)
+        if not session_id:
+            app = getattr(context, "app", None)
+            if app is not None:
+                session_id = getattr(app, "_session_id_override", None)
 
         if not session_id:
             return None

@@ -218,6 +218,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
 
         import asyncio
         from concurrent.futures import CancelledError
+        import traceback
 
         handle: "WorkflowHandle" | None = None
 
@@ -315,7 +316,11 @@ class Workflow(ABC, Generic[T], ContextDependent):
                         return result
 
                 except Exception as e:
-                    self._logger.error(f"Error waiting for tasks: {e}")
+                    self._logger.error(
+                        "Error waiting for tasks",
+                        exception=repr(e),
+                        traceback=traceback.format_exc(),
+                    )
                     raise
 
             except CancelledError:

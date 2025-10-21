@@ -160,6 +160,7 @@ mcp:
           scopes: ["repo", "user:email"]
           client_id: ${GITHUB_MCP_CLIENT_ID}
           client_secret: ${GITHUB_MCP_CLIENT_SECRET}
+          include_resource_parameter: false  # disable RFC 8707 resource param for providers like GitHub
           redirect_uri_options:
             - https://agent.example.com/internal/oauth/callback
 ```
@@ -168,6 +169,7 @@ mcp:
 - `oauth` enables delegated authorization flows; the default in-memory token store is ideal for local development while Redis is recommended for production clusters.
 - To use Redis for token storage, configure `token_store.backend: redis` and supply `redis_url` (see optional dependency `mcp-agent[redis]`).
 - Downstream servers opt into OAuth via `mcp.servers.<name>.auth.oauth`. Supplying a `client_id`/`client_secret` allows immediate usage; support for dynamic client registration is planned as a follow-up.
+- Some providers (including GitHub) reject the RFC 8707 `resource` parameter. Set `include_resource_parameter: false` in the client settings for those services.
 
 ## Configuration Reference
 

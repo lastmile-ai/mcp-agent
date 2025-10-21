@@ -96,6 +96,7 @@ class MCPOAuthClientSettings(BaseModel):
     extra_token_params: Dict[str, str] = Field(default_factory=dict)
     require_pkce: bool = True
     use_internal_callback: bool = True
+    include_resource_parameter: bool = True
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
