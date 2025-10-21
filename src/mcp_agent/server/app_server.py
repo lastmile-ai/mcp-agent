@@ -3,19 +3,34 @@ MCPAgentServer - Exposes MCPApp as MCP server, and
 mcp-agent workflows and agents as MCP tools.
 """
 
+from __future__ import annotations
+
 import json
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
-from typing import Any, Dict, List, Optional, Set, Tuple, Type, TYPE_CHECKING
+import time
+import httpx
 import os
 import secrets
 import asyncio
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from typing import Any, Dict, List, Optional, Set, Tuple, Type, TYPE_CHECKING
+from pydantic import BaseModel, Field
+from contextvars import ContextVar
+from urllib.parse import parse_qs, urlparse
+from json import JSONDecodeError
+
 from mcp.server.fastmcp import Context as MCPContext, FastMCP
-from starlette.requests import Request
-from starlette.responses import JSONResponse
+from mcp.server.fastmcp.server import AuthSettings
+from mcp.server.auth.middleware.auth_context import (
+    AuthenticatedUser,
+    auth_context_var,
+)
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.fastmcp.tools import Tool as FastTool
+
+from starlette.requests import Request
+from starlette.responses import HTMLResponse, JSONResponse
 
 from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
@@ -26,10 +41,23 @@ from mcp_agent.executor.workflow_registry import (
     WorkflowRegistry,
     WorkflowRunsPage,
 )
-
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.logging.logger import LoggingConfig
 from mcp_agent.mcp.mcp_server_registry import ServerRegistry
+from mcp_agent.oauth.identity import (
+    OAuthUserIdentity,
+    DEFAULT_PRECONFIGURED_IDENTITY,
+    session_identity as _session_identity_from_value,
+)
+from mcp_agent.oauth.callbacks import callback_registry
+from mcp_agent.server.token_verifier import MCPAgentTokenVerifier
+from mcp_agent.oauth.errors import (
+    AuthorizationDeclined,
+    CallbackTimeoutError,
+    OAuthFlowError,
+)
+from mcp_agent.oauth.records import TokenRecord
+
 
 if TYPE_CHECKING:
     from mcp_agent.core.context import Context
@@ -39,17 +67,29 @@ logger = get_logger(__name__)
 # Allows external workers (e.g., Temporal) to relay logs/prompts through MCPApp.
 _RUN_SESSION_REGISTRY: Dict[str, Any] = {}
 _RUN_EXECUTION_ID_REGISTRY: Dict[str, str] = {}
+_RUN_IDENTITY_REGISTRY: Dict[str, OAuthUserIdentity] = {}
 _RUN_SESSION_LOCK = asyncio.Lock()
 _PENDING_PROMPTS: Dict[str, Dict[str, Any]] = {}
 _PENDING_PROMPTS_LOCK = asyncio.Lock()
 _IDEMPOTENCY_KEYS_SEEN: Dict[str, Set[str]] = {}
 _IDEMPOTENCY_KEYS_LOCK = asyncio.Lock()
 
+_CURRENT_IDENTITY: ContextVar[OAuthUserIdentity | None] = ContextVar(
+    "mcp_current_identity", default=None
+)
 
-async def _register_session(run_id: str, execution_id: str, session: Any) -> None:
+
+async def _register_session(
+    run_id: str,
+    execution_id: str,
+    session: Any,
+    identity: OAuthUserIdentity | None = None,
+) -> None:
     async with _RUN_SESSION_LOCK:
         _RUN_SESSION_REGISTRY[execution_id] = session
         _RUN_EXECUTION_ID_REGISTRY[run_id] = execution_id
+        if identity is not None:
+            _RUN_IDENTITY_REGISTRY[execution_id] = identity
         try:
             logger.debug(
                 f"Registered upstream session for run_id={run_id}, execution_id={execution_id}, session_id={id(session)}"
@@ -63,6 +103,7 @@ async def _unregister_session(run_id: str) -> None:
         execution_id = _RUN_EXECUTION_ID_REGISTRY.pop(run_id, None)
         if execution_id:
             _RUN_SESSION_REGISTRY.pop(execution_id, None)
+            _RUN_IDENTITY_REGISTRY.pop(execution_id, None)
             try:
                 logger.debug(
                     f"Unregistered upstream session mapping for run_id={run_id}, execution_id={execution_id}"
@@ -84,6 +125,44 @@ async def _get_session(execution_id: str) -> Any | None:
         except Exception:
             pass
         return session
+
+
+def _get_identity_for_execution(execution_id: str) -> OAuthUserIdentity | None:
+    return _RUN_IDENTITY_REGISTRY.get(execution_id)
+
+
+def _set_current_identity(identity: OAuthUserIdentity | None) -> None:
+    _CURRENT_IDENTITY.set(identity)
+
+
+def get_current_identity() -> OAuthUserIdentity | None:
+    return _CURRENT_IDENTITY.get()
+
+
+def _resolve_identity_for_request(
+    ctx: MCPContext | None = None,
+    app_context: "Context" | None = None,
+    execution_id: str | None = None,
+) -> OAuthUserIdentity:
+    identity = _CURRENT_IDENTITY.get()
+    if identity is None and execution_id:
+        identity = _get_identity_for_execution(execution_id)
+    if identity is None and app_context is not None:
+        session_id = getattr(app_context, "session_id", None)
+        identity = _session_identity_from_value(session_id)
+    if identity is None and ctx is not None:
+        session_id = _extract_session_id_from_context(ctx)
+        identity = _session_identity_from_value(session_id)
+    if identity is None and app_context is None and ctx is not None:
+        app = _get_attached_app(ctx.fastmcp)
+        if app is not None and getattr(app, "context", None) is not None:
+            app_context = app.context
+    if identity is None and app_context is not None:
+        session_id = getattr(app_context, "session_id", None)
+        identity = _session_identity_from_value(session_id)
+    if identity is None:
+        identity = DEFAULT_PRECONFIGURED_IDENTITY
+    return identity
 
 
 class ServerContext(ContextDependent):
@@ -178,16 +257,59 @@ def _set_upstream_from_request_ctx_if_available(ctx: MCPContext) -> None:
         # ctx.session property might raise ValueError if context not available
         pass
 
-    if session is not None:
-        app: MCPApp | None = _get_attached_app(ctx.fastmcp)
-        if app is not None and getattr(app, "context", None) is not None:
-            # Set on global app context so the logger can access it
-            # Previously captured; no need to keep old value
-            # Use direct assignment for Pydantic model
+    # Capture authenticated user information if available
+    session_id = _extract_session_id_from_context(ctx)
+    identity: OAuthUserIdentity | None = None
+    try:
+        auth_user = auth_context_var.get()
+    except LookupError:
+        auth_user = None
+
+    if isinstance(auth_user, AuthenticatedUser):
+        access_token = getattr(auth_user, "access_token", None)
+        if access_token is not None:
+            # Prefer enriched token instances but fall back to raw data if necessary
+            try:
+                from mcp_agent.oauth.access_token import MCPAccessToken
+
+                if isinstance(access_token, MCPAccessToken):
+                    identity = OAuthUserIdentity.from_access_token(access_token)
+                else:
+                    token_dict = getattr(access_token, "model_dump", None)
+                    if callable(token_dict):
+                        maybe_token = MCPAccessToken.model_validate(
+                            access_token.model_dump()
+                        )
+                identity = OAuthUserIdentity.from_access_token(maybe_token)
+            except Exception:
+                identity = None
+
+    app: MCPApp | None = _get_attached_app(ctx.fastmcp)
+    if app is not None and getattr(app, "context", None) is not None:
+        if session is not None:
             app.context.upstream_session = session
-            return
-        else:
-            return
+        if session_id and not getattr(app.context, "session_id", None):
+            app.context.session_id = session_id
+
+        app_session_id = getattr(app.context, "session_id", None)
+    else:
+        app_session_id = None
+
+    if app_session_id:
+        app_identity = _session_identity_from_value(app_session_id)
+        if identity is None or (
+            isinstance(identity, OAuthUserIdentity)
+            and identity.provider == "mcp-session"
+        ):
+            identity = app_identity
+
+    if identity is None:
+        identity = _session_identity_from_value(session_id)
+
+    if identity is None:
+        identity = DEFAULT_PRECONFIGURED_IDENTITY
+
+    _set_current_identity(identity)
 
 
 def _resolve_workflows_and_context(
@@ -224,6 +346,52 @@ def _resolve_workflows_and_context(
         return app.workflows, app.context
 
     return None, None
+
+
+def _extract_session_id_from_context(ctx: MCPContext) -> str | None:
+    """Attempt to extract the caller's MCP session identifier from the request context."""
+    # Request-level meta (top-level)
+    try:
+        meta = getattr(ctx.request_context, "meta", None)
+        if meta is not None:
+            extra = getattr(meta, "model_extra", {}) or {}
+            session_id = (
+                getattr(meta, "sessionId", None)
+                or getattr(meta, "session_id", None)
+                or extra.get("sessionId")
+                or extra.get("session_id")
+            )
+            if session_id:
+                return str(session_id)
+    except Exception:
+        pass
+
+    # Parameters meta within the request payload
+    try:
+        req = getattr(ctx.request_context, "request", None)
+        if req is not None:
+            root = getattr(req, "root", None)
+            params = getattr(root, "params", None)
+            meta = getattr(params, "meta", None)
+            if meta is not None:
+                extra = getattr(meta, "model_extra", {}) or {}
+                session_id = (
+                    getattr(meta, "sessionId", None)
+                    or getattr(meta, "session_id", None)
+                    or extra.get("sessionId")
+                    or extra.get("session_id")
+                )
+                if session_id:
+                    return str(session_id)
+
+            query_params = getattr(req, "query_params", None)
+            if query_params is not None:
+                if "session_id" in query_params:
+                    return query_params.get("session_id")
+    except Exception:
+        pass
+
+    return None
 
 
 def _resolve_workflow_registry(ctx: MCPContext) -> WorkflowRegistry | None:
@@ -322,6 +490,34 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         A configured FastMCP server instance
     """
 
+    auth_settings_config = None
+    try:
+        if app.context and app.context.config:
+            auth_settings_config = app.context.config.authorization
+    except Exception:
+        auth_settings_config = None
+
+    effective_auth_settings: AuthSettings | None = None
+    token_verifier: MCPAgentTokenVerifier | None = None
+    owns_token_verifier = False
+    if auth_settings_config and auth_settings_config.enabled:
+        try:
+            effective_auth_settings = AuthSettings(
+                issuer_url=auth_settings_config.issuer_url,  # type: ignore[arg-type]
+                resource_server_url=auth_settings_config.resource_server_url,  # type: ignore[arg-type]
+                service_documentation_url=auth_settings_config.service_documentation_url,  # type: ignore[arg-type]
+                required_scopes=auth_settings_config.required_scopes or None,
+            )
+            token_verifier = MCPAgentTokenVerifier(auth_settings_config)
+        except Exception as exc:
+            logger.error(
+                "Failed to configure authorization server integration",
+                exc_info=True,
+                data={"error": str(exc)},
+            )
+            effective_auth_settings = None
+            token_verifier = None
+
     # Create a lifespan function specific to this app
     @asynccontextmanager
     async def app_specific_lifespan(mcp: FastMCP) -> AsyncIterator[ServerContext]:
@@ -341,7 +537,11 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             yield server_context
         finally:
             # Don't clean up the MCPApp here - let the caller handle that
-            pass
+            if owns_token_verifier and token_verifier is not None:
+                try:
+                    await token_verifier.aclose()
+                except Exception:
+                    pass
 
     # Helper: install internal HTTP routes (not MCP tools)
     def _install_internal_routes(mcp_server: FastMCP) -> None:
@@ -357,6 +557,41 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             except Exception:
                 return None
             return None
+
+        @mcp_server.custom_route(
+            "/internal/oauth/callback/{flow_id}",
+            methods=["GET", "POST"],
+            include_in_schema=False,
+        )
+        async def _oauth_callback(request: Request):
+            flow_id = request.path_params.get("flow_id")
+            if not flow_id:
+                return JSONResponse({"error": "missing_flow_id"}, status_code=400)
+
+            payload: Dict[str, Any] = {}
+            try:
+                payload.update({k: v for k, v in request.query_params.multi_items()})
+            except Exception:
+                payload.update(dict(request.query_params))
+
+            if request.method.upper() == "POST":
+                content_type = request.headers.get("content-type", "")
+                try:
+                    if "application/json" in content_type:
+                        body_data = await request.json()
+                    else:
+                        form = await request.form()
+                        body_data = {k: v for k, v in form.multi_items()}
+                except Exception:
+                    body_data = {}
+                payload.update(body_data)
+
+            delivered = await callback_registry.deliver(flow_id, payload)
+            if not delivered:
+                return JSONResponse({"error": "unknown_flow"}, status_code=404)
+
+            html = """<!DOCTYPE html><html><body><h3>Authorization complete.</h3><p>You may close this window and return to MCP Agent.</p></body></html>"""
+            return HTMLResponse(html)
 
         @mcp_server.custom_route(
             "/internal/session/by-run/{execution_id}/notify",
@@ -431,10 +666,12 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                             )
                     # Successful with latest → bind mapping for consistency
                     try:
+                        identity = _get_identity_for_execution(execution_id)
                         await _register_session(
                             run_id=execution_id,
                             execution_id=execution_id,
                             session=latest_session,
+                            identity=identity,
                         )
                         # logger.info(
                         #     f"[notify] rebound mapping to latest session_id={id(latest_session)} for execution_id={execution_id}"
@@ -558,7 +795,12 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             return None
 
         async def _handle_specific_request(
-            session, method: str, params: dict, log_prefix: str = "request"
+            session: Any,
+            method: str,
+            params: dict,
+            identity: OAuthUserIdentity,
+            context: "Context",
+            log_prefix: str = "request",
         ):
             """Handle specific request types with structured request/response."""
             from mcp.types import (
@@ -582,10 +824,12 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         params=CreateMessageRequestParams(**params),
                     )
                 )
-                result = await session.send_request(
+                callback_data = await session.send_request(
                     request=req, result_type=CreateMessageResult
                 )  # type: ignore[attr-defined]
-                return result.model_dump(by_alias=True, mode="json", exclude_none=True)
+                return callback_data.model_dump(
+                    by_alias=True, mode="json", exclude_none=True
+                )
             elif method == "elicitation/create":
                 req = ServerRequest(
                     ElicitRequest(
@@ -593,34 +837,248 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         params=ElicitRequestParams(**params),
                     )
                 )
-                result = await session.send_request(
+                callback_data = await session.send_request(
                     request=req, result_type=ElicitResult
                 )  # type: ignore[attr-defined]
-                return result.model_dump(by_alias=True, mode="json", exclude_none=True)
+                return callback_data.model_dump(
+                    by_alias=True, mode="json", exclude_none=True
+                )
             elif method == "roots/list":
                 req = ServerRequest(ListRootsRequest(method="roots/list"))
-                result = await session.send_request(
+                callback_data = await session.send_request(
                     request=req, result_type=ListRootsResult
                 )  # type: ignore[attr-defined]
-                return result.model_dump(by_alias=True, mode="json", exclude_none=True)
+                return callback_data.model_dump(
+                    by_alias=True, mode="json", exclude_none=True
+                )
             elif method == "ping":
                 req = ServerRequest(PingRequest(method="ping"))
-                result = await session.send_request(
+                callback_data = await session.send_request(
                     request=req, result_type=EmptyResult
                 )  # type: ignore[attr-defined]
-                return result.model_dump(by_alias=True, mode="json", exclude_none=True)
+                return callback_data.model_dump(
+                    by_alias=True, mode="json", exclude_none=True
+                )
+            elif method == "auth/request":
+                # TODO: special handling of auth request, should be replaced by future URL elicitation
+
+                # first check to see if the token is in the cache already
+                server_name = params["server_name"]
+                scopes = params.get("scopes", [])
+                try:
+                    if context and hasattr(context, "token_manager"):
+                        manager = context.token_manager
+                        if manager:
+                            server_config = context.server_registry.get_server_config(
+                                server_name
+                            )
+
+                            token = await manager.get_access_token_if_present(
+                                context=context,
+                                server_name=server_name,
+                                server_config=server_config,
+                                scopes=scopes,
+                                identity=identity,
+                            )
+                            if token:
+                                return token
+                except Exception:
+                    # elicitation fallback below
+                    pass
+
+                # token is not present in the cache, perform the auth flow
+                record = await _perform_auth_flow(context, params, scopes, session)
+
+                # save in the token manager for next time
+                try:
+                    if context and hasattr(context, "token_manager"):
+                        manager = context.token_manager
+                        if manager:
+                            server_config = context.server_registry.get_server_config(
+                                server_name
+                            )
+
+                            token_data = {
+                                "access_token": record.access_token,
+                                "refresh_token": record.refresh_token,
+                                "scopes": record.scopes,
+                                "authorization_server": record.authorization_server,
+                                "expires_at": record.expires_at,
+                                "token_type": "Bearer",
+                            }
+
+                            await manager.store_user_token(
+                                context=context,
+                                user=identity,
+                                server_name=server_name,
+                                server_config=server_config,
+                                token_data=token_data,
+                            )
+                except Exception:
+                    pass
+
+                return {"token_record": record.model_dump_json()}
             else:
                 raise ValueError(f"unsupported method: {method}")
+
+        async def _perform_auth_flow(context, params, scopes, session):
+            from mcp.types import (
+                ElicitRequest,
+                ElicitRequestParams,
+                ElicitResult,
+            )
+
+            class AuthToken(BaseModel):
+                confirmation: str = Field(
+                    description="Please press enter to confirm this message has been received"
+                )
+
+            flow_id = params["flow_id"]
+            flow_timeout_seconds = params.get("flow_timeout_seconds")
+            state = params["state"]
+            token_endpoint = params["token_endpoint"]
+            redirect_uri = params["redirect_uri"]
+            client_id = params["client_id"]
+            code_verifier = params["code_verifier"]
+            resource = params.get("resource")
+            scope_param = params.get("scope_param")
+            extra_token_params = params.get("extra_token_params", {})
+            client_secret = params.get("client_secret")
+            issuer_str = params.get("issuer_str")
+            authorization_server_url = params.get("authorization_server_url")
+            callback_future = await callback_registry.create_handle(flow_id)
+            req = ElicitRequest(
+                method="elicitation/create",
+                params=ElicitRequestParams(
+                    message=params["message"] + "\n\n" + params["url"],
+                    requestedSchema=AuthToken.model_json_schema(),
+                ),
+            )
+            await session.send_request(request=req, result_type=ElicitResult)  # type: ignore[attr-defined]
+            timeout = 300
+            try:
+                callback_data = await asyncio.wait_for(callback_future, timeout=timeout)
+            except asyncio.TimeoutError as exc:
+                raise CallbackTimeoutError(
+                    f"Timed out waiting for OAuth callback after {timeout} seconds"
+                ) from exc
+            try:
+                if callback_data and callback_data.get("url"):
+                    callback_data = _parse_callback_params(callback_data["url"])
+                    if callback_future is not None:
+                        await callback_registry.discard(flow_id)
+                elif callback_data and callback_data.get("code"):
+                    callback_data = callback_data
+                    if callback_future is not None:
+                        await callback_registry.discard(flow_id)
+                elif callback_future is not None:
+                    timeout = flow_timeout_seconds or 300
+                    try:
+                        callback_data = await asyncio.wait_for(
+                            callback_future, timeout=timeout
+                        )
+                    except asyncio.TimeoutError as exc:
+                        raise CallbackTimeoutError(
+                            f"Timed out waiting for OAuth callback after {timeout} seconds"
+                        ) from exc
+                else:
+                    raise AuthorizationDeclined(
+                        "Authorization request was declined by the user"
+                    )
+            finally:
+                if callback_future is not None:
+                    await callback_registry.discard(flow_id)
+            error = callback_data.get("error")
+            if error:
+                description = callback_data.get("error_description") or error
+                raise OAuthFlowError(
+                    f"Authorization server returned error: {description}"
+                )
+            returned_state = callback_data.get("state")
+            if returned_state != state:
+                raise OAuthFlowError("State mismatch detected in OAuth callback")
+            authorization_code = callback_data.get("code")
+            if not authorization_code:
+                raise OAuthFlowError("Authorization callback did not include code")
+            token_endpoint = str(token_endpoint)
+            data: Dict[str, Any] = {
+                "grant_type": "authorization_code",
+                "code": authorization_code,
+                "redirect_uri": redirect_uri,
+                "client_id": client_id,
+                "code_verifier": code_verifier,
+                "resource": resource,
+            }
+            if scope_param:
+                data["scope"] = scope_param
+            if extra_token_params:
+                data.update(extra_token_params)
+            auth = None
+            if client_secret:
+                data["client_secret"] = client_secret
+            try:
+                if context and hasattr(context, "token_manager"):
+                    manager = context.token_manager
+                    if manager:
+                        http_client = manager._http_client
+            except Exception:
+                http_client = None
+            if not http_client:
+                http_client = httpx.AsyncClient(timeout=30.0)
+            token_response = await http_client.post(
+                token_endpoint,
+                data=data,
+                auth=auth,
+                headers={"Accept": "application/json"},
+            )
+            token_response.raise_for_status()
+            try:
+                callback_data = token_response.json()
+            except JSONDecodeError:
+                callback_data = _parse_callback_params("?" + token_response.text)
+            access_token = callback_data.get("access_token")
+            if not access_token:
+                raise OAuthFlowError("Token endpoint response missing access_token")
+            refresh_token = callback_data.get("refresh_token")
+            expires_in = callback_data.get("expires_in")
+            expires_at = None
+            if isinstance(expires_in, (int, float)):
+                expires_at = time.time() + float(expires_in)
+            scope_from_payload = callback_data.get("scope")
+            if isinstance(scope_from_payload, str) and scope_from_payload.strip():
+                effective_scopes = tuple(scope_from_payload.split())
+            else:
+                effective_scopes = tuple(scopes)
+            record = TokenRecord(
+                access_token=access_token,
+                refresh_token=refresh_token,
+                expires_at=expires_at,
+                scopes=effective_scopes,
+                token_type=str(callback_data.get("token_type", "Bearer")),
+                resource=resource,
+                authorization_server=issuer_str,
+                metadata={
+                    "raw": token_response.text,
+                    "authorization_server_url": authorization_server_url,
+                },
+            )
+            return record
 
         async def _try_session_request(
             session,
             method: str,
             params: dict,
             execution_id: str,
+            context: "Context",
             log_prefix: str = "request",
             register_session: bool = False,
         ):
             """Try to handle a request via session, with optional registration."""
+            try:
+                identity = _get_identity_for_execution(execution_id)
+            except Exception:
+                identity = None
+
             try:
                 # First try generic RPC passthrough
                 result = await _handle_request_via_rpc(
@@ -633,6 +1091,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                                 run_id=execution_id,
                                 execution_id=execution_id,
                                 session=session,
+                                identity=identity,
                             )
                             # logger.debug(
                             #     f"[{log_prefix}] rebound mapping to session_id={id(session)} for execution_id={execution_id}")
@@ -642,7 +1101,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
 
                 # Fallback to specific structured request handling
                 result = await _handle_specific_request(
-                    session, method, params, log_prefix
+                    session, method, params, identity, context, log_prefix
                 )
                 if register_session:
                     try:
@@ -650,6 +1109,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                             run_id=execution_id,
                             execution_id=execution_id,
                             session=session,
+                            identity=identity,
                         )
                         # logger.debug(
                         #     f"[{log_prefix}] rebound mapping to session_id={id(session)} for execution_id={execution_id}")
@@ -670,6 +1130,12 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             include_in_schema=False,
         )
         async def _relay_request(request: Request):
+            app = _get_attached_app(mcp_server)
+            if app and app.context:
+                app_context = app.context
+            else:
+                app_context = None
+
             body = await request.json()
             execution_id = request.path_params.get("execution_id")
             method = body.get("method")
@@ -689,6 +1155,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         method,
                         params,
                         execution_id,
+                        app_context,
                         log_prefix="request",
                         register_session=True,
                     )
@@ -714,6 +1181,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                     method,
                     params,
                     execution_id,
+                    app_context,
                     log_prefix="request",
                     register_session=False,
                 )
@@ -768,6 +1236,12 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
 
             # Create background task to handle the request and signal the workflow
             async def _handle_async_request_task():
+                app = _get_attached_app(mcp_server)
+                if app and app.context:
+                    app_context = app.context
+                else:
+                    app_context = None
+
                 try:
                     result = None
 
@@ -780,6 +1254,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                                 method,
                                 params,
                                 execution_id,
+                                app_context,
                                 log_prefix="async-request",
                                 register_session=True,
                             )
@@ -798,6 +1273,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                                     method,
                                     params,
                                     execution_id,
+                                    app_context,
                                     log_prefix="async-request",
                                     register_session=False,
                                 )
@@ -815,9 +1291,8 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                     # Signal the workflow with the result using method-specific signal
                     try:
                         # Try to get Temporal client from the app context
-                        app = _get_attached_app(mcp_server)
-                        if app and app.context and hasattr(app.context, "executor"):
-                            executor = app.context.executor
+                        if app_context and hasattr(app_context, "executor"):
+                            executor = app_context.executor
                             if hasattr(executor, "client"):
                                 client = executor.client
                                 # Find the workflow using execution_id as both workflow_id and run_id
@@ -894,10 +1369,12 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         f"[log] delivered via latest session_id={id(latest_session)} level={level} ns={namespace}"
                     )
                     try:
+                        identity = _get_identity_for_execution(execution_id)
                         await _register_session(
                             run_id=execution_id,
                             execution_id=execution_id,
                             session=latest_session,
+                            identity=identity,
                         )
                         logger.info(
                             f"[log] rebound mapping to latest session_id={id(latest_session)} for execution_id={execution_id}"
@@ -984,10 +1461,17 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                             logger="mcp_agent.human",
                         )
                         try:
+                            identity = _get_identity_for_execution(execution_id)
+                            if identity is None:
+                                identity = _session_identity_from_value(
+                                    metadata.get("session_id")
+                                    or metadata.get("sessionId")
+                                )
                             await _register_session(
                                 run_id=execution_id,
                                 execution_id=execution_id,
                                 session=latest_session,
+                                identity=identity,
                             )
                             logger.info(
                                 f"[human] rebound mapping to latest session_id={id(latest_session)} for execution_id={execution_id}"
@@ -1039,6 +1523,11 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         except Exception:
             pass
     else:
+        if "auth" not in kwargs and effective_auth_settings is not None:
+            kwargs["auth"] = effective_auth_settings
+        if "token_verifier" not in kwargs and token_verifier is not None:
+            kwargs["token_verifier"] = token_verifier
+            owns_token_verifier = True
         mcp = FastMCP(
             name=app.name or "mcp_agent_server",
             # TODO: saqadri (MAC) - create a much more detailed description
@@ -1238,8 +1727,14 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             sess = getattr(ctx, "session", None)
             if sess and run_id:
                 exec_id = _RUN_EXECUTION_ID_REGISTRY.get(run_id, run_id)
+                app_obj = _get_attached_app(ctx.fastmcp)
+                app_ctx = getattr(app_obj, "context", None) if app_obj else None
+                identity = _resolve_identity_for_request(ctx, app_ctx, exec_id)
                 await _register_session(
-                    run_id=run_id, execution_id=exec_id, session=sess
+                    run_id=run_id,
+                    execution_id=exec_id,
+                    session=sess,
+                    identity=identity,
                 )
         except Exception:
             pass
@@ -1282,8 +1777,14 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             sess = getattr(ctx, "session", None)
             if sess and run_id:
                 exec_id = _RUN_EXECUTION_ID_REGISTRY.get(run_id, run_id)
+                app_obj = _get_attached_app(ctx.fastmcp)
+                app_ctx = getattr(app_obj, "context", None) if app_obj else None
+                identity = _resolve_identity_for_request(ctx, app_ctx, exec_id)
                 await _register_session(
-                    run_id=run_id, execution_id=exec_id, session=sess
+                    run_id=run_id,
+                    execution_id=exec_id,
+                    session=sess,
+                    identity=identity,
                 )
         except Exception:
             pass
@@ -1347,8 +1848,14 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             sess = getattr(ctx, "session", None)
             if sess and run_id:
                 exec_id = _RUN_EXECUTION_ID_REGISTRY.get(run_id, run_id)
+                app_obj = _get_attached_app(ctx.fastmcp)
+                app_ctx = getattr(app_obj, "context", None) if app_obj else None
+                identity = _resolve_identity_for_request(ctx, app_ctx, exec_id)
                 await _register_session(
-                    run_id=run_id, execution_id=exec_id, session=sess
+                    run_id=run_id,
+                    execution_id=exec_id,
+                    session=sess,
+                    identity=identity,
                 )
         except Exception:
             pass
@@ -1380,6 +1887,129 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             )
 
         return result
+
+    @mcp.tool(name="workflows-store-credentials")
+    async def workflow_store_credentials(
+        ctx: MCPContext, workflow_name: str, tokens: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Store OAuth tokens for a workflow to use with MCP servers.
+
+        Persisting tokens ahead of time lets workflows authenticate with external services
+        without needing an interactive OAuth flow at execution time.
+
+        Args:
+            workflow_name: The name of the workflow that will use these tokens.
+            tokens: List of OAuth token objects, each containing:
+                - access_token (str): The OAuth access token
+                - refresh_token (str, optional): The OAuth refresh token
+                - server_name (str): Name/identifier of the MCP server
+                - scopes (List[str], optional): List of OAuth scopes
+                - expires_at (float, optional): Token expiration timestamp
+                - authorization_server (str, optional): Authorization server URL
+
+        Returns:
+            Dictionary with success status and count of stored tokens.
+        """
+        # Ensure upstream session is available for any logs
+        try:
+            _set_upstream_from_request_ctx_if_available(ctx)
+        except Exception:
+            pass
+
+        workflows_dict, app_context = _resolve_workflows_and_context(ctx)
+        if not workflows_dict or not app_context:
+            raise ToolError("Server context not available for MCPApp Server.")
+
+        if workflow_name not in workflows_dict:
+            raise ToolError(f"Workflow '{workflow_name}' not found.")
+
+        if not app_context.token_manager:
+            raise ToolError("OAuth token manager not available.")
+
+        identity = _resolve_identity_for_request(ctx, app_context)
+
+        if not tokens:
+            raise ToolError("At least one token must be provided.")
+
+        stored_count = 0
+        errors = []
+
+        try:
+            for i, token_data in enumerate(tokens):
+                try:
+                    # Validate required fields
+                    if not isinstance(token_data, dict):
+                        errors.append(f"Token {i}: must be a dictionary")
+                        continue
+
+                    access_token = token_data.get("access_token")
+                    server_name = token_data.get("server_name")
+
+                    if not access_token:
+                        errors.append(
+                            f"Token {i}: missing required 'access_token' field"
+                        )
+                        continue
+
+                    if not server_name:
+                        errors.append(
+                            f"Token {i}: missing required 'server_name' field"
+                        )
+                        continue
+
+                    server_config = app_context.server_registry.registry.get(
+                        server_name
+                    )
+                    if not server_config:
+                        errors.append(
+                            f"Token {i}: server '{server_name}' not recognized"
+                        )
+                        continue
+
+                    await app_context.token_manager.store_user_token(
+                        context=app_context,
+                        user=identity,
+                        server_name=server_name,
+                        server_config=server_config,
+                        token_data=token_data,
+                        workflow_name=workflow_name,
+                    )
+                    stored_count += 1
+                except Exception as e:
+                    errors.append(f"Token {i}: {str(e)}")
+                    logger.error(
+                        f"Error storing token {i} for workflow '{workflow_name}': {e}"
+                    )
+
+            if errors and stored_count == 0:
+                raise ToolError(
+                    f"Failed to store any tokens. Errors: {'; '.join(errors)}"
+                )
+
+            result = {
+                "success": True,
+                "workflow_name": workflow_name,
+                "stored_tokens": stored_count,
+                "total_tokens": len(tokens),
+            }
+
+            if errors:
+                result["errors"] = errors
+                result["partial_success"] = True
+
+            logger.info(
+                f"Pre-authorization completed for workflow '{workflow_name}': "
+                f"{stored_count}/{len(tokens)} tokens stored"
+            )
+
+            return result
+
+        except Exception as e:
+            logger.error(
+                f"Error in workflow pre-authorization for '{workflow_name}': {e}"
+            )
+            raise ToolError(f"Failed to store tokens: {str(e)}")
 
     # endregion
 
@@ -2059,10 +2689,12 @@ async def _workflow_run(
 
         # Register upstream session for this run so external workers can proxy logs/prompts
         try:
+            identity = _resolve_identity_for_request(ctx, app_context, execution_id)
             await _register_session(
                 run_id=execution.run_id,
                 execution_id=execution_id,
                 session=getattr(ctx, "session", None),
+                identity=identity,
             )
         except Exception:
             pass
@@ -2121,3 +2753,12 @@ async def _workflow_status(
 
 
 # endregion
+
+
+def _parse_callback_params(url: str) -> Dict[str, str]:
+    parsed = urlparse(url)
+    params = {}
+    params.update({k: v[-1] for k, v in parse_qs(parsed.query).items()})
+    if parsed.fragment:
+        params.update({k: v[-1] for k, v in parse_qs(parsed.fragment).items()})
+    return params
