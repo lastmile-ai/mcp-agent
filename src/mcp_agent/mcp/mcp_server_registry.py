@@ -153,6 +153,7 @@ class ServerRegistry:
                 command=config.command,
                 args=config.args or [],
                 env={**get_default_environment(), **(config.env or {})},
+                cwd=config.cwd or None,
             )
 
             async with stdio_client(server_params) as (read_stream, write_stream):

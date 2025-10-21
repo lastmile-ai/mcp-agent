@@ -78,6 +78,9 @@ class MCPServerSettings(BaseModel):
     args: List[str] = Field(default_factory=list)
     """The arguments for the server command in stdio mode."""
 
+    cwd: str | None = None
+    """The working directory to use when spawning the server process in stdio mode."""
+
     url: str | None = None
     """The URL for the server for SSE, Streamble HTTP or websocket transport."""
 
