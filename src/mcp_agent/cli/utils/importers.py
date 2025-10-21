@@ -28,6 +28,7 @@ def _to_settings(obj: dict) -> MCPServerSettings:
             command=obj.get("command"),
             args=obj.get("args") or [],
             env=obj.get("env") or None,
+            cwd=obj.get("cwd") or None,
         )
     else:
         return MCPServerSettings(

@@ -81,6 +81,11 @@ def deploy_config(
         "--non-interactive",
         help="Use existing secrets and update existing app where applicable, without prompting.",
     ),
+    unauthenticated_access: Optional[bool] = typer.Option(
+        None,
+        "--no-auth/--auth",
+        help="Allow unauthenticated access to the deployed server. Defaults to preserving the existing setting.",
+    ),
     # TODO(@rholinshead): Re-add dry-run and perform pre-validation of the app
     # dry_run: bool = typer.Option(
     #     False,
@@ -177,6 +182,8 @@ def deploy_config(
                 app_name = "default"
                 print_info("Using app name: 'default'")
 
+        description_provided_by_cli = app_description is not None
+
         if app_description is None:
             if default_app_description:
                 app_description = default_app_description
@@ -218,7 +225,9 @@ def deploy_config(
                 print_info(f"App '{app_name}' not found — creating a new one...")
                 app = run_async(
                     mcp_app_client.create_app(
-                        name=app_name, description=app_description
+                        name=app_name,
+                        description=app_description,
+                        unauthenticated_access=unauthenticated_access,
                     )
                 )
                 app_id = app.appId
@@ -244,6 +253,21 @@ def deploy_config(
                 else:
                     print_info(
                         "--non-interactive specified, will deploy an update to the existing app."
+                    )
+                update_payload: dict[str, Optional[str | bool]] = {}
+                if description_provided_by_cli:
+                    update_payload["description"] = app_description
+                if unauthenticated_access is not None:
+                    update_payload["unauthenticated_access"] = unauthenticated_access
+
+                if update_payload:
+                    if settings.VERBOSE:
+                        print_info("Updating app settings before deployment...")
+                    run_async(
+                        mcp_app_client.update_app(
+                            app_id=app_id,
+                            **update_payload,
+                        )
                     )
         except UnauthenticatedError as e:
             raise CLIError(
@@ -355,6 +379,13 @@ def deploy_config(
             )
             print_info(f"App URL: {app.appServerInfo.serverUrl}")
             print_info(f"App Status: {status}")
+            if app.appServerInfo.unauthenticatedAccess is not None:
+                auth_text = (
+                    "Not required (unauthenticated access allowed)"
+                    if app.appServerInfo.unauthenticatedAccess
+                    else "Required"
+                )
+                print_info(f"Authentication: {auth_text}")
         return app_id
 
     except Exception as e:

@@ -74,6 +74,7 @@ def test_deploy_command_help(runner):
     assert "--api-url" in clean_text
     assert "--api-key" in clean_text
     assert "--non-interactive" in clean_text
+    assert "--no-auth" in clean_text
     assert "--ignore-file" in clean_text
     assert "mcpacignore" in clean_text
 
@@ -142,6 +143,118 @@ def test_deploy_command_basic(runner, temp_config_dir):
 
     # Check for expected output file path
     assert "Transformed secrets file written to" in result.stdout
+
+
+def test_deploy_no_auth_flag_sets_unauthenticated_access(runner, temp_config_dir):
+    """Ensure the --no-auth flag is forwarded to app creation."""
+    output_path = temp_config_dir / MCP_DEPLOYED_SECRETS_FILENAME
+
+    async def mock_process_secrets(*args, **kwargs):
+        with open(kwargs.get("output_path", output_path), "w", encoding="utf-8") as f:
+            f.write("# Transformed file\ntest: value\n")
+        return {
+            "deployment_secrets": [],
+            "user_secrets": [],
+            "reused_secrets": [],
+            "skipped_secrets": [],
+        }
+
+    mock_client = AsyncMock()
+    mock_client.get_app_id_by_name.return_value = None
+
+    mock_app = MagicMock()
+    mock_app.appId = MOCK_APP_ID
+    mock_client.create_app.return_value = mock_app
+
+    with (
+        patch(
+            "mcp_agent.cli.secrets.processor.process_config_secrets",
+            side_effect=mock_process_secrets,
+        ),
+        patch(
+            "mcp_agent.cli.cloud.commands.deploy.main.MCPAppClient",
+            return_value=mock_client,
+        ),
+        patch(
+            "mcp_agent.cli.cloud.commands.deploy.main.wrangler_deploy",
+            return_value=MOCK_APP_ID,
+        ),
+    ):
+        result = runner.invoke(
+            app,
+            [
+                "deploy",
+                MOCK_APP_NAME,
+                "--config-dir",
+                temp_config_dir,
+                "--api-url",
+                "http://test-api.com",
+                "--api-key",
+                "test-api-key",
+                "--no-auth",
+                "--non-interactive",
+            ],
+        )
+
+    assert result.exit_code == 0, result.stdout
+    create_kwargs = mock_client.create_app.await_args.kwargs
+    assert create_kwargs.get("unauthenticated_access") is True
+
+
+def test_deploy_existing_app_updates_auth_setting(runner, temp_config_dir):
+    """Existing apps should be updated when auth flags are provided."""
+    output_path = temp_config_dir / MCP_DEPLOYED_SECRETS_FILENAME
+
+    async def mock_process_secrets(*args, **kwargs):
+        with open(kwargs.get("output_path", output_path), "w", encoding="utf-8") as f:
+            f.write("# Transformed file\ntest: value\n")
+        return {
+            "deployment_secrets": [],
+            "user_secrets": [],
+            "reused_secrets": [],
+            "skipped_secrets": [],
+        }
+
+    mock_client = AsyncMock()
+    mock_client.get_app_id_by_name.return_value = MOCK_APP_ID
+
+    mock_updated_app = MagicMock()
+    mock_updated_app.appServerInfo = None
+    mock_client.update_app.return_value = mock_updated_app
+
+    with (
+        patch(
+            "mcp_agent.cli.secrets.processor.process_config_secrets",
+            side_effect=mock_process_secrets,
+        ),
+        patch(
+            "mcp_agent.cli.cloud.commands.deploy.main.MCPAppClient",
+            return_value=mock_client,
+        ),
+        patch(
+            "mcp_agent.cli.cloud.commands.deploy.main.wrangler_deploy",
+            return_value=MOCK_APP_ID,
+        ),
+    ):
+        result = runner.invoke(
+            app,
+            [
+                "deploy",
+                MOCK_APP_NAME,
+                "--config-dir",
+                temp_config_dir,
+                "--api-url",
+                "http://test-api.com",
+                "--api-key",
+                "test-api-key",
+                "--auth",
+                "--non-interactive",
+            ],
+        )
+
+    assert result.exit_code == 0, result.stdout
+    update_kwargs = mock_client.update_app.await_args.kwargs
+    assert update_kwargs.get("unauthenticated_access") is False
 
 
 def test_deploy_defaults_to_configured_app_name(runner, temp_config_dir):

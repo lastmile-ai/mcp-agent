@@ -1,0 +1,135 @@
+---
+title: Deploy and host a ChatGPT App
+description: "Deploy and host your ChatGPT App (MCP server) so anyone can use it."
+---
+
+In this article, we walk through how to deploy your ChatGPT App to the mcp-agent cloud platform to have it readily available for anyone to use.
+
+<video controls width="100%">
+  <source src="https://github.com/user-attachments/assets/cb50700c-5650-4f12-ac2e-2eabba5c8144" type="video/mp4" />
+  Your browser does not support the video tag.
+</video>
+
+## What are ChatGPT Apps?
+OpenAI announced the [support for Apps within ChatGPT](https://openai.com/index/introducing-apps-in-chatgpt/). ChatGPT Apps unlock interactive experiences that live inside ChatGPT conversations, allowing applications to respond to natural language with in-chat interfaces (like maps or playlists).
+
+## Guide for deploying your application
+
+### TL;DR
+
+1. **Create an `MCPApp()`** in your python server code  
+2. **Install** the `mcp-agent` library  
+3. **Deploy** with the `mcp-agent` CLI
+
+### 1) Prerequisites
+
+- Python **3.10+**
+
+### 2) Install dependencies
+
+**Using `uv` (recommended):**
+```bash
+uv init
+uv sync
+```
+Or with pip:
+```bash
+pip install mcp-agent
+pip install fastapi
+```
+
+### 3) Minimal code change: create an MCPApp()
+
+`MCPApp` is the constructor for defining an MCP Application. The `mcp-agent` library looks for the `MCPApp` when configuring the application in the hosted cloud platform.
+
+Make sure your server creates an MCPApp() and wires it to your FastMCP instance.
+
+```python main.py
+from mcp_agent.app import MCPApp
+from fastmcp import FastMCP  # import if your project uses FastMCP
+
+mcp = FastMCP(
+    name="your-app-name",
+    message_path="/sse/messages",  # important: aligns with your SSE path
+    stateless_http=True,           # recommended for cloud hosting
+)
+
+# ❗️ Key addition: register your MCP server as an mcp-agent App
+app = MCPApp(
+    name="your-app-name",
+    description="your-app-description",
+    mcp=mcp,
+)
+
+# ----- Your ChatGPT Application code here -----
+```
+
+These are the key changes needed for mcp-agent cloud hosting.
+
+### 4) Add deployment config & secrets
+
+Create two files at the repo root:
+
+```yaml mcp_agent.config.yaml
+# Execution engine: asyncio or temporal
+execution_engine: asyncio
+
+name: "your-app-name"
+description: "your-app-description"
+
+logger:
+  transports: [console, file]
+  level: info
+  path: logs/mcp-agent.log
+```
+
+```yaml mcp_agent.secrets.yaml
+# You can leave this blank. This is useful if you want to pass in keys or secrets to your MCP server
+```
+
+### 5) Deploy to mcp-agent cloud
+
+With `uv`:
+
+```bash
+uv run mcp-agent login
+uv run mcp-agent deploy --no-auth
+```
+
+Or with `venv`:
+
+```bash
+mcp-agent login
+mcp-agent deploy --no-auth
+```
+
+<Info>Support for OAuth coming soon!</Info>
+
+After a successful deploy, you'll see a cloud URL like:
+
+```
+https://<deployment-id>.deployments.mcp-agent.com/sse
+```
+
+### 6) Test in ChatGPT
+
+1. Enable Developer Mode in ChatGPT.
+2. Go to Settings → Connectors and add your app's MCP server.
+3. Use your cloud URL, making sure it ends with `/sse`.
+
+<Note>ChatGPT connects to the SSE endpoint, so the `/sse` suffix is required.</Note>
+
+![Adding a custom connector to ChatGPT](https://andrew-dev-s3.s3.us-east-1.amazonaws.com/chatgpt.com_(thumbnails).png)
+
+---
+
+## Troubleshooting
+
+- **404 / Connection errors in ChatGPT**: Ensure your URL ends with `/sse` and your code's `message_path` is `/sse/messages`.
+- **Auth errors**: If you are unable to deploy because of an Auth issue, make sure you run `mcp-agent login`. If you are unable to access your ChatGPT app, make sure you deployed with the `--no-auth` configuration to make sure you can access your application.
+- **MCP Inspector**: If you want to test without ChatGPT, you can use [MCP Inspector](https://modelcontextprotocol.io/docs/tools/inspector) (a debugging tool) for MCP servers to validate to make sure your MCP application is properly configured.
+
+## Additional Resources
+
+- [Example ChatGPT Apps](https://github.com/lastmile-ai/openai-apps-sdk)
+- [mcp-agent repo](https://github.com/lastmile-ai/mcp-agent)

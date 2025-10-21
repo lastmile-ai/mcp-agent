@@ -46,23 +46,25 @@ Obtain a secret and public API key for your desired Langfuse project and then ge
 echo -n "pk-your-public-key:sk-your-secret-key" | base64
 ```
 
-In `mcp_agent.secrets.yaml` set the Authorization header for OTLP (merged automatically with the typed exporter):
+In `mcp_agent.secrets.yaml` set the OTLP exporter with the Authorization header (this fully defines the exporter for Langfuse):
 
 ```yaml
 otel:
-  otlp_settings:
-    headers:
-      Authorization: "Basic AUTH_STRING"
+  exporters:
+    - otlp:
+        endpoint: "https://us.cloud.langfuse.com/api/public/otel/v1/traces"
+        headers:
+          Authorization: "Basic AUTH_STRING"
 ```
 
-Lastly, ensure the proper trace endpoint is configured in the typed exporter in `mcp_agent.config.yaml` for your Langfuse region, e.g.:
+The default `mcp_agent.config.yaml` leaves the exporters list commented out so this secrets entry is the only OTLP exporter (preventing a duplicate without headers). For non-authenticated collectors, you can instead define the exporter directly in `mcp_agent.config.yaml` and omit it from `mcp_agent.secrets.yaml`, e.g.:
 
 ```yaml
 otel:
   enabled: true
   exporters:
-    - type: otlp
-      endpoint: "https://us.cloud.langfuse.com/api/public/otel/v1/traces"
+    - otlp:
+        endpoint: "https://some.other.tracing.com"
 ```
 
 ## `4` Run locally

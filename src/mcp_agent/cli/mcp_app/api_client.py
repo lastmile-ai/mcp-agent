@@ -16,6 +16,7 @@ class AppServerInfo(BaseModel):
         "APP_SERVER_STATUS_ONLINE",
         "APP_SERVER_STATUS_OFFLINE",
     ]  # Enums: 0=UNSPECIFIED, 1=ONLINE, 2=OFFLINE
+    unauthenticatedAccess: Optional[bool] = None
 
 
 # A developer-deployed MCP App which others can configure and use.
@@ -26,6 +27,7 @@ class MCPApp(BaseModel):
     description: Optional[str] = None
     createdAt: datetime
     updatedAt: datetime
+    unauthenticatedAccess: Optional[bool] = None
     appServerInfo: Optional[AppServerInfo] = None
     deploymentMetadata: Optional[Dict[str, Any]] = None
 
@@ -131,12 +133,18 @@ class GetAppLogsResponse(BaseModel):
 class MCPAppClient(APIClient):
     """Client for interacting with the MCP App API service over HTTP."""
 
-    async def create_app(self, name: str, description: Optional[str] = None) -> MCPApp:
+    async def create_app(
+        self,
+        name: str,
+        description: Optional[str] = None,
+        unauthenticated_access: Optional[bool] = None,
+    ) -> MCPApp:
         """Create a new MCP App via the API.
 
         Args:
             name: The name of the MCP App
             description: Optional description for the app
+            unauthenticated_access: Whether the app should allow unauthenticated access
 
         Returns:
             MCPApp: The created MCP App
@@ -154,6 +162,9 @@ class MCPAppClient(APIClient):
 
         if description:
             payload["description"] = description
+
+        if unauthenticated_access is not None:
+            payload["unauthenticatedAccess"] = unauthenticated_access
 
         response = await self.post("/mcp_app/create_app", payload)
 
@@ -244,6 +255,60 @@ class MCPAppClient(APIClient):
             raise ValueError("API response did not contain the configured app data")
 
         return MCPAppConfiguration(**res["appConfiguration"])
+
+    async def update_app(
+        self,
+        app_id: str,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        unauthenticated_access: Optional[bool] = None,
+    ) -> MCPApp:
+        """Update an existing MCP App via the API.
+
+        Args:
+            app_id: The UUID of the app to update
+            name: Optional new name for the app
+            description: Optional new description for the app
+            unauthenticated_access: Optional flag to toggle unauthenticated access
+
+        Returns:
+            MCPApp: The updated MCP App
+
+        Raises:
+            ValueError: If the app_id is invalid or no fields are provided
+            httpx.HTTPStatusError: If the API returns an error
+            httpx.HTTPError: If the request fails
+        """
+        if not app_id or not is_valid_app_id_format(app_id):
+            raise ValueError(f"Invalid app ID format: {app_id}")
+
+        if name is None and description is None and unauthenticated_access is None:
+            raise ValueError(
+                "At least one of name, description, or unauthenticated_access must be provided."
+            )
+
+        payload: Dict[str, Any] = {"appId": app_id}
+
+        if name is not None:
+            if not isinstance(name, str) or not name.strip():
+                raise ValueError("App name must be a non-empty string when provided")
+            payload["name"] = name
+
+        if description is not None:
+            if not isinstance(description, str):
+                raise ValueError("App description must be a string when provided")
+            payload["description"] = description
+
+        if unauthenticated_access is not None:
+            payload["unauthenticatedAccess"] = unauthenticated_access
+
+        response = await self.put("/mcp_app/update_app", payload)
+
+        res = response.json()
+        if not res or "app" not in res:
+            raise ValueError("API response did not contain the updated app data")
+
+        return MCPApp(**res["app"])
 
     async def get_app_or_config(
         self, app_id_or_url: str

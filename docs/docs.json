@@ -76,6 +76,12 @@
             ]
           },
           {
+            "group": "OpenAI apps",
+            "pages": [
+              "openai/deploy"
+            ]
+          },
+          {
             "group": "Advanced Topics",
             "pages": [
               "advanced/temporal",

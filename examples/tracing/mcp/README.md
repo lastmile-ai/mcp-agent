@@ -54,8 +54,8 @@ Then open `mcp_agent.secrets.yaml` and add your api key for your preferred LLM f
 otel:
   enabled: true
   exporters:
-    - type: otlp
-      endpoint: "http://localhost:4318/v1/traces"
+    - otlp:
+        endpoint: "http://localhost:4318/v1/traces"
 ```
 
 ## `4` Run locally
