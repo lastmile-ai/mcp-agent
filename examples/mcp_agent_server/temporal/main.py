@@ -9,8 +9,11 @@ The example showcases the durable execution capabilities of Temporal.
 """
 
 import asyncio
+import base64
 import logging
 import os
+from importlib import resources
+from pathlib import Path
 
 from mcp.types import Icon, ModelHint, ModelPreferences, SamplingMessage, TextContent
 from temporalio.exceptions import ApplicationError
@@ -93,12 +96,17 @@ class BasicAgentWorkflow(Workflow[str]):
             return WorkflowResult(value=result)
 
 
+icon_file = Path(__file__).parent / "mag.png"
+icon_data = base64.standard_b64encode(icon_file.read_bytes()).decode()
+icon_data_uri = f"data:image/png;base64,{icon_data}"
+mag_icon = Icon(src=icon_data_uri, mimeType="image/png", sizes=["64x64"])
+
 @app.tool(
     name="finder_tool",
     title="Finder Tool",
     description="Run the Finder workflow synchronously.",
     annotations={"idempotentHint": False},
-    icons=[Icon(src="emoji:mag")],
+    icons=[mag_icon],
     meta={"category": "demo", "engine": "temporal"},
     structured_output=False,
 )

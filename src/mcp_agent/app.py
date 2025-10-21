@@ -54,10 +54,11 @@ if TYPE_CHECKING:
 P = ParamSpec("P")
 R = TypeVar("R")
 
-with (resources.files("mcp_agent.data").joinpath("phetch.png").open("rb")) as icon_file:
-    icon_data = base64.standard_b64encode(icon_file.read()).decode()
-    icon_data_uri = f"data:image/png;base64,{icon_data}"
-    phetch = Icon(src=icon_data_uri, mimeType="image/png", sizes=["48x48"])
+phetch = Icon(
+    src="https://s3.us-east-1.amazonaws.com/publicdata.lastmileai.com/phetch.png",
+    mimeType="image/png",
+    sizes=["48x48"],
+)
 
 class MCPApp:
     """
