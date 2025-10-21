@@ -12,7 +12,7 @@ import asyncio
 import logging
 import os
 
-from mcp.types import ModelHint, ModelPreferences, SamplingMessage, TextContent
+from mcp.types import Icon, ModelHint, ModelPreferences, SamplingMessage, TextContent
 from temporalio.exceptions import ApplicationError
 
 from mcp_agent.agents.agent import Agent
@@ -93,8 +93,19 @@ class BasicAgentWorkflow(Workflow[str]):
             return WorkflowResult(value=result)
 
 
-@app.tool
-async def finder_tool(request: str, app_ctx: Context | None = None) -> str:
+@app.tool(
+    name="finder_tool",
+    title="Finder Tool",
+    description="Run the Finder workflow synchronously.",
+    annotations={"idempotentHint": False},
+    icons=[Icon(src="emoji:mag")],
+    meta={"category": "demo", "engine": "temporal"},
+    structured_output=False,
+)
+async def finder_tool(
+    request: str,
+    app_ctx: Context | None = None,
+) -> str:
     """
     Run the basic agent workflow using the app.tool decorator to set up the workflow.
     The code in this function is run in workflow context.
@@ -112,6 +123,7 @@ async def finder_tool(request: str, app_ctx: Context | None = None) -> str:
 
     app = app_ctx.app
 
+    context = app_ctx or app.context
     logger = app.logger
     logger.info("[workflow-mode] Running finder_tool", data={"input": request})
 
@@ -127,10 +139,12 @@ async def finder_tool(request: str, app_ctx: Context | None = None) -> str:
     async with finder_agent:
         finder_llm = await finder_agent.attach_llm(OpenAIAugmentedLLM)
 
+        await context.report_progress(0.4, total=1.0, message="Invoking finder agent")
         result = await finder_llm.generate_str(
             message=request,
         )
         logger.info("[workflow-mode] finder_tool agent result", data={"result": result})
+        await context.report_progress(1.0, total=1.0, message="Finder completed")
 
     return result
 

@@ -1565,7 +1565,7 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
         title = decl.get("title")
         annotations = decl.get("annotations")
         icons = decl.get("icons")
-        meta = decl.get("meta")
+        _meta = decl.get("meta")
         # Bind per-iteration values to avoid late-binding closure bugs
         name_local = name
         wname_local = workflow_name
@@ -1648,7 +1648,7 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
                 description=description or (fn.__doc__ or ""),
                 annotations=annotations,
                 icons=icons,
-                meta=meta,
+                # meta=meta, TODO: saqadri - add this after https://github.com/modelcontextprotocol/python-sdk/pull/1463 is pushed to pypi
                 structured_output=structured_output,
             )
             registered.add(name_local)
@@ -1756,7 +1756,7 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
                     description=full_desc,
                     annotations=annotations,
                     icons=icons,
-                    meta=meta,
+                    # meta=meta, TODO: saqadri - add this after https://github.com/modelcontextprotocol/python-sdk/pull/1463 is pushed to pypi
                     structured_output=False,
                 )
                 registered.add(run_tool_name)

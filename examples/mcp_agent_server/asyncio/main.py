@@ -13,6 +13,8 @@ import os
 from typing import Dict, Any, Optional
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import Icon
+
 from mcp_agent.core.context import Context as AppContext
 
 from mcp_agent.app import MCPApp
@@ -115,22 +117,35 @@ class BasicAgentWorkflow(Workflow[str]):
             return WorkflowResult(value=result)
 
 
-@app.tool(name="sampling_demo")
-async def sampling_demo(topic: str, app_ctx: Optional[AppContext] = None) -> str:
+@app.tool(
+    name="sampling_demo",
+    title="Sampling Demo",
+    description="Call a nested MCP server that performs sampling.",
+    annotations={"idempotentHint": False},
+    icons=[Icon(src="emoji:crystal_ball")],
+    meta={"category": "demo", "feature": "sampling"},
+)
+async def sampling_demo(
+    topic: str,
+    app_ctx: Optional[AppContext] = None,
+) -> str:
     """
     Demonstrate MCP sampling via a nested MCP server tool.
 
     - In asyncio (no upstream client), this triggers local sampling with a human approval prompt.
     - When an MCP client is connected, the sampling request is proxied upstream.
     """
-    _app = app_ctx.app if app_ctx else app
+    context = app_ctx or app.context
+
+    await context.info(f"[sampling_demo] starting for topic '{topic}'")
+    await context.report_progress(0.1, total=1.0, message="Preparing nested server")
 
     # Register a simple nested server that uses sampling in its get_haiku tool
     nested_name = "nested_sampling"
     nested_path = os.path.abspath(
         os.path.join(os.path.dirname(__file__), "nested_sampling_server.py")
     )
-    _app.context.config.mcp.servers[nested_name] = MCPServerSettings(
+    context.config.mcp.servers[nested_name] = MCPServerSettings(
         name=nested_name,
         command="uv",
         args=["run", nested_path],
@@ -139,9 +154,11 @@ async def sampling_demo(topic: str, app_ctx: Optional[AppContext] = None) -> str
 
     # Connect as an MCP client to the nested server and call its sampling tool
     async with gen_client(
-        nested_name, _app.context.server_registry, context=_app.context
+        nested_name, context.server_registry, context=context
     ) as client:
         result = await client.call_tool("get_haiku", {"topic": topic})
+
+    await context.report_progress(0.9, total=1.0, message="Formatting haiku")
 
     # Extract text content from CallToolResult
     try:
@@ -154,7 +171,8 @@ async def sampling_demo(topic: str, app_ctx: Optional[AppContext] = None) -> str
 
 @app.tool(name="elicitation_demo")
 async def elicitation_demo(
-    action: str = "proceed", app_ctx: Optional[AppContext] = None
+    action: str = "proceed",
+    app_ctx: Optional[AppContext] = None,
 ) -> str:
     """
     Demonstrate MCP elicitation via a nested MCP server tool.
@@ -162,13 +180,13 @@ async def elicitation_demo(
     - In asyncio (no upstream client), this triggers local elicitation handled by console.
     - When an MCP client is connected, the elicitation request is proxied upstream.
     """
-    _app = app_ctx.app if app_ctx else app
+    context = app_ctx or app.context
 
     nested_name = "nested_elicitation"
     nested_path = os.path.abspath(
         os.path.join(os.path.dirname(__file__), "nested_elicitation_server.py")
     )
-    _app.context.config.mcp.servers[nested_name] = MCPServerSettings(
+    context.config.mcp.servers[nested_name] = MCPServerSettings(
         name=nested_name,
         command="uv",
         args=["run", nested_path],
@@ -176,27 +194,34 @@ async def elicitation_demo(
     )
 
     async with gen_client(
-        nested_name, _app.context.server_registry, context=_app.context
+        nested_name, context.server_registry, context=context
     ) as client:
+        await context.info(f"[elicitation_demo] asking to '{action}'")
         result = await client.call_tool("confirm_action", {"action": action})
         try:
             if result.content and len(result.content) > 0:
-                return result.content[0].text or ""
+                message = result.content[0].text or ""
+                await context.info(f"[elicitation_demo] response: {message}")
+                return message
         except Exception:
             pass
     return ""
 
 
 @app.tool(name="notify_resources")
-async def notify_resources(app_ctx: Optional[AppContext] = None) -> str:
+async def notify_resources(
+    app_ctx: Optional[AppContext] = None,
+) -> str:
     """Trigger a non-logging resource list changed notification."""
-    _app = app_ctx.app if app_ctx else app
-    upstream = getattr(_app.context, "upstream_session", None)
+    context = app_ctx or app.context
+    upstream = getattr(context, "upstream_session", None)
     if upstream is None:
-        _app.logger.warning("No upstream session to notify")
+        message = "No upstream session to notify"
+        await context.warning(message)
         return "no-upstream"
     await upstream.send_resource_list_changed()
-    _app.logger.info("Sent notifications/resources/list_changed")
+    log_message = "Sent notifications/resources/list_changed"
+    await context.info(log_message)
     return "ok"
 
 
@@ -206,16 +231,15 @@ async def notify_progress(
     message: str | None = "Asyncio progress demo",
     app_ctx: Optional[AppContext] = None,
 ) -> str:
-    """Trigger a non-logging progress notification."""
-    _app = app_ctx.app if app_ctx else app
-    upstream = getattr(_app.context, "upstream_session", None)
-    if upstream is None:
-        _app.logger.warning("No upstream session to notify")
-        return "no-upstream"
-    await upstream.send_progress_notification(
-        progress_token="asyncio-demo", progress=progress, message=message
+    """Trigger a progress notification."""
+    context = app_ctx or app.context
+
+    await context.report_progress(
+        progress=progress,
+        total=1.0,
+        message=message,
     )
-    _app.logger.info("Sent notifications/progress")
+
     return "ok"
 
 
@@ -235,12 +259,8 @@ async def grade_story(story: str, app_ctx: Optional[AppContext] = None) -> str:
         app_ctx: Optional MCPApp context for accessing app resources and logging
     """
     # Use the context's app if available for proper logging with upstream_session
-    _app = app_ctx.app if app_ctx else app
-    # Ensure the app's logger is bound to the current context with upstream_session
-    if _app._logger and hasattr(_app._logger, "_bound_context"):
-        _app._logger._bound_context = app_ctx
-    logger = _app.logger
-    logger.info(f"grade_story: Received input: {story}")
+    context = app_ctx or app.context
+    await context.info(f"grade_story: Received input: {story}")
 
     proofreader = Agent(
         name="proofreader",
@@ -283,13 +303,13 @@ async def grade_story(story: str, app_ctx: Optional[AppContext] = None) -> str:
             message=f"Student short story submission: {story}",
         )
     except Exception as e:
-        logger.error(f"grade_story: Error generating result: {e}")
+        await context.error(f"grade_story: Error generating result: {e}")
         return None
 
     if not result:
-        logger.error("grade_story: No result from parallel LLM")
+        await context.error("grade_story: No result from parallel LLM")
     else:
-        logger.info(f"grade_story: Result: {result}")
+        await context.info(f"grade_story: Result: {result}")
 
     return result
 
@@ -304,11 +324,8 @@ async def grade_story_async(story: str, app_ctx: Optional[AppContext] = None) ->
     """
 
     # Use the context's app if available for proper logging with upstream_session
-    _app = app_ctx.app if app_ctx else app
-    # Ensure the app's logger is bound to the current context with upstream_session
-    if _app._logger and hasattr(_app._logger, "_bound_context"):
-        _app._logger._bound_context = app_ctx
-    logger = _app.logger
+    context = app_ctx or app.context
+    logger = context.logger
     logger.info(f"grade_story_async: Received input: {story}")
 
     proofreader = Agent(
@@ -508,7 +525,7 @@ async def main():
         agent_app.logger.info(f"MCP Server settings: {mcp_server.settings}")
 
         # Run the server
-        await mcp_server.run_stdio_async()
+        await mcp_server.run_sse_async()
 
 
 if __name__ == "__main__":

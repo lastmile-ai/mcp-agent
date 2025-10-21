@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.elicitation import elicit_with_validation, AcceptedElicitation
 
 mcp = FastMCP("Nested Elicitation Server")
@@ -10,16 +10,21 @@ class Confirmation(BaseModel):
 
 
 @mcp.tool()
-async def confirm_action(action: str) -> str:
+async def confirm_action(action: str, ctx: Context | None = None) -> str:
     """Ask the user to confirm an action via elicitation."""
-    ctx = mcp.get_context()
+    context = ctx or mcp.get_context()
+    await context.info(f"[nested_elicitation] requesting '{action}' confirmation")
     res = await elicit_with_validation(
-        ctx.session,
+        context.session,
         message=f"Do you want to {action}?",
         schema=Confirmation,
     )
     if isinstance(res, AcceptedElicitation) and res.data.confirm:
+        if ctx:
+            await context.info(f"[nested_elicitation] '{action}' accepted")
         return f"Action '{action}' confirmed by user"
+    if ctx:
+        await context.warning(f"[nested_elicitation] '{action}' declined")
     return f"Action '{action}' declined by user"
 
 
