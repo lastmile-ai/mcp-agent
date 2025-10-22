@@ -161,6 +161,16 @@ def wrangler_deploy(
         npm_prefix.mkdir(parents=True, exist_ok=True)
         env_updates["npm_config_prefix"] = str(npm_prefix)
 
+    if os.environ.get("MCP_DISABLE_TLS_VALIDATION", "").lower() in ("1", "true", "yes"):
+        env_updates["NODE_TLS_REJECT_UNAUTHORIZED"] = "0"
+        print_warning(
+            "TLS certificate validation disabled (MCP_DISABLE_TLS_VALIDATION is set)."
+        )
+        if settings.VERBOSE:
+            print_info(
+                f"Deployment endpoint: {deployment_settings.DEPLOYMENTS_UPLOAD_API_BASE_URL}"
+            )
+
     env.update(env_updates)
 
     validate_project(project_dir)
