@@ -28,11 +28,14 @@ Temporal provides these features out-of-the-box and is recommended for productio
    - Creates an agent with access to fetch and filesystem
    - Uses OpenAI's LLM to process input
    - Standard workflow execution pattern
+   - Specify run_parameters as: `{"input": "Your input"}`
 
 2. **PauseResumeWorkflow**: A workflow that demonstrates Temporal's signaling capabilities:
    - Starts a workflow and pauses execution awaiting a signal
    - Shows how workflows can be suspended and resumed
    - Demonstrates Temporal's durable execution pattern
+   - Specify run_parameters as: `{"input": "Your input"}`
+   - Resume with `workflows-resume` tool, specifying the run_id and payload `{}`
 
 ## Available Endpoints
 
