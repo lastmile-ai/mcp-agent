@@ -9,7 +9,6 @@ The example showcases the durable execution capabilities of Temporal.
 """
 
 import asyncio
-import logging
 import os
 
 from mcp.types import Icon, ModelHint, ModelPreferences, SamplingMessage, TextContent
@@ -21,10 +20,6 @@ from mcp_agent.core.context import Context
 from mcp_agent.executor.workflow import Workflow, WorkflowResult
 from mcp_agent.server.app_server import create_mcp_server_for_app
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
-
-# Initialize logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 app = MCPApp(
     name="basic_agent_server",
@@ -64,11 +59,9 @@ class BasicAgentWorkflow(Workflow[str]):
         context.config.mcp.servers["filesystem"].args.extend([os.getcwd()])
 
         # Use of the app.logger will forward logs back to the mcp client
-        app_logger = app.logger
+        logger = app.logger
 
-        app_logger.info(
-            "[workflow-mode] Starting finder agent in BasicAgentWorkflow.run"
-        )
+        logger.info("[workflow-mode] Starting finder agent in BasicAgentWorkflow.run")
         async with finder_agent:
             finder_llm = await finder_agent.attach_llm(OpenAIAugmentedLLM)
 
@@ -77,9 +70,7 @@ class BasicAgentWorkflow(Workflow[str]):
             )
 
             # forwards the log to the caller
-            app_logger.info(
-                f"[workflow-mode] Finder agent completed with result {result}"
-            )
+            logger.info(f"[workflow-mode] Finder agent completed with result {result}")
             # print to the console (for when running locally)
             print(f"Agent result: {result}")
             return WorkflowResult(value=result)
@@ -113,7 +104,7 @@ async def finder_tool(
         To create this as an async tool, use @app.async_tool instead, which will return the workflow ID and run ID.
     """
 
-    context = app_ctx if app_ctx is not None else app.context
+    context = app_ctx or app.context
     logger = context.logger
     logger.info("[workflow-mode] Running finder_tool", data={"input": request})
 
@@ -202,7 +193,7 @@ class SamplingWorkflow(Workflow[str]):
             "[workflow-mode] SessionProxy.create_message (direct)",
             data={"path": "mcp_relay_request activity"},
         )
-        direct_text = ""
+
         try:
             direct = await app.context.upstream_session.create_message(
                 messages=[
@@ -303,12 +294,6 @@ class NotificationsWorkflow(Workflow[str]):
 
 async def main():
     async with app.run() as agent_app:
-        # Log registered workflows and agent configurations
-        logger.info(f"Creating MCP server for {agent_app.name}")
-
-        logger.info("Registered workflows:")
-        for workflow_id in agent_app.workflows:
-            logger.info(f"  - {workflow_id}")
         # Create the MCP server that exposes both workflows and agent configurations
         mcp_server = create_mcp_server_for_app(agent_app)
 

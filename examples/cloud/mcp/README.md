@@ -119,6 +119,7 @@ openai:
 Install the dependencies:
 
 ```bash
+cd examples/cloud/mcp
 uv pip install -r requirements.txt
 ```
 
