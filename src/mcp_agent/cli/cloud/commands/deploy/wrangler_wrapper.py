@@ -25,6 +25,7 @@ from .bundle_utils import (
 from .constants import (
     CLOUDFLARE_ACCOUNT_ID,
     CLOUDFLARE_EMAIL,
+    DEFAULT_DEPLOYMENTS_UPLOAD_API_BASE_URL,
     WRANGLER_SEND_METRICS,
 )
 from .settings import deployment_settings
@@ -161,10 +162,19 @@ def wrangler_deploy(
         npm_prefix.mkdir(parents=True, exist_ok=True)
         env_updates["npm_config_prefix"] = str(npm_prefix)
 
-    if os.environ.get("MCP_DISABLE_TLS_VALIDATION", "").lower() in ("1", "true", "yes"):
+    if os.environ.get("__MCP_DISABLE_TLS_VALIDATION", "").lower() in ("1", "true", "yes"):
+        if deployment_settings.DEPLOYMENTS_UPLOAD_API_BASE_URL == DEFAULT_DEPLOYMENTS_UPLOAD_API_BASE_URL:
+            print_error(
+                f"Cannot disable TLS validation when using {DEFAULT_DEPLOYMENTS_UPLOAD_API_BASE_URL}. "
+                "Set MCP_DEPLOYMENTS_UPLOAD_API_BASE_URL to a custom endpoint."
+            )
+            raise ValueError(
+                f"TLS validation cannot be disabled with {DEFAULT_DEPLOYMENTS_UPLOAD_API_BASE_URL}"
+            )
+
         env_updates["NODE_TLS_REJECT_UNAUTHORIZED"] = "0"
         print_warning(
-            "TLS certificate validation disabled (MCP_DISABLE_TLS_VALIDATION is set)."
+            "TLS certificate validation disabled (__MCP_DISABLE_TLS_VALIDATION is set)."
         )
         if settings.VERBOSE:
             print_info(
