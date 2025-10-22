@@ -253,7 +253,7 @@ def install(
         server_url = server_url.rstrip("/") + "/sse"
         print_info(f"Using SSE transport: {server_url}")
 
-    console.print(f"\n[bold cyan]Installing MCP Server[/bold cyan]\n")
+    console.print("\n[bold cyan]Installing MCP Server[/bold cyan]\n")
     print_info(f"Server URL: {server_url}")
     print_info(f"Client: {CLIENT_CONFIGS.get(client_lc, {}).get('description', client_lc)}")
 
@@ -276,8 +276,8 @@ def install(
                 app_info = run_async(mcp_client.get_app(server_url=server_url))
 
             has_unauth_access = (
-                app_info.unauthenticatedAccess == True or
-                (app_info.appServerInfo and app_info.appServerInfo.unauthenticatedAccess == True)
+                app_info.unauthenticatedAccess is True or
+                (app_info.appServerInfo and app_info.appServerInfo.unauthenticatedAccess is True)
             )
 
             if not has_unauth_access:
@@ -329,7 +329,7 @@ def install(
     # For Claude Code, use the `claude mcp add` command instead of editing JSON
     if client_lc == "claude_code":
         if dry_run:
-            console.print(f"\n[bold yellow]DRY RUN - Would run:[/bold yellow]")
+            console.print("\n[bold yellow]DRY RUN - Would run:[/bold yellow]")
             console.print(f"claude mcp add {server_name} {server_url} -t sse -H 'Authorization: Bearer <api-key>' -s user")
             return
 
@@ -415,8 +415,8 @@ def install(
 
         if is_claude_desktop:
             auth_note = (
-                f"[bold]Note:[/bold] Claude Desktop uses [cyan]mcp-remote[/cyan] to connect to HTTP/SSE servers\n"
-                f"[dim]API key embedded in config. Restart Claude Desktop to load the server.[/dim]"
+                "[bold]Note:[/bold] Claude Desktop uses [cyan]mcp-remote[/cyan] to connect to HTTP/SSE servers\n"
+                "[dim]API key embedded in config. Restart Claude Desktop to load the server.[/dim]"
             )
         elif is_vscode:
             auth_note = (
@@ -430,8 +430,8 @@ def install(
             )
         else:
             auth_note = (
-                f"[bold]Authentication:[/bold] API key embedded in config\n"
-                f"[dim]To update the key, re-run install with --force[/dim]"
+                "[bold]Authentication:[/bold] API key embedded in config\n"
+                "[dim]To update the key, re-run install with --force[/dim]"
             )
 
         console.print(
