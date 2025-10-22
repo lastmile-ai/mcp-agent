@@ -8,10 +8,10 @@ server URL is added with an Authorization header using your MCP_API_KEY.
 For ChatGPT, the server must have unauthenticated access enabled.
 
 Supported clients:
- - vscode: writes .vscode/mcp.json in project
- - claude_code: writes ~/.claude.json (uses "type" field instead of "transport")
+ - vscode: writes .vscode/mcp.json
+ - claude_code: writes ~/.claude.json
  - cursor: writes ~/.cursor/mcp.json
- - claude_desktop: writes platform-specific Claude Desktop config using mcp-remote wrapper
+ - claude_desktop: writes platform-specific config using mcp-remote wrapper
    - macOS: ~/Library/Application Support/Claude/claude_desktop_config.json
    - Windows: ~/AppData/Roaming/Claude/claude_desktop_config.json
    - Linux: ~/.config/Claude/claude_desktop_config.json
@@ -95,37 +95,28 @@ def _merge_mcp_json(existing: dict, server_name: str, server_config: dict, forma
     other_keys: dict = {}
 
     if isinstance(existing, dict):
-        # Check for Claude Desktop/Code format
         if "mcpServers" in existing and isinstance(existing.get("mcpServers"), dict):
             servers = dict(existing["mcpServers"])
-        # Check for VSCode format
         elif "servers" in existing and isinstance(existing.get("servers"), dict):
             servers = dict(existing["servers"])
-            # Preserve other VSCode keys like "inputs"
             for k, v in existing.items():
                 if k != "servers":
                     other_keys[k] = v
-        # Check for standard MCP format
         elif "mcp" in existing and isinstance(existing.get("mcp"), dict):
             servers = dict(existing["mcp"].get("servers") or {})
         else:
-            # Treat top-level mapping as servers if it looks like name->obj
             for k, v in existing.items():
                 if isinstance(v, dict) and ("url" in v or "transport" in v or "command" in v or "type" in v):
                     servers[k] = v
 
-    # Add/update the new server
     servers[server_name] = server_config
 
-    # Return in appropriate format
     if format_type == "mcpServers":
         return {"mcpServers": servers}
     elif format_type == "vscode":
         result = {"servers": servers}
-        # Add inputs array if not present
         if "inputs" not in other_keys:
             result["inputs"] = []
-        # Merge in other keys
         result.update(other_keys)
         return result
     else:
@@ -186,32 +177,6 @@ def _build_server_config(server_url: str, transport: str = "http", for_claude_de
         }
 
 
-def _generate_server_name(server_url: str) -> str:
-    """Generate a server name from URL."""
-    # Extract meaningful part from URL
-    # e.g., https://api.example.com/servers/my-server/mcp -> my-server
-    parts = server_url.rstrip("/").split("/")
-
-    # If URL has path segments (more than protocol://domain)
-    if len(parts) > 3:  # ['https:', '', 'domain', 'path', ...]
-        # Try to get the last meaningful part before /mcp or /sse
-        path_parts = [p for p in parts[3:] if p and p not in ('mcp', 'sse')]
-        if path_parts:
-            return path_parts[-1]
-
-    # Fall back to domain name
-    if len(parts) >= 3:
-        # Extract domain from parts[2] (after https://)
-        domain = parts[2]
-        # Remove port if present, extract subdomain
-        domain = domain.split(':')[0]
-        # Use first part of subdomain for cleaner name
-        subdomain = domain.split('.')[0]
-        return subdomain
-
-    return "server"
-
-
 @app.callback(invoke_without_command=True)
 def install(
     server_identifier: str = typer.Argument(
@@ -266,28 +231,24 @@ def install(
     """
     client_lc = client.lower()
 
-    # Validate client
     if client_lc not in CLIENT_CONFIGS and client_lc != "chatgpt":
         raise CLIError(
             f"Unsupported client: {client}. Supported clients: vscode, claude_code, cursor, claude_desktop, chatgpt"
         )
 
 
-    # Authenticate
     effective_api_key = api_key or settings.API_KEY or load_api_key_credentials()
     if not effective_api_key:
         raise CLIError(
             "Must be logged in to install. Run 'mcp-agent login', set MCP_API_KEY environment variable, or specify --api-key option."
         )
 
-    # Normalize server URL
     server_url = server_identifier
     if not server_identifier.startswith("http://") and not server_identifier.startswith("https://"):
         raise CLIError(
             f"Server identifier must be a URL starting with http:// or https://. Got: {server_identifier}"
         )
 
-    # Ensure URL ends with /sse for MCP Agent Cloud deployments
     if not server_url.endswith("/sse") and not server_url.endswith("/mcp"):
         server_url = server_url.rstrip("/") + "/sse"
         print_info(f"Using SSE transport: {server_url}")
@@ -296,7 +257,6 @@ def install(
     print_info(f"Server URL: {server_url}")
     print_info(f"Client: {CLIENT_CONFIGS.get(client_lc, {}).get('description', client_lc)}")
 
-    # Fetch app info to get the actual app name
     mcp_client = MCPAppClient(
         api_url=api_url or DEFAULT_API_BASE_URL, api_key=effective_api_key
     )
@@ -312,9 +272,7 @@ def install(
     # For ChatGPT, check if server has unauthenticated access enabled
     if client_lc == "chatgpt":
         try:
-            # Check unauthenticated access from app_info we already fetched
             if not app_info:
-                # Try to fetch again if we don't have it
                 app_info = run_async(mcp_client.get_app(server_url=server_url))
 
             has_unauth_access = (
@@ -344,14 +302,11 @@ def install(
                 raise typer.Exit(1)
 
         except typer.Exit:
-            # Re-raise typer.Exit to properly exit
             raise
         except Exception as e:
-            # If we can't fetch app info, warn but continue
             print_info(f"Warning: Could not verify unauthenticated access: {e}")
             print_info("Proceeding with installation, but ChatGPT may not be able to connect.")
 
-        # Show ChatGPT instructions
         console.print(
             Panel(
                 f"[bold]ChatGPT Setup Instructions[/bold]\n\n"
@@ -369,8 +324,7 @@ def install(
         )
         return
 
-    # Use app name from API, fallback to custom name or generated name
-    server_name = name or app_name or _generate_server_name(server_url)
+    server_name = name or app_name or server_url
 
     # For Claude Code, use the `claude mcp add` command instead of editing JSON
     if client_lc == "claude_code":
@@ -401,29 +355,25 @@ def install(
                 "Install from: https://docs.claude.com/en/docs/claude-code"
             )
 
-    # For other clients, write to config file
     if dry_run:
         print_info("[bold yellow]DRY RUN - No files will be written[/bold yellow]")
 
     client_config = CLIENT_CONFIGS[client_lc]
     config_path = client_config["path"]()
 
-    # Determine config format based on client
     is_vscode = client_lc == "vscode"
     is_claude_desktop = client_lc == "claude_desktop"
     is_cursor = client_lc == "cursor"
 
-    # Check existing config
     existing_config = {}
     if config_path.exists():
         try:
             existing_config = json.loads(config_path.read_text(encoding="utf-8"))
-            # Check in appropriate location based on format
-            if is_claude_desktop:
+            if is_claude_desktop or is_cursor:
                 servers = existing_config.get("mcpServers", {})
             elif is_vscode:
                 servers = existing_config.get("servers", {})
-            else:  # cursor
+            else:
                 servers = existing_config.get("mcp", {}).get("servers", {})
 
             if server_name in servers and not force:
@@ -433,10 +383,8 @@ def install(
         except json.JSONDecodeError as e:
             raise CLIError(f"Failed to parse existing config at {config_path}: {e}") from e
 
-    # Determine transport type
     transport = "sse" if server_url.rstrip("/").endswith("/sse") else "http"
 
-    # Build server config with embedded API key
     server_config = _build_server_config(
         server_url,
         transport,
@@ -445,17 +393,15 @@ def install(
         api_key=effective_api_key
     )
 
-    # Determine merge format
-    if is_claude_desktop:
+    if is_claude_desktop or is_cursor:
         format_type = "mcpServers"
     elif is_vscode:
         format_type = "vscode"
-    else:  # cursor
+    else:
         format_type = "mcp"
 
     merged_config = _merge_mcp_json(existing_config, server_name, server_config, format_type)
 
-    # Write or show config
     if dry_run:
         console.print("\n[bold]Would write to:[/bold]", config_path)
         console.print("\n[bold]Config:[/bold]")
@@ -467,16 +413,20 @@ def install(
         except Exception as e:
             raise CLIError(f"Failed to write config file: {e}") from e
 
-        # Success message
         if is_claude_desktop:
             auth_note = (
                 f"[bold]Note:[/bold] Claude Desktop uses [cyan]mcp-remote[/cyan] to connect to HTTP/SSE servers\n"
-                f"[dim]API key embedded in config[/dim]"
+                f"[dim]API key embedded in config. Restart Claude Desktop to load the server.[/dim]"
             )
         elif is_vscode:
             auth_note = (
-                f"[bold]Note:[/bold] VSCode uses [cyan]type: sse[/cyan] format\n"
-                f"[dim]API key embedded in config. To update, re-run install with --force[/dim]"
+                f"[bold]Note:[/bold] VSCode format uses [cyan]type: {transport}[/cyan]\n"
+                f"[dim]API key embedded. Restart VSCode to load the server.[/dim]"
+            )
+        elif is_cursor:
+            auth_note = (
+                f"[bold]Note:[/bold] Cursor format uses [cyan]transport: {transport}[/cyan]\n"
+                f"[dim]API key embedded. Restart Cursor to load the server.[/dim]"
             )
         else:
             auth_note = (

@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from mcp_agent.cli.commands.install import (
     _build_server_config,
-    _generate_server_name,
     _merge_mcp_json,
     install,
 )
@@ -22,6 +21,7 @@ def mock_app_with_auth():
     """Create a mock app that requires authentication."""
     app = MagicMock()
     app.appId = "app-123"
+    app.name = "test-app"
     app.unauthenticatedAccess = False
     app.appServerInfo = MagicMock()
     app.appServerInfo.serverUrl = MOCK_APP_SERVER_URL
@@ -34,18 +34,12 @@ def mock_app_without_auth():
     """Create a mock app with unauthenticated access."""
     app = MagicMock()
     app.appId = "app-456"
+    app.name = "test-app-public"
     app.unauthenticatedAccess = True
     app.appServerInfo = MagicMock()
     app.appServerInfo.serverUrl = MOCK_APP_SERVER_URL
     app.appServerInfo.unauthenticatedAccess = True
     return app
-
-
-def test_generate_server_name():
-    """Test server name generation from URLs."""
-    assert _generate_server_name("https://z53gajrsdkssfgjmgaka1i27crthugq.deployments.mcp-agent.com/sse") == "z53gajrsdkssfgjmgaka1i27crthugq"
-    assert _generate_server_name("https://api.example.com/servers/my-server/mcp") == "my-server"
-    assert _generate_server_name("https://example.com") == "example"
 
 
 def test_build_server_config():
@@ -296,14 +290,11 @@ def test_install_cursor_with_existing_config(tmp_path):
     cursor_config = tmp_path / ".cursor" / "mcp.json"
     cursor_config.parent.mkdir(parents=True, exist_ok=True)
 
-    # Create existing config
     existing = {
-        "mcp": {
-            "servers": {
-                "existing-server": {
-                    "url": "https://existing.com/mcp",
-                    "transport": "http",
-                }
+        "mcpServers": {
+            "existing-server": {
+                "url": "https://existing.com/mcp",
+                "transport": "http",
             }
         }
     }
@@ -325,11 +316,10 @@ def test_install_cursor_with_existing_config(tmp_path):
                     api_key="test-key",
                 )
 
-                # Verify config file was updated
                 config = json.loads(cursor_config.read_text())
-                assert len(config["mcp"]["servers"]) == 2
-                assert "existing-server" in config["mcp"]["servers"]
-                assert "new-server" in config["mcp"]["servers"]
+                assert len(config["mcpServers"]) == 2
+                assert "existing-server" in config["mcpServers"]
+                assert "new-server" in config["mcpServers"]
 
 
 def test_install_duplicate_without_force(tmp_path):
@@ -337,7 +327,6 @@ def test_install_duplicate_without_force(tmp_path):
     vscode_config = tmp_path / ".vscode" / "mcp.json"
     vscode_config.parent.mkdir(parents=True, exist_ok=True)
 
-    # Create existing config with same server name (VSCode format)
     existing = {
         "servers": {
             "test-server": {
@@ -372,7 +361,6 @@ def test_install_duplicate_with_force(tmp_path):
     vscode_config = tmp_path / ".vscode" / "mcp.json"
     vscode_config.parent.mkdir(parents=True, exist_ok=True)
 
-    # Create existing config with same server name (VSCode format)
     existing = {
         "servers": {
             "test-server": {
@@ -400,7 +388,6 @@ def test_install_duplicate_with_force(tmp_path):
                     api_key="test-key",
                 )
 
-                # Verify config was updated (VSCode format)
                 config = json.loads(vscode_config.read_text())
                 assert config["servers"]["test-server"]["url"] == MOCK_APP_SERVER_URL
 
@@ -445,7 +432,6 @@ def test_install_chatgpt_with_unauth_server(mock_app_without_auth):
                 mock_client.get_app = AsyncMock(return_value=mock_app_without_auth)
                 mock_client_class.return_value = mock_client
 
-                # Should not raise, just print instructions
                 install(
                     server_identifier=MOCK_APP_SERVER_URL,
                     client="chatgpt",
@@ -475,7 +461,6 @@ def test_install_dry_run(tmp_path, capsys):
                     api_key="test-key",
                 )
 
-                # Verify no files were written
                 vscode_config = tmp_path / ".vscode" / "mcp.json"
                 assert not vscode_config.exists()
 
@@ -500,7 +485,6 @@ def test_install_sse_transport_detection(tmp_path):
                     api_key="test-key",
                 )
 
-                # Verify SSE type was used (VSCode format)
                 config = json.loads(vscode_config.read_text())
                 assert config["servers"]["test-server"]["type"] == "sse"
 
@@ -525,6 +509,5 @@ def test_install_http_transport_detection(tmp_path):
                     api_key="test-key",
                 )
 
-                # Verify HTTP type was used (VSCode format)
                 config = json.loads(vscode_config.read_text())
                 assert config["servers"]["test-server"]["type"] == "http"
