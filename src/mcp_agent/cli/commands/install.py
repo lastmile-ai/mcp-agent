@@ -49,13 +49,18 @@ from mcp_agent.cli.utils.ux import (
     print_success,
 )
 
-app = typer.Typer(help="Install MCP server to client applications", no_args_is_help=False)
+app = typer.Typer(
+    help="Install MCP server to client applications", no_args_is_help=False
+)
 
 
 def _get_claude_desktop_config_path() -> Path:
     """Get the Claude Desktop config path based on platform."""
     if platform.system() == "Darwin":  # macOS
-        return Path.home() / "Library/Application Support/Claude/claude_desktop_config.json"
+        return (
+            Path.home()
+            / "Library/Application Support/Claude/claude_desktop_config.json"
+        )
     elif platform.system() == "Windows":
         return Path.home() / "AppData/Roaming/Claude/claude_desktop_config.json"
     else:  # Linux
@@ -83,7 +88,9 @@ CLIENT_CONFIGS = {
 }
 
 
-def _merge_mcp_json(existing: dict, server_name: str, server_config: dict, format_type: str = "mcp") -> dict:
+def _merge_mcp_json(
+    existing: dict, server_name: str, server_config: dict, format_type: str = "mcp"
+) -> dict:
     """
     Merge a server configuration into existing MCP JSON.
 
@@ -111,7 +118,9 @@ def _merge_mcp_json(existing: dict, server_name: str, server_config: dict, forma
             servers = dict(existing["mcp"].get("servers") or {})
         else:
             for k, v in existing.items():
-                if isinstance(v, dict) and ("url" in v or "transport" in v or "command" in v or "type" in v):
+                if isinstance(v, dict) and (
+                    "url" in v or "transport" in v or "command" in v or "type" in v
+                ):
                     servers[k] = v
 
     servers[server_name] = server_config
@@ -141,7 +150,9 @@ def _redact_secrets(data: dict) -> dict:
                     walk(v)
         elif isinstance(obj, list):
             for i, v in enumerate(obj):
-                if isinstance(v, str) and v.lower().startswith("authorization: bearer "):
+                if isinstance(v, str) and v.lower().startswith(
+                    "authorization: bearer "
+                ):
                     obj[i] = "Authorization: Bearer ***"
                 else:
                     walk(v)
@@ -158,7 +169,9 @@ def _write_json(path: Path, data: dict) -> None:
     if path.exists() and os.name == "posix":
         original_mode = os.stat(path).st_mode & 0o777
 
-    tmp_fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=path.name, suffix=".tmp")
+    tmp_fd, tmp_name = tempfile.mkstemp(
+        dir=str(path.parent), prefix=path.name, suffix=".tmp"
+    )
     try:
         with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
             f.write(json.dumps(data, indent=2))
@@ -203,7 +216,13 @@ def _server_hostname(server_url: str, app_name: Optional[str] = None) -> str:
     return hostname or "mcp-server"
 
 
-def _build_server_config(server_url: str, transport: str = "http", for_claude_desktop: bool = False, for_vscode: bool = False, api_key: str = None) -> dict:
+def _build_server_config(
+    server_url: str,
+    transport: str = "http",
+    for_claude_desktop: bool = False,
+    for_vscode: bool = False,
+    api_key: str = None,
+) -> dict:
     """Build server configuration dictionary with auth header.
 
     For Claude Desktop, wraps HTTP/SSE servers with mcp-remote stdio wrapper with actual API key.
@@ -228,39 +247,39 @@ def _build_server_config(server_url: str, transport: str = "http", for_claude_de
                 "mcp-remote",
                 server_url,
                 "--header",
-                f"Authorization: Bearer {api_key}"
-            ]
+                f"Authorization: Bearer {api_key}",
+            ],
         }
     elif for_vscode:
         # VSCode uses "type" instead of "transport"
         return {
             "type": transport,
             "url": server_url,
-            "headers": {
-                "Authorization": f"Bearer {api_key}"
-            }
+            "headers": {"Authorization": f"Bearer {api_key}"},
         }
     else:
         # Direct HTTP/SSE connection for Cursor with embedded API key
         return {
             "url": server_url,
             "transport": transport,
-            "headers": {
-                "Authorization": f"Bearer {api_key}"
-            }
+            "headers": {"Authorization": f"Bearer {api_key}"},
         }
 
 
 @app.callback(invoke_without_command=True)
 def install(
-    server_identifier: str = typer.Argument(
-        ..., help="Server URL to install"
-    ),
+    server_identifier: str = typer.Argument(..., help="Server URL to install"),
     client: str = typer.Option(
-        ..., "--client", "-c", help="Client to install to: vscode|claude_code|cursor|claude_desktop|chatgpt"
+        ...,
+        "--client",
+        "-c",
+        help="Client to install to: vscode|claude_code|cursor|claude_desktop|chatgpt",
     ),
     name: Optional[str] = typer.Option(
-        None, "--name", "-n", help="Server name in client config (auto-generated if not provided)"
+        None,
+        "--name",
+        "-n",
+        help="Server name in client config (auto-generated if not provided)",
     ),
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Show what would be installed without writing files"
@@ -310,7 +329,6 @@ def install(
             f"Unsupported client: {client}. Supported clients: vscode, claude_code, cursor, claude_desktop, chatgpt"
         )
 
-
     effective_api_key = api_key or settings.API_KEY or load_api_key_credentials()
     if not effective_api_key:
         raise CLIError(
@@ -318,7 +336,9 @@ def install(
         )
 
     server_url = server_identifier
-    if not server_identifier.startswith("http://") and not server_identifier.startswith("https://"):
+    if not server_identifier.startswith("http://") and not server_identifier.startswith(
+        "https://"
+    ):
         raise CLIError(
             f"Server identifier must be a URL starting with http:// or https://. Got: {server_identifier}"
         )
@@ -329,7 +349,9 @@ def install(
 
     console.print("\n[bold cyan]Installing MCP Server[/bold cyan]\n")
     print_info(f"Server URL: {server_url}")
-    print_info(f"Client: {CLIENT_CONFIGS.get(client_lc, {}).get('description', client_lc)}")
+    print_info(
+        f"Client: {CLIENT_CONFIGS.get(client_lc, {}).get('description', client_lc)}"
+    )
 
     mcp_client = MCPAppClient(
         api_url=api_url or DEFAULT_API_BASE_URL, api_key=effective_api_key
@@ -349,9 +371,9 @@ def install(
             if not app_info:
                 app_info = run_async(mcp_client.get_app(server_url=server_url))
 
-            has_unauth_access = (
-                app_info.unauthenticatedAccess is True or
-                (app_info.appServerInfo and app_info.appServerInfo.unauthenticatedAccess is True)
+            has_unauth_access = app_info.unauthenticatedAccess is True or (
+                app_info.appServerInfo
+                and app_info.appServerInfo.unauthenticatedAccess is True
             )
 
             if not has_unauth_access:
@@ -379,7 +401,9 @@ def install(
             raise
         except Exception as e:
             print_info(f"Warning: Could not verify unauthenticated access: {e}")
-            print_info("Proceeding with installation, but ChatGPT may not be able to connect.")
+            print_info(
+                "Proceeding with installation, but ChatGPT may not be able to connect."
+            )
 
         console.print(
             Panel(
@@ -405,19 +429,28 @@ def install(
     if client_lc == "claude_code":
         if dry_run:
             console.print("\n[bold yellow]DRY RUN - Would run:[/bold yellow]")
-            console.print(f"claude mcp add {server_name} {server_url} -t {transport} -H 'Authorization: Bearer <api-key>' -s user")
+            console.print(
+                f"claude mcp add {server_name} {server_url} -t {transport} -H 'Authorization: Bearer <api-key>' -s user"
+            )
             return
 
         try:
             cmd = [
-                "claude", "mcp", "add",
+                "claude",
+                "mcp",
+                "add",
                 server_name,
                 server_url,
-                "-t", transport,
-                "-H", f"Authorization: Bearer {effective_api_key}",
-                "-s", "user"
+                "-t",
+                transport,
+                "-H",
+                f"Authorization: Bearer {effective_api_key}",
+                "-s",
+                "user",
             ]
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=30)
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, check=True, timeout=30
+            )
             print_success(f"Server '{server_name}' installed to Claude Code")
             console.print(result.stdout)
             return
@@ -455,14 +488,16 @@ def install(
                     f"Server '{server_name}' already exists in {config_path}. Use --force to overwrite."
                 )
         except json.JSONDecodeError as e:
-            raise CLIError(f"Failed to parse existing config at {config_path}: {e}") from e
+            raise CLIError(
+                f"Failed to parse existing config at {config_path}: {e}"
+            ) from e
 
     server_config = _build_server_config(
         server_url,
         transport,
         for_claude_desktop=is_claude_desktop,
         for_vscode=is_vscode,
-        api_key=effective_api_key
+        api_key=effective_api_key,
     )
 
     if is_claude_desktop or is_cursor:
@@ -472,7 +507,9 @@ def install(
     else:
         format_type = "mcp"
 
-    merged_config = _merge_mcp_json(existing_config, server_name, server_config, format_type)
+    merged_config = _merge_mcp_json(
+        existing_config, server_name, server_config, format_type
+    )
 
     if dry_run:
         console.print("\n[bold]Would write to:[/bold]", config_path)
