@@ -4,10 +4,10 @@ A central context object to store global state that is shared across the applica
 
 import asyncio
 import concurrent.futures
-from typing import Any, List, Optional, TYPE_CHECKING, Literal
+from typing import Any, Dict, List, Optional, TYPE_CHECKING, Literal
 import warnings
 
-from pydantic import ConfigDict
+from pydantic import ConfigDict, Field
 
 from mcp import ServerSession
 from mcp.server.fastmcp import FastMCP
@@ -34,6 +34,7 @@ from mcp_agent.tracing.tracer import TracingConfig
 from mcp_agent.workflows.llm.llm_selector import ModelSelector
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.tracing.token_counter import TokenCounter
+from mcp_agent.oauth.identity import OAuthUserIdentity
 
 
 if TYPE_CHECKING:
@@ -103,6 +104,7 @@ class Context(MCPContext):
     # OAuth helpers for downstream servers
     token_store: Optional[TokenStore] = None
     token_manager: Optional[TokenManager] = None
+    identity_registry: Dict[str, OAuthUserIdentity] = Field(default_factory=dict)
 
     model_config = ConfigDict(
         extra="allow",

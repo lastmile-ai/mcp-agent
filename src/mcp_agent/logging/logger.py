@@ -370,6 +370,7 @@ class LoggingConfig:
 
     _initialized: bool = False
     _event_filter_ref: EventFilter | None = None
+    _upstream_event_filter_ref: EventFilter | None = None
 
     @classmethod
     async def configure(
@@ -392,8 +393,11 @@ class LoggingConfig:
         """
         bus = AsyncEventBus.get(transport=transport)
         # Keep a reference to the provided filter so we can update at runtime
-        if event_filter is not None:
-            cls._event_filter_ref = event_filter
+        if event_filter is None:
+            event_filter = EventFilter()
+
+        cls._event_filter_ref = event_filter
+        cls._upstream_event_filter_ref = event_filter.model_copy(deep=True)
 
         # If already initialized, ensure critical listeners exist and return
         if cls._initialized:
@@ -411,7 +415,9 @@ class LoggingConfig:
                     MCP_UPSTREAM_LISTENER_NAME: _Final[str] = "mcp_upstream"
                     bus.add_listener(
                         MCP_UPSTREAM_LISTENER_NAME,
-                        MCPUpstreamLoggingListener(event_filter=cls._event_filter_ref),
+                        MCPUpstreamLoggingListener(
+                            event_filter=cls._upstream_event_filter_ref
+                        ),
                     )
             except Exception:
                 pass
@@ -451,7 +457,9 @@ class LoggingConfig:
                 MCP_UPSTREAM_LISTENER_NAME: Final[str] = "mcp_upstream"
                 bus.add_listener(
                     MCP_UPSTREAM_LISTENER_NAME,
-                    MCPUpstreamLoggingListener(event_filter=event_filter),
+                    MCPUpstreamLoggingListener(
+                        event_filter=cls._upstream_event_filter_ref
+                    ),
                 )
         except Exception:
             # Non-fatal if import fails
@@ -472,7 +480,7 @@ class LoggingConfig:
     @classmethod
     def set_min_level(cls, level: EventType | str) -> None:
         """Update the minimum logging level on the shared event filter, if available."""
-        if cls._event_filter_ref is None:
+        if cls._upstream_event_filter_ref is None:
             return
         # Normalize level
         normalized = str(level).lower()
@@ -488,7 +496,7 @@ class LoggingConfig:
             "alert": "error",
             "emergency": "error",
         }
-        cls._event_filter_ref.min_level = mapping.get(normalized, "info")
+        cls._upstream_event_filter_ref.min_level = mapping.get(normalized, "info")
 
     @classmethod
     def get_event_filter(cls) -> EventFilter | None:

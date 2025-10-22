@@ -59,7 +59,7 @@ else:
 
 settings = Settings(
     execution_engine="asyncio",
-    logger=LoggerSettings(level="info"),
+    logger=LoggerSettings(level="debug"),
     oauth=OAuthSettings(
         callback_base_url=AnyHttpUrl("http://localhost:8000"),
         flow_timeout_seconds=300,

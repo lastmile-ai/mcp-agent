@@ -342,6 +342,13 @@ class TokenManager:
             self._default_identity,
         ]
         identities = _dedupe(identity_candidates)
+        logger.debug(
+            "Resolved identity candidates for token acquisition",
+            data={
+                "server": server_name,
+                "candidates": [candidate.cache_key for candidate in identities],
+            },
+        )
         if not identities:
             raise MissingUserIdentityError(
                 "No authenticated user available for OAuth authorization"
@@ -364,6 +371,14 @@ class TokenManager:
             async with lock:
                 record = await self._token_store.get(key)
                 if record and not record.is_expired(leeway_seconds=leeway):
+                    logger.debug(
+                        "Token cache hit",
+                        data={
+                            "server": server_name,
+                            "identity": identity.cache_key,
+                            "resource": resolved.resource,
+                        },
+                    )
                     return record
 
                 if record and record.refresh_token:
@@ -546,6 +561,14 @@ class TokenManager:
             )
 
             await self._token_store.set(user_key, record)
+            logger.debug(
+                "Stored new access token via authorization flow",
+                data={
+                    "server": server_name,
+                    "identity": flow_identity.cache_key,
+                    "resource": resolved.resource,
+                },
+            )
             return record
 
     async def invalidate(
@@ -780,25 +803,56 @@ class TokenManager:
         except Exception:
             in_temporal = False
 
-        session_id = None
+        # Temporal workflows/activities carry their own execution identity.
         if in_temporal:
-            # Base the identity on the Temporal workflow execution ID
             try:
                 from mcp_agent.executor.temporal.temporal_context import (
                     get_execution_id as _get_exec_id,
                 )
+                from mcp_agent.server import app_server
 
-                session_id = _get_exec_id()
+                execution_id = _get_exec_id()
+                if execution_id:
+                    identity = app_server._get_identity_for_execution(execution_id)
+                    if identity is not None:
+                        return identity
             except Exception:
                 pass
 
-        if not session_id:
+        session_id = None
+        if in_temporal:
             session_id = getattr(context, "session_id", None)
-        if not session_id:
-            app = getattr(context, "app", None)
-            if app is not None:
-                session_id = getattr(app, "_session_id_override", None)
 
-        if not session_id:
-            return None
-        return OAuthUserIdentity(provider="mcp-session", subject=str(session_id))
+        if session_id:
+            try:
+                from mcp_agent.server import app_server
+
+                identity = app_server.get_identity_for_session(session_id, context)
+                if identity is not None:
+                    logger.debug(
+                        "Resolved session identity from registry",
+                        data={
+                            "session_id": session_id,
+                            "identity": identity.cache_key,
+                        },
+                    )
+                    return identity
+            except Exception as exc:
+                logger.debug(
+                    "Failed to resolve session identity from registry",
+                    data={"session_id": session_id, "error": repr(exc)},
+                )
+            fallback = OAuthUserIdentity(
+                provider="mcp-session", subject=str(session_id)
+            )
+            logger.debug(
+                "Falling back to synthetic session identity",
+                data={"session_id": session_id, "identity": fallback.cache_key},
+            )
+            return fallback
+
+        logger.debug(
+            "TokenManager no session identity resolved",
+            data={"context_session_id": getattr(context, "session_id", None)},
+        )
+        return None
