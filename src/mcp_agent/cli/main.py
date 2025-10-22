@@ -38,6 +38,7 @@ from mcp_agent.cli.commands import (
     logs as logs_cmd,
     doctor as doctor_cmd,
     configure as configure_cmd,
+    install as install_cmd,
 )
 from mcp_agent.cli.commands import (
     config as config_cmd,
@@ -185,6 +186,9 @@ app.command("deploy", help="Deploy an MCP agent (alias for 'cloud deploy')")(
 app.command(
     "login", help="Authenticate to MCP Agent Cloud API (alias for 'cloud login')"
 )(login)
+
+# Register install command as top-level
+app.add_typer(install_cmd.app, name="install", help="Install MCP server to client applications")
 
 
 def run() -> None:
