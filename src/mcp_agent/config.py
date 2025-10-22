@@ -13,6 +13,7 @@ import warnings
 
 from pydantic import (
     AliasChoices,
+    AnyHttpUrl,
     BaseModel,
     ConfigDict,
     Field,
@@ -25,10 +26,166 @@ import yaml
 from mcp_agent.agents.agent_spec import AgentSpec
 
 
+class MCPAuthorizationServerSettings(BaseModel):
+    """Configuration for exposing the MCP Agent server as an OAuth protected resource."""
+
+    enabled: bool = False
+    """Whether to expose this MCP app as an OAuth-protected resource server."""
+
+    issuer_url: AnyHttpUrl | None = None
+    """Issuer URL advertised to clients (must resolve to provider metadata)."""
+
+    resource_server_url: AnyHttpUrl | None = None
+    """Base URL of the protected resource (used for discovery and validation)."""
+
+    service_documentation_url: AnyHttpUrl | None = None
+    """Optional URL pointing to resource server documentation for clients."""
+
+    required_scopes: List[str] = Field(default_factory=list)
+    """Scopes that clients must present when accessing this resource."""
+
+    jwks_uri: AnyHttpUrl | None = None
+    """Optional JWKS endpoint for validating JWT access tokens."""
+
+    introspection_endpoint: AnyHttpUrl | None = None
+    """Optional OAuth introspection endpoint for opaque tokens."""
+
+    introspection_client_id: str | None = None
+    """Client id to use when calling the introspection endpoint."""
+
+    introspection_client_secret: str | None = None
+    """Client secret to use when calling the introspection endpoint."""
+
+    token_cache_ttl_seconds: int = Field(300, ge=0)
+    """How long (in seconds) to cache positive introspection/JWT validation results."""
+
+    # RFC 9068 audience validation settings
+    # TODO: this should really depend on the app_id, or config_id so that we can enforce unique values.
+    # To be removed and replaced with a fixed value once we have app_id/config_id support
+    expected_audiences: List[str] = Field(default_factory=list)
+    """List of audience values this resource server accepts.
+    MUST be configured to comply with RFC 9068 audience validation.
+    Audience validation is always enforced when authorization is enabled."""
+
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
+    @model_validator(mode="after")
+    def _validate_required_urls(self) -> "MCPAuthorizationServerSettings":
+        if self.enabled:
+            missing = []
+            if self.issuer_url is None:
+                missing.append("issuer_url")
+            if self.resource_server_url is None:
+                missing.append("resource_server_url")
+            # Validate audience configuration for RFC 9068 compliance
+            if not self.expected_audiences:
+                missing.append("expected_audiences (required for RFC 9068 compliance)")
+            if missing:
+                raise ValueError(
+                    " | ".join(missing) + " must be set when authorization is enabled"
+                )
+        return self
+
+
+class MCPOAuthClientSettings(BaseModel):
+    """Configuration for authenticating to downstream OAuth-protected MCP servers."""
+
+    enabled: bool = False
+    """Whether OAuth auth is enabled for this downstream server."""
+
+    scopes: List[str] = Field(default_factory=list)
+    """OAuth scopes to request when authorizing."""
+
+    resource: AnyHttpUrl | None = None
+    """Protected resource identifier to include in token/authorize requests (RFC 8707)."""
+
+    authorization_server: AnyHttpUrl | None = None
+    """Authorization server base URL (provider metadata is discovered from this root)."""
+
+    client_id: str | None = None
+    """OAuth client identifier registered with the authorization server."""
+
+    client_secret: str | None = None
+    """OAuth client secret for confidential clients."""
+
+    # Support for pre-configured access tokens (bypasses OAuth flow)
+    access_token: str | None = None
+    """Optional pre-seeded access token that bypasses the interactive flow."""
+
+    refresh_token: str | None = None
+    """Optional refresh token stored alongside a pre-seeded access token."""
+
+    expires_at: float | None = None
+    """Epoch timestamp (seconds) when the pre-seeded token expires."""
+
+    token_type: str = "Bearer"
+    """Token type returned by the provider; defaults to Bearer."""
+
+    redirect_uri_options: List[str] = Field(default_factory=list)
+    """Allowed redirect URI values; the flow selects from this list."""
+
+    extra_authorize_params: Dict[str, str] = Field(default_factory=dict)
+    """Additional query parameters to append to the authorize request."""
+
+    extra_token_params: Dict[str, str] = Field(default_factory=dict)
+    """Additional form parameters to append to the token request."""
+
+    require_pkce: bool = True
+    """Whether to enforce PKCE when initiating the authorization code flow."""
+
+    use_internal_callback: bool = True
+    """When true, attempt to use the app's internal callback URL before loopback."""
+
+    include_resource_parameter: bool = True
+    """Whether to include the RFC 8707 `resource` parameter in authorize/token requests."""
+
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
+
+class OAuthTokenStoreSettings(BaseModel):
+    """Settings for OAuth token persistence."""
+
+    backend: Literal["memory", "redis"] = "memory"
+    """Persistence backend to use for storing tokens."""
+
+    redis_url: str | None = None
+    """Connection URL for Redis when using the redis backend."""
+
+    redis_prefix: str = "mcp_agent:oauth_tokens"
+    """Key prefix used when writing tokens to Redis."""
+
+    refresh_leeway_seconds: int = Field(60, ge=0)
+    """Seconds before expiry when tokens should be refreshed."""
+
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
+
+class OAuthSettings(BaseModel):
+    """Global OAuth-related settings for MCP Agent."""
+
+    token_store: OAuthTokenStoreSettings = Field(
+        default_factory=OAuthTokenStoreSettings
+    )
+    """Token storage configuration shared across downstream servers."""
+
+    flow_timeout_seconds: int = Field(300, ge=30)
+    """Maximum number of seconds to wait for an authorization callback before timing out."""
+
+    callback_base_url: AnyHttpUrl | None = None
+    """Base URL for internal callbacks (used when `use_internal_callback` is true)."""
+
+    # Fixed loopback ports to try (client-only OAuth). If empty, loopback is disabled.
+    loopback_ports: list[int] = Field(default_factory=lambda: [33418, 33419, 33420])
+    """Ports to use for local loopback callbacks when internal callbacks are unavailable."""
+
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
+
 class MCPServerAuthSettings(BaseModel):
     """Represents authentication configuration for a server."""
 
     api_key: str | None = None
+    oauth: MCPOAuthClientSettings | None = None
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
@@ -940,6 +1097,12 @@ class Settings(BaseSettings):
 
     agents: SubagentSettings | None = SubagentSettings()
     """Settings for defining and loading subagents for the MCP Agent application"""
+
+    authorization: MCPAuthorizationServerSettings | None = None
+    """Settings for exposing this MCP application as an OAuth protected resource"""
+
+    oauth: OAuthSettings | None = Field(default_factory=OAuthSettings)
+    """Global OAuth client configuration (token store, delegated auth defaults)"""
 
     def __eq__(self, other):  # type: ignore[override]
         if not isinstance(other, Settings):

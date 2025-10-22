@@ -22,6 +22,7 @@ from . import (
     configure,
     go,
     check,
+    install,
 )  # noqa: F401
 
 __all__ = [
@@ -41,4 +42,5 @@ __all__ = [
     "configure",
     "go",
     "check",
+    "install",
 ]

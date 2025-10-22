@@ -1,0 +1,31 @@
+$schema: ../../../schema/mcp-agent.config.schema.json
+
+execution_engine: temporal
+temporal:
+  host: localhost:7233
+  namespace: default
+  task_queue: mcp-agent
+  max_concurrent_activities: 10
+
+logger:
+  transports: [console, file]
+  level: info
+  path_settings:
+    path_pattern: "logs/mcp-agent-{unique_id}.jsonl"
+    unique_id: "timestamp"
+
+oauth:
+  loopback_ports: [33418, 33419, 33420]
+
+mcp:
+  servers:
+    github:
+      transport: streamable_http
+      url: "https://api.githubcopilot.com/mcp/"
+      auth:
+        oauth:
+          enabled: true
+          scopes: ["read:org", "public_repo", "user:email"]
+          authorization_server: "https://github.com/login/oauth"
+          use_internal_callback: false
+          include_resource_parameter: false
