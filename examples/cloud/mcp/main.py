@@ -17,6 +17,7 @@ from typing import Optional
 
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.types import (
+    Icon,
     ModelHint,
     ModelPreferences,
     PromptMessage,
@@ -142,8 +143,7 @@ async def grade_story(story: str, app_ctx: Optional[AppContext] = None) -> str:
     """
     # Use the context's app if available for proper logging with upstream_session
     context = app_ctx or app.context
-    context.logger.info(f"grade_story: Received input: {story}")
-    # await context.info(f"grade_story: Received input: {story}")
+    await context.info(f"grade_story: Received input: {story}")
 
     proofreader = Agent(
         name="proofreader",
@@ -183,12 +183,10 @@ async def grade_story(story: str, app_ctx: Optional[AppContext] = None) -> str:
         return ""
 
     if not result:
-        context.logger.error("grade_story: No result from parallel LLM")
-        # await context.error("grade_story: No result from parallel LLM")
+        await context.error("grade_story: No result from parallel LLM")
         return ""
     else:
-        context.logger.info(f"grade_story: Result: {result}")
-        # await context.info(f"grade_story: Result: {result}")
+        await context.info(f"grade_story: Result: {result}")
         return result
 
 
@@ -263,11 +261,11 @@ async def grade_story_async(story: str, app_ctx: Optional[AppContext] = None) ->
 # region Sampling
 @app.tool(
     name="sampling_demo",
-    # title="Sampling Demo",
+    title="Sampling Demo",
     description="Perform an example of sampling.",
-    # annotations={"idempotentHint": False},
-    # icons=[Icon(src="emoji:crystal_ball")],
-    # meta={"category": "demo", "feature": "sampling"},
+    annotations={"idempotentHint": False},
+    icons=[Icon(src="emoji:crystal_ball")],
+    meta={"category": "demo", "feature": "sampling"},
 )
 async def sampling_demo(
     topic: str,
