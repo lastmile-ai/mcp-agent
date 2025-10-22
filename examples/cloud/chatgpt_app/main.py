@@ -34,33 +34,52 @@ class CoinFlipWidget:
 
 
 BUILD_DIR = Path(__file__).parent / "web" / "build"
-HTML_SRC = (BUILD_DIR / "index.html").read_text()
+ASSETS_DIR = BUILD_DIR / "static"
+
+# Providing the JS and CSS to the app can be done in 1 of 2 ways:
+# 1) Load the content as text from the static build files and inline them into the HTML template
+# 2) (Preferred) Reference the static files served from the deployed server
+# Since (2) depends on an initial deployment of the server, it is recommended to use approach (1) first
+# and then switch to (2) once the server is deployed and its URL is available.
+# (2) is preferred since (1) can lead to large HTML templates and potential for string escaping issues.
 
 
-# # Make sure these paths align with the build output paths (dynamic per build)
-# JS_PATH = ASSETS_DIR / "js" / "main.f070a457.js"
-# CSS_PATH = ASSETS_DIR / "css" / "main.57005a98.css"
+# Make sure these paths align with the build output paths (dynamic per build)
+JS_PATH = ASSETS_DIR / "js" / "main.9c62c88b.js"
+CSS_PATH = ASSETS_DIR / "css" / "main.57005a98.css"
 
-# COIN_FLIP_JS = JS_PATH.read_text(encoding="utf-8")
-# COIN_FLIP_CSS = CSS_PATH.read_text(encoding="utf-8")
 
-# HTML_TEMPLATE = (
-#     '<div id="coinflip-root"></div>\n'
-#     '<link rel="stylesheet" href="https://s3.us-east-1.amazonaws.com/publicdata.lastmileai.com/coinflip_app/main.57005a98.css">\n'
-#     '<script type="module" src="https://s3.us-east-1.amazonaws.com/publicdata.lastmileai.com/coinflip_app/main.f070a457.js"></script>'
-# )
+# METHOD 1: Inline the JS and CSS into the HTML template
+COIN_FLIP_JS = JS_PATH.read_text(encoding="utf-8")
+COIN_FLIP_CSS = CSS_PATH.read_text(encoding="utf-8")
 
-# ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
+INLINE_HTML_TEMPLATE = f"""
+<div id="coinflip-root"></div>
+<style>
+{COIN_FLIP_CSS}
+</style>
+<script type="module">
+{COIN_FLIP_JS}
+</script>
+"""
+
+# METHOD 2: Reference the static files from the deployed server
+SERVER_URL = "https://<server_id>.deployments.mcp-agent.com"  # e.g. "https://15da9n6bk2nj3wiwf7ghxc2fy7sc6c8a.deployments.mcp-agent.com"
+DEPLOYED_HTML_TEMPLATE = (
+    '<div id="coinflip-root"></div>\n'
+    f'<link rel="stylesheet" href="{SERVER_URL}/static/css/main.57005a98.css">\n'
+    f'<script type="module" src="{SERVER_URL}/static/js/main.9c62c88b.js"></script>'
+)
 
 
 WIDGET = CoinFlipWidget(
     identifier="coin-flip",
     title="Flip a Coin",
     # OpenAI Apps heavily cache resource by URI, so use a date-based URI to bust the cache when updating the app.
-    template_uri="ui://widget/coin-flip-10-21-2025-11-01.html",
+    template_uri="ui://widget/coin-flip-10-22-2025-15-48.html",
     invoking="Preparing for coin flip",
     invoked="Flipping the coin...",
-    html=HTML_SRC,
+    html=INLINE_HTML_TEMPLATE,  # Use INLINE_HTML_TEMPLATE or DEPLOYED_HTML_TEMPLATE
     response_text="Flipped the coin! Click the coin to flip again.",
 )
 
