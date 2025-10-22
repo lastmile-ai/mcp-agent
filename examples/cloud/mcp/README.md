@@ -73,9 +73,21 @@ The workflow-based endpoints (e.g., `workflows-<Workflow>-run`) are still availa
 
 # Sampling
 
+To perform sampling, send a SamplingMessage to the context's upstream session.
+
 # Elicitation
 
+Similar to sampling, elicitation can be done by sending an elicitation message to the upstream session via `context.upstream_session.elicit`.
+
 # Notifications
+
+Notifications can be sent to upstream sessions and clients using the app context.
+
+# Prompts and Resources
+
+The MCPApp can take an existing FastMCP server in its constructor and will use this FastMCP server as the underlying server implementation. The FastMCP server can be customized using the `@mcp.prompt()` and `@mcp.resource()` decorators to add custom prompts and resources.
+
+# Logging
 
 ## Prerequisites
 

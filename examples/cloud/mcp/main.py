@@ -5,8 +5,8 @@ This example demonstrates MCP primitives integration in mcp-agent within a basic
 that can be deployed to the cloud. It includes:
 - Defining tools using the `@app.tool` and `@app.async_tool` decorators
 - Creating workflow tools using the `@app.workflow` and `@app.workflow_run` decorators
-- Sampling via a nested MCP server tool
-- Elicitation via a nested MCP server tool
+- Sampling to upstream session
+- Elicitation to upstream clients
 - Sending notifications to upstream clients
 
 """
@@ -15,27 +15,25 @@ import asyncio
 import os
 from typing import Optional
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Context, FastMCP
 from mcp.types import (
-    Icon,
+    ModelHint,
+    ModelPreferences,
     PromptMessage,
     TextContent,
+    SamplingMessage,
 )
+from pydantic import BaseModel, Field
 
-from mcp_agent.core.context import Context as AppContext
-
-from mcp_agent.app import MCPApp
-from mcp_agent.server.app_server import create_mcp_server_for_app
 from mcp_agent.agents.agent import Agent
-from mcp_agent.workflows.llm.augmented_llm import RequestParams
-from mcp_agent.workflows.llm.llm_selector import ModelPreferences
-from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
-from mcp_agent.workflows.parallel.parallel_llm import ParallelLLM
+from mcp_agent.app import MCPApp
+from mcp_agent.core.context import Context as AppContext
 from mcp_agent.executor.workflow import Workflow, WorkflowResult
 from mcp_agent.human_input.console_handler import console_input_callback
-from mcp_agent.elicitation.handler import console_elicitation_callback
-from mcp_agent.mcp.gen_client import gen_client
-from mcp_agent.config import MCPServerSettings
+from mcp_agent.server.app_server import create_mcp_server_for_app
+from mcp_agent.workflows.llm.augmented_llm import RequestParams
+from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
+from mcp_agent.workflows.parallel.parallel_llm import ParallelLLM
 
 # NOTE: This is purely optional:
 # if not provided, a default FastMCP server will be created by MCPApp using create_mcp_server_for_app()
@@ -48,7 +46,6 @@ app = MCPApp(
     description="Basic agent server example",
     mcp=mcp,
     human_input_callback=console_input_callback,  # enable approval prompts for local sampling
-    elicitation_callback=console_elicitation_callback,  # enable console-driven elicitation
 )
 
 
@@ -137,7 +134,6 @@ async def grade_story(story: str, app_ctx: Optional[AppContext] = None) -> str:
     The agents include:
     - Proofreader: Reviews the story for grammar, spelling, and punctuation errors.
     - Fact Checker: Verifies the factual consistency within the story.
-    - Style Enforcer: Analyzes the story for adherence to style guidelines.
     - Grader: Compiles the feedback from the other agents into a structured report.
 
     Args:
@@ -146,7 +142,8 @@ async def grade_story(story: str, app_ctx: Optional[AppContext] = None) -> str:
     """
     # Use the context's app if available for proper logging with upstream_session
     context = app_ctx or app.context
-    await context.info(f"grade_story: Received input: {story}")
+    context.logger.info(f"grade_story: Received input: {story}")
+    # await context.info(f"grade_story: Received input: {story}")
 
     proofreader = Agent(
         name="proofreader",
@@ -162,13 +159,6 @@ async def grade_story(story: str, app_ctx: Optional[AppContext] = None) -> str:
         Highlight potential issues with reasoning or coherence.""",
     )
 
-    style_enforcer = Agent(
-        name="style_enforcer",
-        instruction="""Analyze the story for adherence to style guidelines.
-        Evaluate the narrative flow, clarity of expression, and tone. Suggest improvements to 
-        enhance storytelling, readability, and engagement.""",
-    )
-
     grader = Agent(
         name="grader",
         instruction="""Compile the feedback from the Proofreader, Fact Checker, and Style Enforcer
@@ -179,7 +169,7 @@ async def grade_story(story: str, app_ctx: Optional[AppContext] = None) -> str:
 
     parallel = ParallelLLM(
         fan_in_agent=grader,
-        fan_out_agents=[proofreader, fact_checker, style_enforcer],
+        fan_out_agents=[proofreader, fact_checker],
         llm_factory=OpenAIAugmentedLLM,
         context=app_ctx if app_ctx else app.context,
     )
@@ -193,10 +183,12 @@ async def grade_story(story: str, app_ctx: Optional[AppContext] = None) -> str:
         return ""
 
     if not result:
-        await context.error("grade_story: No result from parallel LLM")
+        context.logger.error("grade_story: No result from parallel LLM")
+        # await context.error("grade_story: No result from parallel LLM")
         return ""
     else:
-        await context.info(f"grade_story: Result: {result}")
+        context.logger.info(f"grade_story: Result: {result}")
+        # await context.info(f"grade_story: Result: {result}")
         return result
 
 
@@ -272,7 +264,7 @@ async def grade_story_async(story: str, app_ctx: Optional[AppContext] = None) ->
 @app.tool(
     name="sampling_demo",
     # title="Sampling Demo",
-    description="Call a nested MCP server that performs sampling.",
+    description="Perform an example of sampling.",
     # annotations={"idempotentHint": False},
     # icons=[Icon(src="emoji:crystal_ball")],
     # meta={"category": "demo", "feature": "sampling"},
@@ -282,83 +274,65 @@ async def sampling_demo(
     app_ctx: Optional[AppContext] = None,
 ) -> str:
     """
-    Demonstrate MCP sampling via a nested MCP server tool.
+    Demonstrate MCP sampling.
 
     - In asyncio (no upstream client), this triggers local sampling with a human approval prompt.
     - When an MCP client is connected, the sampling request is proxied upstream.
     """
     context = app_ctx or app.context
-
-    await context.info(f"[sampling_demo] starting for topic '{topic}'")
-    await context.report_progress(0.1, total=1.0, message="Preparing nested server")
-
-    # Register a simple nested server that uses sampling in its get_haiku tool
-    nested_name = "nested_sampling"
-    nested_path = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "nested_sampling_server.py")
+    haiku = await context.upstream_session.create_message(
+        messages=[
+            SamplingMessage(
+                role="user",
+                content=TextContent(type="text", text=f"Write a haiku about {topic}."),
+            )
+        ],
+        system_prompt="You are a poet.",
+        max_tokens=80,
+        model_preferences=ModelPreferences(
+            hints=[ModelHint(name="gpt-4o-mini")],
+            costPriority=0.1,
+            speedPriority=0.8,
+            intelligencePriority=0.1,
+        ),
     )
-    context.config.mcp.servers[nested_name] = MCPServerSettings(
-        name=nested_name,
-        command="uv",
-        args=["run", nested_path],
-        description="Nested server providing a haiku generator using sampling",
-    )
 
-    # Connect as an MCP client to the nested server and call its sampling tool
-    async with gen_client(
-        nested_name, context.server_registry, context=context
-    ) as client:
-        result = await client.call_tool("get_haiku", {"topic": topic})
-
-    await context.report_progress(0.9, total=1.0, message="Formatting haiku")
-
-    # Extract text content from CallToolResult
-    try:
-        if result.content and len(result.content) > 0:
-            return result.content[0].text or ""
-    except Exception:
-        pass
-    return ""
+    context.logger.info(f"Haiku: {haiku.content.text}")
+    return "Done!"
 
 
 # region Elicitation
-@app.tool(name="elicitation_demo")
-async def elicitation_demo(
-    action: str = "proceed",
-    app_ctx: Optional[AppContext] = None,
-) -> str:
-    """
-    Demonstrate MCP elicitation via a nested MCP server tool.
+@app.tool()
+async def book_table(date: str, party_size: int, app_ctx: Context) -> str:
+    """Book a table with confirmation"""
 
-    - In asyncio (no upstream client), this triggers local elicitation handled by console.
-    - When an MCP client is connected, the elicitation request is proxied upstream.
-    """
+    # Schema must only contain primitive types (str, int, float, bool)
+    class ConfirmBooking(BaseModel):
+        confirm: bool = Field(description="Confirm booking?")
+        notes: str = Field(default="", description="Special requests")
+
     context = app_ctx or app.context
 
-    nested_name = "nested_elicitation"
-    nested_path = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "nested_elicitation_server.py")
-    )
-    context.config.mcp.servers[nested_name] = MCPServerSettings(
-        name=nested_name,
-        command="uv",
-        args=["run", nested_path],
-        description="Nested server demonstrating elicitation",
+    context.logger.info(
+        f"Confirming the user wants to book a table for {party_size} on {date} via elicitation"
     )
 
-    async with gen_client(
-        nested_name, context.server_registry, context=context
-    ) as client:
-        await context.info(f"[elicitation_demo] asking to '{action}'")
-        result = await client.call_tool("confirm_action", {"action": action})
-        try:
-            if result.content and len(result.content) > 0:
-                message = result.content[0].text or ""
-                await context.info(f"[elicitation_demo] response: {message}")
-                return message
-        except Exception:
-            pass
-    return ""
+    result = await context.upstream_session.elicit(
+        message=f"Confirm booking for {party_size} on {date}?",
+        requestedSchema=ConfirmBooking.model_json_schema(),
+    )
+
+    context.logger.info(f"Result from confirmation: {result}")
+
+    if result.action == "accept":
+        data = ConfirmBooking.model_validate(result.content)
+        if data.confirm:
+            return f"Booked! Notes: {data.notes or 'None'}"
+        return "Booking cancelled"
+    elif result.action == "decline":
+        return "Booking declined"
+    elif result.action == "cancel":
+        return "Booking cancelled"
 
 
 # region Notifications
