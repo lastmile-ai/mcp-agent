@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from mcp_agent.cli.commands.install import (
     _build_server_config,
+    _server_hostname,
     _merge_mcp_json,
     install,
 )
@@ -39,6 +40,26 @@ def mock_app_without_auth():
     app.appServerInfo.serverUrl = MOCK_APP_SERVER_URL
     app.appServerInfo.unauthenticatedAccess = True
     return app
+
+
+def test_server_hostname():
+    """Test friendly server name generation from URLs."""
+    # Test with deployment URL
+    assert _server_hostname("https://abc123.deployments.mcp-agent.com/sse") == "abc123"
+    assert _server_hostname("https://xyz456.deployments.example.com/mcp") == "xyz456"
+
+    # Test with app name override
+    assert _server_hostname("https://abc123.deployments.mcp-agent.com/sse", "my-app") == "my-app"
+
+    # Test with regular domain
+    assert _server_hostname("https://api.example.com/sse") == "api.example"
+    assert _server_hostname("https://subdomain.api.example.com/mcp") == "subdomain.api.example"
+
+    # Test with simple domain
+    assert _server_hostname("https://example.com") == "example"
+
+    # Test fallback
+    assert _server_hostname("invalid-url") == "mcp-server"
 
 
 def test_build_server_config():

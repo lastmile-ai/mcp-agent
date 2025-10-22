@@ -9,7 +9,7 @@ For ChatGPT, the server must have unauthenticated access enabled.
 
 Supported clients:
  - vscode: writes .vscode/mcp.json
- - claude_code: writes ~/.claude.json
+ - claude_code: integrated via 'claude mcp add'
  - cursor: writes ~/.cursor/mcp.json
  - claude_desktop: writes platform-specific config using mcp-remote wrapper
    - macOS: ~/Library/Application Support/Claude/claude_desktop_config.json
@@ -21,9 +21,14 @@ Supported clients:
 from __future__ import annotations
 
 import json
+import os
 import platform
+import subprocess
+import tempfile
+from copy import deepcopy
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
 import typer
 from rich.panel import Panel
@@ -87,9 +92,9 @@ def _merge_mcp_json(existing: dict, server_name: str, server_config: dict, forma
         server_name: Name of the server to add/update
         server_config: Server configuration dict
         format_type: Format to use:
-                    - "mcpServers" for Claude Desktop/Claude Code
-                    - "vscode" for VSCode (top-level "servers" + "inputs")
-                    - "mcp" for Cursor (standard {"mcp": {"servers": {...}}})
+                    - "mcpServers" for Claude Desktop/Cursor
+                    - "vscode" for VSCode
+                    - "mcp" for other clients
     """
     servers: dict = {}
     other_keys: dict = {}
@@ -123,10 +128,79 @@ def _merge_mcp_json(existing: dict, server_name: str, server_config: dict, forma
         return {"mcp": {"servers": servers}}
 
 
+def _redact_secrets(data: dict) -> dict:
+    """Mask Authorization values and mcp-remote header args for safe display."""
+    red = deepcopy(data)
+
+    def walk(obj):
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                if k.lower() == "authorization" and isinstance(v, str):
+                    obj[k] = "Bearer ***"
+                else:
+                    walk(v)
+        elif isinstance(obj, list):
+            for i, v in enumerate(obj):
+                if isinstance(v, str) and v.lower().startswith("authorization: bearer "):
+                    obj[i] = "Authorization: Bearer ***"
+                else:
+                    walk(v)
+
+    walk(red)
+    return red
+
+
 def _write_json(path: Path, data: dict) -> None:
-    """Write JSON data to file, creating parent directories as needed."""
+    """Write JSON atomically and restrict permissions (secrets inside)."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    original_mode = None
+    if path.exists() and os.name == "posix":
+        original_mode = os.stat(path).st_mode & 0o777
+
+    tmp_fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=path.name, suffix=".tmp")
+    try:
+        with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+            f.write(json.dumps(data, indent=2))
+        os.replace(tmp_name, path)  # atomic on same fs
+        if os.name == "posix":
+            os.chmod(path, original_mode if original_mode is not None else 0o600)
+    finally:
+        try:
+            if os.path.exists(tmp_name):
+                os.remove(tmp_name)
+        except Exception:
+            pass
+
+
+def _server_hostname(server_url: str, app_name: Optional[str] = None) -> str:
+    """
+    Generate a friendly server name from the URL.
+
+    Extracts the subdomain or hostname to create a short, readable name.
+    For example, "https://abc123.deployments.mcp-agent.com/sse" -> "abc123"
+
+    Args:
+        server_url: The server URL
+        app_name: Optional app name from API (preferred if available)
+
+    Returns:
+        A friendly server name
+    """
+    if app_name:
+        return app_name
+
+    parsed = urlparse(server_url)
+    hostname = parsed.hostname or ""
+
+    parts = hostname.split(".")
+    if len(parts) > 2 and "deployments" in hostname:
+        return parts[0]
+
+    if len(parts) >= 2:
+        return ".".join(parts[:-1])
+
+    return hostname or "mcp-server"
 
 
 def _build_server_config(server_url: str, transport: str = "http", for_claude_desktop: bool = False, for_vscode: bool = False, api_key: str = None) -> dict:
@@ -134,7 +208,7 @@ def _build_server_config(server_url: str, transport: str = "http", for_claude_de
 
     For Claude Desktop, wraps HTTP/SSE servers with mcp-remote stdio wrapper with actual API key.
     For VSCode, uses "type" field and top-level "servers" structure.
-    For other clients (Cursor), uses "transport" field with "mcp.servers" structure.
+    For other clients (Cursor), uses "transport" field with "mcpServers" top-level structure.
 
     Args:
         server_url: The server URL
@@ -180,7 +254,7 @@ def _build_server_config(server_url: str, transport: str = "http", for_claude_de
 @app.callback(invoke_without_command=True)
 def install(
     server_identifier: str = typer.Argument(
-        ..., help="Server URL or app ID to install"
+        ..., help="Server URL to install"
     ),
     client: str = typer.Option(
         ..., "--client", "-c", help="Client to install to: vscode|claude_code|cursor|claude_desktop|chatgpt"
@@ -315,7 +389,7 @@ def install(
                 f"3. Enable developer mode under advanced settings\n"
                 f"4. Select create on the top right corner of the panel\n"
                 f"5. Add a new server:\n"
-                f"   • URL: [cyan]{server_url}/sse[/cyan]\n"
+                f"   • URL: [cyan]{server_url}[/cyan]\n"
                 f"   • Transport: [cyan]sse[/cyan]\n\n"
                 f"[dim]Note: This server has unauthenticated access enabled.[/dim]",
                 title="ChatGPT Configuration",
@@ -324,26 +398,26 @@ def install(
         )
         return
 
-    server_name = name or app_name or server_url
+    server_name = name or _server_hostname(server_url, app_name)
 
-    # For Claude Code, use the `claude mcp add` command instead of editing JSON
+    transport = "sse" if server_url.rstrip("/").endswith("/sse") else "http"
+
     if client_lc == "claude_code":
         if dry_run:
             console.print("\n[bold yellow]DRY RUN - Would run:[/bold yellow]")
-            console.print(f"claude mcp add {server_name} {server_url} -t sse -H 'Authorization: Bearer <api-key>' -s user")
+            console.print(f"claude mcp add {server_name} {server_url} -t {transport} -H 'Authorization: Bearer <api-key>' -s user")
             return
 
-        import subprocess
         try:
             cmd = [
                 "claude", "mcp", "add",
                 server_name,
                 server_url,
-                "-t", "sse",
+                "-t", transport,
                 "-H", f"Authorization: Bearer {effective_api_key}",
                 "-s", "user"
             ]
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=30)
             print_success(f"Server '{server_name}' installed to Claude Code")
             console.print(result.stdout)
             return
@@ -383,8 +457,6 @@ def install(
         except json.JSONDecodeError as e:
             raise CLIError(f"Failed to parse existing config at {config_path}: {e}") from e
 
-    transport = "sse" if server_url.rstrip("/").endswith("/sse") else "http"
-
     server_config = _build_server_config(
         server_url,
         transport,
@@ -405,7 +477,7 @@ def install(
     if dry_run:
         console.print("\n[bold]Would write to:[/bold]", config_path)
         console.print("\n[bold]Config:[/bold]")
-        console.print_json(data=merged_config)
+        console.print_json(data=_redact_secrets(merged_config))
     else:
         try:
             _write_json(config_path, merged_config)
