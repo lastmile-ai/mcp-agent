@@ -187,6 +187,99 @@ async def test_app_async_tool_registers_aliases_and_workflow_tools():
 
 
 @pytest.mark.asyncio
+async def test_async_tool_wrappers_capture_workflow_name(monkeypatch):
+    app = MCPApp(name="test_async_tool_closure")
+    await app.initialize()
+
+    @app.async_tool(name="first")
+    async def first_task(value: str) -> str:
+        return f"first:{value}"
+
+    @app.async_tool(name="second")
+    async def second_task(value: str) -> str:
+        return f"second:{value}"
+
+    mcp = _ToolRecorder()
+    server_context = type(
+        "SC", (), {"workflows": app.workflows, "context": app.context}
+    )()
+
+    create_workflow_tools(mcp, server_context)
+    create_declared_function_tools(mcp, server_context)
+
+    calls: list[tuple[str, Any]] = []
+
+    async def _fake_workflow_run(ctx, workflow_name, run_parameters=None, **kwargs):
+        calls.append((workflow_name, run_parameters))
+        return {"workflow_id": workflow_name, "run_id": f"run-{workflow_name}"}
+
+    monkeypatch.setattr(
+        "mcp_agent.server.app_server._workflow_run", _fake_workflow_run
+    )
+
+    ctx = _make_ctx(server_context)
+    first_entry = next(entry for entry in mcp.added_tools if entry["name"] == "first")
+    second_entry = next(entry for entry in mcp.added_tools if entry["name"] == "second")
+
+    await first_entry["fn"](value="one", ctx=ctx)
+    await second_entry["fn"](value="two", ctx=ctx)
+
+    assert calls == [
+        ("first", {"value": "one"}),
+        ("second", {"value": "two"}),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_sync_tool_wrappers_capture_workflow_name(monkeypatch):
+    app = MCPApp(name="test_sync_tool_closure")
+    await app.initialize()
+
+    @app.tool(name="alpha")
+    async def alpha_task(x: int) -> str:
+        return f"alpha:{x}"
+
+    @app.tool(name="beta")
+    async def beta_task(x: int) -> str:
+        return f"beta:{x}"
+
+    mcp = _ToolRecorder()
+    server_context = type(
+        "SC", (), {"workflows": app.workflows, "context": app.context}
+    )()
+
+    create_workflow_tools(mcp, server_context)
+    create_declared_function_tools(mcp, server_context)
+
+    run_calls: list[tuple[str, Any]] = []
+    from mcp_agent.server import app_server as _app_server
+
+    original_workflow_run = _app_server._workflow_run
+
+    async def _fake_workflow_run(ctx, workflow_name, run_parameters=None, **kwargs):
+        run_calls.append((workflow_name, run_parameters))
+        return await original_workflow_run(
+            ctx, workflow_name, run_parameters, **kwargs
+        )
+
+    monkeypatch.setattr(_app_server, "_workflow_run", _fake_workflow_run)
+
+    ctx = _make_ctx(server_context)
+    alpha_entry = next(entry for entry in mcp.added_tools if entry["name"] == "alpha")
+    beta_entry = next(entry for entry in mcp.added_tools if entry["name"] == "beta")
+
+    alpha_result = await alpha_entry["fn"](x=1, ctx=ctx)
+    beta_result = await beta_entry["fn"](x=2, ctx=ctx)
+
+    assert alpha_result == "alpha:1"
+    assert beta_result == "beta:2"
+    assert run_calls == [
+        ("alpha", {"x": 1}),
+        ("beta", {"x": 2}),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_auto_workflow_wraps_plain_return_in_workflowresult():
     app = MCPApp(name="test_wrap")
     await app.initialize()
