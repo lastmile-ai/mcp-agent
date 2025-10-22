@@ -28,6 +28,8 @@ def mock_mcp_client():
     mock_config.appConfigurationId = MOCK_APP_CONFIG_ID
     mock_config.appServerInfo = MagicMock()
     mock_config.appServerInfo.serverUrl = "https://test-server.example.com"
+    mock_config.app = MagicMock()
+    mock_config.app.name = "Test App"
     client.configure_app = AsyncMock(return_value=mock_config)
 
     return client
@@ -46,8 +48,12 @@ def patched_configure_app(mock_mcp_client):
         defaults = {
             "api_url": kwargs.get("api_url", "http://test-api"),
             "api_key": kwargs.get("api_key", "test-token"),
+            "verbose": kwargs.get("verbose", False),
         }
         kwargs.update(defaults)
+
+        # Create a mock context
+        mock_ctx = MagicMock()
 
         with (
             patch(
@@ -62,10 +68,14 @@ def patched_configure_app(mock_mcp_client):
                 "mcp_agent.cli.cloud.commands.configure.main.typer.Exit",
                 side_effect=ValueError,
             ),
+            patch(
+                "mcp_agent.cli.cloud.commands.configure.main.typer.confirm",
+                return_value=True,
+            ),
         ):
             try:
-                # Call the original function with the provided arguments
-                return original_func(**kwargs)
+                # Call the original function with the mock context and provided arguments
+                return original_func(mock_ctx, **kwargs)
             except ValueError as e:
                 # Convert typer.Exit to a test exception with code
                 raise RuntimeError(f"Typer exit with code: {e}")
@@ -85,6 +95,7 @@ def test_no_required_secrets(patched_configure_app, mock_mcp_client):
         params=False,
         api_url="http://test-api",
         api_key="test-token",
+        verbose=False,
     )
 
     # Verify results
@@ -300,6 +311,8 @@ def test_output_secrets_file_creation(tmp_path):
     mock_config.appConfigurationId = MOCK_APP_CONFIG_ID
     mock_config.appServerInfo = MagicMock()
     mock_config.appServerInfo.serverUrl = "https://test-server.example.com"
+    mock_config.app = MagicMock()
+    mock_config.app.name = "Test App"
     mock_client.configure_app = AsyncMock(return_value=mock_config)
 
     # Create output file path
@@ -326,6 +339,10 @@ def test_output_secrets_file_creation(tmp_path):
             "mcp_agent.cli.cloud.commands.configure.main.typer.Exit",
             side_effect=RuntimeError,
         ),
+        patch(
+            "mcp_agent.cli.cloud.commands.configure.main.typer.confirm",
+            return_value=True,
+        ),
     ):
         # Now test the function by creating a file that matches what would have been created
         # Skip the interactive parts by using a pre-created file
@@ -335,8 +352,11 @@ def test_output_secrets_file_creation(tmp_path):
                 # Ensure api_url and api_key are provided
                 kwargs.setdefault("api_url", "http://test-api")
                 kwargs.setdefault("api_key", "test-token")
+                kwargs.setdefault("verbose", False)
 
-                return configure_app(**kwargs)
+                # Create a mock context
+                mock_ctx = MagicMock()
+                return configure_app(mock_ctx, **kwargs)
 
             result = direct_configure_app(
                 app_server_url=MOCK_APP_SERVER_URL,

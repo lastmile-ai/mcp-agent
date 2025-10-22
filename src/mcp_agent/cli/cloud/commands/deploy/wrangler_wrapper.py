@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import shutil
@@ -5,12 +6,16 @@ import subprocess
 import tempfile
 import textwrap
 from pathlib import Path
-import json
 
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from mcp_agent.cli.config import settings
 from mcp_agent.cli.core.constants import MCP_SECRETS_FILENAME
+from mcp_agent.cli.utils.git_utils import (
+    get_git_metadata,
+    compute_directory_fingerprint,
+    utc_iso_now,
+)
 from mcp_agent.cli.utils.ux import (
     console,
     print_error,
@@ -18,12 +23,6 @@ from mcp_agent.cli.utils.ux import (
     print_info,
     print_verbose,
 )
-from mcp_agent.cli.utils.git_utils import (
-    get_git_metadata,
-    compute_directory_fingerprint,
-    utc_iso_now,
-)
-
 from .bundle_utils import (
     create_pathspec_from_gitignore,
     should_ignore_by_gitignore,
@@ -264,9 +263,12 @@ def wrangler_deploy(
 
         bundled_original_files.sort()
         if bundled_original_files:
-            print_info(f"Bundling {len(bundled_original_files)} project file(s):")
-            for p in bundled_original_files:
-                console.print(f" - {p}")
+            print_verbose(
+                "\n".join(
+                    [f"Bundling {len(bundled_original_files)} project file(s):"]
+                    + [f" - {p}" for p in bundled_original_files]
+                )
+            )
 
         # Collect deployment metadata (git if available, else workspace hash)
         git_meta = get_git_metadata(project_dir)
@@ -366,9 +368,11 @@ def wrangler_deploy(
         wrangler_toml_path = temp_project_dir / "wrangler.toml"
         wrangler_toml_path.write_text(wrangler_toml_content)
 
+        spinner_column = SpinnerColumn(spinner_name="aesthetic")
         with Progress(
-            SpinnerColumn(spinner_name="aesthetic"),
-            TextColumn("[progress.description]{task.description}"),
+            "",
+            spinner_column,
+            TextColumn(" [progress.description]{task.description}"),
         ) as progress:
             task = progress.add_task("Bundling MCP Agent...", total=None)
 
@@ -396,9 +400,8 @@ def wrangler_deploy(
                     encoding="utf-8",
                     errors="replace",
                 )
-                progress.update(task, description="✅ Bundled successfully")
-                return
-
+                spinner_column.spinner.frames = spinner_column.spinner.frames[-2:-1]
+                progress.update(task, description="Bundled successfully")
             except subprocess.CalledProcessError as e:
                 progress.update(task, description="❌ Bundling failed")
                 _handle_wrangler_error(e)
