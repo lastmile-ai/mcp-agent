@@ -2318,10 +2318,15 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
 
             if run_tool_name not in registered:
                 # Build a wrapper mirroring original function params (excluding app_ctx/ctx)
-                async def _async_wrapper(**kwargs):
-                    ctx: MCPContext = kwargs.pop("__context__")
-                    # Start workflow and return workflow_id/run_id (do not wait)
-                    return await _workflow_run(ctx, wname_local, kwargs)
+                def _make_async_wrapper(bound_wname: str):
+                    async def _async_wrapper(**kwargs):
+                        ctx: MCPContext = kwargs.pop("__context__")
+                        # Start workflow and return workflow_id/run_id (do not wait)
+                        return await _workflow_run(ctx, bound_wname, kwargs)
+
+                    return _async_wrapper
+
+                _async_wrapper = _make_async_wrapper(wname_local)
 
                 # Mirror original signature and annotations similar to sync path
                 ann = dict(getattr(fn, "__annotations__", {}))
