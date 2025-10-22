@@ -35,12 +35,23 @@ from mcp_agent.core.exceptions import ServerInitializationError
 from mcp_agent.logging.event_progress import ProgressAction
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
+from mcp_agent.oauth.http import OAuthHttpxAuth
 
 if TYPE_CHECKING:
     from mcp_agent.mcp.mcp_server_registry import InitHookCallable, ServerRegistry
     from mcp_agent.core.context import Context
 
 logger = get_logger(__name__)
+
+
+def _resolve_identity_from_context():
+    try:
+        from mcp_agent.server import app_server  # type: ignore
+
+        identity = app_server.get_current_identity()
+        return identity
+    except Exception:
+        return None
 
 
 class ServerConnection:
@@ -476,6 +487,31 @@ class MCPConnectionManager(ContextDependent):
 
                 if sse_read_timeout is not None:
                     kwargs["sse_read_timeout"] = sse_read_timeout
+
+                auth_handler = None
+                oauth_cfg = config.auth.oauth if config.auth else None
+                ctx = None
+                try:
+                    ctx = self.context
+                except Exception:
+                    ctx = None
+                if oauth_cfg and oauth_cfg.enabled:
+                    token_manager = getattr(ctx, "token_manager", None) if ctx else None
+                    if token_manager is None:
+                        logger.warning(
+                            f"{server_name}: OAuth configured but token manager not available; skipping auth"
+                        )
+                    else:
+                        auth_handler = OAuthHttpxAuth(
+                            token_manager=token_manager,
+                            context=ctx,
+                            server_name=server_name,
+                            server_config=config,
+                            scopes=oauth_cfg.scopes,
+                            identity_resolver=_resolve_identity_from_context,
+                        )
+                if auth_handler:
+                    kwargs["auth"] = auth_handler
 
                 return streamablehttp_client(
                     **kwargs,

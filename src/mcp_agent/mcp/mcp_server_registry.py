@@ -31,12 +31,25 @@ from mcp_agent.config import (
 
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
+from mcp_agent.oauth.http import OAuthHttpxAuth
 from mcp_agent.mcp.mcp_connection_manager import MCPConnectionManager
 
 if TYPE_CHECKING:
     from mcp_agent.core.context import Context
 
 logger = get_logger(__name__)
+
+
+def _resolve_identity_from_context():
+    try:
+        from mcp_agent.server import (
+            app_server,
+        )  # local import to avoid circular dependency
+
+        return app_server.get_current_identity()
+    except Exception:
+        return None
+
 
 InitHookCallable = Callable[[ClientSession | None, MCPServerAuthSettings | None], bool]
 """
@@ -216,6 +229,25 @@ class ServerRegistry:
                 kwargs["sse_read_timeout"] = sse_read_timeout
 
             # For Streamable HTTP, we get an additional callback for session ID
+            auth_handler = None
+            oauth_cfg = config.auth.oauth if config.auth else None
+            if oauth_cfg and oauth_cfg.enabled:
+                if context is None or getattr(context, "token_manager", None) is None:
+                    logger.warning(
+                        f"{server_name}: OAuth configured but token manager not available; skipping auth"
+                    )
+                else:
+                    auth_handler = OAuthHttpxAuth(
+                        token_manager=context.token_manager,
+                        context=context,
+                        server_name=server_name,
+                        server_config=config,
+                        scopes=oauth_cfg.scopes,
+                        identity_resolver=_resolve_identity_from_context,
+                    )
+            if auth_handler:
+                kwargs["auth"] = auth_handler
+
             async with streamablehttp_client(
                 **kwargs,
             ) as (read_stream, write_stream, session_id_callback):

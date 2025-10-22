@@ -18,6 +18,7 @@ from mcp.shared.message import ServerMessageMetadata
 from mcp_agent.core.context import Context
 from mcp_agent.executor.temporal.system_activities import SystemActivities
 from mcp_agent.executor.temporal.temporal_context import get_execution_id
+from mcp_agent.oauth.identity import DEFAULT_PRECONFIGURED_IDENTITY
 
 
 class SessionProxy(ServerSession):
@@ -72,6 +73,27 @@ class SessionProxy(ServerSession):
         # Provide a low-level RPC facade similar to real ServerSession
         self.rpc = _RPC(self)
 
+    def _ensure_identity(self) -> None:
+        exec_id = get_execution_id()
+        identity = None
+        if exec_id:
+            try:
+                from mcp_agent.server import app_server
+
+                identity = app_server._get_identity_for_execution(exec_id)
+            except Exception:
+                identity = None
+
+        if identity is None:
+            identity = DEFAULT_PRECONFIGURED_IDENTITY
+
+        try:
+            from mcp_agent.server import app_server
+
+            app_server._set_current_identity(identity)
+        except Exception:
+            pass
+
     # ----------------------
     # Generic passthroughs
     # ----------------------
@@ -80,6 +102,7 @@ class SessionProxy(ServerSession):
 
         Returns True on best-effort success.
         """
+        self._ensure_identity()
         exec_id = get_execution_id()
         if not exec_id:
             return False
@@ -111,6 +134,7 @@ class SessionProxy(ServerSession):
         """Send a server->client request and return the client's response.
         The result is a plain JSON-serializable dict.
         """
+        self._ensure_identity()
         exec_id = get_execution_id()
         if not exec_id:
             return {"error": "missing_execution_id"}
@@ -178,6 +202,7 @@ class SessionProxy(ServerSession):
         if related_request_id is not None:
             params = dict(params or {})
             params["related_request_id"] = related_request_id
+        self._ensure_identity()
         await self.notify(root.method, params)  # type: ignore[attr-defined]
 
     async def send_request(
@@ -196,6 +221,7 @@ class SessionProxy(ServerSession):
         except Exception:
             params = {}
         # Note: metadata (e.g., related_request_id) is handled server-side where applicable
+        self._ensure_identity()
         payload = await self.request(root.method, params)  # type: ignore[attr-defined]
         # Attempt to validate into the requested result type
         try:
@@ -211,6 +237,7 @@ class SessionProxy(ServerSession):
         related_request_id: types.RequestId | None = None,
     ) -> None:
         """Best-effort log forwarding to the client's UI."""
+        self._ensure_identity()
         # Prefer activity-based forwarding inside workflow for determinism
         exec_id = get_execution_id()
         if _in_workflow_runtime() and exec_id:

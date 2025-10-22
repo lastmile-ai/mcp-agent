@@ -42,6 +42,8 @@ if TYPE_CHECKING:
     from mcp_agent.elicitation.types import ElicitationCallback
     from mcp_agent.executor.workflow_signal import SignalWaitCallback
     from mcp_agent.executor.workflow_registry import WorkflowRegistry
+    from mcp_agent.oauth.manager import TokenManager
+    from mcp_agent.oauth.store import TokenStore
     from mcp_agent.human_input.types import HumanInputCallback
     from mcp_agent.logging.logger import Logger
 else:
@@ -52,6 +54,8 @@ else:
     SignalWaitCallback = Any
     WorkflowRegistry = Any
     MCPApp = Any
+    TokenManager = Any
+    TokenStore = Any
     Logger = Any
 
 logger = get_logger(__name__)
@@ -95,6 +99,10 @@ class Context(MCPContext):
     # Dynamic gateway configuration (per-run overrides via Temporal memo)
     gateway_url: str | None = None
     gateway_token: str | None = None
+
+    # OAuth helpers for downstream servers
+    token_store: Optional[TokenStore] = None
+    token_manager: Optional[TokenManager] = None
 
     model_config = ConfigDict(
         extra="allow",
@@ -402,6 +410,7 @@ async def initialize_context(
     decorator_registry: Optional[DecoratorRegistry] = None,
     signal_registry: Optional[SignalRegistry] = None,
     store_globally: bool = False,
+    session_id: str | None = None,
 ):
     """
     Initialize the global application context.
@@ -419,7 +428,7 @@ async def initialize_context(
         config, context.executor
     )
 
-    context.session_id = str(context.executor.uuid())
+    context.session_id = session_id or str(context.executor.uuid())
 
     # Initialize token counter with engine hint for fast path checks
     context.token_counter = TokenCounter(execution_engine=config.execution_engine)
@@ -466,6 +475,14 @@ async def cleanup_context(shutdown_logger: bool = False):
         shutdown_logger: If True, completely shutdown OTEL infrastructure.
                       If False, just cleanup app-specific resources.
     """
+    global _global_context
+
+    if _global_context and getattr(_global_context, "token_manager", None):
+        try:
+            await _global_context.token_manager.aclose()  # type: ignore[call-arg]
+        except Exception:
+            pass
+
     if shutdown_logger:
         # Shutdown logging and telemetry completely
         await LoggingConfig.shutdown()

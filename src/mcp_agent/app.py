@@ -2,7 +2,8 @@ import asyncio
 import os
 import sys
 import functools
-from types import MethodType
+
+from types import MethodType, FunctionType
 from typing import (
     Any,
     Dict,
@@ -42,6 +43,8 @@ from mcp_agent.server.tool_adapter import validate_tool_schema
 from mcp_agent.tracing.telemetry import get_tracer
 from mcp_agent.utils.common import unwrap
 from mcp_agent.workflows.llm.llm_selector import ModelSelector
+from mcp_agent.oauth.manager import TokenManager
+from mcp_agent.oauth.store import InMemoryTokenStore
 from mcp_agent.workflows.factory import load_agent_specs_from_dir
 
 
@@ -91,6 +94,7 @@ class MCPApp:
         upstream_session: Optional["ServerSession"] = None,
         model_selector: ModelSelector | None = None,
         icons: list[Icon] | None = None,
+        session_id: str | None = None,
     ):
         """
         Initialize the application with a name and optional settings.
@@ -145,6 +149,7 @@ class MCPApp:
             self._icons = icons
         else:
             self._icons = [phetch]
+        self._session_id_override = session_id
 
         self._workflows: Dict[str, Type["Workflow"]] = {}  # id to workflow class
         # Deferred tool declarations to register with MCP server when available
@@ -249,6 +254,7 @@ class MCPApp:
             decorator_registry=self._decorator_registry,
             signal_registry=self._signal_registry,
             store_globally=True,
+            session_id=self._session_id_override,
         )
 
         # Store the app-specific tracer provider
@@ -264,6 +270,54 @@ class MCPApp:
 
         # Store a reference to this app instance in the context for easier access
         self._context.app = self
+
+        # Initialize OAuth token management helpers if configured
+        oauth_settings = None
+        try:
+            if self._context.config:
+                oauth_settings = self._context.config.oauth
+        except Exception:
+            oauth_settings = None
+
+        if oauth_settings:
+            self.logger.debug("Initializing OAuth token management")
+            backend = (
+                oauth_settings.token_store.backend
+                if oauth_settings.token_store
+                else "memory"
+            )
+            if backend == "redis":
+                from mcp_agent.oauth.store import RedisTokenStore
+
+                if RedisTokenStore is None:
+                    raise ImportError(
+                        "Redis token store requires the 'redis' optional dependency. "
+                        "Install with `pip install mcp-agent[redis]`."
+                    )
+
+                redis_url = oauth_settings.token_store.redis_url
+                if not redis_url:
+                    raise ValueError(
+                        "redis_url must be configured when using the Redis token store"
+                    )
+                token_store = RedisTokenStore(
+                    url=redis_url,
+                    prefix=oauth_settings.token_store.redis_prefix,
+                )
+            else:
+                token_store = InMemoryTokenStore()
+
+            token_manager = TokenManager(
+                token_store=token_store,
+                settings=oauth_settings,
+            )
+            self._context.token_store = token_store
+            self._context.token_manager = token_manager
+
+            # Check for pre-configured tokens and store them with synthetic users
+            await self._initialize_preconfigured_tokens(token_manager)
+        else:
+            self.logger.debug("No OAuth settings found, skipping OAuth initialization")
 
         # Provide a safe default bound context for loggers created after init without explicit context
         try:
@@ -341,6 +395,52 @@ class MCPApp:
                 "session_id": self.session_id,
             },
         )
+
+    async def _initialize_preconfigured_tokens(self, token_manager):
+        """Check for pre-configured OAuth tokens and store them with a single synthetic user."""
+
+        mcp_config = getattr(self._context.config, "mcp", None)
+        if not mcp_config or not getattr(mcp_config, "servers", None):
+            self.logger.debug(
+                "No MCP servers found in config, skipping token initialization"
+            )
+            return
+
+        servers = mcp_config.servers
+        self.logger.debug(f"Found MCP servers in config: {list(servers.keys())}")
+
+        servers_with_tokens = []
+
+        # First pass: check which servers have pre-configured tokens
+        for server_name, server_config in servers.items():
+            if not hasattr(server_config, "auth") or not server_config.auth:
+                self.logger.debug(
+                    f"Server '{server_name}' has no auth config, skipping"
+                )
+                continue
+
+            oauth_config = getattr(server_config.auth, "oauth", None)
+
+            if (
+                not oauth_config
+                or not oauth_config.enabled
+                or not oauth_config.access_token
+            ):
+                continue
+
+            self.logger.debug(f"Server '{server_name}' has pre-configured OAuth token")
+            servers_with_tokens.append((server_name, server_config))
+
+        if servers_with_tokens:
+            for server_name, server_config in servers_with_tokens:
+                self.logger.info(
+                    "Storing pre-configured OAuth token for server: %s", server_name
+                )
+                await token_manager.store_preconfigured_token(
+                    context=self._context,
+                    server_name=server_name,
+                    server_config=server_config,
+                )
 
     async def get_token_node(self):
         """Return the root app token node, if available."""
@@ -572,6 +672,25 @@ class MCPApp:
 
             # Fall back to the original function
             return await fn(*args, **kwargs)
+
+        # Ensure the wrapper shares the original function's globals so that
+        # string annotations (from __future__ import annotations) continue to
+        # resolve against the workflow module rather than mcp_agent.app.
+        original_globals = getattr(fn, "__globals__", None)
+        if original_globals is not None and wrapper.__globals__ is not original_globals:
+            rebuilt_wrapper = FunctionType(
+                wrapper.__code__,
+                original_globals,
+                name=wrapper.__name__,
+                argdefs=wrapper.__defaults__,
+                closure=wrapper.__closure__,
+            )
+            rebuilt_wrapper.__kwdefaults__ = wrapper.__kwdefaults__
+            rebuilt_wrapper.__annotations__ = wrapper.__annotations__
+            rebuilt_wrapper.__dict__.update(wrapper.__dict__)
+            rebuilt_wrapper = functools.update_wrapper(rebuilt_wrapper, fn)
+            rebuilt_wrapper.__wrapped__ = fn
+            wrapper = rebuilt_wrapper
 
         return wrapper
 

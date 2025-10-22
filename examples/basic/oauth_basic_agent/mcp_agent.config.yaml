@@ -1,0 +1,36 @@
+$schema: ../../../schema/mcp-agent.config.schema.json
+
+execution_engine: asyncio
+logger:
+  transports: [console, file]
+  level: info
+  path_settings:
+    path_pattern: "logs/mcp-agent-{unique_id}.jsonl"
+    unique_id: "timestamp"
+
+oauth:
+  loopback_ports: [33418, 33419, 33420]
+
+mcp:
+  servers:
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+    filesystem:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-filesystem"]
+    github:
+      transport: streamable_http
+      url: "https://api.githubcopilot.com/mcp/"
+      auth:
+        oauth:
+          enabled: true
+          scopes: ["read:org", "public_repo", "user:email"]
+          authorization_server: "https://github.com/login/oauth"
+          use_internal_callback: false
+          include_resource_parameter: false
+
+openai:
+  default_model: "gpt-4o-mini"
+anthropic:
+  default_model: claude-sonnet-4-20250514
