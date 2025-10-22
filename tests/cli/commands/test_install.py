@@ -49,11 +49,17 @@ def test_server_hostname():
     assert _server_hostname("https://xyz456.deployments.example.com/mcp") == "xyz456"
 
     # Test with app name override
-    assert _server_hostname("https://abc123.deployments.mcp-agent.com/sse", "my-app") == "my-app"
+    assert (
+        _server_hostname("https://abc123.deployments.mcp-agent.com/sse", "my-app")
+        == "my-app"
+    )
 
     # Test with regular domain
     assert _server_hostname("https://api.example.com/sse") == "api.example"
-    assert _server_hostname("https://subdomain.api.example.com/mcp") == "subdomain.api.example"
+    assert (
+        _server_hostname("https://subdomain.api.example.com/mcp")
+        == "subdomain.api.example"
+    )
 
     # Test with simple domain
     assert _server_hostname("https://example.com") == "example"
@@ -68,47 +74,54 @@ def test_build_server_config():
     assert config == {
         "url": "https://example.com/mcp",
         "transport": "http",
-        "headers": {
-            "Authorization": "Bearer test-key"
-        }
+        "headers": {"Authorization": "Bearer test-key"},
     }
 
-    config_sse = _build_server_config("https://example.com/sse", "sse", api_key="test-key")
+    config_sse = _build_server_config(
+        "https://example.com/sse", "sse", api_key="test-key"
+    )
     assert config_sse == {
         "url": "https://example.com/sse",
         "transport": "sse",
-        "headers": {
-            "Authorization": "Bearer test-key"
-        }
+        "headers": {"Authorization": "Bearer test-key"},
     }
 
     # Claude Desktop uses mcp-remote wrapper with actual API key
-    config_claude = _build_server_config("https://example.com/sse", "sse", for_claude_desktop=True, api_key="test-api-key-123")
+    config_claude = _build_server_config(
+        "https://example.com/sse",
+        "sse",
+        for_claude_desktop=True,
+        api_key="test-api-key-123",
+    )
     assert config_claude == {
         "command": "npx",
         "args": [
             "mcp-remote",
             "https://example.com/sse",
             "--header",
-            "Authorization: Bearer test-api-key-123"
-        ]
+            "Authorization: Bearer test-api-key-123",
+        ],
     }
 
 
 def test_merge_mcp_json_empty():
     """Test merging into empty config."""
-    result = _merge_mcp_json({}, "test-server", {
-        "url": "https://example.com",
-        "transport": "http",
-        "headers": {"Authorization": "Bearer test-key"}
-    })
+    result = _merge_mcp_json(
+        {},
+        "test-server",
+        {
+            "url": "https://example.com",
+            "transport": "http",
+            "headers": {"Authorization": "Bearer test-key"},
+        },
+    )
     assert result == {
         "mcp": {
             "servers": {
                 "test-server": {
                     "url": "https://example.com",
                     "transport": "http",
-                    "headers": {"Authorization": "Bearer test-key"}
+                    "headers": {"Authorization": "Bearer test-key"},
                 }
             }
         }
@@ -117,15 +130,17 @@ def test_merge_mcp_json_empty():
 
 def test_merge_mcp_json_claude_format():
     """Test merging with Claude Desktop format."""
-    result = _merge_mcp_json({}, "test-server", {
-        "command": "npx",
-        "args": ["mcp-remote", "https://example.com/sse"]
-    }, format_type="mcpServers")
+    result = _merge_mcp_json(
+        {},
+        "test-server",
+        {"command": "npx", "args": ["mcp-remote", "https://example.com/sse"]},
+        format_type="mcpServers",
+    )
     assert result == {
         "mcpServers": {
             "test-server": {
                 "command": "npx",
-                "args": ["mcp-remote", "https://example.com/sse"]
+                "args": ["mcp-remote", "https://example.com/sse"],
             }
         }
     }
@@ -133,20 +148,25 @@ def test_merge_mcp_json_claude_format():
 
 def test_merge_mcp_json_vscode_format():
     """Test merging with VSCode format."""
-    result = _merge_mcp_json({}, "test-server", {
-        "type": "sse",
-        "url": "https://example.com",
-        "headers": {"Authorization": "Bearer test-key"}
-    }, format_type="vscode")
+    result = _merge_mcp_json(
+        {},
+        "test-server",
+        {
+            "type": "sse",
+            "url": "https://example.com",
+            "headers": {"Authorization": "Bearer test-key"},
+        },
+        format_type="vscode",
+    )
     assert result == {
         "servers": {
             "test-server": {
                 "type": "sse",
                 "url": "https://example.com",
-                "headers": {"Authorization": "Bearer test-key"}
+                "headers": {"Authorization": "Bearer test-key"},
             }
         },
-        "inputs": []
+        "inputs": [],
     }
 
 
@@ -165,7 +185,11 @@ def test_merge_mcp_json_existing():
     result = _merge_mcp_json(
         existing,
         "new-server",
-        {"url": "https://new.com", "transport": "http", "headers": {"Authorization": "Bearer test-key"}},
+        {
+            "url": "https://new.com",
+            "transport": "http",
+            "headers": {"Authorization": "Bearer test-key"},
+        },
     )
     assert result == {
         "mcp": {
@@ -177,7 +201,7 @@ def test_merge_mcp_json_existing():
                 "new-server": {
                     "url": "https://new.com",
                     "transport": "http",
-                    "headers": {"Authorization": "Bearer test-key"}
+                    "headers": {"Authorization": "Bearer test-key"},
                 },
             }
         }
@@ -199,7 +223,11 @@ def test_merge_mcp_json_overwrite():
     result = _merge_mcp_json(
         existing,
         "test-server",
-        {"url": "https://new.com", "transport": "sse", "headers": {"Authorization": "Bearer test-key"}},
+        {
+            "url": "https://new.com",
+            "transport": "sse",
+            "headers": {"Authorization": "Bearer test-key"},
+        },
     )
     assert result == {
         "mcp": {
@@ -207,7 +235,7 @@ def test_merge_mcp_json_overwrite():
                 "test-server": {
                     "url": "https://new.com",
                     "transport": "sse",
-                    "headers": {"Authorization": "Bearer test-key"}
+                    "headers": {"Authorization": "Bearer test-key"},
                 }
             }
         }
@@ -216,7 +244,9 @@ def test_merge_mcp_json_overwrite():
 
 def test_install_missing_api_key(tmp_path):
     """Test install fails without API key."""
-    with patch("mcp_agent.cli.commands.install.load_api_key_credentials", return_value=None):
+    with patch(
+        "mcp_agent.cli.commands.install.load_api_key_credentials", return_value=None
+    ):
         with patch("mcp_agent.cli.commands.install.settings") as mock_settings:
             mock_settings.API_KEY = None
             mock_settings.API_BASE_URL = "http://test-api"
@@ -235,7 +265,10 @@ def test_install_missing_api_key(tmp_path):
 
 def test_install_invalid_client():
     """Test install fails with invalid client."""
-    with patch("mcp_agent.cli.commands.install.load_api_key_credentials", return_value="test-key"):
+    with patch(
+        "mcp_agent.cli.commands.install.load_api_key_credentials",
+        return_value="test-key",
+    ):
         with patch("mcp_agent.cli.commands.install.settings") as mock_settings:
             mock_settings.API_KEY = "test-key"
             mock_settings.API_BASE_URL = "http://test-api"
@@ -254,7 +287,10 @@ def test_install_invalid_client():
 
 def test_install_invalid_url():
     """Test install fails with non-URL identifier."""
-    with patch("mcp_agent.cli.commands.install.load_api_key_credentials", return_value="test-key"):
+    with patch(
+        "mcp_agent.cli.commands.install.load_api_key_credentials",
+        return_value="test-key",
+    ):
         with patch("mcp_agent.cli.commands.install.settings") as mock_settings:
             mock_settings.API_KEY = "test-key"
             mock_settings.API_BASE_URL = "http://test-api"
@@ -275,12 +311,17 @@ def test_install_vscode(tmp_path):
     """Test install to VSCode."""
     vscode_config = tmp_path / ".vscode" / "mcp.json"
 
-    with patch("mcp_agent.cli.commands.install.load_api_key_credentials", return_value="test-key"):
+    with patch(
+        "mcp_agent.cli.commands.install.load_api_key_credentials",
+        return_value="test-key",
+    ):
         with patch("mcp_agent.cli.commands.install.settings") as mock_settings:
             mock_settings.API_KEY = "test-key"
             mock_settings.API_BASE_URL = "http://test-api"
 
-            with patch("mcp_agent.cli.commands.install.Path.cwd", return_value=tmp_path):
+            with patch(
+                "mcp_agent.cli.commands.install.Path.cwd", return_value=tmp_path
+            ):
                 install(
                     server_identifier=MOCK_APP_SERVER_URL,
                     client="vscode",
@@ -320,12 +361,17 @@ def test_install_cursor_with_existing_config(tmp_path):
     }
     cursor_config.write_text(json.dumps(existing, indent=2))
 
-    with patch("mcp_agent.cli.commands.install.load_api_key_credentials", return_value="test-key"):
+    with patch(
+        "mcp_agent.cli.commands.install.load_api_key_credentials",
+        return_value="test-key",
+    ):
         with patch("mcp_agent.cli.commands.install.settings") as mock_settings:
             mock_settings.API_KEY = "test-key"
             mock_settings.API_BASE_URL = "http://test-api"
 
-            with patch("mcp_agent.cli.commands.install.Path.home", return_value=tmp_path):
+            with patch(
+                "mcp_agent.cli.commands.install.Path.home", return_value=tmp_path
+            ):
                 install(
                     server_identifier=MOCK_APP_SERVER_URL,
                     client="cursor",
@@ -354,16 +400,21 @@ def test_install_duplicate_without_force(tmp_path):
                 "type": "http",
             }
         },
-        "inputs": []
+        "inputs": [],
     }
     vscode_config.write_text(json.dumps(existing, indent=2))
 
-    with patch("mcp_agent.cli.commands.install.load_api_key_credentials", return_value="test-key"):
+    with patch(
+        "mcp_agent.cli.commands.install.load_api_key_credentials",
+        return_value="test-key",
+    ):
         with patch("mcp_agent.cli.commands.install.settings") as mock_settings:
             mock_settings.API_KEY = "test-key"
             mock_settings.API_BASE_URL = "http://test-api"
 
-            with patch("mcp_agent.cli.commands.install.Path.cwd", return_value=tmp_path):
+            with patch(
+                "mcp_agent.cli.commands.install.Path.cwd", return_value=tmp_path
+            ):
                 with pytest.raises(CLIError, match="already exists"):
                     install(
                         server_identifier=MOCK_APP_SERVER_URL,
@@ -388,16 +439,21 @@ def test_install_duplicate_with_force(tmp_path):
                 "type": "http",
             }
         },
-        "inputs": []
+        "inputs": [],
     }
     vscode_config.write_text(json.dumps(existing, indent=2))
 
-    with patch("mcp_agent.cli.commands.install.load_api_key_credentials", return_value="test-key"):
+    with patch(
+        "mcp_agent.cli.commands.install.load_api_key_credentials",
+        return_value="test-key",
+    ):
         with patch("mcp_agent.cli.commands.install.settings") as mock_settings:
             mock_settings.API_KEY = "test-key"
             mock_settings.API_BASE_URL = "http://test-api"
 
-            with patch("mcp_agent.cli.commands.install.Path.cwd", return_value=tmp_path):
+            with patch(
+                "mcp_agent.cli.commands.install.Path.cwd", return_value=tmp_path
+            ):
                 install(
                     server_identifier=MOCK_APP_SERVER_URL,
                     client="vscode",
@@ -416,12 +472,17 @@ def test_install_chatgpt_requires_unauth_access(mock_app_with_auth):
     """Test ChatGPT install fails when server requires authentication."""
     import typer
 
-    with patch("mcp_agent.cli.commands.install.load_api_key_credentials", return_value="test-key"):
+    with patch(
+        "mcp_agent.cli.commands.install.load_api_key_credentials",
+        return_value="test-key",
+    ):
         with patch("mcp_agent.cli.commands.install.settings") as mock_settings:
             mock_settings.API_KEY = "test-key"
             mock_settings.API_BASE_URL = "http://test-api"
 
-            with patch("mcp_agent.cli.commands.install.MCPAppClient") as mock_client_class:
+            with patch(
+                "mcp_agent.cli.commands.install.MCPAppClient"
+            ) as mock_client_class:
                 mock_client = MagicMock()
                 mock_client.get_app = AsyncMock(return_value=mock_app_with_auth)
                 mock_client_class.return_value = mock_client
@@ -442,12 +503,17 @@ def test_install_chatgpt_requires_unauth_access(mock_app_with_auth):
 
 def test_install_chatgpt_with_unauth_server(mock_app_without_auth):
     """Test ChatGPT install succeeds with unauthenticated server."""
-    with patch("mcp_agent.cli.commands.install.load_api_key_credentials", return_value="test-key"):
+    with patch(
+        "mcp_agent.cli.commands.install.load_api_key_credentials",
+        return_value="test-key",
+    ):
         with patch("mcp_agent.cli.commands.install.settings") as mock_settings:
             mock_settings.API_KEY = "test-key"
             mock_settings.API_BASE_URL = "http://test-api"
 
-            with patch("mcp_agent.cli.commands.install.MCPAppClient") as mock_client_class:
+            with patch(
+                "mcp_agent.cli.commands.install.MCPAppClient"
+            ) as mock_client_class:
                 mock_client = MagicMock()
                 mock_client.get_app = AsyncMock(return_value=mock_app_without_auth)
                 mock_client_class.return_value = mock_client
@@ -465,12 +531,17 @@ def test_install_chatgpt_with_unauth_server(mock_app_without_auth):
 
 def test_install_dry_run(tmp_path, capsys):
     """Test install in dry run mode."""
-    with patch("mcp_agent.cli.commands.install.load_api_key_credentials", return_value="test-key"):
+    with patch(
+        "mcp_agent.cli.commands.install.load_api_key_credentials",
+        return_value="test-key",
+    ):
         with patch("mcp_agent.cli.commands.install.settings") as mock_settings:
             mock_settings.API_KEY = "test-key"
             mock_settings.API_BASE_URL = "http://test-api"
 
-            with patch("mcp_agent.cli.commands.install.Path.cwd", return_value=tmp_path):
+            with patch(
+                "mcp_agent.cli.commands.install.Path.cwd", return_value=tmp_path
+            ):
                 install(
                     server_identifier=MOCK_APP_SERVER_URL,
                     client="vscode",
@@ -489,12 +560,17 @@ def test_install_sse_transport_detection(tmp_path):
     """Test that SSE transport is detected from URL."""
     vscode_config = tmp_path / ".vscode" / "mcp.json"
 
-    with patch("mcp_agent.cli.commands.install.load_api_key_credentials", return_value="test-key"):
+    with patch(
+        "mcp_agent.cli.commands.install.load_api_key_credentials",
+        return_value="test-key",
+    ):
         with patch("mcp_agent.cli.commands.install.settings") as mock_settings:
             mock_settings.API_KEY = "test-key"
             mock_settings.API_BASE_URL = "http://test-api"
 
-            with patch("mcp_agent.cli.commands.install.Path.cwd", return_value=tmp_path):
+            with patch(
+                "mcp_agent.cli.commands.install.Path.cwd", return_value=tmp_path
+            ):
                 install(
                     server_identifier="https://example.com/sse",
                     client="vscode",
@@ -513,12 +589,17 @@ def test_install_http_transport_detection(tmp_path):
     """Test that HTTP transport is detected from URL."""
     vscode_config = tmp_path / ".vscode" / "mcp.json"
 
-    with patch("mcp_agent.cli.commands.install.load_api_key_credentials", return_value="test-key"):
+    with patch(
+        "mcp_agent.cli.commands.install.load_api_key_credentials",
+        return_value="test-key",
+    ):
         with patch("mcp_agent.cli.commands.install.settings") as mock_settings:
             mock_settings.API_KEY = "test-key"
             mock_settings.API_BASE_URL = "http://test-api"
 
-            with patch("mcp_agent.cli.commands.install.Path.cwd", return_value=tmp_path):
+            with patch(
+                "mcp_agent.cli.commands.install.Path.cwd", return_value=tmp_path
+            ):
                 install(
                     server_identifier="https://example.com/mcp",
                     client="vscode",
