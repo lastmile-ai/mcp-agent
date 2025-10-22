@@ -96,7 +96,7 @@ app = MCPApp(
 
 
 def _resource_description() -> str:
-    return f"Coin flip widget markup"
+    return "Coin flip widget markup"
 
 
 def _tool_meta() -> Dict[str, Any]:
