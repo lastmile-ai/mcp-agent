@@ -188,7 +188,9 @@ app.command(
 )(login)
 
 # Register install command as top-level
-app.add_typer(install_cmd.app, name="install", help="Install MCP server to client applications")
+app.add_typer(
+    install_cmd.app, name="install", help="Install MCP server to client applications"
+)
 
 
 def run() -> None:

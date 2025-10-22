@@ -213,9 +213,7 @@ async def test_async_tool_wrappers_capture_workflow_name(monkeypatch):
         calls.append((workflow_name, run_parameters))
         return {"workflow_id": workflow_name, "run_id": f"run-{workflow_name}"}
 
-    monkeypatch.setattr(
-        "mcp_agent.server.app_server._workflow_run", _fake_workflow_run
-    )
+    monkeypatch.setattr("mcp_agent.server.app_server._workflow_run", _fake_workflow_run)
 
     ctx = _make_ctx(server_context)
     first_entry = next(entry for entry in mcp.added_tools if entry["name"] == "first")
@@ -258,9 +256,7 @@ async def test_sync_tool_wrappers_capture_workflow_name(monkeypatch):
 
     async def _fake_workflow_run(ctx, workflow_name, run_parameters=None, **kwargs):
         run_calls.append((workflow_name, run_parameters))
-        return await original_workflow_run(
-            ctx, workflow_name, run_parameters, **kwargs
-        )
+        return await original_workflow_run(ctx, workflow_name, run_parameters, **kwargs)
 
     monkeypatch.setattr(_app_server, "_workflow_run", _fake_workflow_run)
 
