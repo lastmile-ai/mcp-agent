@@ -69,7 +69,6 @@ MIME_TYPE = "text/html+skybridge"
 
 mcp = FastMCP(
     name="coinflip",
-    message_path="/sse/messages",
     stateless_http=True,
 )
 app = MCPApp(
