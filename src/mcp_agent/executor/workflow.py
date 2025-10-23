@@ -807,10 +807,11 @@ class Workflow(ABC, Generic[T], ContextDependent):
                 upstream_session = getattr(self.context, "upstream_session", None)
 
                 if upstream_session is None:
-                    self.context.upstream_session = SessionProxy(
+                    proxy_session = SessionProxy(
                         executor=self.executor,
                         context=self.context,
                     )
+                    self.context.upstream_session = proxy_session
 
                     app = self.context.app
                     if app:
