@@ -6,7 +6,6 @@ from __future__ import annotations
 
 from pathlib import Path
 from importlib import resources
-from importlib.resources import files as _pkg_files
 
 import typer
 from rich.console import Console
@@ -84,8 +83,7 @@ def _copy_pkg_tree(pkg_rel: str, dst: Path, force: bool) -> int:
     """
     try:
         root = (
-            _pkg_files("mcp_agent")
-            .joinpath("data")
+            resources.files("mcp_agent.data")
             .joinpath("examples")
             .joinpath(pkg_rel)
         )
@@ -164,24 +162,24 @@ def init(
     templates = {**scaffolding_templates, **example_templates}
 
     # Map template names to their source paths (shared by quickstart and template modes)
-    # Format: "name": (None, dest_name, pkg_rel) for packaged examples
+    # Format: "name": (dest_name, pkg_rel) - all examples are packaged in mcp_agent.data/examples
     example_map = {
-        "workflow": (None, "workflow", "workflows"),
-        "researcher": (None, "researcher", "usecases/mcp_researcher"),
-        "data-analysis": (None, "data-analysis", "usecases/mcp_financial_analyzer"),
-        "state-transfer": (None, "state-transfer", "workflows/workflow_router"),
-        "basic-agent-server": (None, "basic_agent_server", "mcp_agent_server/asyncio"),
-        "mcp-basic-agent": (None, "mcp_basic_agent", "basic/mcp_basic_agent"),
-        "token-counter": (None, "token_counter", "basic/token_counter"),
-        "agent-factory": (None, "agent_factory", "basic/agent_factory"),
-        "reference-agent-server": (None, "reference_agent_server", "mcp_agent_server/reference"),
-        "elicitation": (None, "elicitation", "mcp_agent_server/elicitation"),
-        "sampling": (None, "sampling", "mcp_agent_server/sampling"),
-        "notifications": (None, "notifications", "mcp_agent_server/notifications"),
-        "hello-world": (None, "hello_world", "cloud/hello_world"),
-        "mcp": (None, "mcp", "cloud/mcp"),
-        "temporal": (None, "temporal", "cloud/temporal"),
-        "chatgpt-app": (None, "chatgpt_app", "cloud/chatgpt_app"),
+        "workflow": ("workflow", "workflows"),
+        "researcher": ("researcher", "usecases/mcp_researcher"),
+        "data-analysis": ("data-analysis", "usecases/mcp_financial_analyzer"),
+        "state-transfer": ("state-transfer", "workflows/workflow_router"),
+        "basic-agent-server": ("basic_agent_server", "mcp_agent_server/asyncio"),
+        "mcp-basic-agent": ("mcp_basic_agent", "basic/mcp_basic_agent"),
+        "token-counter": ("token_counter", "basic/token_counter"),
+        "agent-factory": ("agent_factory", "basic/agent_factory"),
+        "reference-agent-server": ("reference_agent_server", "mcp_agent_server/reference"),
+        "elicitation": ("elicitation", "mcp_agent_server/elicitation"),
+        "sampling": ("sampling", "mcp_agent_server/sampling"),
+        "notifications": ("notifications", "mcp_agent_server/notifications"),
+        "hello-world": ("hello_world", "cloud/hello_world"),
+        "mcp": ("mcp", "cloud/mcp"),
+        "temporal": ("temporal", "cloud/temporal"),
+        "chatgpt-app": ("chatgpt_app", "cloud/chatgpt_app"),
     }
 
     if list_templates:
@@ -228,7 +226,7 @@ def init(
         base_dir = dir.resolve()
         base_dir.mkdir(parents=True, exist_ok=True)
 
-        _, dst_name, pkg_rel = mapping
+        dst_name, pkg_rel = mapping
         dst = base_dir / dst_name
         copied = _copy_pkg_tree(pkg_rel, dst, force)
 
@@ -282,7 +280,7 @@ def init(
             console.print(f"[red]Example template '{template}' not found[/red]")
             raise typer.Exit(1)
 
-        _, dst_name, pkg_rel = mapping
+        dst_name, pkg_rel = mapping
         dst = dir / dst_name
         copied = _copy_pkg_tree(pkg_rel, dst, force)
 
