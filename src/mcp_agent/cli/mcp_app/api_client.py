@@ -386,7 +386,7 @@ class MCPAppClient(APIClient):
             httpx.HTTPStatusError: If the API returns an error
             httpx.HTTPError: If the request fails
         """
-        app = self.get_app_by_name(name)
+        app = await self.get_app_by_name(name)
         return app.appId if app else None
 
     async def deploy_app(
