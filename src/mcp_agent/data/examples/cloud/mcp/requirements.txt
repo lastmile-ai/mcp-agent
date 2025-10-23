@@ -1,0 +1,4 @@
+# Core framework dependency
+mcp-agent[cli] @ file://../../../  # Link to the local mcp-agent project root
+
+openai>=1.0.0

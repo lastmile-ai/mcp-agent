@@ -1,0 +1,29 @@
+$schema: ../../../schema/mcp-agent.config.schema.json
+
+execution_engine: asyncio
+logger:
+  type: console
+  level: debug
+  path: "router.jsonl"
+
+mcp:
+  servers:
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+    filesystem:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-filesystem"]
+
+openai:
+  # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored
+  default_model: "gpt-4o-mini"
+
+otel:
+  enabled: false
+  exporters:
+    - console
+    # To export to a collector, also include:
+    # - otlp:
+    #     endpoint: "http://localhost:4318/v1/traces"
+  service_name: "WorkflowRouterExample"

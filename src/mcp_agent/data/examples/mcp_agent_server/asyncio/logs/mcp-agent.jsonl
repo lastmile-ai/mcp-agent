@@ -1,0 +1,23 @@
+{"level":"INFO","timestamp":"2025-09-08T17:47:26.755356","namespace":"mcp_agent.core.context","message":"Configuring logger with level: debug"}
+{"level":"DEBUG","timestamp":"2025-09-08T17:47:26.756132","namespace":"mcp_agent.basic_agent_server","message":"Registering global workflow tasks with application instance."}
+{"level":"INFO","timestamp":"2025-09-08T17:47:26.755757","namespace":"mcp_agent.basic_agent_server","message":"Loading subagents from configuration..."}
+{"level":"DEBUG","timestamp":"2025-09-08T17:47:26.756172","namespace":"mcp_agent.basic_agent_server","message":"Registering global workflow task: mcp_agent.workflows.llm.augmented_llm_anthropic.AnthropicCompletionTasks.request_completion_task"}
+{"level":"DEBUG","timestamp":"2025-09-08T17:47:26.756195","namespace":"mcp_agent.basic_agent_server","message":"Registering global workflow task: mcp_agent.workflows.llm.augmented_llm_openai.OpenAICompletionTasks.request_completion_task"}
+{"level":"DEBUG","timestamp":"2025-09-08T17:47:26.756210","namespace":"mcp_agent.basic_agent_server","message":"Registering global workflow task: mcp_agent.workflows.llm.augmented_llm_openai.OpenAICompletionTasks.request_structured_completion_task"}
+{"level":"INFO","timestamp":"2025-09-08T17:47:26.756307","namespace":"mcp_agent.basic_agent_server","message":"Creating MCP server for basic_agent_server"}
+{"level":"INFO","timestamp":"2025-09-08T17:47:26.756229","namespace":"mcp_agent.basic_agent_server","message":"MCPApp initialized","data":{"data":{"progress_action":"Running","target":"basic_agent_server","agent_name":"mcp_application_loop","session_id":"c6edbd9b-a669-41e8-ac5a-630f326ad381"}}}
+{"level":"INFO","timestamp":"2025-09-08T17:47:26.756323","namespace":"mcp_agent.basic_agent_server","message":"Registered workflows:"}
+{"level":"INFO","timestamp":"2025-09-08T17:47:26.756355","namespace":"mcp_agent.basic_agent_server","message":"  - grade_story_async"}
+{"level":"INFO","timestamp":"2025-09-08T17:47:26.756346","namespace":"mcp_agent.basic_agent_server","message":"  - grade_story"}
+{"level":"INFO","timestamp":"2025-09-08T17:47:26.756335","namespace":"mcp_agent.basic_agent_server","message":"  - BasicAgentWorkflow"}
+{"level":"INFO","timestamp":"2025-09-08T17:47:26.770697","namespace":"mcp_agent.basic_agent_server","message":"MCP Server settings: debug=False log_level='INFO' host='127.0.0.1' port=8000 mount_path='/' sse_path='/sse' message_path='/messages/' streamable_http_path='/mcp' json_response=False stateless_http=False warn_on_duplicate_resources=True warn_on_duplicate_tools=True warn_on_duplicate_prompts=True dependencies=[] lifespan=None auth=None transport_security=None"}
+{"level":"INFO","timestamp":"2025-09-08T17:48:07.600690","namespace":"mcp_agent.core.context","message":"Configuring logger with level: debug"}
+{"level":"INFO","timestamp":"2025-09-08T17:48:07.600899","namespace":"mcp_agent.workflows_cli","message":"Loading subagents from configuration..."}
+{"level":"DEBUG","timestamp":"2025-09-08T17:48:07.601243","namespace":"mcp_agent.workflows_cli","message":"Registering global workflow tasks with application instance."}
+{"level":"INFO","timestamp":"2025-09-08T17:48:07.601263","namespace":"mcp_agent.workflows_cli","message":"MCPApp initialized","data":{"data":{"progress_action":"Running","target":"workflows_cli","agent_name":"mcp_application_loop","session_id":"cab41e91-e9dd-40f3-95b5-9e9d0541f32a"}}}
+{"level":"INFO","timestamp":"2025-09-08T17:48:07.601345","namespace":"mcp_agent.workflows_cli","message":"MCPApp cleanup","data":{"data":{"progress_action":"Finished","target":"workflows_cli","agent_name":"mcp_application_loop"}}}
+{"level":"INFO","timestamp":"2025-09-08T17:48:30.947873","namespace":"mcp_agent.core.context","message":"Configuring logger with level: debug"}
+{"level":"INFO","timestamp":"2025-09-08T17:48:30.948081","namespace":"mcp_agent.workflows_cli","message":"Loading subagents from configuration..."}
+{"level":"DEBUG","timestamp":"2025-09-08T17:48:30.948427","namespace":"mcp_agent.workflows_cli","message":"Registering global workflow tasks with application instance."}
+{"level":"INFO","timestamp":"2025-09-08T17:48:30.948449","namespace":"mcp_agent.workflows_cli","message":"MCPApp initialized","data":{"data":{"progress_action":"Running","target":"workflows_cli","agent_name":"mcp_application_loop","session_id":"5af68a03-e316-40f7-a88d-5abf688206b5"}}}
+{"level":"INFO","timestamp":"2025-09-08T17:48:30.948532","namespace":"mcp_agent.workflows_cli","message":"MCPApp cleanup","data":{"data":{"progress_action":"Finished","target":"workflows_cli","agent_name":"mcp_application_loop"}}}

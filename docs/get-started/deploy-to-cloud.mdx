@@ -6,8 +6,20 @@ icon: cloud
 ---
 
 <Info>
-  mcp-agent Cloud is in open beta. Share feedback via [GitHub issues](https://github.com/lastmile-ai/mcp-agent/issues) or [Discord](https://lmai.link/discord/mcp-agent).
+  `mcp-agent cloud` is in open beta, and free to use. Share feedback via [GitHub issues](https://github.com/lastmile-ai/mcp-agent/issues) or [Discord](https://lmai.link/discord/mcp-agent).
 </Info>
+
+## What is mcp-agent cloud?
+
+Before diving into the workflow, here is the 30‑second summary. See the dedicated pages under [Deployment](/cloud/overview) for full detail:
+
+- **One runtime for any MCP application** – deploy durable `mcp-agent` workflows, FastMCP servers, or ChatGPT App backends. Everything is exposed as an MCP server at `https://<app_id>.deployments.mcp-agent.com` ([Cloud overview](/cloud/mcp-agent-cloud/overview)).
+- **Temporal-backed execution** – long-running tools and workflows run on Temporal with retries, pause/resume, and human input support ([Long-running tools](/cloud/mcp-agent-cloud/long-running-tools)).
+- **Managed secrets & authentication** – classify secrets during deploy, collect user secrets later, and choose bearer or unauthenticated access today (OAuth coming soon) ([Manage secrets](/cloud/mcp-agent-cloud/manage-secrets) and [Deployment auth](/cloud/authentication/deployment-auth)).
+- **Observability built in** – stream logs, forward traces, and inspect workflow history directly from the CLI ([Observability](/cloud/observability)).
+- **Easy client install** – use `mcp-agent install` or `mcp-agent cloud configure` to wire the deployed server into Claude Desktop, Cursor, VS Code, or ChatGPT Apps ([Use a deployed server](/cloud/mcp-agent-cloud/use-deployed-server)).
+
+With that context, the steps below show exactly how to deploy.
 
 ## TL;DR – three commands
 

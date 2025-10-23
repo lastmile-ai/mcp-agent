@@ -1,0 +1,105 @@
+---
+title: mcp-agent cloud
+description: "[Beta] Deploy, orchestrate, and observe MCP applications on managed infrastructure"
+---
+
+`mcp-agent cloud` is a fully managed runtime for MCP applications—whether that is a full `mcp-agent` workflow, a FastMCP server, or a custom ChatGPT App backend. You write agents using the same decorators you use locally—`@app.tool`, `@app.async_tool`, `@app.workflow`—and deploy them with a single CLI command. The platform bundles your code, provisions containerized MCP servers, executes workflows on Temporal, secures secrets, and streams telemetry to your dashboard or OTEL backend.
+
+<img
+  src="https://github.com/user-attachments/assets/a6f5dacd-e11c-4121-b144-8d54b5dd8a2d"
+  alt="mcp-agent cloud infrastructure diagram showing Temporal cluster, edge, and container instances"
+  width="721"
+  height="758"
+/>
+
+## Key capabilities
+
+- **Agents as MCP servers** – every `MCPApp` is exposed as an MCP server with standard transports (SSE + streamable HTTP). Tools, resources, and prompts remain discoverable via the MCP APIs.
+- **Temporal-backed durability** – `@app.async_tool` and `@app.workflow` map to Temporal workflows with built-in retries, pause/resume, human input, and memoized state.
+- **Automatic container orchestration** – stdio MCP servers defined in `mcp_agent.config.yaml` run in hardened containers with lifecycle management, health checks, and auto-restarts.
+- **Managed secrets** – deployment secrets are encrypted at rest; per-user secrets are collected via `mcp-agent cloud configure` and scoped to that user’s execution.
+- **Observability out-of-the-box** – structured logs, traces, token counts, and workflow telemetry are available via the CLI or your own OTEL endpoint.
+- **Simple client integration** – `mcp-agent install` writes correct configs for Claude Desktop, Cursor, VS Code, and ChatGPT Apps.
+
+## Architecture at a glance
+
+| Layer | What happens |
+| --- | --- |
+| **Developer workstation** | `mcp-agent deploy` packages your project, transforms secrets, optionally tags the git commit, and uploads artefacts. |
+| **Deploy control plane** | Validates the bundle, builds container images, provisions or updates the MCP server, and wires secrets + environment variables. |
+| **Runtime plane** | A dedicated container hosts your `main.py` (MCPApp). Each stdio server (fetch, filesystem, custom tools) runs in its own container and communicates over local networking. |
+| **Temporal cluster** | Durable execution for workflows. Runs inside an internal multi-role Temporal deployment with service discovery and auth proxies. |
+| **Edge + observability** | Edge services expose HTTPS + SSE endpoints, enforce auth, forward telemetry to OTEL, and provide log streaming (`mcp-agent cloud logger tail`). |
+
+<img
+  src="https://github.com/user-attachments/assets/dcb9638c-0da2-4920-bb93-4fb59c92ca06"
+  alt="Screenshot showing agents exposed as MCP servers with workflows, tools, and resources"
+  width="593"
+  height="406"
+/>
+
+## Deployment lifecycle
+
+1. **Bundle** – the CLI snapshots your directory, applying `.mcpacignore` and generating `mcp_agent.deployed.secrets.yaml`.
+2. **Upload** – artefacts are sent to the deployment service along with metadata (name, description, git commit, semantic version if provided).
+3. **Build** – containers are built for the application runtime and declared MCP stdio servers.
+4. **Provision** – infrastructure spins up in an isolated namespace; TLS certificates and routing are configured automatically.
+5. **Health gate** – Temporal workers and MCP endpoints must report healthy before the deployment is marked online.
+6. **Operate** – logs, traces, workflow state, and metrics become available through CLI and OTEL endpoints.
+
+<img
+  src="https://github.com/user-attachments/assets/ed4733c9-a12c-4ff6-98a8-c08a053b5519"
+  alt="Temporal UI screenshot showing workflow history for an mcp-agent deployment"
+  width="647"
+  height="467"
+/>
+
+## Execution model
+
+- **Synchronous tools** (`@app.tool`) run inline in the MCP server process and return results immediately. Use them for quick lookups or wrappers around MCP servers.
+- **Asynchronous tools** (`@app.async_tool`) enqueue a Temporal workflow and return `{workflow_id, run_id}`. Callers poll `workflows-get_status` until completion.
+- **Workflow classes** (`@app.workflow`, `@app.workflow_run`) define reusable long-running units. The platform generates the MCP tools (`workflows-<Name>-run`, `workflows-cancel`, etc.) automatically.
+- **Human input & signals** – workflows can pause on `await context.request_human_input(...)` or custom signals. Temporal keeps state durable during waits.
+- **Multi-agent orchestration** – routers, evaluator-optimizer loops, and deep orchestrator patterns are distributed across worker tasks but remain addressable through MCP tool APIs.
+
+## Security & authentication
+
+- **Bearer tokens** – default authentication mode. API keys created via `mcp-agent login` are scoped per user and can be rotated.
+- **Unauthenticated mode** – enable with `mcp-agent deploy <name> --no-auth` for public endpoints (required for ChatGPT Apps).
+- **OAuth 2.1 (preview)** – the platform’s authorization server follows the MCP OAuth specification, enabling end-to-end user authentication for enterprise scenarios. See [Authentication →](/cloud/authentication/overview).
+- **Downstream OAuth** – use `mcp_agent.config.yaml` to configure client credentials for the agent’s outbound connections (e.g., Linear MCP server). Tokens are stored via the built-in token manager (`token_store` supports in-memory and Redis backends).
+
+## Observability
+
+- **Logs** – stream with `mcp-agent cloud logger tail <identifier>`; filter by time, severity, regex; export as JSON or YAML.
+- **Traces** – enable OpenTelemetry exporters in `mcp_agent.config.yaml` or forward to your collector via `mcp-agent cloud logger configure`.
+- **Token accounting** – the runtime counts prompt+completion tokens when using supported AugmentedLLM providers.
+- **Workflow insights** – inspect status, history, and memo data via CLI (`mcp-agent cloud workflows describe`) or Temporal Web UI (coming soon to the console).
+
+## Tooling surface
+
+| Need | Command |
+| --- | --- |
+| Deploy or update | `mcp-agent deploy <name>` |
+| Configure user secrets | `mcp-agent cloud configure --id <server-url>` |
+| Manage servers | `mcp-agent cloud servers list \| describe \| delete` |
+| Monitor logs | `mcp-agent cloud logger tail <id>` |
+| Manage workflows | `mcp-agent cloud workflows list \| runs \| describe \| suspend \| resume \| cancel` |
+| Install into clients | `mcp-agent install --client <vscode\|cursor\|claude_desktop\|chatgpt> <server-url>` |
+
+## When to use mcp-agent cloud
+
+- You want **durable, resumable agents** without operating Temporal or container infrastructure yourself.
+- You need to **ship MCP servers to a broader audience** (internal marketplace, customer-facing tools, ChatGPT Apps).
+- You require **centralised observability** and **secrets management** for all deployments.
+- You are ready to **standardise on MCP** for tool integration and agent orchestration.
+
+If you need to run in regulated environments or on-premises, use the same app with your own Temporal cluster—see [Durable agents →](/mcp-agent-sdk/advanced/durable-agents).
+
+## Next steps
+
+- [Deploy your first agent →](/cloud/deployment-quickstart)
+- [Dive into the architecture →](/cloud/mcp-agent-cloud/architecture-overview)
+- [Manage secrets →](/cloud/mcp-agent-cloud/manage-secrets)
+- [Long-running tools →](/cloud/mcp-agent-cloud/long-running-tools)
+- [Use-case guides →](/cloud/use-cases/deploy-agents)

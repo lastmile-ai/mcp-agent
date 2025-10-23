@@ -1,0 +1,132 @@
+---
+title: Deploy Agents
+sidebarTitle: "Deploy Agents"
+description: "Ship full mcp-agent applications with workflows, multi-agent patterns, and Temporal durability"
+icon: robot
+---
+
+This guide focuses on deploying full `mcp-agent` applications—projects that use workflows, routers, or multi-agent orchestration. It complements the [deployment quickstart](/cloud/deployment-quickstart) with agent-specific advice and links to production-ready examples.
+
+## When to use this guide
+
+- You rely on patterns from *Building Effective Agents* (router, evaluator-optimizer, orchestrator, swarm).
+- Your workflows call external MCP servers (filesystem, fetch, bespoke services).
+- You need durability (pause/resume, human input, retries) or multiple agents collaborating.
+- You want to expose each workflow as an MCP tool for clients to orchestrate.
+
+## Example projects
+
+| Example | Highlights | Link |
+| --- | --- | --- |
+| **Temporal orchestrator** | Executes planner → researcher → writer pipeline using `@app.async_tool` | [`examples/temporal/orchestrator.py`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/temporal) |
+| **Deep orchestrator** | Hierarchical planner + executor + evaluator; heavy use of AsyncIO & Temporal tasks | [`examples/workflows/workflow_deep_orchestrator`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows/workflow_deep_orchestrator) |
+| **Evaluator-Optimizer** | Iterative loop improving an artifact until evaluation passes | [`examples/workflows/workflow_evaluator_optimizer`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows/workflow_evaluator_optimizer) |
+| **Cloud research agent** | Fetch, summarize, and persist findings; demonstrates secrets + outputs | [`examples/cloud/hello_world`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/cloud/hello_world) |
+
+Clone one of these projects to follow along, or scaffold your own with:
+
+```bash
+mcp-agent init --template factory
+```
+
+## Production-ready checklist
+
+1. **Config** – `execution_engine: temporal`, unique `temporal.task_queue`, and `mcp.servers` definitions for all external servers.
+2. **Secrets** – provider keys in `mcp_agent.secrets.yaml`, user secrets tagged `!user_secret`.
+3. **Workflows** – use `WorkflowResult` to attach metadata, `app.task` for reusable steps, and `context.logger` for progress.
+4. **Human input** – `await context.request_human_input(...)` for approvals; handle resume payloads.
+5. **Observability** – enable OTEL exporters (`otel.enabled: true`) and set `service_name` to identify your app in dashboards.
+6. **Resource cleanup** – if workflows create files or tickets, add compensating actions to `finally` blocks or use Temporal activities with retries.
+
+## Deployment workflow
+
+```bash
+# 1. Authenticate (once)
+mcp-agent login
+
+# 2. Review config & secrets
+cat mcp_agent.config.yaml
+cat mcp_agent.secrets.yaml
+
+# 3. Run locally (Temporal server or asyncio)
+uv run run_worker.py     # starts Temporal worker (see examples/temporal)
+uv run main.py           # kicks off a sample workflow
+
+# 4. Deploy
+mcp-agent deploy research-assistant \
+  --app-description "Planner+researcher+writer agent"
+
+# 5. Verify
+mcp-agent cloud servers describe research-assistant
+mcp-agent cloud workflows list research-assistant
+mcp-agent cloud logger tail research-assistant --follow
+```
+
+## Exposing multiple workflows
+
+Every workflow class becomes an MCP tool named `workflows-<ClassName>-run`. You can expose friendly entrypoints via `@app.async_tool` as well:
+
+```python
+@app.async_tool(name="draft_blog_post")
+async def draft_blog_post(topic: str, ctx: Context):
+    workflow = BlogAuthorWorkflow(context=ctx)
+    return await workflow.run_async(topic=topic)
+```
+
+Clients see both:
+
+- `draft_blog_post` – easy entrypoint returning `{workflow_id, run_id}`
+- `workflows-BlogAuthorWorkflow-run` – low-level interface
+- `workflows-get_status`, `workflows-cancel`, `workflows-list` – generated automatically
+
+Use `mcp-agent cloud workflows list` to confirm what’s exposed.
+
+## Passing data between tasks
+
+- Use Pydantic models for strong typing (`from mcp_agent.executor.workflow import WorkflowResult`).
+- Temporal memo is available via `WorkflowResult(metadata={"session": "abc"})`.
+- For large payloads, store artifacts in external systems (S3, databases) and persist references; avoid payloads that exceed Temporal history limits.
+
+## Human-in-the-loop patterns
+
+```python
+from mcp_agent.human_input.types import HumanInputRequest
+
+response = await self.context.request_human_input(
+    HumanInputRequest(
+        prompt="Approve the draft?",
+        required=True,
+        metadata={"workflow_id": self.context.workflow_id},
+    )
+)
+
+if response.content != "approve":
+    return WorkflowResult(status="rejected")
+```
+
+Users resume with:
+
+```bash
+mcp-agent cloud workflows resume research-assistant run_123 \
+  --payload '{"content": "approve"}'
+```
+
+## Observability for complex agents
+
+- Attach structured data to logs: `context.logger.info("Stage complete", data={"stage": 2})`.
+- Enable token counting: `token_counter` is automatically populated when tracing is on.
+- For long chains, consider writing high-level progress to an external store (Notion, Slack) so operators have context outside the CLI.
+
+## Cleanup & rollbacks
+
+- Redeploying with the same name updates the existing deployment with zero downtime (new containers come online before old ones are drained).
+- Use `--git-tag` to relate deployments to commits.
+- `mcp-agent cloud servers delete <id>` removes the runtime; workflows in progress are cancelled.
+- Keep old bundles locally (stored in `.mcp-agent/dist/`) for debugging.
+
+## Next steps
+
+- [Long-running tools →](/cloud/mcp-agent-cloud/long-running-tools)
+- [Observability →](/cloud/observability)
+- [ChatGPT Apps deployment →](/cloud/use-cases/deploy-chatgpt-apps) if you plan to publish to OpenAI
+- [MCP Agent SDK advanced patterns →](/mcp-agent-sdk/overview)
