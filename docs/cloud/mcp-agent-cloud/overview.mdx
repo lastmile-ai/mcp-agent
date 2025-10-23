@@ -5,13 +5,6 @@ description: "[Beta] Deploy, orchestrate, and observe MCP applications on manage
 
 `mcp-agent cloud` is a fully managed runtime for MCP applications—whether that is a full `mcp-agent` workflow, a FastMCP server, or a custom ChatGPT App backend. You write agents using the same decorators you use locally—`@app.tool`, `@app.async_tool`, `@app.workflow`—and deploy them with a single CLI command. The platform bundles your code, provisions containerized MCP servers, executes workflows on Temporal, secures secrets, and streams telemetry to your dashboard or OTEL backend.
 
-<img
-  src="https://github.com/user-attachments/assets/a6f5dacd-e11c-4121-b144-8d54b5dd8a2d"
-  alt="mcp-agent cloud infrastructure diagram showing Temporal cluster, edge, and container instances"
-  width="721"
-  height="758"
-/>
-
 ## Key capabilities
 
 - **Agents as MCP servers** – every `MCPApp` is exposed as an MCP server with standard transports (SSE + streamable HTTP). Tools, resources, and prompts remain discoverable via the MCP APIs.
@@ -31,13 +24,6 @@ description: "[Beta] Deploy, orchestrate, and observe MCP applications on manage
 | **Temporal cluster** | Durable execution for workflows. Runs inside an internal multi-role Temporal deployment with service discovery and auth proxies. |
 | **Edge + observability** | Edge services expose HTTPS + SSE endpoints, enforce auth, forward telemetry to OTEL, and provide log streaming (`mcp-agent cloud logger tail`). |
 
-<img
-  src="https://github.com/user-attachments/assets/dcb9638c-0da2-4920-bb93-4fb59c92ca06"
-  alt="Screenshot showing agents exposed as MCP servers with workflows, tools, and resources"
-  width="593"
-  height="406"
-/>
-
 ## Deployment lifecycle
 
 1. **Bundle** – the CLI snapshots your directory, applying `.mcpacignore` and generating `mcp_agent.deployed.secrets.yaml`.
@@ -47,12 +33,6 @@ description: "[Beta] Deploy, orchestrate, and observe MCP applications on manage
 5. **Health gate** – Temporal workers and MCP endpoints must report healthy before the deployment is marked online.
 6. **Operate** – logs, traces, workflow state, and metrics become available through CLI and OTEL endpoints.
 
-<img
-  src="https://github.com/user-attachments/assets/ed4733c9-a12c-4ff6-98a8-c08a053b5519"
-  alt="Temporal UI screenshot showing workflow history for an mcp-agent deployment"
-  width="647"
-  height="467"
-/>
 
 ## Execution model
 
