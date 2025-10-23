@@ -4,7 +4,22 @@ description: "Adaptive research workflows with knowledge extraction and policy c
 icon: magnifying-glass
 ---
 
-![Deep orchestrator dashboard](https://github.com/user-attachments/assets/d69b81e0-0a04-40ef-912d-5516cf7c7ce8)
+```mermaid
+flowchart TB
+    A[User Objective] --> B[Create Plan]
+    B --> C{Execute Tasks}
+    C --> D[Extract Knowledge]
+    D --> E{Objective Complete?}
+    E -->|Yes| G[Synthesize Results]
+    E -->|No| F{Check Policy}
+    F -->|Replan| B
+    F -->|Continue| C
+    F -->|Stop| G
+
+    style B fill:#e1f5fe
+    style D fill:#fff3e0
+    style G fill:#e8f5e9
+```
 
 ## When to use it
 
@@ -23,6 +38,68 @@ icon: magnifying-glass
 - **Budgeting** – [`SimpleBudget`](https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/workflows/deep_orchestrator/budget.py) tracks tokens, cost, and elapsed time.
 - **Agent factory & cache** – dynamically spins up agents tailored to a task and caches them for reuse.
 - **Temporal-ready** – built to run on `execution_engine: temporal`, with queue state and knowledge stored so runs can pause, resume, or replay.
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant DeepOrchestrator
+    participant Planner
+    participant TodoQueue
+    participant PolicyEngine
+    participant AgentDesigner
+    participant TaskAgent
+    participant KnowledgeExtractor
+    participant WorkspaceMemory
+    participant Budget
+
+    User->>DeepOrchestrator: Provide objective
+    DeepOrchestrator->>Budget: Initialize budgets
+    DeepOrchestrator->>WorkspaceMemory: Setup workspace
+
+    rect rgb(240, 240, 255)
+        Note over DeepOrchestrator, Planner: Planning Phase
+        DeepOrchestrator->>Planner: Create comprehensive plan
+        Planner->>WorkspaceMemory: Retrieve relevant knowledge
+        Planner->>DeepOrchestrator: Return plan with steps & tasks
+        DeepOrchestrator->>TodoQueue: Load plan with deduplication
+    end
+
+    loop Execution Loop
+        DeepOrchestrator->>PolicyEngine: Decide action
+        DeepOrchestrator->>Budget: Check usage
+
+        alt Continue
+            DeepOrchestrator->>TodoQueue: Get next step
+            par Parallel tasks
+                DeepOrchestrator->>AgentDesigner: Design task agent
+                AgentDesigner->>DeepOrchestrator: Agent blueprint
+                DeepOrchestrator->>TaskAgent: Execute with context
+                TaskAgent->>WorkspaceMemory: Access artifacts
+                TaskAgent->>DeepOrchestrator: Return result
+            and Knowledge extraction
+                DeepOrchestrator->>KnowledgeExtractor: Extract insights
+                KnowledgeExtractor->>WorkspaceMemory: Persist knowledge
+            end
+            DeepOrchestrator->>TodoQueue: Mark step complete
+            DeepOrchestrator->>Budget: Update totals
+        else Replan
+            DeepOrchestrator->>Planner: Generate new plan
+            Planner->>WorkspaceMemory: Fetch accumulated knowledge
+            Planner->>DeepOrchestrator: Adapted plan
+            DeepOrchestrator->>TodoQueue: Merge plan
+        else Force complete
+            Note over DeepOrchestrator: Exit due to budget/policy
+        end
+        DeepOrchestrator->>DeepOrchestrator: Verify objective
+    end
+
+    rect rgb(240, 255, 240)
+        Note over DeepOrchestrator, WorkspaceMemory: Synthesis Phase
+        DeepOrchestrator->>WorkspaceMemory: Gather results & knowledge
+        DeepOrchestrator->>DeepOrchestrator: Compose final synthesis
+        DeepOrchestrator->>User: Deliver final report
+    end
+```
 
 ## Quick start
 

@@ -5,12 +5,76 @@ description: "Test MCP server compatibility and functionality"
 icon: server
 ---
 
-Test your MCP servers for compatibility and functionality.
+Server evaluations connect your MCP implementation to a reference agent and verify that tools behave correctly, error handling works, and performance stays within limits. Run them whether your server powers an mcp-agent workflow or an external client.
 
-<Card
-  title="MCP Server Evaluation Guide"
-  icon="arrow-up-right-from-square"
-  href="https://mcp-eval.ai/server-evaluation"
->
-  Learn how to evaluate MCP servers
-</Card>
+<Info>
+  Treat each tool as an API contract. Evaluations catch schema drift, unexpected latencies, and regressions in derived content before they reach users.
+</Info>
+
+<Tip>
+  The full server guide lives at <a href="https://mcp-eval.ai/server-evaluation">mcp-eval.ai/server-evaluation</a>, with deeper dives on datasets, assertions, and debugging techniques.
+</Tip>
+
+## Connect the server under test
+
+Register the server exactly the way your agent launches it—stdio, SSE, Docker, or remote URL:
+
+```bash
+mcp-eval server add \
+  --name fetch \
+  --transport stdio \
+  --command "uv" "run" "python" "-m" "mcp_servers.fetch"
+```
+
+When you expose a suite of servers through `MCPAggregator`, evaluate both the aggregated view and the underlying servers. That ensures namespacing and tool discovery keep working when you refactor.
+
+## Baseline assertions
+
+- **Correctness**: validate the content returned to the agent (`Expect.content.contains`, `Expect.tools.output_matches`)
+- **Tool usage**: make sure the tool you expect is the one that fired (`Expect.tools.was_called`, `Expect.tools.sequence`)
+- **Performance**: guard against regressions in latency or excessive retries (`Expect.performance.response_time_under`, `Expect.performance.max_iterations`)
+- **Quality**: enlist LLM judges when outputs are qualitative (`Expect.judge.llm`, `Expect.judge.multi_criteria`)
+
+```python fetch_server_test.py
+from mcp_eval import Expect, task
+
+@task("Fetch server returns HTML summary")
+async def test_fetch_tool(agent, session):
+    response = await agent.generate_str(
+        "Use the fetch tool to read https://httpbin.org/html and summarize the page."
+    )
+
+    await session.assert_that(Expect.tools.was_called("fetch"))
+    await session.assert_that(
+        Expect.tools.output_matches("fetch", {"isError": False}, match_type="partial")
+    )
+    await session.assert_that(
+        Expect.content.contains("httpbin", case_sensitive=False), response=response
+    )
+    await session.assert_that(
+        Expect.judge.llm(
+            "Summary should mention the simple HTML demonstration page", min_score=0.8
+        ),
+        response=response,
+    )
+```
+
+## Encode golden paths and limits
+
+`Expect.path.efficiency` and `Expect.tools.sequence` let you capture the ideal execution path. This is especially useful for servers that proxy other systems (databases, file systems, SaaS APIs) where unnecessary retries are costly.
+
+```python golden_path.py
+await session.assert_that(
+    Expect.path.efficiency(
+        expected_tool_sequence=["fetch"],
+        allow_extra_steps=1,
+        tool_usage_limits={"fetch": 1},
+    )
+)
+```
+
+## Inspect artifacts
+
+- Per-test JSON plus OpenTelemetry `.jsonl` traces show detailed timings and tool payloads (`./test-reports` by default)
+- HTML and Markdown summaries are ready for CI upload or PR comments
+- Combine with mcp-agent tracing to correlate server-side telemetry with agent orchestration

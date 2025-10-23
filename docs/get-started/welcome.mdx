@@ -1,5 +1,5 @@
 ---
-title: "Welcome to mcp-agent!"
+title: "Welcome to mcp-agent"
 sidebarTitle: "Welcome"
 description: Build effective agents with Model Context Protocol using simple, composable patterns.
 icon: hand-wave
@@ -12,18 +12,24 @@ icon: hand-wave
   className="rounded-2xl block"
 />
 
-**mcp-agent is a simple, composable framework to build agents using [Model Context Protocol](https://modelcontextprotocol.io/introduction).**
+**mcp-agent** is your pattern library for [Model Context Protocol](https://modelcontextprotocol.io/introduction) agents. It pairs Anthropic's [Building Effective Agents](https://www.anthropic.com/research/building-effective-agents) patterns with a batteries-included runtime so you can focus on agent behavior—not wiring.
 
-Anthropic announced 2 foundational updates for AI application developers:
+## Why teams pick mcp-agent
 
-1. [Model Context Protocol](https://www.anthropic.com/news/model-context-protocol) - a standardized interface to let any software be accessible to AI assistants via MCP servers.
-2. [Building Effective Agents](https://www.anthropic.com/research/building-effective-agents) - a seminal writeup on simple, composable patterns for building production-ready AI agents.
-
-`mcp-agent` puts these two foundational pieces into an AI application framework:
-
-1. It handles the pesky business of managing the lifecycle of MCP server connections so you don't have to.
-2. It implements every pattern described in Building Effective Agents, and does so in a _composable_ way, allowing you to chain these patterns together.
-3. **Bonus**: It implements [OpenAI's Swarm](https://github.com/openai/swarm) pattern for multi-agent orchestration, but in a model-agnostic way.
+<CardGroup cols={2}>
+  <Card title="Composable patterns" icon="puzzle-piece">
+    Parallel, router, planner, evaluator—every pattern from Anthropic's guide (plus OpenAI Swarm-style handoffs) ships as a first-class workflow.
+  </Card>
+  <Card title="MCP-native" icon="plug">
+    Works with any MCP server. Drop in the filesystem, fetch, Slack, Jira, or your own FastMCP servers and start calling tools immediately.
+  </Card>
+  <Card title="Production ready" icon="shield">
+    Durable execution with Temporal, structured logging, token accounting, observability hooks, and cloud deployment via the CLI.
+  </Card>
+  <Card title="Lightweight & Pythonic" icon="feather">
+    Define an agent with a few lines of Python—mcp-agent handles the lifecycle, connections, and MCP server wiring for you.
+  </Card>
+</CardGroup>
 
 ```python {1}
 import asyncio
@@ -31,71 +37,59 @@ from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 
-app = MCPApp(name="example_agent")
+app = MCPApp(name="researcher")
 
 async def main():
-    async with app.run() as mcp_agent_app:
-        # Create agent with MCP server access
+    async with app.run() as session:
         agent = Agent(
             name="researcher",
-            instruction="Research topics using available tools",
-            server_names=["fetch", "filesystem"]
+            instruction="Use available tools to gather concise answers.",
+            server_names=["fetch", "filesystem"],
         )
 
         async with agent:
-            # Attach LLM for interaction
             llm = await agent.attach_llm(OpenAIAugmentedLLM)
-
-            # Agent can now use MCP server tools
-            result = await llm.generate_str("Research quantum computing")
-            print(result)
+            report = await llm.generate_str("Summarize the latest MCP news")
+            print(report)
 
 if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-## Beyond Basic Agents
+## Start building
 
-mcp-agent is the simplest and easiest way to build robust agent applications. Much like MCP, this project is in early development.
+<CardGroup cols={2}>
+  <Card
+    title="Install the toolkit"
+    icon="arrow-down-to-line"
+    href="/get-started/install"
+  >
+    Set up Python, optional MCP servers, and run the `mcp-agent` CLI with `uvx`.
+  </Card>
+  <Card
+    title="Hello world in minutes"
+    icon="rocket-launch"
+    href="/get-started/quickstart"
+  >
+    Scaffold an agent with `uvx mcp-agent init` and run it locally.
+  </Card>
+  <Card
+    title="Deploy to the cloud"
+    icon="cloud"
+    href="/get-started/deploy-to-cloud"
+  >
+    Use `uvx mcp-agent deploy` to host your agent as a managed MCP server.
+  </Card>
+  <Card
+    title="Explore the patterns"
+    icon="diagram-project"
+    href="/mcp-agent-sdk/effective-patterns/overview"
+  >
+    Learn how to combine planner, router, evaluator, and more.
+  </Card>
+</CardGroup>
 
-## Key Features
-
-mcp-agent handles the complex orchestration details so you can focus on building. In most cases, defining an agent and its instructions is all you need — mcp-agent handles the rest.
-
-🚀 **Simple & Composable**: Build complex workflows by chaining simple patterns
-
-🔌 **MCP-Native**: Works seamlessly with any MCP server
-
-🎯 **Pattern Library**: Implements all patterns from Anthropic's Building Effective Agents
-
-🤖 **Multi-Agent**: Support for agent collaboration and handoffs
-
-⚡ **Durable Execution**: Built-in support for long-running workflows with Temporal
-
-🔍 **Complete**: Everything for production — authentication, observability, deployment tools, and more
-
-## What is MCP?
-
-The Model Context Protocol lets you build servers that expose data and functionality to LLM applications in a secure, standardized way. It provides a uniform way to connect LLMs to resources they can use. MCP servers can:
-
-- Expose functionality through `Tools` (execute code or produce side effects)
-- Expose data through `Resources` (load information into the LLM's context)
-- Define interaction patterns through `Prompts` (reusable templates for LLM interactions)
-- And more!
-
-mcp-agent provides a high-level, Pythonic interface for building agents that leverage these MCP servers.
-
-## Why mcp-agent?
-
-There are too many AI frameworks out there already. But `mcp-agent` is the only one that is purpose-built for a shared protocol - [MCP](https://modelcontextprotocol.io/introduction). It is also the most lightweight, and is closer to an agent pattern library than a framework.
-
-As [more services become MCP-aware](https://github.com/punkpeye/awesome-mcp-servers), you can use mcp-agent to build robust and controllable AI agents that can leverage those services out-of-the-box.
-
-<Info>
-  mcp-agent provides the shortest path from idea to production. Deploy locally, to mcp-agent cloud, or to your own infrastructure.
-</Info>
-
-## Next Steps
+Want to go deeper? Browse [Core Components](/mcp-agent-sdk/overview) for API details or jump to [MCP Servers](/mcp-agent-sdk/mcp/overview) to see how FastMCP integrates with agents.
 
 <CardGroup cols={2}>
   <Card

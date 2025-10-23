@@ -125,7 +125,6 @@
           {
             "group": "Test and Evaluate",
             "pages": [
-              "test-evaluate/overview",
               "test-evaluate/mcp-eval",
               "test-evaluate/agent-evaluation",
               "test-evaluate/server-evaluation"
@@ -134,6 +133,7 @@
           {
             "group": "Reference",
             "pages": [
+              "reference/configuration",
               "reference/cli",
               "reference/decorators"
             ]

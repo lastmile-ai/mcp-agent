@@ -1,23 +1,129 @@
 ---
-title: Logging
+title: "Logging"
 sidebarTitle: "Logging"
-description: "Configure structured logging for your agents"
+description: "Configure structured logging pipelines for mcp-agent"
 icon: file-lines
 ---
 
-<Info>
-Content to be migrated from monitoring.mdx and configuration.mdx logging sections.
-</Info>
+mcp-agent ships with a structured logger that captures context-rich events from apps, workflows, agents, and Temporal workers. Logs are automatically correlated with traces and forwarded to MCP clients using the [Model Context Protocol logging utility](https://modelcontextprotocol.io/specification/2025-06-18/server/utilities/logging).
 
-## Overview
+## Logger entry points
 
-mcp-agent provides structured logging with multiple transport options.
+- `app.logger` – application-scoped logger, ideal for tools and startup messages.
+- `context.logger` – request-specific logger with access to the active session, token counter, and upstream MCP connection.
+- `agent.logger` – automatically bound when you call `async with agent:`; perfect for per-agent instrumentation.
+
+```python
+from mcp_agent.app import MCPApp
+
+app = MCPApp(name="logging_example")
+
+@app.async_tool
+async def summarize(text: str) -> str:
+    logger = app.logger
+    logger.info("summarize.start", data={"characters": len(text)})
+
+    async with app.run() as running_app:
+        context_logger = running_app.context.logger
+        context_logger.debug("summarize.inflight", data={"preview": text[:30]})
+        # ...
+        result = text.upper()
+
+    logger.info("summarize.done", data={"preview": result[:30]})
+    return result
+```
+
+Each call emits an `Event` that can be routed to multiple transports. Span IDs and workflow IDs are injected automatically when tracing is enabled.
+
+## Configure transports and levels
+
+The `logger` section in `mcp_agent.config.yaml` controls transports, batching, and formatting:
 
 ```yaml
 logger:
-  transports: [console, file]
-  level: info
+  transports: [console, file]   # also supports http, none
+  level: info                   # debug | info | warning | error
+  progress_display: true
   path: "logs/mcp-agent.jsonl"
+  path_settings:
+    path_pattern: "logs/mcp-agent-{session_id}.jsonl"
+    unique_id: "session_id"     # or "timestamp"
+  batch_size: 100
+  flush_interval: 2.0
+
+  # HTTP transport (optional)
+  http_endpoint: "https://logging.example.com/events"
+  http_headers:
+    Authorization: "Bearer ${LOGGING_TOKEN}"
+  http_timeout: 5.0
 ```
 
-[See Configuration Reference →](/reference/configuration)
+| Transport | Description |
+| --- | --- |
+| `console` | Rich-formatted output to stdout (colours, nested JSON blocks). |
+| `file` | JSON Lines file writer with optional timestamp/session-based file rotation. |
+| `http` | Batch POST events to an HTTP endpoint (Elasticsearch, Datadog intake, etc.). |
+| `none` | Disable external transports (events still flow through the async event bus). |
+
+## Structured events
+
+Logs accept a `message` plus an optional `data` payload. The payload is serialised as JSON and preserved end-to-end:
+
+```python
+logger.info(
+    "plan.generated",
+    data={
+        "steps": len(plan.steps),
+        "agents": [task.agent for step in plan.steps for task in step.tasks],
+    },
+)
+```
+
+Sample JSON from the file transport:
+
+```json
+{
+  "level": "INFO",
+  "timestamp": "2025-01-18T02:41:09Z",
+  "namespace": "logging_example.plan.generated",
+  "message": "plan.generated",
+  "data": {
+    "steps": 3,
+    "agents": ["finder", "proofreader", "editor"]
+  },
+  "trace": {
+    "trace_id": "5f26e2c4f29be3280c7b52fb93db8550",
+    "span_id": "84647445abd6213e"
+  }
+}
+```
+
+Because trace IDs are present, you can pivot between logs and OpenTelemetry spans in Jaeger/Tempo with a single click.
+
+## MCP logging to upstream clients
+
+When your app runs as an MCP server, the logger automatically forwards events to connected clients using the MCP logging channel. MCP-compatible tools (Claude Desktop, Cursor, etc.) will display your messages in their native consoles.
+
+```python
+# Inside a workflow or tool
+context_logger.info(
+    "human.approval.requested",
+    data={"workflow_id": self.id, "run_id": self.run_id},
+)
+```
+
+For long-running Temporal workflows, the logger falls back to a special activity (`mcp_forward_log`) so events appear in the client even while the workflow is suspended.
+
+## Tips for production setups
+
+- Pair logging with tracing (`otel.enabled: true`) so every event carries span metadata.
+- Use `progress_display: true` when running CLI tools to get live status bars for long flows.
+- Tune `batch_size`/`flush_interval` for high-volume agents; the defaults (100 events / 2 seconds) work well for most workloads.
+- HTTP transports can carry filters—attach an `EventFilter` if you only want to forward warnings and errors.
+
+## Reference implementations
+
+- [`examples/tracing/agent`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/tracing/agent) – shows log + trace correlation and human input callbacks.
+- [`examples/tracing/mcp`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/tracing/mcp) – demonstrates MCP logging surfaced inside a connected client.
+- [`examples/mcp_agent_server/temporal`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp_agent_server/temporal) – Temporal workflow logs, approvals, and nested MCP servers.
+- [`examples/temporal`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/temporal) – durable workflows emitting structured log events alongside spans.

@@ -1,7 +1,7 @@
 ---
 title: Installation
 sidebarTitle: "Install"
-description: "Learn how to install mcp-agent and set up your development environment."
+description: "Set up mcp-agent, the CLI, and optional provider extras."
 icon: arrow-down-to-line
 ---
 
@@ -9,46 +9,47 @@ icon: arrow-down-to-line
 
 <CardGroup cols={2}>
   <Card title="Python 3.10+" icon="python">
-    mcp-agent requires Python 3.10 or higher
+    mcp-agent targets Python 3.10 or newer.
   </Card>
-  <Card title="Node.js" icon="node-js">
-    Required for some MCP servers like filesystem (optional)
+  <Card title="Node.js (optional)" icon="node-js">
+    Some MCP servers (e.g. filesystem) are distributed via npm and require Node.js.
   </Card>
 </CardGroup>
 
-## Install mcp-agent
+## Install the CLI with `uvx`
 
-We recommend using [uv](https://docs.astral.sh/uv/getting-started/installation/) to install and manage mcp-agent.
+Run `mcp-agent` commands without a global install by using [`uvx`](https://docs.astral.sh/uv/reference/cli/#uvx):
 
-If you plan to use mcp-agent in your project, you can add it as a dependency with:
+```bash
+uvx mcp-agent --version
+```
+
+The first run downloads the package into uv's cache; subsequent runs are instant. Whenever you see a command such as `uvx mcp-agent deploy …`, you can paste it directly into your terminal. If you prefer a persistent install, `pip install mcp-agent` still works—but `uvx` keeps things simple.
+
+## Add mcp-agent to your project
+
+Inside your project directory, add mcp-agent as a dependency. Using uv:
 
 ```bash
 uv add mcp-agent
 ```
 
-Alternatively, you can install it directly with `pip` or `uv pip`:
+Or with pip:
 
-<CodeGroup>
-```bash uv
-uv pip install mcp-agent
-```
-
-```bash pip
+```bash
 pip install mcp-agent
 ```
-</CodeGroup>
 
-## Install Model Provider Dependencies
+`uv add` writes to `pyproject.toml` and `uv.lock`, which the project templates (`uvx mcp-agent init …`) expect.
 
-mcp-agent supports multiple LLM providers. Choose your preferred provider:
+### Provider extras
+
+mcp-agent includes optional extras for different LLM providers. Install the ones you need:
 
 <AccordionGroup>
   <Accordion title="OpenAI">
     ```bash
-    # With uv
     uv add "mcp-agent[openai]"
-
-    # With pip
     pip install "mcp-agent[openai]"
     ```
 
@@ -56,16 +57,9 @@ mcp-agent supports multiple LLM providers. Choose your preferred provider:
 
   <Accordion title="Anthropic">
     ```bash
-    # With uv
     uv add "mcp-agent[anthropic]"
-
-    # Use Anthropic's Claude models via Amazon Bedrock
     uv add "mcp-agent[anthropic_bedrock]"
-
-    # Use Anthropic's Claude models via Google's Vertex AI
     uv add "mcp-agent[anthropic_vertex]"
-
-    # With pip
     pip install "mcp-agent[anthropic]"
     ```
 
@@ -73,10 +67,7 @@ mcp-agent supports multiple LLM providers. Choose your preferred provider:
 
   <Accordion title="Azure OpenAI">
     ```bash
-    # With uv
     uv add "mcp-agent[azure]"
-
-    # With pip
     pip install "mcp-agent[azure]"
     ```
 
@@ -84,10 +75,7 @@ mcp-agent supports multiple LLM providers. Choose your preferred provider:
 
   <Accordion title="AWS Bedrock">
     ```bash
-    # With uv
     uv add "mcp-agent[bedrock]"
-
-    # With pip
     pip install "mcp-agent[bedrock]"
     ```
 
@@ -95,31 +83,24 @@ mcp-agent supports multiple LLM providers. Choose your preferred provider:
 
   <Accordion title="Google Gemini">
     ```bash
-    # With uv
     uv add "mcp-agent[google]"
-
-    # With pip
     pip install "mcp-agent[google]"
     ```
 
   </Accordion>
 
   <Accordion title="All Providers">
-    You can also install dependencies for multiple providers. For example:
     ```bash
-    # With uv
     uv add "mcp-agent[openai,anthropic,azure,bedrock,google]"
-
-    # With pip
     pip install "mcp-agent[openai,anthropic,azure,bedrock,google]"
     ```
 
   </Accordion>
 </AccordionGroup>
 
-## Install MCP Servers
+## Install MCP servers (optional)
 
-mcp-agent works with MCP servers that provide tools, resources, and other capabilities.
+mcp-agent works with any MCP server. Install the ones you need:
 
 <CardGroup cols={2}>
   <Card
@@ -156,103 +137,39 @@ mcp-agent works with MCP servers that provide tools, resources, and other capabi
 </CardGroup>
 
 <Info>
-  For more MCP servers, check out the [Awesome MCP
-  Servers](https://github.com/punkpeye/awesome-mcp-servers) repository.
+  For more MCP servers, check out the [Awesome MCP Servers](https://github.com/punkpeye/awesome-mcp-servers) repository.
 </Info>
 
-## Verify Installation
-
-Create a simple test file to verify your installation:
-
-<CodeGroup>
-
-```python test_mcp_agent.py
-import asyncio
-from mcp_agent.app import MCPApp
-
-async def test_installation():
-  app = MCPApp(name="test_app")
-
-  async with app.run() as mcp_agent_app:
-    logger = mcp_agent_app.logger
-    logger.info("mcp-agent installed successfully!")
-    print("✅ mcp-agent is working!")
-
-if __name__ == "__main__":
-asyncio.run(test_installation())
-
-```
-
-</CodeGroup>
-
-Run the test:
-
-```bash
-python test_mcp_agent.py
-```
-
-<Check>
-  You should see output confirming that mcp-agent is working correctly.
-</Check>
-
-## Development Setup
+## Verify your setup
 
 <Steps>
-  <Step title="Clone the Repository">
+  <Step title="Create a project folder">
     ```bash
-    git clone https://github.com/lastmile-ai/mcp-agent.git
-    cd mcp-agent
+    mkdir mcp-agent-playground
+    cd mcp-agent-playground
     ```
   </Step>
-  
-  <Step title="Install Dependencies">
-    ```bash
-    # Sync project dependencies
-    uv sync --all-extras
-    ```
 
+  <Step title="Install dependencies">
+    ```bash
+    uv init
+    uv add mcp-agent
+    ```
   </Step>
-  
-  <Step title="Run Examples">
+
+  <Step title="Smoke test">
     ```bash
-    # Navigate to any example
-    cd examples/basic/mcp_basic_agent
-
-    # Copy and configure secrets
-    cp mcp_agent.secrets.yaml.example mcp_agent.secrets.yaml
-    # Edit mcp_agent.secrets.yaml with your API keys
-
-    # Run the example
-    uv run main.py
+    uv run python -c "import mcp_agent; print(mcp_agent.__version__)"
     ```
-
   </Step>
 </Steps>
 
-## Troubleshooting
+<Tip>
+  Refer to the [CLI reference](/reference/cli) for the complete command list, then head to the [Quickstart](/get-started/quickstart) to scaffold a project with `uvx mcp-agent init`.
+</Tip>
 
-<AccordionGroup>
-  <Accordion title="Python Version Issues">
-    mcp-agent requires Python 3.10+. Check your Python version:
+## Next steps
 
-    ```bash
-    python --version
-    ```
-
-    If you need to install a newer Python version, consider using [pyenv](https://github.com/pyenv/pyenv):
-
-    ```bash
-    # Install pyenv (macOS)
-    brew install pyenv
-
-    # Install Python 3.11
-    pyenv install 3.11.0
-    pyenv global 3.11.0
-    ```
-
-  </Accordion>
-</AccordionGroup>
-
-<Card title="Next Steps" icon="arrow-right" href="/get-started/quickstart">
-  Now that you have mcp-agent installed, let's create your first agent!
-</Card>
+- [Quickstart](/get-started/quickstart) – create a finder agent and run it locally.
+- [Deploy to Cloud](/get-started/deploy-to-cloud) – publish your agent with `uvx mcp-agent deploy`.
+- [MCP Servers](/mcp-agent-sdk/mcp/overview) – learn how FastMCP and other servers plug into your agents.

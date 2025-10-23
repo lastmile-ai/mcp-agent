@@ -1,99 +1,78 @@
 ---
 title: Deploy to Cloud
 sidebarTitle: "Deploy to Cloud"
-description: "Deploy your agent to mcp-agent cloud in minutes"
+description: "Publish your agent to mcp-agent Cloud with the CLI."
 icon: cloud
 ---
 
 <Info>
-  mcp-agent cloud is currently in open beta. For feedback, issues and feature requests, visit our [github issues](https://github.com/lastmile-ai/mcp-agent/issues) or join [our Discord](https://lmai.link/discord/mcp-agent).
+  mcp-agent Cloud is in open beta. Share feedback via [GitHub issues](https://github.com/lastmile-ai/mcp-agent/issues) or [Discord](https://lmai.link/discord/mcp-agent).
 </Info>
 
-## Quick Deploy
+## TL;DR – three commands
 
-Deploy your agent to the cloud with a single command:
+```bash
+uvx mcp-agent login
+uvx mcp-agent deploy my-agent
+uvx mcp-agent cloud servers list
+uvx mcp-agent cloud servers describe my-agent
+```
 
-<Steps>
-  <Step title="Install mcp-agent CLI">
-    ```bash
-    # Using uv (recommended)
-    uv tool install mcp-agent
+1. `login` stores your API token locally.
+2. `deploy` packages the current directory and uploads it.
+3. `cloud servers list` shows every deployment you have access to.
+4. `cloud servers describe` confirms the deployment URL and secret policy.
 
-    # Or using pip
-    pip install mcp-agent
-    ```
-  </Step>
+## 1. Authenticate
 
-  <Step title="Log in to mcp-agent cloud">
-    ```bash
-    mcp-agent login
-    ```
+```bash
+uvx mcp-agent login
+```
 
-    This will direct you to the API keys page for obtaining credentials.
-  </Step>
+The CLI opens the Cloud dashboard so you can generate an API token. Credentials are stored under `~/.mcp-agent/`.
 
-  <Step title="Deploy your agent">
-    ```bash
-    mcp-agent deploy my-agent
-    ```
+## 2. Deploy
 
-    Your agent will be deployed and accessible as an MCP server at:
-    ```
-    https://deployments.mcp-agent.com/servers/my-agent
-    ```
-  </Step>
-</Steps>
+From the directory containing your `mcp_agent.config.yaml` (or pass `--config-dir`):
 
-## What Gets Deployed?
+```bash
+uvx mcp-agent deploy my-agent
+```
 
-When you deploy an agent, mcp-agent cloud:
+During deployment you'll classify secrets as **deployment** (stored securely) or **user** (provided later via `mcp-agent cloud configure`). Use `--dry-run` to validate without uploading or `--non-interactive` for CI.
 
-<CardGroup cols={2}>
-  <Card title="Hosts Your Agent" icon="server">
-    Your agent runs on managed infrastructure with automatic scaling
-  </Card>
-  <Card title="Exposes MCP Server" icon="plug">
-    Your agent becomes an MCP server that any client can connect to
-  </Card>
-  <Card title="Manages Secrets" icon="key">
-    API keys and secrets are securely stored and injected
-  </Card>
-  <Card title="Runs Workflows" icon="diagram-project">
-    Long-running workflows are powered by Temporal for durability
-  </Card>
-</CardGroup>
+<CodeGroup>
+```bash basic
+directory/
+├── main.py
+├── mcp_agent.config.yaml
+└── mcp_agent.secrets.yaml
+```
+```bash deploy
+uvx mcp-agent deploy my-agent --dry-run
+```
+</CodeGroup>
 
-## Using Your Deployed Agent
+After a successful deploy you'll receive an endpoint like:
 
-Once deployed, your agent can be used by any MCP client:
+```
+https://deployments.mcp-agent.com/servers/my-agent
+```
+
+## 3. Connect from clients
+
+Your cloud deployment is a standard MCP server. Use any MCP client:
 
 <Tabs>
   <Tab title="Claude Desktop">
-    Configure the agent first:
     ```bash
-    mcp-agent cloud configure --id https://deployments.mcp-agent.com/servers/my-agent
+    uvx mcp-agent cloud configure --id https://deployments.mcp-agent.com/servers/my-agent
     ```
 
-    Then add to `~/.claude-desktop/config.json`:
-    ```json
-    {
-      "servers": {
-        "my-agent": {
-          "command": "npx",
-          "args": [
-            "-y",
-            "mcp-remote",
-            "https://deployments.mcp-agent.com/servers/my-agent/sse",
-            "--header",
-            "Authorization: Bearer YOUR_API_KEY"
-          ]
-        }
-      }
-    }
-    ```
+    This command writes a ready-to-paste entry for `~/.claude-desktop/config.json` including the SSE URL and headers.
   </Tab>
 
-  <Tab title="Python Client">
+  <Tab title="Python">
     ```python
     from mcp_agent.mcp.gen_client import gen_client
 
@@ -101,54 +80,37 @@ Once deployed, your agent can be used by any MCP client:
         async with gen_client(
             "https://deployments.mcp-agent.com/servers/my-agent"
         ) as client:
-            result = await client.call_tool(
-                "my_tool",
-                arguments={"param": "value"}
-            )
+            result = await client.call_tool("my_tool", {"param": "value"})
             print(result)
     ```
   </Tab>
 </Tabs>
 
-## Monitor Your Deployment
+## Monitor & manage
 
 <Tabs>
-  <Tab title="View Logs">
+  <Tab title="Logs">
     ```bash
-    # Tail logs in real-time
-    mcp-agent cloud logger tail my-agent --follow
-
-    # Filter for errors
-    mcp-agent cloud logger tail my-agent --grep "ERROR" --since 5m
+    uvx mcp-agent cloud logger tail my-agent --follow
+    uvx mcp-agent cloud logger tail my-agent --grep "ERROR" --since 5m
     ```
   </Tab>
-
-  <Tab title="List Servers">
+  <Tab title="Servers">
     ```bash
-    # List all deployed servers
-    mcp-agent cloud servers list
-
-    # Get details for a specific server
-    mcp-agent cloud servers describe my-agent
+    uvx mcp-agent cloud servers list
+    uvx mcp-agent cloud servers describe my-agent
     ```
   </Tab>
-
-  <Tab title="Manage Workflows">
+  <Tab title="Workflows">
     ```bash
-    # List workflow runs
-    mcp-agent cloud servers workflows my-agent
-
-    # Get workflow status
-    mcp-agent cloud workflows describe my-agent run_123
+    uvx mcp-agent cloud workflows list
+    uvx mcp-agent cloud workflows describe my-agent run_123
     ```
   </Tab>
 </Tabs>
 
-## Example: Deploy a Web Summarizer
+## Example: web summarizer workflow
 
-Here's a complete example of creating and deploying an agent:
-
-<CodeGroup>
 ```python main.py
 import asyncio
 from mcp_agent.app import MCPApp
@@ -160,14 +122,12 @@ app = MCPApp(name="web_summarizer")
 
 @app.workflow
 class WebSummarizerWorkflow(Workflow[str]):
-    """Fetches and summarizes web content."""
-
     @app.workflow_run
     async def run(self, url: str) -> WorkflowResult[str]:
         agent = Agent(
             name="summarizer",
             instruction="Fetch and summarize web content concisely.",
-            server_names=["fetch"]
+            server_names=["fetch"],
         )
 
         async with agent:
@@ -199,51 +159,14 @@ openai:
   default_model: gpt-4o
 ```
 
-```yaml mcp_agent.secrets.yaml
-openai:
-  api_key: "sk-..."
-```
-</CodeGroup>
-
-Deploy it:
+Deploy with:
 
 ```bash
-mcp-agent deploy web-summarizer
+uvx mcp-agent deploy web-summarizer
 ```
 
-<Check>
-  Your agent is now live and can be accessed by any MCP client!
-</Check>
+## Learn more
 
-## Next Steps
-
-<CardGroup cols={2}>
-  <Card
-    title="Deployment Guide"
-    icon="book"
-    href="/deployment/deployment-quickstart"
-  >
-    Complete deployment documentation
-  </Card>
-  <Card
-    title="mcp-agent Cloud"
-    icon="cloud"
-    href="/deployment/mcp-agent-cloud/overview"
-  >
-    Learn about the cloud architecture
-  </Card>
-  <Card
-    title="Durable Agents"
-    icon="clock"
-    href="/mcp-agent-sdk/advanced/durable-agents"
-  >
-    Build long-running workflows
-  </Card>
-  <Card
-    title="CLI Reference"
-    icon="terminal"
-    href="/reference/cli"
-  >
-    Complete command reference
-  </Card>
-</CardGroup>
+- [CLI reference](/reference/cli) – all commands and flags.
+- [Secrets configuration](/mcp-agent-sdk/core-components/configuring-your-application#secrets) – how secrets are merged for Cloud.
+- [Cloud agent server guide](/cloud/agent-server) – architecture, auth, and best practices.
