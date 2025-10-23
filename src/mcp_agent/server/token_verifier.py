@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 import httpx
+from httpx import URL
 
 from mcp.server.auth.provider import AccessToken
 from mcp.server.auth.provider import TokenVerifier
@@ -22,15 +23,70 @@ class MCPAgentTokenVerifier(TokenVerifier):
     """Verify bearer tokens issued by the MCP Agent Cloud authorization server."""
 
     def __init__(self, settings: MCPAuthorizationServerSettings):
-        if not settings.introspection_endpoint:
-            raise ValueError(
-                "introspection_endpoint must be configured to verify tokens"
-            )
         self._settings = settings
         timeout = httpx.Timeout(10.0)
         self._client = httpx.AsyncClient(timeout=timeout)
         self._cache: Dict[str, MCPAccessToken] = {}
         self._lock = asyncio.Lock()
+        self._introspection_endpoint: str | None = None
+        self._metadata_fetch_lock = asyncio.Lock()
+
+    async def _ensure_introspection_endpoint(self) -> str:
+        """Ensure introspection endpoint is available, fetching from well-known if needed."""
+        # Check if already fetched
+        if self._introspection_endpoint:
+            return self._introspection_endpoint
+
+        # Fetch from well-known endpoint
+        async with self._metadata_fetch_lock:
+            # Double-check after acquiring lock
+            if self._introspection_endpoint:
+                return self._introspection_endpoint
+
+            if not self._settings.issuer_url:
+                raise ValueError(
+                    "issuer_url must be configured to fetch introspection endpoint"
+                )
+
+            try:
+                from mcp_agent.oauth.metadata import (
+                    fetch_authorization_server_metadata,
+                )
+
+                parsed_url = URL(str(self._settings.issuer_url))
+                metadata_url = str(parsed_url.copy_with(path="/.well-known/oauth-authorization-server" \
+                                                        + parsed_url.path))
+
+                # Pydantics AnyHttpUrl may add a trailing `/`, remove it
+                if metadata_url.endswith('/'):
+                    metadata_url = metadata_url[:-1]
+
+                metadata = await fetch_authorization_server_metadata(
+                    self._client, str(metadata_url)
+                )
+
+                if not metadata.introspection_endpoint:
+                    raise ValueError(
+                        f"Authorization server at {self._settings.issuer_url} does not "
+                        "advertise an introspection endpoint in its metadata"
+                    )
+
+                self._introspection_endpoint = str(metadata.introspection_endpoint)
+                logger.info(
+                    "Fetched introspection endpoint from authorization server metadata",
+                    data={"introspection_endpoint": self._introspection_endpoint},
+                )
+                return self._introspection_endpoint
+
+            except Exception as exc:
+                logger.error(
+                    "Failed to fetch authorization server metadata",
+                    data={"issuer_url": str(self._settings.issuer_url)},
+                    exc_info=True,
+                )
+                raise ValueError(
+                    f"Failed to fetch introspection endpoint from {self._settings.issuer_url}: {exc}"
+                ) from exc
 
     async def verify_token(self, token: str) -> AccessToken | None:  # type: ignore[override]
         cached = self._cache.get(token)
@@ -48,24 +104,34 @@ class MCPAgentTokenVerifier(TokenVerifier):
                 self._cache[token] = verified
             else:
                 self._cache.pop(token, None)
+
             return verified
 
     async def _introspect(self, token: str) -> MCPAccessToken | None:
+        # Ensure we have the introspection endpoint
+        try:
+            introspection_endpoint = await self._ensure_introspection_endpoint()
+        except ValueError as exc:
+            logger.error(f"Cannot introspect token: {exc}")
+            return None
+
         data = {"token": token}
+
         auth = None
         if (
-            self._settings.introspection_client_id
-            and self._settings.introspection_client_secret
+            self._settings.client_id
+            and self._settings.client_secret
         ):
             auth = httpx.BasicAuth(
-                self._settings.introspection_client_id,
-                self._settings.introspection_client_secret,
+                self._settings.client_id,
+                self._settings.client_secret,
             )
 
         try:
             response = await self._client.post(
-                str(self._settings.introspection_endpoint),
+                introspection_endpoint,
                 data=data,
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
                 auth=auth,
             )
         except httpx.HTTPError as exc:

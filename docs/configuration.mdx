@@ -136,9 +136,8 @@ authorization:
   issuer_url: https://auth.example.com
   resource_server_url: https://agent.example.com/mcp
   required_scopes: ["mcp.read", "mcp.write"]
-  introspection_endpoint: https://auth.example.com/oauth/introspect
-  introspection_client_id: ${INTROSPECTION_CLIENT_ID}
-  introspection_client_secret: ${INTROSPECTION_CLIENT_SECRET}
+  client_id: ${INTROSPECTION_CLIENT_ID}
+  client_secret: ${INTROSPECTION_CLIENT_SECRET}
 
 oauth:
   callback_base_url: https://agent.example.com

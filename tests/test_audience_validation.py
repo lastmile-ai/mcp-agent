@@ -15,7 +15,6 @@ async def test_audience_validation_success():
         enabled=True,
         issuer_url="https://auth.example.com",
         resource_server_url="https://api.example.com",
-        introspection_endpoint="https://auth.example.com/introspect",
         expected_audiences=["https://api.example.com", "api.example.com"],
     )
 
@@ -39,7 +38,6 @@ async def test_audience_validation_failure():
         enabled=True,
         issuer_url="https://auth.example.com",
         resource_server_url="https://api.example.com",
-        introspection_endpoint="https://auth.example.com/introspect",
         expected_audiences=["https://api.example.com"],
     )
 
@@ -62,7 +60,6 @@ async def test_resource_claim_audience_validation():
         enabled=True,
         issuer_url="https://auth.example.com",
         resource_server_url="https://api.example.com",
-        introspection_endpoint="https://auth.example.com/introspect",
         expected_audiences=["https://api.example.com"],
     )
 
@@ -152,9 +149,8 @@ async def test_token_verifier_audience_validation_integration():
         enabled=True,
         issuer_url="https://auth.example.com",
         resource_server_url="https://api.example.com",
-        introspection_endpoint="https://auth.example.com/introspect",
-        introspection_client_id="test-client",
-        introspection_client_secret="test-secret",
+        client_id="test-client",
+        client_secret="test-secret",
         expected_audiences=["https://api.example.com"],
     )
 
@@ -162,6 +158,17 @@ async def test_token_verifier_audience_validation_integration():
 
     # Mock HTTP client
     mock_client = Mock(spec=httpx.AsyncClient)
+
+    # Mock well-known metadata
+    metadata_response = Mock()
+    metadata_response.status_code = 200
+    metadata_response.json.return_value = {
+        "issuer": "https://auth.example.com",
+        "authorization_endpoint": "https://auth.example.com/authorize",
+        "token_endpoint": "https://auth.example.com/token",
+        "introspection_endpoint": "https://auth.example.com/introspect",
+        "response_types_supported": ["code"],
+    }
 
     # Mock successful response with valid audience
     valid_response = Mock()
@@ -173,6 +180,8 @@ async def test_token_verifier_audience_validation_integration():
         "exp": 1234567890,
         "iss": "https://auth.example.com/",
     }
+
+    mock_client.get = AsyncMock(return_value=metadata_response)
     mock_client.post = AsyncMock(return_value=valid_response)
     verifier._client = mock_client
 
@@ -231,9 +240,7 @@ async def test_partial_audience_match():
         enabled=True,
         issuer_url="https://auth.example.com",
         resource_server_url="https://api.example.com",
-        introspection_endpoint="https://auth.example.com/introspect",
         expected_audiences=["https://api.example.com", "https://other-api.com"],
-        strict_audience_validation=True,
     )
 
     # Token has one matching and one non-matching audience
