@@ -39,10 +39,12 @@
 
 1. It handles the pesky business of managing the lifecycle of MCP server connections so you don't have to.
 2. It implements every pattern described in Building Effective Agents, and does so in a _composable_ way, allowing you to chain these patterns together.
-3. **Bonus**: It implements [OpenAI's Swarm](https://github.com/openai/swarm) pattern for multi-agent orchestration, but in a model-agnostic way.
+3. **Durable agents**: It works for simple agents and scales to sophisticated workflows built on [Temporal](https://temporal.io/) so you can pause, resume, and recover effortlessly.
 
 Altogether, this is the simplest and easiest way to build robust agent applications. Much like MCP, this project is in early development.
 We welcome all kinds of [contributions](/CONTRIBUTING.md), feedback and your help in growing this to become a new standard.
+
+**NEW**: Ready to deploy? Publish your agents as managed MCP servers—see the [Deploy to Cloud guide](https://docs.mcp-agent.com/get-started/deploy-to-cloud).
 
 ## Get Started
 
@@ -58,11 +60,14 @@ Alternatively:
 pip install mcp-agent
 ```
 
+> [!TIP]
+> The CLI is available via `uvx`. Scaffold a project with `uvx mcp-agent init --template basic --dir my-agent` or deploy with `uvx mcp-agent deploy my-agent`.
+
 ### Quickstart
 
 > [!TIP]
 > The [`examples`](/examples) directory has several example applications to get started with.
-> To run an example, clone this repo, then:
+> To run an example, clone this repo (or generate one with `uvx mcp-agent init --template basic --dir my-first-agent`), then:
 >
 > ```bash
 > cd examples/basic/mcp_basic_agent # Or any other example
