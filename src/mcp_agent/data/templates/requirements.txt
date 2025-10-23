@@ -1,5 +1,0 @@
-mcp-agent
-
-# Optionally, include additional dependencies required for this project
-openai
-# anthropic
