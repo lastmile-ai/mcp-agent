@@ -592,6 +592,36 @@ lost_baggage = SwarmAgent(
 
 </details>
 
+### Icons
+
+You can add icons to your agents for better visualization in UIs that support it (e.g. Claude Desktop).
+To do so, you can add an `icons` parameter to your `MCPApp` or `@app.tool` definitions.
+
+```python
+# load an icon from file and serve it as a data URI
+icon_path = Path("my-icon.png")
+icon_data = base64.standard_b64encode(icon_path.read_bytes()).decode()
+icon_data_uri = f"data:image/png;base64,{icon_data}"
+icon = Icon(src=icon_data_uri, mimeType="image/png", sizes=["64x64"])
+
+# alternatively, one can use an external URL:
+web_icon = Icon(src="https://example.com/my-icon.png", mimeType="image/png", sizes=["64x64"])
+
+app = MCPApp(
+    name="my_app_with_icon",
+    description="Agent server with an icon",
+    icons=[icon],
+    # ...
+)
+
+
+@app.tool(icons=[icon])
+async def my_tool(...) -> ...:
+    # ...
+```
+
+If you inject your own `FastMCP` instance into an `MCPApp`, you will have to add your icons there.
+
 ### App Config
 
 Create an [`mcp_agent.config.yaml`](/schema/mcp-agent.config.schema.json) and define secrets via either a gitignored [`mcp_agent.secrets.yaml`](./examples/basic/mcp_basic_agent/mcp_agent.secrets.yaml.example) or a local [`.env`](./examples/basic/mcp_basic_agent/.env.example). In production, prefer `MCP_APP_SETTINGS_PRELOAD` to avoid writing plaintext secrets to disk.
