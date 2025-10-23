@@ -1,0 +1,84 @@
+---
+title: Deployment Overview
+sidebarTitle: "Overview"
+description: "Deploy mcp-agent applications to production"
+icon: rocket
+---
+
+<img
+  src="https://github.com/user-attachments/assets/525f1d27-c695-4a40-9bfb-c983a5650761"
+  alt="Overview of the mcp-agent cloud platform"
+  width="940"
+  height="470"
+/>
+
+`mcp-agent` gives you one programming model that scales from a laptop to a managed cloud runtime. You can deploy full agents **and** standalone MCP servers (FastMCP services, ChatGPT App backends, bespoke tool APIs) without rewriting your app. This section maps the deployment options, explains when to reach for each path, and points to the detailed runbooks that follow.
+
+## Why deploy with `mcp-agent`?
+
+- **One protocol everywhere** – every deployment option exposes the same MCP endpoints (`call_tool`, `read_resource`, `list_prompts`). Any MCP client (Claude, Cursor, ChatGPT Apps, custom SSE client) can connect without rewriting code.
+- **Durable workflows when you need them** – the same decorators (`@app.tool`, `@app.async_tool`, `@app.workflow`) run on `asyncio` locally and on Temporal in the cloud. Pause/resume, retries, and human-in-the-loop all come along for free.
+- **Operational guardrails** – the CLI manages build artifacts, secrets, auth configuration, client installation, and observability so you can focus on agent logic.
+
+## Deployment paths
+
+- **Managed (mcp-agent cloud)** – `mcp-agent deploy` bundles your project, processes secrets, and ships it to our hosted environment. Agent workflows execute on Temporal, stdio MCP servers run as sidecar containers, and you get managed auth, logging, and tracing. [Learn the architecture →](/deployment/mcp-agent-cloud/architecture-overview)
+- **Bring-your-own Temporal** – point the same project at your self-hosted Temporal cluster for on-prem or air-gapped requirements. See [Durable agents](/mcp-agent-sdk/advanced/durable-agents) for configuration.
+- **Plain MCP servers** – use FastMCP or `@app.tool` only and deploy without workflows when you just need stateless tools. [Deploy an MCP server →](/deployment/mcp-agent-cloud/deploy-mcp-server)
+- **Local iteration** – run with `asyncio` on your laptop for rapid development and tests. Switch to Temporal when you are ready for durability.
+
+| Use case | Recommended path | What you get |
+| --- | --- | --- |
+| Prototype & debugging | `uv run main.py` or `mcp-agent dev start` | Hot reload, local logs, same decorators |
+| Durable agents in hours | `mcp-agent deploy` (managed) | Temporal-backed workflows, cloud logging, secrets, auth |
+| Regulated / on-prem | Self-hosted Temporal + `mcp_agent.config.yaml` overrides | Same workflow code, you manage infra |
+| Publish reusable MCP tools | FastMCP or `@app.tool` deployed via cloud | Standard MCP transport, installable from CLI |
+
+## Two-minute preview
+
+```bash
+uv tool install mcp-agent          # Install the CLI
+mcp-agent login                    # Launch browser auth and create an API key
+mcp-agent deploy web-summarizer    # Bundle code, process secrets, push to the cloud
+mcp-agent install web-summarizer   # Add the MCP server to a client config
+```
+
+The deployment produces a URL such as:
+
+```
+https://<app_id>.deployments.mcp-agent.com
+```
+
+`<app_id>` is the hostname printed by the CLI (for example, `app_abc123xyz`).
+
+Any MCP client can connect over SSE/WebSocket using your chosen auth mode.
+
+## What happens after deployment?
+
+1. **Temporal schedules your workflows** – every `@app.async_tool` and `@app.workflow` runs as a Temporal workflow with pause/resume, retries, and human input support.
+2. **Each stdio MCP server is containerized** – servers declared in `mcp_agent.config.yaml` run in sand-boxed containers with managed lifecycle.
+3. **Observability is turned on** – logs are streamed through the `mcp-agent cloud logger tail` API and you can forward traces to any OTLP endpoint.
+4. **Clients install with one command** – `mcp-agent install` or `mcp-agent cloud configure` writes the right headers/URLs into Claude Desktop, Cursor, VS Code, or ChatGPT Apps.
+
+## Explore next
+
+<CardGroup cols={2}>
+  <Card title="Deployment Quickstart" icon="rocket" href="/deployment/deployment-quickstart">
+    Hands-on walk-through from project to production
+  </Card>
+  <Card title="mcp-agent Cloud" icon="cloud" href="/deployment/mcp-agent-cloud/overview">
+    Deep dive into the managed architecture & lifecycle
+  </Card>
+  <Card title="Authentication" icon="shield-check" href="/deployment/authentication/overview">
+    Compare bearer tokens, OAuth, and unauthenticated modes
+  </Card>
+  <Card title="Observability" icon="chart-line" href="/deployment/observability">
+    Wire up OTEL exporters and live log streaming
+  </Card>
+  <Card title="Use cases" icon="diagram-project" href="/deployment/use-cases/deploy-agents">
+    Guides for agents, MCP servers, and ChatGPT Apps
+  </Card>
+  <Card title="CLI reference" icon="terminal" href="/reference/cli">
+    Full command catalog for automation and CI
+  </Card>
+</CardGroup>

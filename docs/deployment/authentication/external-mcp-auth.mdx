@@ -1,0 +1,125 @@
+---
+title: External MCP Auth
+sidebarTitle: "External MCP Auth"
+description: "Configure your agent to authenticate when calling downstream MCP servers"
+icon: link
+---
+
+Many agents call other MCP servers (e.g., Linear, GitHub, Slack). Each downstream server may require API keys or OAuth credentials. Use `mcp_agent.config.yaml` to specify how your agent should authenticate when acting as an MCP client.
+
+## API key (static) authentication
+
+```yaml mcp_agent.config.yaml
+mcp:
+  servers:
+    github:
+      command: "uvx"
+      args: ["mcp-server-github"]
+      auth:
+        api_key: "${GITHUB_TOKEN}"    # injected from secrets
+```
+
+- Store the actual token in `mcp_agent.secrets.yaml` (deployment secret) or `mcp_agent.configured.secrets.yaml` (user secret).
+- At runtime, `ServerRegistry` injects the `Authorization` header when connecting to the MCP server.
+- Supports any header name via `auth.headers` if the server expects a custom format.
+
+## OAuth client credentials / authorization code
+
+For MCP servers that implement OAuth (Linear, Notion, custom internal IdPs), configure the `oauth` block:
+
+```yaml
+mcp:
+  servers:
+    notion:
+      command: "uvx"
+      args: ["mcp-server-notion"]
+      auth:
+        oauth:
+          enabled: true
+          authorization_server: "https://auth.notion.com"
+          client_id: "${NOTION_CLIENT_ID}"
+          client_secret: "${NOTION_CLIENT_SECRET}"
+          scopes: ["documents.read", "documents.write"]
+          resource: "https://mcp.notion.com"
+          redirect_uri_options:
+            - "http://127.0.0.1:33418/callback"
+            - "https://<app_id>.deployments.mcp-agent.com/oauth/callback"
+```
+
+How it works:
+
+1. When the agent first needs the server, the OAuth manager checks the token store.
+2. If no token exists, it launches an authorization flow (internal callback inside the deployment or local loopback while running locally).
+3. Access + refresh tokens are stored in the configured token store (memory or Redis).
+4. Tokens are refreshed automatically before expiry (`refresh_leeway_seconds`).
+
+### Token store configuration
+
+```yaml
+oauth:
+  token_store:
+    backend: "redis"
+    redis_url: "${REDIS_URL}"
+    redis_prefix: "mcp_agent:oauth_tokens"
+```
+
+- `memory` (default) – in-memory, process-scoped. Great for development but not shared across workers.
+- `redis` – recommended for cloud deployments if your app uses multiple processes or needs persistence across restarts.
+
+## Seeding tokens manually
+
+If you already have an access token:
+
+```yaml
+mcp:
+  servers:
+    linear:
+      auth:
+        oauth:
+          enabled: true
+          access_token: "${LINEAR_ACCESS_TOKEN}"
+          refresh_token: "${LINEAR_REFRESH_TOKEN}"
+          expires_at: 1740694445
+```
+
+This bypasses the interactive flow; the token manager will refresh using the provided refresh token when needed.
+
+## Request-time headers
+
+For bespoke auth schemes, you can specify arbitrary headers or environment variables:
+
+```yaml
+mcp:
+  servers:
+    internal_search:
+      command: "./bin/internal-search"
+      env:
+        SEARCH_API_KEY: "${SEARCH_API_KEY}"
+      auth:
+        headers:
+          X-Org: "lastmile"
+          Authorization: "Bearer ${SEARCH_API_KEY}"
+```
+
+## Best practices
+
+<AccordionGroup>
+  <Accordion title="Keep secrets out of code">
+    Always reference `${ENV_VAR}` placeholders in config and store the actual values in secrets files. Never hardcode tokens in Python modules.
+  </Accordion>
+  <Accordion title="Differentiate developer vs user secrets">
+    If every user needs their own credential (e.g., personal GitHub PAT), mark it as `!user_secret` so `mcp-agent cloud configure` collects it when they onboard the app.
+  </Accordion>
+  <Accordion title="Token sharing">
+    For OAuth-protected upstream servers you probably want a shared token cache (Redis) to avoid re-authorizing for every workflow run.
+  </Accordion>
+  <Accordion title="Handle scope failures">
+    Downstream servers may reject requests if scopes are missing. Log the response body and expose a clear error so users know to re-run the configure flow.
+  </Accordion>
+</AccordionGroup>
+
+## Related docs
+
+- [Secrets management →](/deployment/mcp-agent-cloud/manage-secrets)
+- [Authentication overview →](/deployment/authentication/overview)
+- [MCP server configuration reference →](/reference/configuration#mcp-servers)

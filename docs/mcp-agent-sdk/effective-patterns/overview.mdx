@@ -1,0 +1,45 @@
+---
+title: "Overview"
+description: "Choose the right workflow pattern for your mcp-agent build"
+icon: stars
+---
+
+mcp-agent ships production-ready implementations of every pattern in [Anthropic's *Building Effective Agents*](https://www.anthropic.com/engineering/building-effective-agents) plus complementary flows inspired by OpenAI Swarm. Each helper in [`workflows/factory.py`](https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/workflows/factory.py) returns an **AugmentedLLM** that can be treated like any other LLM in the framework—compose it, expose it as a tool, or wrap it with additional logic.
+
+## Patterns at a glance
+
+| Pattern | Reach for it when… | Factory helper(s) | Highlights | Runnable example |
+| --- | --- | --- | --- | --- |
+| [Parallel (Map-Reduce)](/mcp-agent-sdk/effective-patterns/map-reduce) | You need multiple specialists to look at the same request concurrently | `create_parallel_llm(...)` | Fan-out/fan-in via `FanOut` + `FanIn`, accepts agents *and* plain callables | [`workflow_parallel`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows/workflow_parallel) |
+| [Router](/mcp-agent-sdk/effective-patterns/router) | Requests must be dispatched to the best skill, server, or function | `create_router_llm(...)`, `create_router_embedding(...)` | Confidence-scored results, `route_to_{agent,server,function}` helpers, optional embedding routing | [`workflow_router`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows/workflow_router) |
+| [Intent Classifier](/mcp-agent-sdk/effective-patterns/intent-classifier) | You need lightweight intent buckets before routing or automation | `create_intent_classifier_llm(...)`, `create_intent_classifier_embedding(...)` | Returns structured `IntentClassificationResult` with entities and metadata | [`workflow_intent_classifier`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows/workflow_intent_classifier) |
+| [Planner (Orchestrator)](/mcp-agent-sdk/effective-patterns/planner) | A goal requires multi-step planning and coordination across agents | `create_orchestrator(...)` | Switch between full and iterative planning, override planner/synthesizer roles | [`workflow_orchestrator_worker`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows/workflow_orchestrator_worker) |
+| [Deep Research](/mcp-agent-sdk/effective-patterns/deep-research) | Long-horizon investigations with budgets, memory, and policy checks | `create_deep_orchestrator(...)` | Knowledge extraction, policy engine, Temporal-friendly execution | [`workflow_deep_orchestrator`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows/workflow_deep_orchestrator) |
+| [Evaluator-Optimizer](/mcp-agent-sdk/effective-patterns/evaluator-optimizer) | You want an automated reviewer to approve or iterate on drafts | `create_evaluator_optimizer_llm(...)` | `QualityRating` thresholds, detailed feedback loop, `refinement_history` | [`workflow_evaluator_optimizer`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows/workflow_evaluator_optimizer) |
+| [Build Your Own](/mcp-agent-sdk/effective-patterns/build-your-own) | You need a bespoke pattern stitched from the primitives above | Mix helpers, native agents, and `@app.tool` decorators | Compose routers, parallel fan-outs, evaluators, or custom callables | See all workflows + [`create_swarm(...)`](https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/workflows/factory.py) |
+
+## Before you start
+
+- Model your specialists as [`AgentSpec`](/mcp-agent-sdk/core-components/agents) or instantiate `Agent`/`AugmentedLLM` objects up front. The factory helpers accept any combination.
+- Run everything inside `async with app.run() as running_app:` so the shared [`Context`](https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/core/context.py) is initialised (server registry, executor, tracing, secrets).
+- Tune behaviour with [`RequestParams`](https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/workflows/llm/augmented_llm.py) (temperature, max tokens, strict schema mode) and provider-specific options (`provider="anthropic"`, Azure/OpenAI models, etc.).
+- Expose the returned AugmentedLLM directly (`await llm.generate_str(...)`) or wrap it with `@app.tool` / `@app.async_tool` to make it callable over MCP.
+
+## Composable building blocks
+
+- Patterns are just AugmentedLLMs, so you can **nest** them—e.g. route to an orchestrator, run parallel fan-outs inside a planner step, or wrap the output of any pattern with an evaluator-optimizer loop.
+- Mix LLM-powered steps with deterministic functions. Routers accept plain Python callables; parallel workflows blend `AgentSpec` with helpers like `fan_out_functions`.
+- Share state via the `Context`: reuse secrets, telemetry, the executor, and the token counter across nested patterns without additional wiring.
+
+## Observability and control
+
+- Every pattern reports token usage through the global [`TokenCounter`](https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/tracing/token_counter.py). Call `await llm.get_token_node()` to inspect fan-out costs, planner iterations, or evaluation loops.
+- Adjust concurrency and retries centrally in `mcp_agent.config.yaml` (`executor.max_concurrent_activities`, retry policy) instead of per-pattern plumbing.
+- Enable tracing (`otel.enabled: true`) to see spans for planner steps, router decisions, evaluator iterations, and MCP tool calls in Jaeger or any OTLP backend.
+
+## Related docs
+
+- [Core workflows & decorators](/mcp-agent-sdk/core-components/workflows)
+- [Connecting to MCP servers](/mcp-agent-sdk/core-components/connecting-to-mcp-servers)
+- [Agent servers](/mcp-agent-sdk/mcp/agent-as-mcp-server)
+- [Examples directory](https://github.com/lastmile-ai/mcp-agent/tree/main/examples)

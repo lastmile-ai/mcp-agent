@@ -1,0 +1,204 @@
+---
+title: Use a Deployed Server
+sidebarTitle: "Use a Deployed Server"
+description: "Configure clients, share endpoints, and automate consumption of deployed MCP servers"
+icon: plug
+---
+
+After deployment, each app is reachable at an HTTPS endpoint such as:
+
+```
+https://<app_id>.deployments.mcp-agent.com
+
+Replace `<app_id>` with the hostname shown by `mcp-agent deploy` or `mcp-agent cloud servers describe` (e.g., `app_abc123xyz.deployments.mcp-agent.com`).
+```
+
+This page explains how to retrieve the URL, set up authentication, configure clients, and script interactions.
+
+## 1. Find the server URL
+
+```bash
+# Show all deployments (filterable, sortable)
+mcp-agent cloud servers list
+
+# Describe a specific deployment and copy the Server URL
+mcp-agent cloud servers describe app_abc123 --format text
+```
+
+The description output includes:
+
+- `Server URL` – base URL (append `/sse` for SSE transport or `/call_tool` for HTTP).
+- Authentication mode (Bearer token, unauthenticated, OAuth coming soon).
+- Status, creation time, description.
+
+## 2. Make sure clients have the right secrets
+
+If you tagged any `!user_secret` entries, each consumer must configure the deployment before connecting:
+
+```bash
+# Prompts for required secrets (per API key)
+mcp-agent cloud configure --id https://<app_id>.deployments.mcp-agent.com
+
+# Inspect required parameters without storing
+mcp-agent cloud configure --id <server-url> --params
+```
+
+You can supply a YAML file (`--secrets-file`) or capture the resulting file (`--secrets-output-file`) to share with your team.
+
+## 3. Install into MCP clients
+
+Use the top-level install command to update client-specific config files:
+
+```bash
+# Claude Desktop (macOS, Windows, Linux)
+    mcp-agent install https://<app_id>.deployments.mcp-agent.com/sse \
+  --client claude_desktop --name web-summarizer
+
+# Cursor
+    mcp-agent install https://<app_id>.deployments.mcp-agent.com/sse \
+  --client cursor
+
+# VS Code MCP extension
+    mcp-agent install https://<app_id>.deployments.mcp-agent.com/sse \
+  --client vscode
+
+# Claude Code (codespaces experience)
+    mcp-agent install https://<app_id>.deployments.mcp-agent.com/sse \
+  --client claude_code
+
+# ChatGPT Apps (requires --no-auth deployments)
+    mcp-agent install https://<app_id>.deployments.mcp-agent.com/sse \
+  --client chatgpt
+```
+
+What the command does:
+
+- Validates your `MCP_API_KEY` (or uses `--api-key`).
+- Fetches app metadata (name, unauthenticated status) for validation.
+- Writes the appropriate JSON snippet to the client-specific config file.
+- Masks secrets when printing to the terminal (use `--dry-run` to preview).
+
+> Client config locations:  
+> • Claude Desktop – `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)  
+> • Cursor – `~/.cursor/mcp.json`  
+> • VS Code – `<workspace>/.vscode/mcp.json`  
+> • Claude Code – `~/.claude.json`
+
+## 4. Manual configuration (if needed)
+
+All MCP clients understand the same HTTP/SSE interface. A minimal configuration looks like:
+
+```json
+{
+  "servers": {
+    "web-summarizer": {
+      "url": "https://<app_id>.deployments.mcp-agent.com/sse",
+      "headers": {
+        "Authorization": "Bearer ${MCP_API_KEY}"
+      }
+    }
+  }
+}
+```
+
+For Claude Desktop (stdio-only), wrap the HTTP server with `mcp-remote`:
+
+```json
+{
+  "servers": {
+    "web-summarizer": {
+      "command": "npx",
+      "args": [
+        "mcp-remote",
+        "https://<app_id>.deployments.mcp-agent.com/sse",
+        "--header",
+        "Authorization: Bearer ${MCP_API_KEY}"
+      ]
+    }
+  }
+}
+```
+
+## 5. Automate calls from code
+
+### Python
+
+1. Create or update a server entry in `mcp_agent.config.yaml`:
+
+   ```yaml
+   mcp:
+     servers:
+       web_summarizer_cloud:
+         transport: sse
+         url: "https://<app_id>.deployments.mcp-agent.com/sse"
+         headers:
+           Authorization: "Bearer ${MCP_API_KEY}"
+   ```
+
+2. Use the shared server registry to open a client session:
+
+   ```python
+   import asyncio
+   from mcp_agent.config import get_settings
+   from mcp_agent.mcp.mcp_server_registry import ServerRegistry
+   from mcp_agent.mcp.gen_client import gen_client
+
+   async def run_workflow():
+       registry = ServerRegistry(config=get_settings())
+       async with gen_client("web_summarizer_cloud", server_registry=registry) as client:
+           launch = await client.call_tool(
+               "workflows-WebSummarizerWorkflow-run",
+               arguments={"run_parameters": {"url": "https://example.com"}},
+           )
+           run_id = launch.content[0].text
+           status = await client.call_tool(
+               "workflows-get_status",
+               arguments={"run_id": run_id},
+           )
+           print(status.content[0].text)
+
+   asyncio.run(run_workflow())
+   ```
+
+### HTTP / cURL
+
+```bash
+curl -X POST https://<app_id>.deployments.mcp-agent.com/call_tool \
+  -H "Authorization: Bearer $MCP_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "workflows-WebSummarizerWorkflow-run",
+    "arguments": {"run_parameters": {"url": "https://example.com"}}
+  }'
+```
+
+### MCP Inspector
+
+```bash
+npx @modelcontextprotocol/inspector \
+  --transport sse \
+  --server-url https://<app_id>.deployments.mcp-agent.com/sse \
+  --header "Authorization: Bearer $MCP_API_KEY"
+```
+
+## 6. Provide usage instructions to end users
+
+Consider sharing a short README with:
+
+- The server URL and description.
+- Required user secrets (from `mcp-agent cloud configure --params`).
+- Example calls (like the snippets above).
+- Recommended MCP clients (Claude Desktop, Cursor, ChatGPT, etc.).
+- Observability tips (`mcp-agent cloud logger tail` for debugging).
+
+## 7. Rotate tokens and access
+
+- **Rotate API keys** – run `mcp-agent login` again or set a new `MCP_API_KEY`.
+- **Revoke access** – delete individual configurations (coming soon) or redeploy with `--auth` to disable unauthenticated access.
+- **Publish publicly** – ensure the deployment is unauthenticated and document explicit rate limits / expectations.
+
+## Related docs
+
+- [Deployment quickstart →](/deployment/deployment-quickstart)
+- [Authentication options →](/deployment/authentication/deployment-auth)
+- [Secrets management →](/deployment/mcp-agent-cloud/manage-secrets)

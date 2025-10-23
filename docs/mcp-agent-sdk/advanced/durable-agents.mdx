@@ -1,0 +1,170 @@
+---
+title: "Durable Agents (Temporal)"
+sidebarTitle: "Durable Agents"
+description: "Run long-lived MCP workflows with Temporal pause/resume and human approvals"
+icon: clock
+---
+
+mcp-agent can execute workflows on the built-in asyncio executor or on [Temporal](https://temporal.io/). Temporal adds durable state, automatic retries, and first-class pause/resume semantics for long-running MCP tools. The best part: **switching is just a config change**—set `execution_engine: temporal` and your existing workflows, tools, and agents keep working.
+
+<Tip>
+Outside of configuration (and starting a Temporal worker), you rarely need to touch your code. The same `@app.workflow`, `@app.workflow_run`, `@app.async_tool`, `Agent`, and AugmentedLLM APIs behave identically with Temporal behind the scenes.
+</Tip>
+
+## When to choose Temporal
+
+| Reach for Temporal when… | Asyncio alone is enough when… |
+| --- | --- |
+| Workflows must survive restarts, deploys, or worker crashes. | Runs are short-lived and you can re-trigger them on failure. |
+| Human approvals, scheduled delays, or days-long research loops are in scope. | The agent answers a single request synchronously. |
+| You need history, querying, and signal support from the Temporal UI or CLI. | You only need to fan out a few tasks inside one process. |
+
+Temporal also unlocks adaptive throttling, workflow versioning, and seamless integration with mcp-agent Cloud.
+
+## Enable the Temporal engine
+
+Switch the execution engine and point at a Temporal cluster (the examples assume `temporal server start-dev`):
+
+```yaml
+execution_engine: temporal
+
+temporal:
+  host: "localhost"
+  port: 7233
+  namespace: "default"
+  task_queue: "mcp-agent"
+  max_concurrent_activities: 10
+```
+
+Start a local server for development:
+
+```bash
+temporal server start-dev
+# Web UI: http://localhost:8233  |  gRPC: localhost:7233
+```
+
+The [configuration reference](/reference/configuration#temporalsettings) documents TLS, API keys, automatic retries, and metadata headers when you deploy to production.
+
+Temporal relies on a replay model: the deterministic parts of your workflow (the code you wrote under `@app.workflow_run`) are re-executed after a crash, while non-deterministic work—LLM calls, MCP tool calls, HTTP requests—is automatically offloaded to Temporal activities by the executor. mcp-agent handles that split for you; you keep writing straightforward async Python.
+
+## Run a worker
+
+Workers poll Temporal for workflow/activity tasks. The helper `create_temporal_worker_for_app` wires your `MCPApp` into a worker loop:
+
+```python
+# examples/temporal/run_worker.py
+import asyncio
+import logging
+
+import workflows  # noqa: F401  # registers @app.workflow classes
+from main import app
+from mcp_agent.executor.temporal import create_temporal_worker_for_app
+
+logging.basicConfig(level=logging.INFO)
+
+async def main():
+    async with create_temporal_worker_for_app(app) as worker:
+        await worker.run()
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+Keep this process running while you start workflows or expose durable tools.
+
+## Launch workflows (or tools) durably
+
+The executor API is unchanged—Temporal persists the state machine behind the scenes:
+
+```python
+# examples/temporal/basic.py
+async with app.run() as agent_app:
+    executor = agent_app.executor  # TemporalExecutor
+    handle = await executor.start_workflow(
+        "SimpleWorkflow",
+        "Print the first 2 paragraphs of https://modelcontextprotocol.io/introduction",
+    )
+    result = await handle.result()
+    print(result)
+```
+
+You can also expose a Temporal run as an MCP tool. The orchestrator example uses `@app.async_tool` so clients invoke a single tool call while Temporal handles retries and state:
+
+```python
+# examples/temporal/orchestrator.py (excerpt)
+@app.async_tool(name="OrchestratorWorkflow")
+async def run_orchestrator(task: str, app_ctx: AppContext | None = None) -> str:
+    context = app_ctx or app.context
+    orchestrator = Orchestrator(
+        llm_factory=OpenAIAugmentedLLM,
+        available_agents=[finder, writer, proofreader, fact_checker, style_enforcer],
+        plan_type="full",
+        context=context,
+    )
+    return await orchestrator.generate_str(task)
+
+async with app.run() as orchestrator_app:
+    executor = orchestrator_app.executor
+    handle = await executor.start_workflow("OrchestratorWorkflow", task)
+    report = await handle.result()
+```
+
+This pattern is ideal for “long-running tool” buttons in MCP clients: the tool call returns immediately with a run identifier and you can stream progress or resume later.
+
+## Human approvals, pause, and resume
+
+Temporal signals map directly to `executor.wait_for_signal` and `executor.signal_workflow`. The pause/resume workflow shipped in [`examples/mcp_agent_server/temporal`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp_agent_server/temporal) demonstrates the flow:
+
+```python
+# PauseResumeWorkflow (excerpt)
+print(f"Workflow paused. workflow_id={self.id} run_id={self.run_id}")
+try:
+    await app.context.executor.wait_for_signal(
+        signal_name="resume",
+        workflow_id=self.id,
+        run_id=self.run_id,
+        timeout_seconds=60,
+    )
+except TimeoutError:
+    raise ApplicationError("Timed out waiting for resume signal", type="SignalTimeout", non_retryable=True)
+
+return WorkflowResult(value=f"Workflow resumed! {message}")
+```
+
+Resume it from another process, the Temporal UI, or mcp-agent Cloud (`mcp-agent workflows resume`):
+
+```python
+async with app.run() as agent_app:
+    executor = agent_app.executor
+    await executor.signal_workflow(
+        workflow_name="PauseResumeWorkflow",
+        workflow_id="pause-resume-123",
+        signal_name="resume",
+        payload={"approved_by": "alex"},
+    )
+```
+
+The same helper works on the asyncio executor via `app.context.executor.signal_bus`, so you can prototype locally and switch to Temporal when you need durability.
+
+### Nested tools and elicitation
+
+The Temporal server example also shows how durable workflows call nested MCP servers and trigger [MCP elicitation](https://modelcontextprotocol.io/specification/2025-06-18/client/elicitation) when a human response is required. Activities such as `call_nested_elicitation` log progress via `app.app.logger` so the request trace and Temporal history stay aligned.
+
+## Operating durable agents
+
+- **Temporal Web UI** (http://localhost:8233) lets you inspect history, replay workflow code, and emit signals.
+- **Workflow handles** expose `describe()`, `query()`, and `list()` helpers for custom dashboards or integrations.
+- **Observability**: enable OpenTelemetry (`otel.enabled: true`) to stream spans + logs while Temporal provides event history.
+- **Deployment**: mcp-agent Cloud uses the same configuration. Once deployed, Cloud exposes CLI commands (`mcp-agent workflows list`, `resume`, `cancel`) that call the same signal/query APIs shown above.
+
+## Deeper dives
+
+- [Temporal example suite](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/temporal) – side-by-side asyncio vs. Temporal workflows (basic, router, parallel, evaluator-optimizer) plus a detailed [README](https://github.com/lastmile-ai/mcp-agent/blob/main/examples/temporal/README.md) walking through setup.
+- [Temporal MCP server](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp_agent_server/temporal) – exposes durable workflows as MCP tools, demonstrates `workflows-resume`, and includes a client script for pause/resume flows.
+- [Temporal tracing example](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/tracing/temporal) – shows the same code running with Jaeger exports once you flip the `execution_engine`.
+
+## Example projects
+
+- [examples/temporal](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/temporal) – basic workflow, evaluator-optimizer, router, and orchestrator patterns on Temporal.
+- [examples/mcp_agent_server/temporal](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp_agent_server/temporal) – MCP server with durable human approvals, nested servers, and elicitation.
+- [examples/oauth/pre_authorize](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/oauth/pre_authorize) – demonstrates pre-authorised credentials for background Temporal workflows.

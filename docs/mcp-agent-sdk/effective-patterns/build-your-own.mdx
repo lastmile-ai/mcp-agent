@@ -1,0 +1,147 @@
+---
+title: "Build Your Own Pattern"
+description: "Compose custom agent workflows from the core building blocks"
+icon: wand-magic-sparkles
+---
+
+mcp-agent patterns are deliberately composable. You can mix routers, parallel fan-outs, evaluators, orchestrators, and plain Python callables to create flows that match your product requirements—without authoring new workflow classes.
+
+## Building blocks recap
+
+- [`create_llm(...)`](https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/workflows/factory.py#L63) – wrap an `AgentSpec` in an AugmentedLLM tied to a provider (OpenAI, Anthropic, Azure, Google, Bedrock, Ollama).
+- [`create_router_llm(...)`](/mcp-agent-sdk/effective-patterns/router) / `create_router_embedding(...)` – dispatch requests to the best specialist.
+- [`create_intent_classifier_llm(...)`](/mcp-agent-sdk/effective-patterns/intent-classifier) – bucket requests before routing.
+- [`create_parallel_llm(...)`](/mcp-agent-sdk/effective-patterns/map-reduce) – run multiple workers in parallel and aggregate their outputs.
+- [`create_evaluator_optimizer_llm(...)`](/mcp-agent-sdk/effective-patterns/evaluator-optimizer) – iterate until a reviewer approves the response.
+- [`create_orchestrator(...)`](/mcp-agent-sdk/effective-patterns/planner) – break complex objectives into sequenced steps.
+- [`create_deep_orchestrator(...)`](/mcp-agent-sdk/effective-patterns/deep-research) – add knowledge extraction, policy engines, and budgets.
+- [`create_swarm(...)`](https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/workflows/factory.py#L501) – OpenAI/Anthropic-compatible handoffs between agents.
+- [`load_agent_specs_from_dir(...)`](https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/workflows/factory.py#L553) – hydrate agents from YAML/JSON specs.
+
+## Design playbook
+
+1. **Model your specialists** as `AgentSpec` (name, instruction, tool access). Keep prompts short and behaviour-specific.
+2. **Pick a routing strategy**: intent classifier for lightweight gating, router for multi-skill dispatch, or orchestrator for complex plans.
+3. **Layer guardrails**: wrap high-risk steps in an evaluator-optimizer loop, or add policy agents inside an orchestrator step.
+4. **Add determinism**: integrate `fan_out_functions` for repeatable checks or use embedding routers for fixed scoring.
+5. **Expose the composition** with `@app.tool` / `@app.async_tool` so MCP clients can call it as a single tool.
+6. **Instrument** with the token counter (`await workflow.get_token_node()`) and tracing (`otel.enabled: true`) before shipping.
+
+## Example: router ➝ parallel research ➝ evaluator
+
+```python
+from mcp_agent.app import MCPApp
+from mcp_agent.workflows.factory import (
+    AgentSpec,
+    create_evaluator_optimizer_llm,
+    create_parallel_llm,
+    create_router_llm,
+)
+
+app = MCPApp(name="composed_pattern")
+
+# Cache long-lived components so we don't recreate them per request.
+router = None
+parallel_research = None
+research_loop = None
+
+@app.async_tool(name="answer_question")
+async def answer(request: str) -> str:
+    global router, parallel_research, research_loop
+    async with app.run() as running_app:
+        ctx = running_app.context
+
+        if router is None:
+            router = await create_router_llm(
+                name="triage",
+                agents=[
+                    AgentSpec(name="qa", instruction="Answer factual questions concisely."),
+                    AgentSpec(
+                        name="analysis",
+                        instruction="Perform deep research with citations before answering.",
+                    ),
+                ],
+                provider="openai",
+                context=ctx,
+            )
+
+        if parallel_research is None:
+            parallel_research = create_parallel_llm(
+                name="research_parallel",
+                fan_in=AgentSpec(
+                    name="aggregator",
+                    instruction="Blend researcher outputs into a single structured brief.",
+                ),
+                fan_out=[
+                    AgentSpec(
+                        name="news",
+                        instruction="Search recent press releases.",
+                        server_names=["fetch"],
+                    ),
+                    AgentSpec(
+                        name="financials",
+                        instruction="Lookup filings and key metrics.",
+                        server_names=["fetch"],
+                    ),
+                ],
+                context=ctx,
+            )
+
+        if research_loop is None:
+            research_loop = create_evaluator_optimizer_llm(
+                name="research_with_qc",
+                optimizer=parallel_research,
+                evaluator=AgentSpec(
+                    name="editor",
+                    instruction=(
+                        "Score the brief from 1-5. Demand improvements if it lacks citations, "
+                        "actionable insights, or policy compliance."
+                    ),
+                ),
+                min_rating=4,
+                max_refinements=3,
+                context=ctx,
+            )
+
+        decision = await router.route(request, top_k=1)
+        top = decision[0]
+
+        if top.category == "agent" and top.result.name == "analysis":
+            return await research_loop.generate_str(request)
+
+        if top.category == "agent":
+            async with top.result:
+                return await top.result.generate_str(request)
+
+        # Fallback: let the router destination handle it directly
+        return await top.result.generate_str(request)
+```
+
+Highlights:
+
+- Router, parallel workflow, and evaluator are created once and reused across requests.
+- The evaluator-loop wraps the parallel workflow, so quality checks happen before the response leaves the system.
+- The entire composition is exposed as an MCP tool via `@app.async_tool`, making it callable from Claude, Cursor, or other MCP clients.
+
+## Patterns that mix well
+
+- **Intent classifier ➝ router**: Use the classifier for coarse gating (“is this support vs. billing?”) then route to specialists.
+- **Parallel ➝ evaluator**: Run multiple evaluators in parallel (policy, clarity, bias) and feed their combined verdict back to the optimizer.
+- **Orchestrator ➝ evaluator**: Wrap the final synthesis step in an evaluator loop so the orchestrator keeps iterating until the review passes.
+- **Router ➝ orchestrator**: Route strategic tasks to an orchestrator for deep execution, while simple tasks go to lightweight agents.
+- **Swarm handlers**: Use `create_swarm(...)` to hand off between agents mid-conversation, while still using MCP tools for capabilities.
+
+## Operational tips
+
+- **Share the context**: keep compositions inside `async with app.run()` so every component reuses the same `Context` (server registry, executor, secrets, tracing).
+- **Tune once, reuse everywhere**: store provider/model defaults in `mcp_agent.config.yaml`; override per pattern only when necessary.
+- **Observe everything**: `await workflow.get_token_node()` shows token spend for nested workflows; enable OTEL tracing to follow router choices, parallel branches, and evaluator scores.
+- **Blend deterministic helpers**: pass `fan_out_functions` or router `functions` for cheap heuristics (regex, lookups) alongside LLM-heavy steps.
+- **Think in tools**: once composed, wrap the entire pattern with `@app.tool` / `@app.async_tool` so it becomes an MCP tool. Other agents, orchestrators, or human operators can call it without knowing how it is assembled.
+
+## Examples to study
+
+- [workflow_orchestrator_worker](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows/workflow_orchestrator_worker) – combines routing, parallel tasks, and orchestration to grade student assignments.
+- [workflow_evaluator_optimizer](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows/workflow_evaluator_optimizer) – demonstrates evaluator loops, tool exposure, and cloud deployment.
+- [workflow_parallel](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows/workflow_parallel) – shows how to compose `AgentSpec`, AugmentedLLMs, and deterministic helpers inside one tool.
+- [Temporal examples](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/temporal) – walk through exposing custom compositions as durable Temporal workflows.

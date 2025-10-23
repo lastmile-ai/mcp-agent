@@ -17,6 +17,7 @@ from rich.table import Table
 from rich.prompt import Prompt, Confirm
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
+from mcp_agent.cli.utils.ux import LOG_VERBOSE
 from mcp_agent.config import Settings, get_settings
 
 
@@ -126,6 +127,10 @@ def check(
     ),
 ) -> None:
     """Check and summarize configuration status."""
+    if verbose:
+        LOG_VERBOSE.set(True)
+    verbose = LOG_VERBOSE.get()
+
     cfg = _find_config_file()
     sec = _find_secrets_file()
 

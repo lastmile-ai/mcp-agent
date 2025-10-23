@@ -1,11 +1,13 @@
 """
-Project scaffolding: mcp-agent init (scaffold minimal version).
+Project scaffolding: mcp-agent init (scaffold minimal version or copy curated examples).
 """
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from importlib import resources
+from importlib.resources import files as _pkg_files
 
 import typer
 from rich.console import Console
@@ -14,6 +16,10 @@ from rich.table import Table
 
 app = typer.Typer(help="Scaffold a new mcp-agent project")
 console = Console()
+err_console = Console(stderr=True)
+
+# Path to repository examples
+EXAMPLE_ROOT = Path(__file__).parents[4] / "examples"
 
 
 def _load_template(template_name: str) -> str:
@@ -74,7 +80,7 @@ def _write_readme(dir_path: Path, content: str, force: bool) -> str | None:
     return None
 
 
-def write_requirements(dir_path: Path, content: str, force: bool) -> str | None:
+def _write_requirements(dir_path: Path, content: str, force: bool) -> str | None:
     """Create a requirements.txt file with fallback logging if one already exists.
 
     Returns the filename created, or None if it could not be written (in which case
@@ -94,11 +100,72 @@ def write_requirements(dir_path: Path, content: str, force: bool) -> str | None:
     return None
 
 
+def _copy_tree(src: Path, dst: Path, force: bool) -> int:
+    """Copy a directory tree from src to dst.
+
+    Returns 1 on success, 0 on failure.
+    """
+    if not src.exists():
+        err_console.print(f"[red]Source not found: {src}[/red]")
+        return 0
+    try:
+        if dst.exists():
+            if force:
+                shutil.rmtree(dst)
+            else:
+                return 0
+        shutil.copytree(src, dst)
+        return 1
+    except Exception as e:
+        err_console.print(f"[red]Error copying tree: {e}[/red]")
+        return 0
+
+
+def _copy_pkg_tree(pkg_rel: str, dst: Path, force: bool) -> int:
+    """Copy packaged examples from mcp_agent.data/examples/<pkg_rel> into dst.
+
+    Uses importlib.resources to locate files installed with the package.
+    Returns 1 on success, 0 on failure.
+    """
+    try:
+        root = (
+            _pkg_files("mcp_agent")
+            .joinpath("data")
+            .joinpath("examples")
+            .joinpath(pkg_rel)
+        )
+    except Exception:
+        return 0
+    if not root.exists():
+        return 0
+
+    # Mirror directory tree
+    def _copy_any(node, target: Path):
+        if node.is_dir():
+            target.mkdir(parents=True, exist_ok=True)
+            for child in node.iterdir():
+                _copy_any(child, target / child.name)
+        else:
+            if target.exists() and not force:
+                return
+            with node.open("rb") as rf:
+                data = rf.read()
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with open(target, "wb") as wf:
+                wf.write(data)
+
+    _copy_any(root, dst)
+    return 1
+
+
 @app.callback(invoke_without_command=True)
 def init(
     ctx: typer.Context,
     dir: Path = typer.Option(Path("."), "--dir", "-d", help="Target directory"),
     template: str = typer.Option("basic", "--template", "-t", help="Template to use"),
+    quickstart: str = typer.Option(
+        None, "--quickstart", help="Quickstart mode: copy example without config files"
+    ),
     force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing files"),
     no_gitignore: bool = typer.Option(
         False, "--no-gitignore", help="Skip creating .gitignore"
@@ -107,10 +174,14 @@ def init(
         False, "--list", "-l", help="List available templates"
     ),
 ) -> None:
-    """Initialize a new MCP-Agent project with configuration and example files."""
+    """Initialize a new MCP-Agent project with configuration and example files.
+
+    Use --template for full project initialization with config files.
+    Use --quickstart for copying examples only."""
 
     # Available templates with descriptions
-    templates = {
+    # Organized into scaffolding templates and full example templates
+    scaffolding_templates = {
         "basic": "Simple agent with filesystem and fetch capabilities",
         "server": "MCP server with workflow and parallel agents",
         "token": "Token counting example with monitoring",
@@ -118,23 +189,124 @@ def init(
         "minimal": "Minimal configuration files only",
     }
 
+    example_templates = {
+        "workflow": "Workflow examples (from examples/workflows)",
+        "researcher": "MCP researcher use case (from examples/usecases/mcp_researcher)",
+        "data-analysis": "Financial data analysis example",
+        "state-transfer": "Workflow router with state transfer",
+        "mcp-basic-agent": "Basic MCP agent example",
+        "token-counter": "Token counting with monitoring",
+        "agent-factory": "Agent factory pattern",
+        "basic-agent-server": "Basic agent server (asyncio)",
+        "reference-agent-server": "Reference agent server implementation",
+        "elicitation": "Elicitation server example",
+        "sampling": "Sampling server example",
+        "notifications": "Notifications server example",
+    }
+
+    templates = {**scaffolding_templates, **example_templates}
+
     if list_templates:
         console.print("\n[bold]Available Templates:[/bold]\n")
-        table = Table(show_header=True, header_style="cyan")
-        table.add_column("Template", style="green")
-        table.add_column("Description")
 
-        for name, desc in templates.items():
-            table.add_row(name, desc)
+        # Templates table
+        console.print("[bold cyan]Templates:[/bold cyan]")
+        console.print(
+            "[dim]Creates minimal project structure with config files[/dim]\n"
+        )
+        table1 = Table(show_header=True, header_style="cyan")
+        table1.add_column("Template", style="green")
+        table1.add_column("Description")
+        for name, desc in scaffolding_templates.items():
+            table1.add_row(name, desc)
+        console.print(table1)
 
-        console.print(table)
+        # Quickstart templates table
+        console.print("\n[bold cyan]Quickstart Templates:[/bold cyan]")
+        console.print("[dim]Copies complete example projects[/dim]\n")
+        table2 = Table(show_header=True, header_style="cyan")
+        table2.add_column("Template", style="green")
+        table2.add_column("Description")
+        for name, desc in example_templates.items():
+            table2.add_row(name, desc)
+        console.print(table2)
+
         console.print("\n[dim]Use: mcp-agent init --template <name>[/dim]")
         return
 
     if ctx.invoked_subcommand:
         return
 
-    # Validate template
+    if quickstart:
+        if quickstart not in example_templates:
+            console.print(f"[red]Unknown quickstart example: {quickstart}[/red]")
+            console.print(f"Available examples: {', '.join(example_templates.keys())}")
+            console.print("[dim]Use --list to see all available templates[/dim]")
+            raise typer.Exit(1)
+
+        example_map = {
+            "workflow": (EXAMPLE_ROOT / "workflows", "workflow"),
+            "researcher": (EXAMPLE_ROOT / "usecases" / "mcp_researcher", "researcher"),
+            "data-analysis": (
+                EXAMPLE_ROOT / "usecases" / "mcp_financial_analyzer",
+                "data-analysis",
+            ),
+            "state-transfer": (
+                EXAMPLE_ROOT / "workflows" / "workflow_router",
+                "state-transfer",
+            ),
+            "basic-agent-server": (
+                EXAMPLE_ROOT / "mcp_agent_server" / "asyncio",
+                "basic_agent_server",
+            ),
+            "mcp-basic-agent": (None, "mcp_basic_agent", "basic/mcp_basic_agent"),
+            "token-counter": (None, "token_counter", "basic/token_counter"),
+            "agent-factory": (None, "agent_factory", "basic/agent_factory"),
+            "reference-agent-server": (
+                None,
+                "reference_agent_server",
+                "mcp_agent_server/reference",
+            ),
+            "elicitation": (None, "elicitation", "mcp_agent_server/elicitation"),
+            "sampling": (None, "sampling", "mcp_agent_server/sampling"),
+            "notifications": (None, "notifications", "mcp_agent_server/notifications"),
+            "hello-world": (EXAMPLE_ROOT / "cloud" / "hello_world", "hello_world"),
+            "mcp": (EXAMPLE_ROOT / "cloud" / "mcp", "mcp"),
+            "temporal": (EXAMPLE_ROOT / "cloud" / "temporal", "temporal"),
+            "chatgpt-app": (EXAMPLE_ROOT / "cloud" / "chatgpt_app", "chatgpt_app"),
+        }
+
+        mapping = example_map.get(quickstart)
+        if not mapping:
+            console.print(f"[red]Quickstart example '{quickstart}' not found[/red]")
+            raise typer.Exit(1)
+
+        base_dir = dir.resolve()
+        base_dir.mkdir(parents=True, exist_ok=True)
+
+        if len(mapping) == 3:
+            _, dst_name, pkg_rel = mapping
+            dst = base_dir / dst_name
+            copied = _copy_pkg_tree(pkg_rel, dst, force)
+            if not copied:
+                src = EXAMPLE_ROOT / pkg_rel.replace("/", "_")
+                if src.exists():
+                    copied = _copy_tree(src, dst, force)
+        else:
+            src, dst_name = mapping
+            dst = base_dir / dst_name
+            copied = _copy_tree(src, dst, force)
+
+        if copied:
+            console.print(f"Copied {copied} set(s) to {dst}")
+        else:
+            console.print(
+                f"[yellow]Could not copy '{quickstart}' - destination may already exist[/yellow]"
+            )
+            console.print("Use --force to overwrite")
+
+        return
+
     if template not in templates:
         console.print(f"[red]Unknown template: {template}[/red]")
         console.print(f"Available templates: {', '.join(templates.keys())}")
@@ -170,7 +342,78 @@ def init(
         if gitignore_content and _write(gitignore_path, gitignore_content, force):
             files_created.append(".gitignore")
 
-    # Create template-specific files
+    # Handle example templates (copy from repository or package)
+    if template in example_templates:
+        # Map template names to their source paths
+        # Format: "name": (repo_path, dest_name) for repo examples
+        #         "name": (None, dest_name, pkg_rel) for packaged examples
+        example_map = {
+            "workflow": (EXAMPLE_ROOT / "workflows", "workflow"),
+            "researcher": (EXAMPLE_ROOT / "usecases" / "mcp_researcher", "researcher"),
+            "data-analysis": (
+                EXAMPLE_ROOT / "usecases" / "mcp_financial_analyzer",
+                "data-analysis",
+            ),
+            "state-transfer": (
+                EXAMPLE_ROOT / "workflows" / "workflow_router",
+                "state-transfer",
+            ),
+            "basic-agent-server": (
+                EXAMPLE_ROOT / "mcp_agent_server" / "asyncio",
+                "basic_agent_server",
+            ),
+            "mcp-basic-agent": (None, "mcp_basic_agent", "basic/mcp_basic_agent"),
+            "token-counter": (None, "token_counter", "basic/token_counter"),
+            "agent-factory": (None, "agent_factory", "basic/agent_factory"),
+            "reference-agent-server": (
+                None,
+                "reference_agent_server",
+                "mcp_agent_server/reference",
+            ),
+            "elicitation": (None, "elicitation", "mcp_agent_server/elicitation"),
+            "sampling": (None, "sampling", "mcp_agent_server/sampling"),
+            "notifications": (None, "notifications", "mcp_agent_server/notifications"),
+            "hello-world": (EXAMPLE_ROOT / "cloud" / "hello_world", "hello_world"),
+            "mcp": (EXAMPLE_ROOT / "cloud" / "mcp", "mcp"),
+            "temporal": (EXAMPLE_ROOT / "cloud" / "temporal", "temporal"),
+            "chatgpt-app": (EXAMPLE_ROOT / "cloud" / "chatgpt_app", "chatgpt_app"),
+        }
+
+        mapping = example_map.get(template)
+        if not mapping:
+            console.print(f"[red]Example template '{template}' not found[/red]")
+            raise typer.Exit(1)
+
+        if len(mapping) == 3:
+            _, dst_name, pkg_rel = mapping
+            dst = dir / dst_name
+            copied = _copy_pkg_tree(pkg_rel, dst, force)
+            if not copied:
+                src = EXAMPLE_ROOT / pkg_rel.replace("/", "_")
+                if src.exists():
+                    copied = _copy_tree(src, dst, force)
+        else:
+            src, dst_name = mapping
+            dst = dir / dst_name
+            copied = _copy_tree(src, dst, force)
+
+        if copied:
+            console.print(
+                f"\n[green]✅ Successfully copied example '{template}'![/green]"
+            )
+            console.print(f"Created: [cyan]{dst}[/cyan]\n")
+            console.print("[bold]Next steps:[/bold]")
+            console.print(f"1. cd [cyan]{dst}[/cyan]")
+            console.print("2. Review the README for instructions")
+            console.print("3. Add your API keys to config/secrets files if needed")
+        else:
+            console.print(f"[yellow]Example '{template}' could not be copied[/yellow]")
+            console.print(
+                "The destination may already exist. Use --force to overwrite."
+            )
+
+        return
+
     if template == "basic":
         # Determine entry script name and handle existing files
         script_name = "main.py"
@@ -214,7 +457,7 @@ def init(
         # Add basic requirements.txt
         requirements_content = _load_template("requirements.txt")
         if requirements_content:
-            created = write_requirements(dir, requirements_content, force)
+            created = _write_requirements(dir, requirements_content, force)
             if created:
                 files_created.append(created)
 
@@ -305,7 +548,7 @@ def init(
             console.print("4. Run the factory: [cyan]uv run factory.py[/cyan]")
     elif template == "minimal":
         console.print("3. Create your agent script")
-        console.print("   See examples: [cyan]mcp-agent quickstart[/cyan]")
+        console.print("   See examples: [cyan]mcp-agent init --list[/cyan]")
 
         console.print(
             "\n[dim]Run [cyan]mcp-agent doctor[/cyan] to check your configuration[/dim]"
@@ -373,10 +616,12 @@ def interactive(
     console.print(f"\n[bold]Creating project '{project_name}'...[/bold]")
 
     # Use the main init function with selected options
+    ctx = typer.Context(init)
     init(
-        ctx=typer.Context(),
+        ctx=ctx,
         dir=dir,
         template=template_name,
+        quickstart=None,
         force=False,
         no_gitignore=False,
         list_templates=False,

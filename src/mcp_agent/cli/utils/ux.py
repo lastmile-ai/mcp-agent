@@ -2,12 +2,18 @@
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.theme import Theme
+
+from contextvars import ContextVar
+
+LOG_VERBOSE = ContextVar("log_verbose")
+
+LEFT_COLUMN_WIDTH = 10
 
 # Define a custom theme for consistent styling
 CUSTOM_THEME = Theme(
@@ -29,6 +35,12 @@ console = Console(theme=CUSTOM_THEME)
 logger = logging.getLogger("mcp-agent")
 
 
+def _create_label(text: str, style: str) -> str:
+    """Create a fixed-width label with style markup."""
+    dot = "⏺"
+    return f" [{style}]{dot}[/{style}] "
+
+
 def print_info(
     message: str,
     *args: Any,
@@ -44,9 +56,25 @@ def print_info(
         console_output: Whether to print to console
     """
     if console_output:
-        console.print(f"[info]INFO:[/info] {message}", *args, **kwargs)
+        label = _create_label("", "info")
+        console.print(f"{label}{message}", *args, **kwargs)
     if log:
         logger.info(message)
+
+
+def print_verbose(
+    message: str,
+    *args: Any,
+    log: bool = True,
+    console_output: bool = True,
+    **kwargs: Any,
+):
+    """
+    Print debug-like verbose content as info only if configured for verbose logging,
+    i.e. replaces "if verbose then print_info"
+    """
+    if LOG_VERBOSE.get():
+        print_info(message, *args, log=log, console_output=console_output, **kwargs)
 
 
 def print_success(
@@ -58,7 +86,8 @@ def print_success(
 ) -> None:
     """Print a success message."""
     if console_output:
-        console.print(f"[success]SUCCESS:[/success] {message}", *args, **kwargs)
+        label = _create_label("", "success")
+        console.print(f"{label}{message}", *args, **kwargs)
     if log:
         logger.info(f"SUCCESS: {message}")
 
@@ -72,7 +101,8 @@ def print_warning(
 ) -> None:
     """Print a warning message."""
     if console_output:
-        console.print(f"[warning]WARNING:[/warning] {message}", *args, **kwargs)
+        label = _create_label("", "warning")
+        console.print(f"{label}{message}", *args, **kwargs)
     if log:
         logger.warning(message)
 
@@ -86,7 +116,8 @@ def print_error(
 ) -> None:
     """Print an error message."""
     if console_output:
-        console.print(f"[error]ERROR:[/error] {message}", *args, **kwargs)
+        label = _create_label("", "error")
+        console.print(f"{label}{message}", *args, **kwargs)
     if log:
         logger.error(message, exc_info=True)
 
@@ -184,18 +215,44 @@ def print_secrets_summary(
 
 def print_deployment_header(
     app_name: str,
-    app_id: str,
+    existing_app_id: Optional[str],
     config_file: Path,
-    secrets_file: Optional[Path] = None,
-    deployed_secrets_file: Optional[Path] = None,
+    secrets_file: Optional[Path],
+    deployed_secrets_file: Optional[Path],
+    deployment_properties_display_info: List[Tuple[str, any, bool]],
 ) -> None:
     """Print a styled header for the deployment process."""
+
+    deployed_secrets_file_message = "[bright_black]N/A[/bright_black]"
+    if deployed_secrets_file:
+        deployed_secrets_file_message = f"[cyan]{str(deployed_secrets_file)}[/cyan]"
+    elif secrets_file:
+        deployed_secrets_file_message = "[cyan]Pending creation[/cyan]"
+
+    secrets_file_message = (
+        f"[cyan]{secrets_file}[/cyan]"
+        if secrets_file
+        else "[bright_black]N/A[/bright_black]"
+    )
+    app_id_display = (
+        f"[ID: {existing_app_id}]"
+        if existing_app_id
+        else "[bright_yellow][NEW][/bright_yellow]"
+    )
     console.print(
         Panel(
-            f"App: [cyan]{app_name}[/cyan] (ID: [cyan]{app_id}[/cyan])\n"
-            f"Configuration: [cyan]{config_file}[/cyan]\n"
-            f"Secrets file: [cyan]{secrets_file or 'N/A'}[/cyan]\n"
-            f"Deployed secrets file: [cyan]{deployed_secrets_file or 'Pending creation'}[/cyan]\n",
+            "\n".join(
+                [
+                    f"App: [cyan]{app_name}[/cyan] {app_id_display}",
+                    f"Configuration: [cyan]{config_file}[/cyan]",
+                    f"Secrets file: {secrets_file_message}",
+                    f"Deployed secrets file: {deployed_secrets_file_message}",
+                ]
+                + [
+                    f"{name}: [{'bright_yellow' if is_changed else 'bright_black'}]{value}[/{'bright_yellow' if is_changed else 'bright_black'}]"
+                    for (name, value, is_changed) in deployment_properties_display_info
+                ]
+            ),
             title="mcp-agent deployment",
             subtitle="LastMile AI",
             border_style="blue",
@@ -204,24 +261,46 @@ def print_deployment_header(
     )
     logger.info(f"Starting deployment with configuration: {config_file}")
     logger.info(
-        f"Using secrets file: {secrets_file or 'N/A'}, deployed secrets file: {deployed_secrets_file or 'Pending creation'}"
+        f"Using secrets file: {secrets_file or 'N/A'}, deployed secrets file: {deployed_secrets_file_message}"
     )
 
 
 def print_configuration_header(
-    secrets_file: Optional[Path], output_file: Optional[Path], dry_run: bool
+    app_server_url: str,
+    required_params: List[str],
+    secrets_file: Optional[Path],
+    output_file: Optional[Path],
+    dry_run: bool,
 ) -> None:
     """Print a styled header for the configuration process."""
+    sections = [
+        f"App Server URL: [cyan]{app_server_url}[/cyan]",
+    ]
+
+    if required_params:
+        sections.append(f"Required secrets: [cyan]{', '.join(required_params)}[/cyan]")
+        sections.append(
+            f"Secrets file: [cyan]{secrets_file or 'Will prompt for values'}[/cyan]"
+        )
+        if output_file:
+            sections.append(f"Output file: [cyan]{output_file}[/cyan]")
+    else:
+        sections.append("Required secrets: [bright_black]None[/bright_black]")
+
+    if dry_run:
+        sections.append("Mode: [yellow]DRY RUN[/yellow]")
+
     console.print(
         Panel(
-            f"Secrets file: [cyan]{secrets_file or 'Not specified'}[/cyan]\n"
-            f"Output file: [cyan]{output_file or 'Not specified'}[/cyan]\n"
-            f"Mode: [{'yellow' if dry_run else 'green'}]{'DRY RUN' if dry_run else 'CONFIGURE'}[/{'yellow' if dry_run else 'green'}]",
-            title="MCP APP Configuration",
+            "\n".join(sections),
+            title="mcp-agent configuration",
+            subtitle="LastMile AI",
             border_style="blue",
             expand=False,
         )
     )
-    logger.info(f"Starting configuration with secrets file: {secrets_file}")
+    logger.info(f"Starting configuration for app: {app_server_url}")
+    logger.info(f"Required params: {required_params}")
+    logger.info(f"Secrets file: {secrets_file}")
     logger.info(f"Output file: {output_file}")
     logger.info(f"Dry Run: {dry_run}")

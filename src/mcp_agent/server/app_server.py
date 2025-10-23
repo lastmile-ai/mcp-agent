@@ -2,7 +2,6 @@
 MCPAgentServer - Exposes MCPApp as MCP server, and
 mcp-agent workflows and agents as MCP tools.
 """
-
 from __future__ import annotations
 
 import json
@@ -32,7 +31,7 @@ from mcp.server.fastmcp.tools import Tool as FastTool
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse
 
-from mcp_agent.app import MCPApp
+from mcp_agent.app import MCPApp, phetch
 from mcp_agent.agents.agent import Agent
 from mcp_agent.core.context_dependent import ContextDependent
 from mcp_agent.executor.workflow import Workflow
@@ -1523,11 +1522,14 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         except Exception:
             pass
     else:
+        if "icons" not in kwargs and app._icons:
+            kwargs["icons"] = app._icons
         if "auth" not in kwargs and effective_auth_settings is not None:
             kwargs["auth"] = effective_auth_settings
         if "token_verifier" not in kwargs and token_verifier is not None:
             kwargs["token_verifier"] = token_verifier
             owns_token_verifier = True
+
         mcp = FastMCP(
             name=app.name or "mcp_agent_server",
             # TODO: saqadri (MAC) - create a much more detailed description
@@ -1567,7 +1569,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
 
     # region Workflow Tools
 
-    @mcp.tool(name="workflows-list")
+    @mcp.tool(name="workflows-list", icons=[phetch])
     def list_workflows(ctx: MCPContext) -> Dict[str, Dict[str, Any]]:
         """
         List all available workflow types with their detailed information.
@@ -1610,7 +1612,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
 
         return result
 
-    @mcp.tool(name="workflows-runs-list")
+    @mcp.tool(name="workflows-runs-list", icons=[phetch])
     async def list_workflow_runs(
         ctx: MCPContext,
         limit: int = 100,
@@ -1667,7 +1669,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
 
         return workflow_statuses
 
-    @mcp.tool(name="workflows-run")
+    @mcp.tool(name="workflows-run", icons=[phetch])
     async def run_workflow(
         ctx: MCPContext,
         workflow_name: str,
@@ -1694,7 +1696,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             pass
         return await _workflow_run(ctx, workflow_name, run_parameters, **kwargs)
 
-    @mcp.tool(name="workflows-get_status")
+    @mcp.tool(name="workflows-get_status", icons=[phetch])
     async def get_workflow_status(
         ctx: MCPContext,
         run_id: str | None = None,
@@ -1740,7 +1742,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             pass
         return await _workflow_status(ctx, run_id=run_id, workflow_id=workflow_id)
 
-    @mcp.tool(name="workflows-resume")
+    @mcp.tool(name="workflows-resume", icons=[phetch])
     async def resume_workflow(
         ctx: MCPContext,
         run_id: str | None = None,
@@ -1820,7 +1822,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
 
         return result
 
-    @mcp.tool(name="workflows-cancel")
+    @mcp.tool(name="workflows-cancel", icons=[phetch])
     async def cancel_workflow(
         ctx: MCPContext, run_id: str | None = None, workflow_id: str | None = None
     ) -> bool:
@@ -2202,6 +2204,7 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
         annotations = decl.get("annotations")
         icons = decl.get("icons")
         _meta = decl.get("meta")
+
         # Bind per-iteration values to avoid late-binding closure bugs
         name_local = name
         wname_local = workflow_name
@@ -2438,6 +2441,7 @@ def create_workflow_specific_tools(
 
     @mcp.tool(
         name=f"workflows-{workflow_name}-run",
+        icons=[phetch],
         description=f"""
         Run the '{workflow_name}' workflow and get a dict with workflow_id and run_id back.
         Workflow Description: {workflow_cls.__doc__}

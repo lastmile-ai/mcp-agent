@@ -1,0 +1,190 @@
+---
+title: Deploy to Cloud
+sidebarTitle: "Deploy to Cloud"
+description: "Publish your agent to mcp-agent Cloud with the CLI."
+icon: cloud
+---
+
+<Info>
+  mcp-agent Cloud is in open beta. Share feedback via [GitHub issues](https://github.com/lastmile-ai/mcp-agent/issues) or [Discord](https://lmai.link/discord/mcp-agent).
+</Info>
+
+## TL;DR – three commands
+
+```bash
+uvx mcp-agent login
+uvx mcp-agent deploy my-agent
+uvx mcp-agent cloud servers list
+uvx mcp-agent cloud servers describe my-agent
+```
+
+1. `login` stores your API token locally.
+2. `deploy` packages the current directory and uploads it.
+3. `cloud servers list` shows every deployment you have access to.
+4. `cloud servers describe` confirms the deployment URL and secret policy.
+
+## 1. Authenticate
+
+```bash
+uvx mcp-agent login
+```
+
+The CLI opens the Cloud dashboard so you can generate an API token. Credentials are stored under `~/.mcp-agent/`.
+
+## 2. Deploy
+
+From the directory containing your `mcp_agent.config.yaml` (or pass `--config-dir`):
+
+```bash
+uvx mcp-agent deploy my-agent
+```
+
+During deployment you'll classify secrets as **deployment** (stored securely) or **user** (provided later via `mcp-agent cloud configure`). Use `--dry-run` to validate without uploading or `--non-interactive` for CI.
+
+<CodeGroup>
+```bash basic
+directory/
+├── main.py
+├── mcp_agent.config.yaml
+└── mcp_agent.secrets.yaml
+```
+```bash deploy
+uvx mcp-agent deploy my-agent --dry-run
+```
+</CodeGroup>
+
+After a successful deploy you'll receive an endpoint like:
+
+```
+https://<app_id>.deployments.mcp-agent.com
+```
+
+## 3. Connect from clients
+
+Your cloud deployment is a standard MCP server. Use any MCP client:
+
+<Tabs>
+  <Tab title="Claude Desktop">
+    ```bash
+    uvx mcp-agent cloud configure --id https://<app_id>.deployments.mcp-agent.com
+    ```
+
+    This command writes a ready-to-paste entry for `~/.claude-desktop/config.json` including the SSE URL and headers.
+  </Tab>
+
+  <Tab title="Python">
+    1. Add the cloud server to your config so the registry knows how to connect:
+
+       ```yaml mcp_agent.config.yaml
+       mcp:
+         servers:
+           my_agent_cloud:
+             transport: sse
+             url: "https://<app_id>.deployments.mcp-agent.com/sse"
+             headers:
+               Authorization: "Bearer ${MCP_API_KEY}"
+       ```
+
+    2. Connect via the shared registry:
+
+       ```python
+       import asyncio
+       from mcp_agent.config import get_settings
+       from mcp_agent.mcp.mcp_server_registry import ServerRegistry
+       from mcp_agent.mcp.gen_client import gen_client
+
+       async def use_agent():
+           registry = ServerRegistry(config=get_settings())
+           async with gen_client("my_agent_cloud", server_registry=registry) as client:
+               result = await client.call_tool("my_tool", {"param": "value"})
+               print(result)
+
+       asyncio.run(use_agent())
+       ```
+  </Tab>
+</Tabs>
+
+## Monitor & manage
+
+<Tabs>
+  <Tab title="Logs">
+    ```bash
+    uvx mcp-agent cloud logger tail my-agent --follow
+    uvx mcp-agent cloud logger tail my-agent --grep "ERROR" --since 5m
+    ```
+  </Tab>
+  <Tab title="Servers">
+    ```bash
+    uvx mcp-agent cloud servers list
+    uvx mcp-agent cloud servers describe my-agent
+    ```
+  </Tab>
+  <Tab title="Workflows">
+    ```bash
+    uvx mcp-agent cloud workflows list
+    uvx mcp-agent cloud workflows describe my-agent run_123
+    ```
+  </Tab>
+</Tabs>
+
+## Example: web summarizer workflow
+
+```python main.py
+import asyncio
+from mcp_agent.app import MCPApp
+from mcp_agent.agents.agent import Agent
+from mcp_agent.executor.workflow import Workflow, WorkflowResult
+from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
+
+app = MCPApp(name="web_summarizer")
+
+@app.workflow
+class WebSummarizerWorkflow(Workflow[str]):
+    @app.workflow_run
+    async def run(self, url: str) -> WorkflowResult[str]:
+        agent = Agent(
+            name="summarizer",
+            instruction="Fetch and summarize web content concisely.",
+            server_names=["fetch"],
+        )
+
+        async with agent:
+            llm = await agent.attach_llm(OpenAIAugmentedLLM)
+            summary = await llm.generate_str(
+                f"Fetch {url} and provide a 3-sentence summary"
+            )
+            return WorkflowResult(value=summary)
+```
+
+```yaml mcp_agent.config.yaml
+execution_engine: temporal
+logger:
+  transports: [console]
+  level: info
+
+temporal:
+  host: temporal.mcp-agent.cloud
+  namespace: default
+  task_queue: mcp-agent
+
+mcp:
+  servers:
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+
+openai:
+  default_model: gpt-4o
+```
+
+Deploy with:
+
+```bash
+uvx mcp-agent deploy web-summarizer
+```
+
+## Learn more
+
+- [CLI reference](/reference/cli) – all commands and flags.
+- [Secrets configuration](/mcp-agent-sdk/core-components/configuring-your-application#secrets) – how secrets are merged for Cloud.
+- [Cloud agent server guide](/cloud/agent-server) – architecture, auth, and best practices.

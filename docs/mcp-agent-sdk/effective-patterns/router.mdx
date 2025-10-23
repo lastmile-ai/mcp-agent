@@ -1,0 +1,106 @@
+---
+title: "Router"
+description: "Intelligently dispatch requests to the best agent, MCP server, or function"
+icon: route
+---
+
+![Router workflow diagram](/images/router-workflow.png)
+
+## When to use it
+
+- Incoming requests could be answered by multiple skills—agents with tools, direct MCP servers, or lightweight functions.
+- You want dynamic dispatch instead of a maze of `if/else` statements or handcrafted prompts.
+- You need confidence scores and rationale so a human (or another workflow) can make the final decision.
+- You want to fall back to a generalist agent when no high-confidence match is found.
+
+## Destinations and scoring
+
+`create_router_llm(...)` builds an [`LLMRouter`](https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/workflows/router/router_llm.py) that instantiates a classifier LLM, inspects the candidates, and returns ranked [`LLMRouterResult`](https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/workflows/router/router_llm.py#L61) objects. Each result contains:
+
+- `category`: `"agent"`, `"server"`, or `"function"`.
+- `result`: the routed object (an `Agent`/`AugmentedLLM`, a server name, or a callable).
+- `confidence`: `"high"`, `"medium"`, or `"low"`—computed from the model’s probability.
+- `reasoning`: the model’s natural language justification.
+
+For deterministic routing, use `create_router_embedding(...)` which compares embeddings via [`EmbeddingRouter`](https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/workflows/router/router_embedding.py).
+
+## Quick start
+
+```python
+from mcp_agent.app import MCPApp
+from mcp_agent.mcp.gen_client import gen_client
+from mcp_agent.workflows.factory import AgentSpec, create_router_llm
+
+app = MCPApp(name="router_example")
+
+async def main():
+    async with app.run() as running_app:
+        router = await create_router_llm(
+            name="support_router",
+            server_names=["filesystem", "fetch"],
+            agents=[
+                AgentSpec(
+                    name="finder",
+                    instruction="Locate relevant files or URLs using MCP tools.",
+                    server_names=["filesystem", "fetch"],
+                ),
+                AgentSpec(
+                    name="writer",
+                    instruction="Draft polished responses using prior context.",
+                ),
+            ],
+            functions=[
+                lambda _: "Fallback: escalate to human triage.",
+            ],
+            routing_instruction="Prefer agents when tool use is required; use functions only for trivial replies.",
+            provider="openai",
+            context=running_app.context,
+        )
+
+        decisions = await router.route("Print the contents of README.md", top_k=2)
+        for choice in decisions:
+            print(choice.category, choice.result, choice.confidence, choice.reasoning)
+
+        top = decisions[0]
+        if top.category == "agent":
+            async with top.result:  # Attach LLMs + MCP tools for the agent
+                return await top.result.generate_str("Show me README.md")
+        if top.category == "server":
+            async with gen_client(
+                top.result,
+                running_app.server_registry,
+                context=running_app.context,
+            ) as session:
+                file = await session.call_tool("read_file", {"path": "README.md"})
+                return file.content
+        if top.category == "function":
+            return top.result("README.md")
+```
+
+## Configuration knobs
+
+- `top_k`: expose the top *k* candidates to give humans (or downstream logic) choices.
+- `routing_instruction`: prime the classifier with custom rubric; defaults to a generic prompt that lists every destination, its description, and available tools.
+- `provider` / `model`: choose the model that performs routing (`openai` or `anthropic` today). You can also pass `request_params` for temperature, stop sequences, or strict JSON mode.
+- `server_names`: include raw MCP servers. The router pulls descriptions from the server registry so the model knows what each server can do.
+- `functions`: register local Python callables. Handy for telemetry, logging, or immediate fallbacks.
+- `route_to_agent` / `route_to_server` / `route_to_function`: skip the multi-category prompt when you already know the desired destination type.
+- `create_router_embedding`: swap in embedding similarity when you prefer deterministic scoring or offline model execution.
+
+## Guardrails and observability
+
+- Use the `confidence` signal to decide when to short-circuit or escalate. For example, enforce `confidence == "high"` before allowing automated actions.
+- The router records detailed spans (`router.route`, candidate reasoning, chosen categories) when tracing is enabled, making it easy to debug ambiguous decisions in Jaeger or another OTLP backend.
+- Pair with the [Intent Classifier](/mcp-agent-sdk/effective-patterns/intent-classifier) for two-stage routing: first map the request to an intent, then feed the intent into the router for fine-grained dispatch.
+- Wrap the router itself in the [Evaluator-Optimizer](/mcp-agent-sdk/effective-patterns/evaluator-optimizer) pattern if you want an automated supervisor to veto low-quality routing rationales.
+
+## Example projects
+
+- [workflow_router](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows/workflow_router) – routes across agents, MCP servers, and plain functions with confidence/rationale logging.
+- [workflow_intent_classifier](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows/workflow_intent_classifier) – classifies intent first, then routes to specialised handlers.
+- [Temporal router](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/temporal/router.py) – demonstrates durable routing inside Temporal workflows.
+
+## Related reading
+
+- [Intent Classifier pattern](/mcp-agent-sdk/effective-patterns/intent-classifier)
+- [Workflow & decorators guide](/mcp-agent-sdk/core-components/workflows)

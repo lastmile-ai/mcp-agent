@@ -348,14 +348,14 @@ class MCPAppClient(APIClient):
                     f"Failed to retrieve app or configuration for ID or server URL: {app_id_or_url}"
                 ) from e
 
-    async def get_app_id_by_name(self, name: str) -> Optional[str]:
-        """Get the app ID for a given app name via the API.
+    async def get_app_by_name(self, name: str) -> Optional[MCPApp]:
+        """Get the app for a given app name via the API.
 
         Args:
             name: The name of the MCP App
 
         Returns:
-            Optional[str]: The UUID of the MCP App, or None if not found
+            Optional[MCPApp]: The MCP App, or None if not found
 
         Raises:
             ValueError: If the name is empty or invalid
@@ -370,7 +370,24 @@ class MCPAppClient(APIClient):
             return None
 
         # Return the app with exact name match
-        return next((app.appId for app in apps.apps if app.name == name), None)
+        return next((app for app in apps.apps if app.name == name), None)
+
+    async def get_app_id_by_name(self, name: str) -> Optional[str]:
+        """Get the app ID for a given app name via the API.
+
+        Args:
+            name: The name of the MCP App
+
+        Returns:
+            Optional[str]: The UUID of the MCP App, or None if not found
+
+        Raises:
+            ValueError: If the name is empty or invalid
+            httpx.HTTPStatusError: If the API returns an error
+            httpx.HTTPError: If the request fails
+        """
+        app = self.get_app_by_name(name)
+        return app.appId if app else None
 
     async def deploy_app(
         self,

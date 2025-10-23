@@ -12,6 +12,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.prompt import Confirm
 
+from mcp_agent.cli.utils.ux import LOG_VERBOSE
 from mcp_agent.config import Settings, MCPServerSettings, MCPSettings, get_settings
 from mcp_agent.cli.utils.importers import import_servers_from_mcp_json
 from mcp_agent.core.context import cleanup_context
@@ -693,6 +694,10 @@ def test(
     import asyncio
     from mcp_agent.app import MCPApp
     from mcp_agent.agents.agent import Agent
+
+    if verbose:
+        LOG_VERBOSE.set(True)
+    verbose = LOG_VERBOSE.get()
 
     async def _probe():
         app_obj = MCPApp(name="server-test")

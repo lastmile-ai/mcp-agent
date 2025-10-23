@@ -5,10 +5,11 @@ the required configuration parameters (e.g. user secrets).
 """
 
 from pathlib import Path
+from datetime import datetime, timezone
 from typing import Optional, Union
+import json
 
 import typer
-from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from mcp_agent.cli.auth import load_api_key_credentials
@@ -35,10 +36,13 @@ from mcp_agent.cli.utils.ux import (
     print_configuration_header,
     print_info,
     print_success,
+    print_verbose,
+    LOG_VERBOSE,
 )
 
 
 def configure_app(
+    ctx: typer.Context,
     app_server_url: str = typer.Option(
         None,
         "--id",
@@ -84,6 +88,12 @@ def configure_app(
         help="API key for authentication. Defaults to MCP_API_KEY environment variable.",
         envvar=ENV_API_KEY,
     ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable verbose output for this command",
+    ),
 ) -> str:
     """Configure an MCP app with the required params (e.g. user secrets).
 
@@ -98,6 +108,9 @@ def configure_app(
     Returns:
         Configured app ID.
     """
+    if verbose:
+        LOG_VERBOSE.set(True)
+
     # Check what params the app requires (doubles as an access check)
     if not app_server_url:
         raise CLIError("You must provide a server URL to configure.")
@@ -110,8 +123,7 @@ def configure_app(
 
     client: Union[MockMCPAppClient, MCPAppClient]
     if dry_run:
-        # Use the mock api client in dry run mode
-        print_info("Using MOCK API client for dry run")
+        print_verbose("Using MOCK API client for dry run")
         client = MockMCPAppClient(
             api_url=api_url or DEFAULT_API_BASE_URL, api_key=effective_api_key
         )
@@ -162,22 +174,18 @@ def configure_app(
 
     if requires_secrets:
         if not secrets_file and secrets_output_file is None:
-            # Set default output file if not specified
             secrets_output_file = Path(MCP_CONFIGURED_SECRETS_FILENAME)
-            print_info(f"Using default output path: {secrets_output_file}")
+            print_verbose(f"Using default output path: {secrets_output_file}")
 
-        print_configuration_header(secrets_file, secrets_output_file, dry_run)
-
-        print_info(
+        print_verbose(
             f"App {app_server_url} requires the following ({len(required_params)}) user secrets: {', '.join(required_params)}"
         )
 
         try:
-            print_info("Processing user secrets...")
+            print_verbose("Processing user secrets...")
 
             if dry_run:
-                # Use the mock client in dry run mode
-                print_info("Using MOCK Secrets API client for dry run")
+                print_verbose("Using MOCK Secrets API client for dry run")
 
                 # Create the mock client
                 mock_client = MockSecretsClient(
@@ -210,10 +218,10 @@ def configure_app(
                     )
                 )
 
-            print_success("User secrets processed successfully")
+            print_verbose("User secrets processed successfully")
 
         except Exception as e:
-            if settings.VERBOSE:
+            if LOG_VERBOSE.get():
                 import traceback
 
                 typer.echo(traceback.format_exc())
@@ -226,14 +234,35 @@ def configure_app(
                 f"App {app_server_url} does not require any parameters, but a secrets file was provided: {secrets_file}"
             )
 
+    print_configuration_header(
+        app_server_url,
+        required_params if requires_secrets else [],
+        secrets_file,
+        secrets_output_file,
+        dry_run,
+    )
+
+    if not dry_run:
+        proceed = typer.confirm("Proceed with configuration?", default=True)
+        if not proceed:
+            print_info("Configuration cancelled.")
+            return None
+    else:
+        print_info("Running in dry run mode.")
+
+    start_time = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    print_info(f"[{start_time}] Starting configuration process...", highlight=False)
+
     if dry_run:
         print_success("Configuration completed in dry run mode.")
         return "dry-run-app-configuration-id"
 
-    # Finally, configure the app for the user
+    config = None
+    spinner_column = SpinnerColumn(spinner_name="aesthetic")
     with Progress(
-        SpinnerColumn(spinner_name="arrow3"),
-        TextColumn("[progress.description]{task.description}"),
+        "",
+        spinner_column,
+        TextColumn(" [progress.description]{task.description}"),
     ) as progress:
         task = progress.add_task("Configuring MCP App...", total=None)
 
@@ -243,18 +272,52 @@ def configure_app(
                     app_server_url=app_server_url, config_params=configured_secrets
                 )
             )
-            progress.update(task, description="✅ MCP App configured successfully!")
-            console.print(
-                Panel(
-                    f"Configured App ID: [cyan]{config.appConfigurationId}[/cyan]\n"
-                    f"Configured App Server URL: [cyan]{config.appServerInfo.serverUrl if config.appServerInfo else ''}[/cyan]",
-                    title="Configuration Complete",
-                    border_style="green",
-                )
-            )
-
-            return config.appConfigurationId
+            spinner_column.spinner.frames = spinner_column.spinner.frames[-2:-1]
+            progress.update(task, description="MCP App configured successfully!")
 
         except Exception as e:
             progress.update(task, description="❌ MCP App configuration failed")
-            raise CLIError(f"Failed to configure app {app_server_url}: {str(e)}") from e
+            end_time = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            raise CLIError(
+                f"[{end_time}] Failed to configure app {app_server_url}: {str(e)}"
+            ) from e
+
+    # Print results after progress context ends
+    end_time = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    if config.app:
+        print_info(
+            f"[{end_time}] Configuration of '{config.app.name}' succeeded. ID: {config.appConfigurationId}",
+            highlight=False,
+        )
+    else:
+        print_info(
+            f"[{end_time}] Configuration succeeded. ID: {config.appConfigurationId}",
+            highlight=False,
+        )
+
+    if config.appServerInfo:
+        server_url = config.appServerInfo.serverUrl
+        print_info(f"App Server URL: [link={server_url}]{server_url}[/link]")
+        print_info(
+            f"Use this configured app as an MCP server at {server_url}/sse\n\nMCP configuration example:"
+        )
+
+        # Use the app name if available, otherwise use a simple default
+        app_name = config.app.name if config.app else "configured-app"
+
+        mcp_config = {
+            "mcpServers": {
+                app_name: {
+                    "url": f"{server_url}/sse",
+                    "transport": "sse",
+                    "headers": {"Authorization": f"Bearer {effective_api_key}"},
+                }
+            }
+        }
+
+        console.print(
+            f"[bright_black]{json.dumps(mcp_config, indent=2)}[/bright_black]",
+            soft_wrap=True,
+        )
+
+    return config.appConfigurationId

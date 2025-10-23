@@ -33,14 +33,12 @@ dependencies = [
     "scikit-learn>=1.6.0",
     "typer>=0.15.3",
     "websockets>=12.0",
-]
-
-[project.optional-dependencies]
-cli = [
     "pathspec>=0.12.1",
     "python-dotenv>=1.0.0",
     "watchdog>=6.0.0",
 ]
+
+[project.optional-dependencies]
 temporal = [
     "temporalio[opentelemetry]>=1.10.0",
 ]
@@ -103,10 +101,10 @@ dev = [
 ]
 
 [project.scripts]
-silsila = "mcp_agent.cli.main:run [cli]"
-mcp-agent = "mcp_agent.cli.main:run [cli]"
-mcp-cloud = "mcp_agent.cli.cloud.main:run [cli]"
-mcpc = "mcp_agent.cli.cloud.main:run [cli]"
+silsila = "mcp_agent.cli.main:run"
+mcp-agent = "mcp_agent.cli.main:run"
+mcp-cloud = "mcp_agent.cli.cloud.main:run"
+mcpc = "mcp_agent.cli.cloud.main:run"
 
 [tool.setuptools.packages.find]
 include = ["mcp-agent"]

@@ -1,0 +1,109 @@
+---
+title: "Planner (Orchestrator)"
+description: "Break complex objectives into coordinated steps"
+icon: list-check
+---
+
+![Orchestrator workflow diagram](/images/orchestrator-workflow.png)
+
+## When to use it
+
+- The user request is ambiguous or multi-step and you want the system to decide *what* to do before executing.
+- Different parts of the task require different agents or MCP servers (retrieve context, analyse, write, verify).
+- You need visibility into the plan, intermediate results, and token spend for each subtask.
+- You want to switch between full upfront planning and iterative planning based on feedback.
+
+The orchestrator mirrors Anthropic’s “orchestrator-workers” pattern: a planner decomposes the objective, assigns workers, collects intermediate artifacts, and synthesises the final response.
+
+## Core roles
+
+[`create_orchestrator`](https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/workflows/factory.py#L214) returns an [`Orchestrator`](https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/workflows/orchestrator/orchestrator.py) AugmentedLLM composed of:
+
+- **Planner** – an LLM that produces a [`Plan`](https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/workflows/orchestrator/orchestrator_models.py#L52) with sequential `Step`s and parallel `Task`s. You can provide your own planner agent or use the default prompt.
+- **Workers** – the `available_agents` you pass in. Each step selects whichever agent (or MCP server) best fits the subtask.
+- **Synthesizer** – combines the outputs of each step into the final result. Provide your own synthesizer agent to bias tone or format.
+
+## Quick start
+
+```python
+from mcp_agent.app import MCPApp
+from mcp_agent.workflows.factory import AgentSpec, OrchestratorOverrides, create_orchestrator
+
+app = MCPApp(name="orchestrator_example")
+
+async def main():
+    async with app.run() as running_app:
+        orchestrator = create_orchestrator(
+            available_agents=[
+                AgentSpec(
+                    name="researcher",
+                    instruction="Gather supporting evidence from trusted sources.",
+                    server_names=["fetch"],
+                ),
+                AgentSpec(
+                    name="writer",
+                    instruction="Summarise findings as bullet points and a short conclusion.",
+                ),
+                AgentSpec(
+                    name="editor",
+                    instruction="Check for policy violations and tighten language.",
+                ),
+            ],
+            plan_type="iterative",  # or "full"
+            overrides=OrchestratorOverrides(
+                planner_instruction="You are a project manager. Break the goal into 2-4 sequential steps.",
+                synthesizer_instruction="Return Markdown with headings and a highlights section.",
+            ),
+            provider="openai",
+            context=running_app.context,
+        )
+
+        summary = await orchestrator.generate_str(
+            "Research the latest MCP Agent updates and draft a changelog."
+        )
+        return summary
+```
+
+Use `await orchestrator.execute(objective)` when you want full access to the [`PlanResult`](https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/workflows/orchestrator/orchestrator_models.py#L69): each step, the tasks that ran, agent selections, and intermediate outputs.
+
+## Execution modes
+
+- `plan_type="full"` builds the entire plan upfront, then executes it step by step. Use this when the task is well understood and you want deterministic execution.
+- `plan_type="iterative"` plans one step at a time, feeding the latest results back into the planner. Ideal for exploratory work or when new context appears during execution.
+- Guardrails:
+  - `request_params.max_iterations` caps the number of planner loops.
+  - `request_params.maxTokens` defaults to 16K to accommodate plans and long syntheses.
+  - `request_params.use_history` is disabled—context is managed manually between steps.
+
+## Customising prompts and roles
+
+- Pass `planner` or `synthesizer` arguments to supply pre-built agents (with their own tools or model preferences).
+- Use `OrchestratorOverrides` to replace any prompt template:
+  - `get_full_plan_prompt` / `get_iterative_plan_prompt`: plug in your own prompt builders if you want richer task schemas or intermediate metadata.
+  - `get_task_prompt`: control the system prompt given to each worker before it runs.
+  - `get_synthesize_plan_prompt`: change the final aggregation format (JSON, Markdown, HTML).
+- The orchestrator automatically loads tool availability from the context; include `server_names` on your `AgentSpec`s so planner prompts explain what each worker can do.
+
+## Observability and debugging
+
+- Enable tracing (`otel.enabled: true`) to capture spans for planning, each step’s parallel execution, and synthesis. Each task records which agent ran, token usage, and outputs.
+- Call `await orchestrator.get_token_node()` to inspect the token/cost tree—each planner iteration and worker invocation is a child node.
+- The `PlanResult` returned by `execute` contains `step_results` with every intermediate output. Persist it for audit trails or UX side panels.
+
+## Integration tips
+
+- Wrap the orchestrator with `@app.async_tool` to expose it as an MCP tool that other agents (or Anthropic Claude) can call.
+- Combine with the [Parallel pattern](/mcp-agent-sdk/effective-patterns/map-reduce) by using a `ParallelLLM` as a worker inside a step.
+- For durable execution, point `execution_engine` to `temporal` and follow the [Temporal examples](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/temporal/orchestrator.py).
+- Need policy, budgeting, or knowledge extraction? Reach for the [Deep Research pattern](/mcp-agent-sdk/effective-patterns/deep-research), which builds on this orchestrator.
+
+## Example projects
+
+- [workflow_orchestrator_worker](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows/workflow_orchestrator_worker) – student essay grader that plans retrieval, analysis, and report writing.
+- [Temporal orchestrator](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/temporal/orchestrator.py) – durable planner with pause/resume.
+- [workflow_deep_orchestrator](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows/workflow_deep_orchestrator) – extended planner with dashboards, budgets, and policy enforcement.
+
+## Related reading
+
+- [Deep Research pattern](/mcp-agent-sdk/effective-patterns/deep-research)
+- [Workflow & decorators guide](/mcp-agent-sdk/core-components/workflows)

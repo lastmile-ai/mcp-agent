@@ -1,0 +1,86 @@
+---
+title: Deploy MCP Servers
+sidebarTitle: "Deploy MCP Servers"
+description: "Host standalone MCP servers—FastMCP, custom tooling, or data backends—on mcp-agent cloud"
+icon: server
+---
+
+You do not need full agent orchestration to benefit from the platform. Use mcp-agent cloud to host plain MCP servers that expose tools, resources, and prompts. Typical scenarios:
+
+- A catalogue of internal services (Jira, GitHub, PagerDuty) surfaced to MCP clients.
+- Reusable data access layers (BI dashboards, CRM fetchers).
+- Utility toolkits (formatting, encryption, validation) shared across teams.
+- Bridges that wrap legacy gRPC/REST APIs in MCP.
+
+## Quick workflow
+
+```bash
+# 1. Authenticate
+mcp-agent login
+
+# 2. Test locally (FastMCP or custom server)
+uv run main.py
+
+# 3. Deploy from project directory
+mcp-agent deploy utilities-server \
+  --app-description "Utility tools exposed via MCP"
+
+# 4. Describe & copy server URL
+mcp-agent cloud servers describe utilities-server
+
+# (The CLI prints a hostname like `app_abc123xyz.deployments.mcp-agent.com`; use that value anywhere `<app_id>` appears below.)
+
+# 5. Install into clients
+mcp-agent install https://<app_id>.deployments.mcp-agent.com/sse \
+  --client cursor
+```
+
+## Project layout
+
+```
+utilities-server/
+├── main.py                  # FastMCP or custom server entrypoint
+├── mcp_agent.config.yaml    # Points at the command/args to start the server
+├── requirements.txt         # Dependencies (or pyproject.toml)
+└── mcp_agent.secrets.yaml   # Optional secrets for outbound APIs
+```
+
+Minimal config:
+
+```yaml
+name: utilities-server
+execution_engine: asyncio
+mcp:
+  servers:
+    utilities:
+      command: "uvx"
+      args: ["python", "main.py"]
+logger:
+  transports: [console]
+  level: info
+```
+
+> Even though you are not using Temporal, the platform still provides logging, secrets, and auth.
+
+## Authentication modes
+
+- **Bearer token** (default) – users set `MCP_API_KEY` or run `mcp-agent login`.
+- **Unauthenticated** – deploy with `--no-auth` for public servers or ChatGPT Apps.
+- **OAuth (coming soon)** – follow updates in [Authentication →](/deployment/authentication/overview).
+
+## Observability & operations
+
+- `mcp-agent cloud logger tail <name>` – inspect logs, filter by regex, follow in real time.
+- `mcp-agent cloud servers list` – inventory + status.
+- `mcp-agent cloud servers delete <name>` – remove deployment.
+- `mcp-agent cloud logger configure` – forward logs to your OTEL collector.
+
+## Evolving into an agent
+
+When you want durable workflows, wrap existing tools with `MCPApp` and redeploy under the same name. MCP clients continue to work while gaining new capabilities (`@app.async_tool`, workflow management). See [Deploy Agents →](/deployment/use-cases/deploy-agents) for the migration playbook.
+
+## Further reading
+
+- [Deploying MCP servers (deep dive) →](/deployment/mcp-agent-cloud/deploy-mcp-server)
+- [ChatGPT Apps deployment →](/deployment/use-cases/deploy-chatgpt-apps)
+- [Secrets management →](/deployment/mcp-agent-cloud/manage-secrets)

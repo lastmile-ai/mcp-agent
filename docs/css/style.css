@@ -1,0 +1,22 @@
+/* Logo sizing */
+img.nav-logo {
+  max-width: 200px;
+}
+
+/* Inline code highlighting - Blue theme for mcp-agent */
+p code:not(pre code),
+table code:not(pre code),
+.prose code:not(pre code),
+li code:not(pre code),
+h1 code:not(pre code),
+h2 code:not(pre code),
+h3 code:not(pre code),
+h4 code:not(pre code),
+h5 code:not(pre code),
+h6 code:not(pre code),
+a code:not(pre code),
+span code:not(pre code),
+div code:not(pre code) {
+  color: #3b82f6 !important;
+  background-color: rgba(59, 130, 246, 0.09);
+}

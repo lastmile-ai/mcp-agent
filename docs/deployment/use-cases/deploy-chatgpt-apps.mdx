@@ -1,0 +1,128 @@
+---
+title: Deploy ChatGPT Apps
+sidebarTitle: "Deploy ChatGPT Apps"
+description: "Expose mcp-agent servers as OpenAI ChatGPT Apps with interactive widgets"
+icon: comments
+---
+
+OpenAI’s ChatGPT Apps platform can consume MCP servers as “Actions”. This guide explains how to package an mcp-agent or FastMCP deployment for ChatGPT, including widget metadata, static assets, and authentication considerations.
+
+## Requirements
+
+- ChatGPT Apps developer access
+- Deployed MCP server with **unauthenticated access enabled** (`mcp-agent deploy ... --no-auth`)
+- Optional: frontend bundle (React, vanilla JS) if you want rich widgets
+
+## Recommended project structure
+
+```
+chatgpt-app/
+├── main.py                    # MCP server (FastMCP or MCPApp)
+├── web/                       # Front-end assets (React build)
+├── static/                    # Optional static resources
+├── mcp_agent.config.yaml
+└── requirements.txt
+```
+
+Example: [`examples/cloud/chatgpt_app`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/cloud/chatgpt_app)
+
+## 1. Build the widget assets
+
+In the example project:
+
+```bash
+cd web
+yarn install
+yarn build          # Produces web/build/*
+cd ..
+```
+
+The server serves these assets via FastMCP resources. For initial iteration you can inline HTML/JS inside the MCP resource, but packaging static files yields better caching.
+
+## 2. Define widget metadata
+
+ChatGPT Apps understand OpenAI-specific tool annotations. The example coin-flip widget uses:
+
+```python
+from dataclasses import dataclass
+from fastmcp import FastMCP, EmbeddedResource
+
+@dataclass
+class CoinFlipWidget:
+    template_uri: str
+    html: str
+
+    def to_tool_annotations(self) -> dict:
+        return {
+            "openai/outputTemplate": self.template_uri,
+            "openai/toolInvocation/invoking": [
+                {"type": "text", "text": "Flipping the coin…"}
+            ],
+            "openai/toolInvocation/invoked": [
+                {"type": "text", "text": "Heads or tails?"}
+            ],
+            "openai/widgetAccessible": True,
+            "openai/resultCanProduceWidget": True,
+        }
+```
+
+When the tool returns an `EmbeddedResource`, ChatGPT hydrates the widget using the referenced HTML template.
+
+## 3. Deploy with `--no-auth`
+
+```bash
+mcp-agent deploy chatgpt-coin-flip \
+  --app-description "Coin flip widget for ChatGPT Apps" \
+  --no-auth
+```
+
+Unauthenticated access is mandatory—ChatGPT Apps cannot attach custom headers or bearer tokens yet. The platform still enforces rate limits and observability, but anyone with the URL can access the server. Treat public deployments accordingly.
+
+After deployment, update the widget template URI to the final domain:
+
+```python
+SERVER_URL = "https://<app_id>.deployments.mcp-agent.com"
+COIN_FLIP_WIDGET = CoinFlipWidget(
+    template_uri=f"ui://widget/coin-flip-{DATE_STAMP}.html",
+    html=DEPLOYED_HTML_TEMPLATE.replace("{{SERVER_URL}}", SERVER_URL),
+)
+```
+
+Redeploy to publish changes.
+
+## 4. Register the action in ChatGPT Apps
+
+1. Open [developers.openai.com/apps](https://developers.openai.com/apps).
+2. Create or open your app, then add a new **Action**.
+3. Choose **MCP** as the action type.
+4. Provide the server URL (`https://<app_id>.deployments.mcp-agent.com`). `<app_id>` matches the hostname shown in the deployment output (for example, `app_abc123xyz`).
+5. Select **Server-Sent Events** as the transport (all mcp-agent cloud deployments currently expose SSE endpoints).
+6. Save and test—ChatGPT will list available tools (`coin-flip`) and display widgets declared via annotations.
+
+## 5. Iterate on the widget
+
+- **Cache busting** – update `template_uri` (include a timestamp or semantic version) whenever you change the HTML so ChatGPT fetches the new template.
+- **State** – return structured data from the tool. The client-side widget receives this in `state.result`.
+- **Accessibility** – provide meaningful `openai/toolInvocation` strings and fallback text for users who cannot render widgets.
+
+## 6. Optional enhancements
+
+- **Hybrid auth** – combine a public endpoint with per-user rate limiting by inspecting request metadata (e.g., custom query params) inside your tool and calling your own auth service.
+- **Telemetry** – use `context.logger.info` to log widget usage; stream via `mcp-agent cloud logger tail`.
+- **Publishing** – once stable, add metadata (name, description, icon) when you create the ChatGPT App so users can discover it in the directory.
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| ChatGPT cannot reach the server | Deployment still requires auth | Redeploy with `--no-auth` |
+| Widget fails to render | Template URI cached | Bump `template_uri` with new suffix |
+| SSE handshake fails | Wrong transport or missing `/sse` | Use server URL ending in `/sse` and ensure tool returns SSE-compatible responses |
+| Tool not listed | Server offline or tool registration mismatch | `mcp-agent cloud servers describe <id>` and `mcp-agent cloud logger tail` for details |
+
+## Resources
+
+- [ChatGPT App example source](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/cloud/chatgpt_app)
+- [OpenAI Apps SDK MCP documentation](https://developers.openai.com/apps-sdk/build/mcp-server)
+- [Deploying MCP servers →](/deployment/mcp-agent-cloud/deploy-mcp-server)
+- [Authentication overview →](/deployment/authentication/overview)

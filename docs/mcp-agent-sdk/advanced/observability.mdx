@@ -1,0 +1,160 @@
+---
+title: "Observability"
+sidebarTitle: "Observability"
+description: "Collect traces, metrics, and token usage from mcp-agent workflows"
+icon: chart-line
+---
+
+Reliable agents need first-class visibility. mcp-agent ships with structured logging, OpenTelemetry instrumentation, and a token counter that works across every AugmentedLLM. This page shows how to wire everything together and where to find reference implementations.
+
+## What ships out of the box
+
+- **Structured logger** – `app.logger`, `context.logger`, and every `Agent` share the same event bus, automatically enriched with trace and workflow identifiers.
+- **TokenCounter** – every AugmentedLLM records token usage, cost estimates, and parent/child relationships so you can inspect expensive branches.
+- **OpenTelemetry hooks** – spans are emitted for workflows, tool calls, LLM requests, MCP server traffic, and Temporal activities when tracing is enabled.
+- **Metrics integration points** – `mcp_agent.tracing.telemetry.get_meter` exposes counters/histograms ready for Prometheus or any OTLP collector.
+
+## Enable OpenTelemetry
+
+Add the `otel` block to `mcp_agent.config.yaml` (see the [configuration reference](/reference/configuration#opentelemetrysettings) for every option). The snippet below mirrors what the tracing examples ship with (multiple exporters are supported; include as many as you need):
+
+```yaml
+otel:
+  enabled: true
+  service_name: "mcp-agent"
+  service_version: "1.0.0"
+  sample_rate: 1.0
+  exporters:
+    - console
+    - file:
+        path: "logs/mcp-agent.jsonl"
+        path_settings:
+          path_pattern: "logs/mcp-agent-{timestamp}.jsonl"
+          timestamp_format: "%Y%m%d_%H%M%S"
+    # - otlp:
+    #     endpoint: "http://your-collector-endpoint/v1/traces"
+    #     headers:
+    #       Authorization: "Bearer ${OTEL_TOKEN}"
+```
+
+Once enabled, spans automatically propagate through AugmentedLLMs, MCP server calls, and Temporal workflows. Point the OTLP exporter at your tracing backend and repeat the `- otlp` block if you want to send the same data to multiple collectors.
+
+## Add spans and metrics in code
+
+Use the helpers from `mcp_agent.tracing.telemetry` inside workflows, tools, or activities (or apply the `@telemetry.traced()` decorator when you want automatic span creation):
+
+```python
+from mcp_agent.tracing.telemetry import get_tracer, record_attributes
+
+@app.workflow_run
+async def run(self, request: dict) -> WorkflowResult[str]:
+    tracer = get_tracer(self.context)
+    with tracer.start_as_current_span("grading.step.plan") as span:
+        record_attributes(span, request, prefix="request")
+        plan = await self.plan_tasks(request)
+
+    with tracer.start_as_current_span("grading.step.execute"):
+        report = await self.execute_plan(plan)
+
+    return WorkflowResult(value=report)
+
+@telemetry.traced()
+async def expensive_helper(...):
+    ...
+```
+
+Prefer `get_tracer(self.context)` when you are inside mcp-agent primitives so trace data flows through the shared `Context`. If you are instrumenting utility code outside that context, you can fall back to standard OpenTelemetry helpers (`from opentelemetry import trace; tracer = trace.get_tracer(__name__)`).
+
+For metrics, grab a meter and increment counters/histograms (the Prometheus exporter is enabled automatically when you add a metric reader):
+
+```python
+from mcp_agent.tracing.telemetry import get_meter
+
+meter = get_meter(app.context)
+grading_counter = meter.create_counter(
+    "grading_runs_total", description="Number of grading workflows started"
+)
+grading_counter.add(1, attributes={"plan_type": plan.plan_type})
+```
+
+## Metrics collection & token accounting
+
+### Token summaries and trees
+
+Every AugmentedLLM exposes a token node that mirrors its call graph. The orchestrator workflow example wraps this in a helper that prints a tree:
+
+```python
+# examples/workflows/workflow_orchestrator_worker/main.py (excerpt)
+node = await orchestrator.get_token_node()
+if node:
+    display_node_tree(node, context=context)
+
+summary = await orchestrator_app.get_token_summary()
+print(f"Total Cost: ${summary.cost:.4f}")
+```
+
+The `TokenNode` reports aggregate usage, per-child breakdowns, and cost estimates. You can attach the tree to your own logging, export it as JSON, or feed it into observability dashboards.
+
+<img width="2160" alt="Image" src="https://github.com/user-attachments/assets/93ffc4e5-f255-43a9-be3a-755994fec809" />
+
+*Screenshot from [`examples/tracing/agent`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/tracing/agent) showing spans and structured logs side by side.*
+
+```text
+Total Usage:
+  Total tokens: 2,542
+  Input tokens: 1,832
+  Output tokens: 710
+  Total cost: $0.0234
+
+Breakdown by Model:
+  gpt-4-turbo-preview: 1,234 tokens ($0.0123)
+  claude-3-opus-20240229: 1,308 tokens ($0.0111)
+```
+
+*Sample output taken from [`examples/basic/token_counter`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/basic/token_counter).* 
+
+### TokenCounter watchers
+
+The [`TokenCounter`](https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/tracing/token_counter.py) tracks usage for every workflow, agent, and LLM node. Besides summaries and trees, you can attach real-time watchers or render live progress. The [`examples/basic/token_counter`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/basic/token_counter) walkthrough demonstrates:
+
+- `TokenProgressDisplay` for live terminal dashboards.
+- Custom watcher callbacks (e.g., `token_counter.watch(...)`) that fire when token thresholds are exceeded.
+- Per-model breakdowns and cost calculations stored in `TokenNode.metadata`.
+
+```python
+# Simplified excerpt from the example showing how to register a watcher.
+# TokenMonitor is an app-defined helper; implement your own to collect whatever signals you need.
+class TokenMonitor:
+    async def on_token_update(self, node: TokenNode, usage: TokenUsage):
+        print(f"[{node.name}] total={usage.total_tokens} input={usage.input_tokens} output={usage.output_tokens}")
+
+monitor = TokenMonitor()
+watch_id = await token_counter.watch(
+    callback=monitor.on_token_update,
+    node_type="llm",            # only track LLM nodes
+    threshold=1_000,            # only fire when aggregated total exceeds 1,000 tokens
+    include_subtree=True,       # include child usage in the threshold check
+)
+
+# Later, when you're done observing:
+await token_counter.unwatch(watch_id)
+```
+
+## Export destinations
+
+| Exporter | Use it for | Notes |
+| --- | --- | --- |
+| `console` | Quick local debugging | Emits coloured spans/logs to stdout. |
+| `file` | Persist traces/logs to disk | Combine with `path_settings` for per-run log files. |
+| `otlp` | OpenTelemetry collectors (e.g. Datadog, Langfuse, Jaeger) | Set the endpoint + headers; works for traces and metrics. |
+
+## Reference implementations
+
+- [`examples/tracing/agent`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/tracing/agent) – minimal tracing + human-input callback instrumentation.
+- [`examples/tracing/temporal`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/tracing/temporal) – Temporal executor with Jaeger configuration and OTLP exporters.
+- [`examples/tracing/llm`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/tracing/llm) – shows span attributes for individual LLM calls and tool usage.
+- [`examples/tracing/mcp`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/tracing/mcp) – emits spans and structured data for MCP server traffic.
+- [`examples/tracing/langfuse`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/tracing/langfuse) – exports traces and events to Langfuse with user/session metadata.
+- [`examples/tracing/temporal`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/tracing/temporal) – demonstrates how spans flow through Temporal workflows and activities.
+
+Combine the tracing data with the structured logger (see the [Logging guide](/mcp-agent-sdk/advanced/logging)) to correlate events, spans, and MCP tool calls in one place.

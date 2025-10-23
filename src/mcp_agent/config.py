@@ -47,13 +47,10 @@ class MCPAuthorizationServerSettings(BaseModel):
     jwks_uri: AnyHttpUrl | None = None
     """Optional JWKS endpoint for validating JWT access tokens."""
 
-    introspection_endpoint: AnyHttpUrl | None = None
-    """Optional OAuth introspection endpoint for opaque tokens."""
-
-    introspection_client_id: str | None = None
+    client_id: str | None = None
     """Client id to use when calling the introspection endpoint."""
 
-    introspection_client_secret: str | None = None
+    client_secret: str | None = None
     """Client secret to use when calling the introspection endpoint."""
 
     token_cache_ttl_seconds: int = Field(300, ge=0)
@@ -1160,6 +1157,9 @@ class Settings(BaseSettings):
             pass
 
         return None
+
+
+Settings.model_rebuild()
 
 
 class PreloadSettings(BaseSettings):
