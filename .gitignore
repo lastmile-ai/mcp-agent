@@ -179,3 +179,6 @@ examples/**/*.jsonl
 **/.DS_Store
 
 .idea
+
+# node_modules for ChatGPT apps
+node_modules
