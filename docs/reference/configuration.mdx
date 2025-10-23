@@ -3,12 +3,12 @@ title: Configuration
 description: "Understand how mcp-agent loads settings, manages secrets, and connects to providers, servers, and telemetry backends."
 ---
 
-# Configuration
+## Overview
 
 `mcp-agent` reads configuration from YAML files, environment variables, and optional preload strings to assemble a `Settings` object that powers every `MCPApp`. This page explains the load order, file format, and key sections you will customize for local development, automated workflows, and MCP Agent Cloud deployments.
 
 <Tip>
-Use `uv run mcp-agent config builder` for an interactive wizard that generates both config and secrets files. Run `uv run mcp-agent config show --secrets` at any time to see what the CLI discovers.
+Use `uvx mcp-agent config builder` for an interactive wizard that generates both config and secrets files. Run `uvx mcp-agent config show --secrets` (or `uv run mcp-agent …` inside your project) at any time to see what the CLI discovers.
 </Tip>
 
 ## How settings are loaded
@@ -440,4 +440,3 @@ anthropic:
 ```
 
 For CLI usage, see the [CLI reference](/reference/cli), and explore decorator capabilities in the [Decorators reference](/reference/decorators).
-
