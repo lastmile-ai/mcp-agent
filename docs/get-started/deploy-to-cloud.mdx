@@ -78,10 +78,13 @@ Your cloud deployment is a standard MCP server. Use any MCP client:
 <Tabs>
   <Tab title="Claude Desktop">
     ```bash
-    uvx mcp-agent cloud configure --id https://<app_id>.deployments.mcp-agent.com
+    uvx mcp-agent install https://<app_id>.deployments.mcp-agent.com \
+      --client claude_desktop \
+      --name research-buddy \
+      --dry-run
     ```
 
-    This command writes a ready-to-paste entry for `~/.claude-desktop/config.json` including the SSE URL and headers.
+    Replace `claude_desktop` with `vscode`, `cursor`, `chatgpt` to install in those clients instead.
   </Tab>
 
   <Tab title="Python">
@@ -166,27 +169,6 @@ class WebSummarizerWorkflow(Workflow[str]):
                 f"Fetch {url} and provide a 3-sentence summary"
             )
             return WorkflowResult(value=summary)
-```
-
-```yaml mcp_agent.config.yaml
-execution_engine: temporal
-logger:
-  transports: [console]
-  level: info
-
-temporal:
-  host: temporal.mcp-agent.cloud
-  namespace: default
-  task_queue: mcp-agent
-
-mcp:
-  servers:
-    fetch:
-      command: "uvx"
-      args: ["mcp-server-fetch"]
-
-openai:
-  default_model: gpt-4o
 ```
 
 Deploy with:

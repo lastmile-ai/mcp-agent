@@ -12,13 +12,13 @@ icon: arrow-down-to-line
     mcp-agent targets Python 3.10 or newer.
   </Card>
   <Card title="Node.js (optional)" icon="node-js">
-    Some MCP servers (e.g. filesystem) are distributed via npm and require Node.js.
+    Some MCP servers (e.g. filesystem) are distributed via npx and require Node.js.
   </Card>
 </CardGroup>
 
-## Install the CLI with `uvx`
+## Run the CLI with `uvx`
 
-Run `mcp-agent` commands without a global install by using [`uvx`](https://docs.astral.sh/uv/reference/cli/#uvx):
+You can run `mcp-agent` commands without a global install by using [`uvx`](https://docs.astral.sh/uv/reference/cli/#uvx):
 
 ```bash
 uvx mcp-agent --version
@@ -98,48 +98,6 @@ mcp-agent includes optional extras for different LLM providers. Install the ones
 
   </Accordion>
 </AccordionGroup>
-
-## Install MCP servers (optional)
-
-mcp-agent works with any MCP server. Install the ones you need:
-
-<CardGroup cols={2}>
-  <Card
-    title="Fetch Server"
-    icon="globe"
-    href="https://github.com/modelcontextprotocol/servers/tree/main/src/fetch"
-  >
-    Web content fetching capabilities
-  </Card>
-
-<Card
-  title="Filesystem Server"
-  icon="folder"
-  href="https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem"
->
-  Local file system access
-</Card>
-
-<Card
-  title="SQLite Server"
-  icon="database"
-  href="https://github.com/modelcontextprotocol/servers/tree/main/src/sqlite"
->
-  SQLite database operations
-</Card>
-
-  <Card
-    title="Git Server"
-    icon="code-branch"
-    href="https://github.com/modelcontextprotocol/servers/tree/main/src/git"
-  >
-    Git repository operations
-  </Card>
-</CardGroup>
-
-<Info>
-  For more MCP servers, check out the [Awesome MCP Servers](https://github.com/punkpeye/awesome-mcp-servers) repository.
-</Info>
 
 ## Verify your setup
 
