@@ -180,9 +180,35 @@ def init(
         "elicitation": "Elicitation server example",
         "sampling": "Sampling server example",
         "notifications": "Notifications server example",
+        "hello-world": "Basic hello world cloud example",
+        "mcp": "Comprehensive MCP server example with tools, sampling, elicitation",
+        "temporal": "Temporal integration with durable workflows",
+        "chatgpt-app": "ChatGPT App with interactive UI widgets",
     }
 
     templates = {**scaffolding_templates, **example_templates}
+
+    # Map template names to their source paths (shared by quickstart and template modes)
+    # Format: "name": (repo_path, dest_name) for repo examples
+    #         "name": (None, dest_name, pkg_rel) for packaged examples
+    example_map = {
+        "workflow": (EXAMPLE_ROOT / "workflows", "workflow"),
+        "researcher": (EXAMPLE_ROOT / "usecases" / "mcp_researcher", "researcher"),
+        "data-analysis": (EXAMPLE_ROOT / "usecases" / "mcp_financial_analyzer", "data-analysis"),
+        "state-transfer": (EXAMPLE_ROOT / "workflows" / "workflow_router", "state-transfer"),
+        "basic-agent-server": (EXAMPLE_ROOT / "mcp_agent_server" / "asyncio", "basic_agent_server"),
+        "mcp-basic-agent": (None, "mcp_basic_agent", "basic/mcp_basic_agent"),
+        "token-counter": (None, "token_counter", "basic/token_counter"),
+        "agent-factory": (None, "agent_factory", "basic/agent_factory"),
+        "reference-agent-server": (None, "reference_agent_server", "mcp_agent_server/reference"),
+        "elicitation": (None, "elicitation", "mcp_agent_server/elicitation"),
+        "sampling": (None, "sampling", "mcp_agent_server/sampling"),
+        "notifications": (None, "notifications", "mcp_agent_server/notifications"),
+        "hello-world": (EXAMPLE_ROOT / "cloud" / "hello_world", "hello_world"),
+        "mcp": (EXAMPLE_ROOT / "cloud" / "mcp", "mcp"),
+        "temporal": (EXAMPLE_ROOT / "cloud" / "temporal", "temporal"),
+        "chatgpt-app": (EXAMPLE_ROOT / "cloud" / "chatgpt_app", "chatgpt_app"),
+    }
 
     if list_templates:
         console.print("\n[bold]Available Templates:[/bold]\n")
@@ -219,25 +245,6 @@ def init(
             console.print(f"Available examples: {', '.join(example_templates.keys())}")
             console.print("[dim]Use --list to see all available templates[/dim]")
             raise typer.Exit(1)
-
-        example_map = {
-            "workflow": (EXAMPLE_ROOT / "workflows", "workflow"),
-            "researcher": (EXAMPLE_ROOT / "usecases" / "mcp_researcher", "researcher"),
-            "data-analysis": (EXAMPLE_ROOT / "usecases" / "mcp_financial_analyzer", "data-analysis"),
-            "state-transfer": (EXAMPLE_ROOT / "workflows" / "workflow_router", "state-transfer"),
-            "basic-agent-server": (EXAMPLE_ROOT / "mcp_agent_server" / "asyncio", "basic_agent_server"),
-            "mcp-basic-agent": (None, "mcp_basic_agent", "basic/mcp_basic_agent"),
-            "token-counter": (None, "token_counter", "basic/token_counter"),
-            "agent-factory": (None, "agent_factory", "basic/agent_factory"),
-            "reference-agent-server": (None, "reference_agent_server", "mcp_agent_server/reference"),
-            "elicitation": (None, "elicitation", "mcp_agent_server/elicitation"),
-            "sampling": (None, "sampling", "mcp_agent_server/sampling"),
-            "notifications": (None, "notifications", "mcp_agent_server/notifications"),
-            "hello-world": (EXAMPLE_ROOT / "cloud" / "hello_world", "hello_world"),
-            "mcp": (EXAMPLE_ROOT / "cloud" / "mcp", "mcp"),
-            "temporal": (EXAMPLE_ROOT / "cloud" / "temporal", "temporal"),
-            "chatgpt-app": (EXAMPLE_ROOT / "cloud" / "chatgpt_app", "chatgpt_app"),
-        }
 
         mapping = example_map.get(quickstart)
         if not mapping:
@@ -305,28 +312,6 @@ def init(
 
     # Handle example templates (copy from repository or package)
     if template in example_templates:
-        # Map template names to their source paths
-        # Format: "name": (repo_path, dest_name) for repo examples
-        #         "name": (None, dest_name, pkg_rel) for packaged examples
-        example_map = {
-            "workflow": (EXAMPLE_ROOT / "workflows", "workflow"),
-            "researcher": (EXAMPLE_ROOT / "usecases" / "mcp_researcher", "researcher"),
-            "data-analysis": (EXAMPLE_ROOT / "usecases" / "mcp_financial_analyzer", "data-analysis"),
-            "state-transfer": (EXAMPLE_ROOT / "workflows" / "workflow_router", "state-transfer"),
-            "basic-agent-server": (EXAMPLE_ROOT / "mcp_agent_server" / "asyncio", "basic_agent_server"),
-            "mcp-basic-agent": (None, "mcp_basic_agent", "basic/mcp_basic_agent"),
-            "token-counter": (None, "token_counter", "basic/token_counter"),
-            "agent-factory": (None, "agent_factory", "basic/agent_factory"),
-            "reference-agent-server": (None, "reference_agent_server", "mcp_agent_server/reference"),
-            "elicitation": (None, "elicitation", "mcp_agent_server/elicitation"),
-            "sampling": (None, "sampling", "mcp_agent_server/sampling"),
-            "notifications": (None, "notifications", "mcp_agent_server/notifications"),
-            "hello-world": (EXAMPLE_ROOT / "cloud" / "hello_world", "hello_world"),
-            "mcp": (EXAMPLE_ROOT / "cloud" / "mcp", "mcp"),
-            "temporal": (EXAMPLE_ROOT / "cloud" / "temporal", "temporal"),
-            "chatgpt-app": (EXAMPLE_ROOT / "cloud" / "chatgpt_app", "chatgpt_app"),
-        }
-
         mapping = example_map.get(template)
         if not mapping:
             console.print(f"[red]Example template '{template}' not found[/red]")
