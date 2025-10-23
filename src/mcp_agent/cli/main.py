@@ -55,9 +55,6 @@ from mcp_agent.cli.commands import (
 from mcp_agent.cli.commands import (
     models as models_cmd,
 )
-from mcp_agent.cli.commands import (
-    quickstart as quickstart_cmd,
-)
 from mcp_agent.cli.utils.typer_utils import HelpfulTyperGroup
 
 app = typer.Typer(
@@ -145,8 +142,7 @@ def main(
 
 
 # Mount non-cloud command groups (top-level, curated)
-app.add_typer(init_cmd.app, name="init", help="Scaffold a new mcp-agent project")
-app.add_typer(quickstart_cmd.app, name="quickstart", help="Copy curated examples")
+app.add_typer(init_cmd.app, name="init", help="Scaffold a new mcp-agent project or copy curated examples")
 app.add_typer(config_cmd.app, name="config", help="Manage and inspect configuration")
 app.add_typer(doctor_cmd.app, name="doctor", help="Comprehensive diagnostics")
 
