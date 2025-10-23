@@ -10,6 +10,7 @@ from mcp_agent.cli.core.constants import (
     ENV_API_BASE_URL,
     ENV_API_KEY,
 )
+from mcp_agent.cli.utils.ux import LOG_VERBOSE
 
 
 class Settings(BaseSettings):
@@ -38,3 +39,6 @@ class Settings(BaseSettings):
 
 # Create a singleton settings instance
 settings = Settings()
+
+# Set LOG_VERBOSE context var based on VERBOSE setting
+LOG_VERBOSE.set(settings.VERBOSE)

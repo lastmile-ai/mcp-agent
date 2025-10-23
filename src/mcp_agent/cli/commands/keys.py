@@ -18,6 +18,7 @@ from rich.table import Table
 from rich.prompt import Prompt, Confirm
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
+from mcp_agent.cli.utils.ux import LOG_VERBOSE
 
 app = typer.Typer(help="Manage provider API keys")
 console = Console()
@@ -171,6 +172,10 @@ def show(
 ) -> None:
     """Show configured API keys and their status."""
     from mcp_agent.config import get_settings
+
+    if verbose:
+        LOG_VERBOSE.set(True)
+    verbose = LOG_VERBOSE.get()
 
     console.print("\n[bold cyan]🔑 API Key Status[/bold cyan]\n")
 
@@ -450,6 +455,10 @@ def test(
     import asyncio
 
     console.print("\n[bold cyan]🧪 Testing API Keys[/bold cyan]\n")
+
+    if verbose:
+        LOG_VERBOSE.set(True)
+    verbose = LOG_VERBOSE.get()
 
     settings = get_settings()
 
