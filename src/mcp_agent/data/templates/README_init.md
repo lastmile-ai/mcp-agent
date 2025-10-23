@@ -29,6 +29,7 @@ NOTE: You can use another supported provider (e.g. Anthropic) instead, just be s
 3. Run locally:
 
 ```bash
+uv pip install -r requirements.txt
 uv run main.py
 ```
 
@@ -56,11 +57,30 @@ npx @modelcontextprotocol/inspector --transport sse --server-url http://127.0.0.
 When you're ready to deploy, ensure the required API keys are set in `mcp_agent.secrets.yaml` and then run:
 
 ```bash
-uv run mcp-agent deploy "hello_world"
+uv run mcp-agent login
 ```
 
-- This wraps your app as a hosted MCP SSE server.
-- Anything decorated with `@app.tool` (or `@app.async_tool`) runs as a Temporal workflow in the cloud.
+to authenticate to mcp-agent cloud. You will be redirected to the login page, create an mcp-agent cloud account through Google or Github.
+
+Set up your mcp-agent cloud API Key and copy & paste it into your terminal
+
+```bash
+INFO: Directing to MCP Agent Cloud API login...
+Please enter your API key 🔑:
+```
+
+In your terminal, deploy the MCP app:
+
+```bash
+uv run mcp-agent deploy hello_world
+```
+
+You will then be prompted to specify the type of secret to save your OpenAI API key as. Select (1) deployment secret so that it is available to the deployed server.
+
+The `deploy` command will bundle the app files and deploy them, wrapping your app as a hosted MCP SSE server with a URL of the form:
+`https://<server_id>.deployments.mcp-agent.com`.
+
+Anything decorated with `@app.tool` (or `@app.async_tool`) runs as a Temporal workflow in the cloud.
 
 Since the mcp-agent app is exposed as an MCP server, it can be used in any MCP client just
 like any other MCP server. For example, you can inspect and test the server using MCP Inspector:
