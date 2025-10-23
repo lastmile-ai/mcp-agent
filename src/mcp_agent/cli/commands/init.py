@@ -360,7 +360,7 @@ def init(
         # No separate agents.yaml needed; agent definitions live in mcp_agent.config.yaml
 
         # Create README for the basic template
-        readme_content = _load_template("README_init.md")
+        readme_content = _load_template("README_basic.md")
         if readme_content:
             created = _write_readme(dir, readme_content, force)
             if created:
@@ -374,10 +374,10 @@ def init(
                 files_created.append(created)
 
     elif template == "server":
-        server_path = dir / "server.py"
+        server_path = dir / "main.py"
         server_content = _load_template("basic_agent_server.py")
         if server_content and _write(server_path, server_content, force):
-            files_created.append("server.py")
+            files_created.append("main.py")
             # Make executable
             try:
                 server_path.chmod(server_path.stat().st_mode | 0o111)
@@ -385,9 +385,16 @@ def init(
                 pass
 
         # README for server template
-        readme_content = _load_template("README_init.md")
+        readme_content = _load_template("README_server.md")
         if readme_content:
             created = _write_readme(dir, readme_content, force)
+            if created:
+                files_created.append(created)
+
+        # Add basic requirements.txt
+        requirements_content = _load_template("requirements.txt")
+        if requirements_content:
+            created = _write_requirements(dir, requirements_content, force)
             if created:
                 files_created.append(created)
 
@@ -402,7 +409,7 @@ def init(
             except Exception:
                 pass
 
-        readme_content = _load_template("README_init.md")
+        readme_content = _load_template("README_token.md")
         if readme_content:
             created = _write_readme(dir, readme_content, force)
             if created:
@@ -425,7 +432,7 @@ def init(
         if agents_content and _write(agents_path, agents_content, force):
             files_created.append("agents.yaml")
 
-        readme_content = _load_template("README_init.md")
+        readme_content = _load_template("README_factory.md")
         if readme_content:
             created = _write_readme(dir, readme_content, force)
             if created:
@@ -448,9 +455,9 @@ def init(
             run_file = entry_script_name or "main.py"
             console.print(f"3. Run your agent: [cyan]uv run {run_file}[/cyan]")
         elif template == "server":
-            console.print("3. Run the server: [cyan]uv run server.py[/cyan]")
+            console.print("3. Run the server: [cyan]uv run main.py[/cyan]")
             console.print(
-                "   Or serve: [cyan]mcp-agent dev serve --script server.py[/cyan]"
+                "   Or serve: [cyan]mcp-agent dev serve --script main.py[/cyan]"
             )
         elif template == "token":
             console.print("3. Run the example: [cyan]uv run token_example.py[/cyan]")
