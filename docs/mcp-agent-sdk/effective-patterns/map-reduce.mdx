@@ -1,221 +1,126 @@
 ---
-title: "Parallel"
-description: "Execute multiple tasks simultaneously with intelligent result aggregation and conflict resolution."
+title: "Parallel (Map-Reduce)"
+description: "Fan-out/fan-in workflows that let multiple specialists work in parallel"
 icon: arrows-split-up-and-left
 ---
 
+![Parallel workflow diagram](/images/parallel-workflow.png)
 
-<img src="https://www.anthropic.com/_next/image?url=https%3A%2F%2Fwww-cdn.anthropic.com%2Fimages%2F4zrzovbb%2Fwebsite%2F406bb032ca007fd1624f261af717d70e6ca86286-2401x1000.png&w=3840&q=75" alt="Parallel Workflow Pattern" />
+## When to use it
 
-{/* TODO: Add ASCII diagram from examples/workflows/workflow_parallel/README.md */}
-```mermaid
----
-title: Parallel Workflow Pattern - Fan-Out/Fan-In Architecture
----
-graph LR
-    A[ParallelLLM] --> B[Proofreader Agent]
-    A --> C[Fact Checker Agent]
-    A --> D[Style Enforcer Agent]
-    B --> E[Grader Agent]
-    C --> E
-    D --> E
+- You need several specialists to analyse the same request from different angles (e.g. proofread, fact-check, style review).
+- You want deterministic aggregation of multiple perspectives into a single response.
+- You have functions or agents that can run concurrently and do not depend on each other’s intermediate state.
+- You want a cheap way to blend deterministic helpers (regex, heuristics) with heavyweight LLM agents.
 
-    style A fill:#e1f5fe
-    style B fill:#f3e5f5
-    style C fill:#f3e5f5
-    style D fill:#f3e5f5
-    style E fill:#e8f5e8
-```
+Common scenarios include content review with multiple rubrics, multi-source research where each worker hits a different MCP server, or evaluation workflows where you want a “best effort” vote across diverse models.
 
-## Overview
+## How it works
 
-The Parallel Workflow pattern uses a fan-out/fan-in approach where multiple agents work on different aspects of a task simultaneously, then a coordinating agent aggregates their results.
+`create_parallel_llm(...)` returns a [`ParallelLLM`](https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/workflows/parallel/parallel_llm.py) composed of two primitives:
 
-## Complete Implementation
+- **FanOut** ([`fan_out.py`](https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/workflows/parallel/fan_out.py)) launches every worker concurrently. Workers can be `AgentSpec`, pre-built `Agent`/`AugmentedLLM`, or plain callables via `fan_out_functions`.
+- **FanIn** ([`fan_in.py`](https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/workflows/parallel/fan_in.py)) collects the responses and hands a [`FanInInput`](https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/workflows/parallel/fan_in.py#L18) structure to your aggregator. The aggregator can also be an `AgentSpec`, an `AugmentedLLM`, or a deterministic function.
 
-The Parallel workflow is ideal for tasks requiring multiple specialized perspectives simultaneously. Here's a complete example using a student assignment grader:
+FanOut returns a dictionary keyed by worker name, so the aggregator always knows who produced which output. When the aggregator is an LLM, mcp-agent automatically enters the worker contexts, attaches LLMs, and tracks token usage per branch.
 
-### Basic Setup
+## Quick start
 
 ```python
-import asyncio
 from mcp_agent.app import MCPApp
-from mcp_agent.agents.agent import Agent
-from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
-from mcp_agent.workflows.parallel.parallel_llm import ParallelLLM
+from mcp_agent.workflows.factory import (
+    AgentSpec,
+    RequestParams,
+    create_parallel_llm,
+)
 
-app = MCPApp(name="parallel_grader")
+app = MCPApp(name="parallel_example")
 
-async def run_parallel_grading():
-    async with app.run() as context:
-        # Create specialized agents for different evaluation criteria
-        proofreader = Agent(
-            name="proofreader",
-            instruction="""Review the short story for grammar, spelling, and punctuation errors.
-            Identify any awkward phrasing or structural issues that could improve clarity. 
-            Provide detailed feedback on corrections."""
+async def main():
+    async with app.run() as running_app:
+        parallel = create_parallel_llm(
+            name="content_review_parallel",
+            fan_in=AgentSpec(
+                name="grader",
+                instruction=(
+                    "Blend the reviewer feedback into a single report. "
+                    "Call out disagreements and provide an overall score."
+                ),
+            ),
+            fan_out=[
+                AgentSpec(
+                    name="proofreader",
+                    instruction="Check grammar, spelling, and clarity.",
+                ),
+                AgentSpec(
+                    name="fact_checker",
+                    instruction="Verify factual claims using the fetch server.",
+                    server_names=["fetch"],
+                ),
+                AgentSpec(
+                    name="style_enforcer",
+                    instruction="Compare against the company voice and style guide.",
+                ),
+            ],
+            fan_out_functions=[
+                lambda prompt: [
+                    {
+                        "title": "metadata",
+                        "details": {
+                            "characters": len(prompt),
+                            "keywords": prompt.split()[:5],
+                        },
+                    }
+                ]
+            ],
+            provider="openai",
+            request_params=RequestParams(maxTokens=2000, temperature=0.2),
+            context=running_app.context,
         )
 
-        fact_checker = Agent(
-            name="fact_checker",
-            instruction="""Verify the factual consistency within the story. Identify any contradictions,
-            logical inconsistencies, or inaccuracies in the plot, character actions, or setting. 
-            Highlight potential issues with reasoning or coherence."""
-        )
-
-        style_enforcer = Agent(
-            name="style_enforcer",
-            instruction="""Analyze the story for adherence to style guidelines but first fetch APA style guides from
-            at https://owl.purdue.edu/owl/research_and_citation/apa_style/apa_formatting_and_style_guide/general_format.html.
-            Evaluate the narrative flow, clarity of expression, and tone. Suggest improvements to 
-            enhance storytelling, readability, and engagement.""",
-            server_names=["fetch"]  # Access to web fetch for style guidelines
-        )
-
-        # Aggregator agent to compile all feedback
-        grader = Agent(
-            name="grader",
-            instruction="""Compile the feedback from the Proofreader, Fact Checker, and Style Enforcer
-            into a structured report. Summarize key issues and categorize them by type. 
-            Provide actionable recommendations for improving the story, 
-            and give an overall grade based on the feedback."""
-        )
-
-        # Create parallel workflow
-        parallel = ParallelLLM(
-            fan_in_agent=grader,
-            fan_out_agents=[proofreader, fact_checker, style_enforcer],
-            llm_factory=OpenAIAugmentedLLM,
-        )
-
-        # Sample story for grading
-        story = """
-        The Battle of Glimmerwood
-        
-        In the heart of Glimmerwood, a mystical forest knowed for its radiant trees, a small village thrived. 
-        The villagers, who were live peacefully, shared their home with the forest's magical creatures, 
-        especially the Glimmerfoxes whose fur shimmer like moonlight.
-        
-        One fateful evening, the peace was shaterred when the infamous Dark Marauders attack. 
-        Lead by the cunning Captain Thorn, the bandits aim to steal the precious Glimmerstones which was believed to grant immortality.
-        """
-
-        # Execute parallel grading
-        result = await parallel.generate_str(
-            message=f"Grade this student's short story submission: {story}"
-        )
-        
+        result = await parallel.generate_str("Review this customer email draft.")
         return result
-
-if __name__ == "__main__":
-    result = asyncio.run(run_parallel_grading())
-    print(result)
 ```
 
-### Configuration Options
+`create_parallel_llm` accepts `AgentSpec`, already-instantiated `Agent`/`AugmentedLLM`, or plain Python callables. Every worker receives the same prompt; the aggregator receives a structured summary of all responses and returns either a list of `CreateMessageResult` objects or a single string, depending on whether you call `generate` or `generate_str`.
 
-You can customize the parallel workflow behavior:
+### Working with the aggregator input
+
+FanIn accepts several shapes (dicts or lists). For example, you can use a deterministic aggregator:
 
 ```python
-# Advanced configuration
-parallel = ParallelLLM(
-    fan_in_agent=grader,
-    fan_out_agents=[proofreader, fact_checker, style_enforcer],
-    llm_factory=OpenAIAugmentedLLM,
-    max_concurrent_tasks=3,  # Control concurrency
-    timeout_seconds=300,     # Task timeout
-    retry_failed_tasks=True, # Retry on failure
-)
+from mcp_agent.workflows.parallel.fan_in import FanInInput
 
-# Execute with custom parameters
-from mcp_agent.workflows.llm.augmented_llm import RequestParams
+def aggregate_as_markdown(messages: FanInInput) -> str:
+    blocks = []
+    for source, outputs in messages.items():
+        lines = "\n".join(str(item) for item in outputs)
+        blocks.append(f"### {source}\n{lines}")
+    return "\n\n".join(blocks)
 
-result = await parallel.generate_str(
-    message="Grade this assignment",
-    request_params=RequestParams(
-        model="gpt-4o",
-        temperature=0.3,
-        max_tokens=2000
-    )
+parallel = create_parallel_llm(
+    fan_in=aggregate_as_markdown,
+    fan_out=[AgentSpec(name="qa", instruction="Answer with citations.")],
+    context=running_app.context,
 )
 ```
 
-## Key Features
+When the aggregator is an agent/LLM, mcp-agent wraps the aggregated string in a system prompt that names each contributor, making it easy to ask for weighted votes, majority decisions, or summarised findings.
 
-- **Fan-Out Processing**: Distribute work across multiple specialized agents
-- **Fan-In Aggregation**: Intelligent result compilation and synthesis
-- **Concurrent Execution**: All fan-out agents work simultaneously
-- **Specialized Roles**: Each agent focuses on specific expertise areas
-- **Structured Output**: Coordinated final result from aggregator agent
+## Operational tips
 
-## Use Cases
+- **Throttle concurrency** by setting `executor.max_concurrent_activities` in `mcp_agent.config.yaml`. The parallel workflow uses the shared executor, so the limit applies across your entire app.
+- **Mix deterministic helpers** via `fan_out_functions` for cheap signals (regex extractors, heuristics) alongside heavyweight LLM calls.
+- **Inspect token/latency costs** with `await parallel.get_token_node()`—each fan-out worker appears as a child node, making it easy to spot the expensive branch.
+- **Handle stragglers** by adjusting `RequestParams.timeoutSeconds` or adding retry logic inside the worker agents.
+- **Reuse workers** by instantiating AugmentedLLMs once and passing them directly into `fan_out` to avoid repeated attachment overhead.
 
-### Content Review and Grading
-Perfect for academic or content evaluation where multiple criteria need simultaneous assessment:
-- Grammar and style checking
-- Factual accuracy verification
-- Compliance with guidelines
-- Technical quality assessment
+## Example projects
 
-### Multi-Domain Analysis
-Analyze complex topics from different expert perspectives:
-- Financial reports (risk, compliance, performance analysis)
-- Legal documents (regulatory, contractual, liability review)
-- Medical cases (diagnosis, treatment, side effects)
-- Technical specifications (security, performance, usability)
+- [workflow_parallel](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows/workflow_parallel) – proofreader/fact-checker/style-enforcer with graded aggregation.
+- [Temporal parallel workflow](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/temporal) – demonstrates durable fan-out execution using Temporal as the engine.
 
-### Quality Assurance
-Parallel validation across different testing criteria:
-- Code review (security, performance, maintainability)
-- Product testing (functionality, UI/UX, accessibility)
-- Data validation (accuracy, completeness, consistency)
+## Related reading
 
-### Research and Information Gathering
-Simultaneous information collection from specialized sources:
-- Market research (competitor analysis, trend analysis, customer feedback)
-- Literature review (multiple databases, different methodologies)
-- Due diligence (financial, legal, technical assessments)
-
-## Setup and Installation
-
-Clone the repository and navigate to the parallel workflow example:
-
-```bash
-git clone https://github.com/lastmile-ai/mcp-agent.git
-cd mcp-agent/examples/workflows/workflow_parallel
-```
-
-Install dependencies:
-
-```bash
-pip install uv
-uv sync
-uv pip install -r requirements.txt
-```
-
-Configure your environment:
-
-```bash
-cp mcp_agent.secrets.yaml.example mcp_agent.secrets.yaml
-```
-
-Add your API keys to `mcp_agent.secrets.yaml`:
-
-```yaml
-openai_api_key: "your-openai-api-key"
-anthropic_api_key: "your-anthropic-api-key"  # optional
-```
-
-Run the example:
-
-```bash
-uv run main.py
-```
-
-<Card
-  title="Full Implementation"
-  href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows/workflow_parallel"
->
-  See the complete parallel workflow example with student assignment grading use
-  case.
-</Card>
+- [Workflow & decorators guide](/mcp-agent-sdk/core-components/workflows)
+- [Agents and AugmentedLLMs](/mcp-agent-sdk/core-components/agents)

@@ -1,105 +1,107 @@
 ---
 title: "Evaluator-Optimizer"
-description: "Quality control with LLM-as-judge evaluation and iterative response refinement."
+description: "Iteratively refine LLM outputs with an evaluator loop"
 icon: arrows-rotate
 ---
 
+![Evaluator-optimizer workflow](/images/evaluator-optimizer-workflow.png)
 
-![Evaluator-Optimizer Workflow Pattern](/images/evaluator-optimizer-workflow.png)
+## When to use it
 
-## Overview
+- Quality matters and you need an automated reviewer to approve or demand revisions.
+- You have an explicit rubric (score threshold, policy checklist, guardrail) that can be evaluated programmatically.
+- You want traceability: each attempt, its score, and the feedback that drove the next revision.
+- You need to wrap another workflow (router, orchestrator, parallel, even a deterministic function) with an evaluation loop.
 
-The Evaluator-Optimizer pattern implements quality control through LLM-as-judge evaluation, iteratively refining responses until they meet specified quality thresholds.
+## How the loop works
 
-## Quick Example
+[`create_evaluator_optimizer_llm`](https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/workflows/factory.py#L436) returns an [`EvaluatorOptimizerLLM`](https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/workflows/evaluator_optimizer/evaluator_optimizer.py) that:
+
+1. Calls the `optimizer` to generate an initial response.
+2. Sends the response to the `evaluator`, which returns an [`EvaluationResult`](https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/workflows/evaluator_optimizer/evaluator_optimizer.py#L30) with:
+   - `rating`: a [`QualityRating`](https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/workflows/evaluator_optimizer/evaluator_optimizer.py#L16) (`POOR`, `FAIR`, `GOOD`, `EXCELLENT` mapped to 0–3).
+   - `feedback`: free-form comments.
+   - `needs_improvement`: boolean.
+   - `focus_areas`: list of bullet points for the next iteration.
+3. If the rating meets `min_rating`, the loop stops. Otherwise it regenerates with the optimizer, incorporating the evaluator’s feedback, until `max_refinements` is reached.
+4. Every attempt is recorded in `refinement_history` for audit or UI display.
+
+## Quick start
 
 ```python
 from mcp_agent.app import MCPApp
-from mcp_agent.agents.agent import Agent
-from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
-from mcp_agent.workflows.evaluator_optimizer.evaluator_optimizer import (
-    EvaluatorOptimizerLLM,
-    QualityRating,
-)
+from mcp_agent.workflows.factory import AgentSpec, RequestParams, create_evaluator_optimizer_llm
+from mcp_agent.workflows.evaluator_optimizer.evaluator_optimizer import QualityRating
 
-app = MCPApp(name="cover_letter_writer")
+app = MCPApp(name="eval_opt_example")
 
-async with app.run() as cover_letter_app:
-    # Create optimizer agent for content generation
-    optimizer = Agent(
-        name="optimizer",
-        instruction="""You are a career coach specializing in cover letter writing.
-        You are tasked with generating a compelling cover letter given the job posting,
-        candidate details, and company information. Tailor the response to the company and job requirements.""",
-        server_names=["fetch"],
-    )
+async def main():
+    async with app.run() as running_app:
+        evaluator_optimizer = create_evaluator_optimizer_llm(
+            name="policy_checked_writer",
+            optimizer=AgentSpec(
+                name="draft",
+                instruction="Write detailed answers with citations when available.",
+            ),
+            evaluator=AgentSpec(
+                name="compliance",
+                instruction=(
+                    "Score the response from 0-3.\n"
+                    "Reject anything that violates policy or lacks citations."
+                ),
+            ),
+            min_rating=QualityRating.EXCELLENT,  # require top score
+            max_refinements=4,
+            provider="anthropic",  # evaluator/optimizer can use different providers internally
+            request_params=RequestParams(temperature=0.4),
+            context=running_app.context,
+        )
 
-    # Create evaluator agent with detailed criteria
-    evaluator = Agent(
-        name="evaluator",
-        instruction="""Evaluate the following response based on the criteria below:
-        1. Clarity: Is the language clear, concise, and grammatically correct?
-        2. Specificity: Does the response include relevant and concrete details tailored to the job description?
-        3. Relevance: Does the response align with the prompt and avoid unnecessary information?
-        4. Tone and Style: Is the tone professional and appropriate for the context?
-        5. Persuasiveness: Does the response effectively highlight the candidate's value?
-        6. Grammar and Mechanics: Are there any spelling or grammatical issues?
-        7. Feedback Alignment: Has the response addressed feedback from previous iterations?
+        result = await evaluator_optimizer.generate_str(
+            "Summarise MCP Agent's router pattern for a product manager."
+        )
 
-        For each criterion:
-        - Provide a rating (EXCELLENT, GOOD, FAIR, or POOR).
-        - Offer specific feedback or suggestions for improvement."""
-    )
+        # Inspect the iteration history
+        for attempt in evaluator_optimizer.refinement_history:
+            print(
+                attempt["attempt"],
+                attempt["evaluation_result"].rating,
+                attempt["evaluation_result"].feedback,
+            )
 
-    # Create evaluator-optimizer workflow
-    evaluator_optimizer = EvaluatorOptimizerLLM(
-        optimizer=optimizer,
-        evaluator=evaluator,
-        llm_factory=OpenAIAugmentedLLM,
-        min_rating=QualityRating.EXCELLENT,
-    )
-
-    # Example usage with job posting data
-    job_posting = (
-        "Software Engineer at LastMile AI. Responsibilities include developing AI systems, "
-        "collaborating with cross-functional teams, and enhancing scalability. Skills required: "
-        "Python, distributed systems, and machine learning."
-    )
-    candidate_details = (
-        "Alex Johnson, 3 years in machine learning, contributor to open-source AI projects, "
-        "proficient in Python and TensorFlow. Motivated by building scalable AI systems."
-    )
-    company_information = (
-        "Look up from the MCP Agent About page: https://mcp-agent.com/about"
-    )
-
-    # Generate and optimize cover letter
-    result = await evaluator_optimizer.generate_str(
-        message=f"Write a cover letter for the following job posting: {job_posting}\n\n"
-                f"Candidate Details: {candidate_details}\n\n"
-                f"Company information: {company_information}"
-    )
-
-    print(result)  # High-quality, refined cover letter
+        return result
 ```
 
-## Key Features
+You can pass an existing AugmentedLLM (router, orchestrator, parallel workflow) as the optimizer instead of an `AgentSpec`. For evaluators, strings are allowed: if you pass a literal string, the factory spins up an evaluator agent using that instruction.
 
-- **LLM-as-Judge**: Automated quality evaluation using specialized evaluator agents
-- **Iterative Refinement**: Multiple improvement cycles until quality threshold met
-- **Configurable Thresholds**: Set minimum quality standards for different use cases
+## Configuration knobs
 
-## Use Cases
+- `min_rating`: numeric threshold (0–3). Set to `None` to keep all iterations and let a human pick the best attempt.
+- `max_refinements`: hard cap on iteration count; default is 3.
+- `evaluator`: accept `AgentSpec`, `Agent`, `AugmentedLLM`, or string instruction. Use this to plug in policy engines or MCP tools that act as judges.
+- `request_params`: forwarded to both optimizer and evaluator LLMs (temperature, max tokens, strict schema enforcement).
+- `llm_factory`: automatically injected based on the `provider` you specify; override if you need custom model selection or instrumentation.
+- `evaluator_optimizer.refinement_history`: list of dicts containing `response` and `evaluation_result` per attempt—useful for UI timelines or telemetry.
 
-- **Content Quality Control**: Ensure documentation meets editorial standards
-- **Code Review Automation**: Iteratively improve code quality and documentation
-- **Research Paper Refinement**: Multi-pass improvement of academic writing
-- **Customer Communication**: Refine responses for clarity and professionalism
+## Pairing with other patterns
 
-<Card
-  title="Full Implementation"
-  href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows/workflow_evaluator_optimizer"
->
-  See the complete evaluator-optimizer implementation with research-based
-  quality metrics.
-</Card>
+- **Router + evaluator**: Route to a specialised agent, then run the evaluator loop before returning to the user.
+- **Parallel + evaluator**: Run multiple evaluators in parallel (e.g. clarity, policy, bias). Feed the aggregated verdict back into the optimizer.
+- **Deep research failsafe**: Wrap sections of a deep orchestrator plan with an evaluator-optimizer step to enforce domain-specific QA.
+
+## Operational tips
+
+- Evaluator instructions should reference the previous feedback: the default prompt asks the optimizer to address each focus area. Ensure your instruction echoes that requirement.
+- Call `await evaluator_optimizer.get_token_node()` to see how many tokens each iteration consumed (optimiser vs evaluator).
+- Log or persist `refinement_history` when you need postmortem evidence of what the evaluator flagged and how the optimizer reacted.
+- Combine with OpenTelemetry (`otel.enabled: true`) to capture spans for each iteration, including evaluation scores and decision rationale.
+
+## Example projects
+
+- [workflow_evaluator_optimizer](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows/workflow_evaluator_optimizer) – job application cover letter refinement with evaluator feedback surfaced via MCP tools.
+- [Temporal evaluator optimizer](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/temporal/evaluator_optimizer.py) – durable loop running under Temporal with pause/resume.
+
+## Related reading
+
+- [Workflow & decorators guide](/mcp-agent-sdk/core-components/workflows)
+- [Parallel pattern](/mcp-agent-sdk/effective-patterns/map-reduce)

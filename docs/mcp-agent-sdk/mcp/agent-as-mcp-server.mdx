@@ -124,8 +124,57 @@ Because the server speaks standard MCP, any client that understands the protocol
 
 Whichever approach you choose, the public MCP endpoint looks the same to clients.
 
+## Connecting from common MCP clients
+
+### Claude Desktop
+
+Update `~/.claude-desktop/config.json` with a command that starts your server:
+
+```json
+{
+  "mcpServers": {
+    "my-agent-server": {
+      "command": "uv",
+      "args": [
+        "run",
+        "examples/mcp_agent_server/asyncio/main.py"
+      ]
+    }
+  }
+}
+```
+
+For cloud deployments replace the command with `mcp-remote` plus your SSE endpoint and bearer token, as shown in the example README.
+
+### MCP Inspector
+
+```bash
+npx @modelcontextprotocol/inspector \
+  uv \
+  --directory examples/mcp_agent_server/asyncio \
+  run main.py
+```
+
+The inspector will list every exposed tool (`grade_story`, `grade_story_async`, `workflows-list`, etc.) so you can interactively test them.
+
+### Programmatic access (`gen_client`)
+
+```python
+from mcp_agent.app import MCPApp
+from mcp_agent.mcp.gen_client import gen_client
+
+app = MCPApp(name="client")
+
+async def list_tools():
+    async with app.run():
+        async with gen_client("my-agent-server", app.server_registry, context=app.context) as session:
+            tools = await session.list_tools()
+            return [tool.name for tool in tools.tools]
+```
+
 ## Next steps
 
 - Browse the asyncio and Temporal READMEs for end-to-end workflows, screenshots, and configuration details.
 - Review [Server Authentication](/mcp-agent-sdk/mcp/server-authentication) if your server needs API keys or OAuth.
 - Combine agent servers with other agents to build multi-agent ecosystems over MCP.
+

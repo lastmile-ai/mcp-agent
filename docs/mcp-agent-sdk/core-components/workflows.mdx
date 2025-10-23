@@ -74,14 +74,34 @@ async def analyze_document_async(
 
 ## The Workflow Class
 
-The `Workflow` class is the foundation for building complex agent behaviors. It provides:
-- Type-safe input/output handling
-- Automatic MCP tool registration
-- Support for both asyncio and Temporal execution
-- Built-in error handling and retries
-- Workflow state management
+The `Workflow[T]` base class lets you model multi-step or stateful logic while still exposing an MCP tool. Workflows are most useful when you need retries, shared state, or tight integration with the execution engine (asyncio or Temporal).
 
-### Basic Workflow Definition
+### Basic workflow definition
+
+```python
+from mcp_agent.executor.workflow import Workflow, WorkflowResult
+
+# Assume `read_file` / `summarise` are helper functions you provide.
+
+@app.workflow
+class SummariseFile(Workflow[str]):
+    @app.workflow_run
+    async def run(self, path: str) -> WorkflowResult[str]:
+        content = await read_file(path)
+        summary = await summarise(content)
+        return WorkflowResult(value=summary)
+```
+
+Decorate the class with `@app.workflow` and the entry point with `@app.workflow_run`. Whatever you return from the method becomes the MCP tool result.
+
+### Useful workflow features
+
+- Access `self.context` for logging, MCP connections, and configuration.
+- Store reusable helpers or caches on `self` inside `__init__`.
+- Raise exceptions to trigger retries (Temporal) or propagate errors to the caller.
+- Combine with `@app.workflow_task` / `@app.workflow_signal` when you need durable activities or signal handlers.
+
+See the sections below for more elaborate compositions.
 
 ## Workflow patterns (examples/workflows)
 

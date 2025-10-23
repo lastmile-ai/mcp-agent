@@ -1,92 +1,138 @@
 ---
 title: "Intent Classifier"
-description: "Advanced intent recognition with confidence scoring and classification."
+description: "Classify free-form requests into discrete intents using LLMs or embeddings"
 icon: brain
 ---
 
+## When to use it
 
-## Overview
+- Short user inputs need to be mapped to a handful of flows before you invest in full orchestration.
+- You want to gate automation on a confidence score (only auto-run when the intent is clear, otherwise escalate).
+- You need structured metadata—like extracted entities or a human-readable reason—to feed into downstream logic.
+- You want deterministic categorisation (embeddings) or richer explanations (LLM) without building a bespoke classifier.
 
-The Intent Classifier pattern provides sophisticated natural language understanding to categorize user requests. It is a close sibling of the [router workflow](/workflows/router).
+## Defining intents
 
-## Quick Example
+Every classifier consumes a list of [`Intent`](https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/workflows/intent_classifier/intent_classifier_base.py#L14) objects:
+
+```python
+from mcp_agent.workflows.intent_classifier.intent_classifier_base import Intent
+
+INTENTS = [
+    Intent(
+        name="fetch_file",
+        description="Retrieve the contents of a file from the filesystem MCP server.",
+        examples=[
+            "show me README.md",
+            "open src/app.py",
+            "cat /var/log/system.log",
+        ],
+        metadata={"priority": "high", "team": "infra"},
+    ),
+    Intent(
+        name="general_question",
+        description="Answer an informational question without tool use.",
+        examples=["what is MCP?", "explain the router pattern"],
+    ),
+]
+```
+
+- **`description`** gives the classifier context and is surfaced in tracing metadata.
+- **`examples`** dramatically improve accuracy—provide several phrasing variants.
+- **`metadata`** is propagated to the result so you can attach business logic (e.g. SLA, handoff target).
+
+## Choosing a classifier
+
+| Variant | Factory helper | Best for | Output extras |
+| --- | --- | --- | --- |
+| LLM-based | `create_intent_classifier_llm(...)` | Highest quality natural language understanding, explanations, entity extraction | `confidence` (`low`/`medium`/`high`), `p_score`, `reasoning`, `extracted_entities` |
+| Embedding-based | `create_intent_classifier_embedding(...)` | Deterministic scoring, lower latency, custom embedding providers | `p_score` (0–1 similarity) |
+
+LLM classification enforces a strict JSON schema ([`StructuredIntentResponse`](https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/workflows/intent_classifier/intent_classifier_llm.py#L39)), ensuring stable output even under temperature.
+
+## Quick start
 
 ```python
 from mcp_agent.app import MCPApp
+from mcp_agent.workflows.factory import (
+    create_intent_classifier_embedding,
+    create_intent_classifier_llm,
+)
 from mcp_agent.workflows.intent_classifier.intent_classifier_base import Intent
-from mcp_agent.workflows.intent_classifier.intent_classifier_llm_openai import OpenAILLMIntentClassifier
-from mcp_agent.workflows.intent_classifier.intent_classifier_embedding_openai import OpenAIEmbeddingIntentClassifier
 
-app = MCPApp(name="intent_example")
+app = MCPApp(name="intent_demo")
+INTENTS = [...]  # see definition above
 
-async with app.run() as intent_app:
-    context = intent_app.context
+async def main():
+    async with app.run() as running_app:
+        llm_classifier = await create_intent_classifier_llm(
+            intents=INTENTS,
+            provider="openai",
+            classification_instruction="Return at most one intent unless the user explicitly asks for multiple.",
+            context=running_app.context,
+        )
 
-    embedding_intent_classifier = OpenAIEmbeddingIntentClassifier(
-        intents=[
-            Intent(
-                name="greeting",
-                description="A friendly greeting",
-                examples=["Hello", "Hi there", "Good morning"],
-            ),
-            Intent(
-                name="farewell",
-                description="A friendly farewell",
-                examples=["Goodbye", "See you later", "Take care"],
-            ),
-        ],
-        context=context,
-    )
+        embedding_classifier = await create_intent_classifier_embedding(
+            intents=INTENTS,
+            provider="openai",  # or "cohere"
+            context=running_app.context,
+        )
 
-    results = await embedding_intent_classifier.classify(
-        request="Hello, how are you?",
-        top_k=1,
-    )
+        request = "Could you open README.md for me?"
+        llm_result = (await llm_classifier.classify(request, top_k=2))[0]
+        emb_result = (await embedding_classifier.classify(request, top_k=2))[0]
 
-    print(f"Embedding-based Intent classification results: {results}")
-
-    llm_intent_classifier = OpenAILLMIntentClassifier(
-        intents=[
-            Intent(
-                name="greeting",
-                description="A friendly greeting",
-                examples=["Hello", "Hi there", "Good morning"],
-            ),
-            Intent(
-                name="farewell",
-                description="A friendly farewell",
-                examples=["Goodbye", "See you later", "Take care"],
-            ),
-        ],
-        context=context,
-    )
-
-    results = await llm_intent_classifier.classify(
-        request="Hello, how are you?",
-        top_k=1,
-    )
-
-    print(f"LLM-based Intent classification results: {results}")
+        return {
+            "llm_intent": llm_result.intent,
+            "llm_confidence": llm_result.confidence,
+            "llm_reasoning": llm_result.reasoning,
+            "embedding_intent": emb_result.intent,
+            "embedding_score": emb_result.p_score,
+        }
 ```
 
-## Key Features
+## Working with results
 
-- **Multiple Classification Methods**: Choose between embedding-based or LLM-based classification
-- **Custom Intent Definitions**: Define intents with descriptions and example phrases
-- **Top-K Results**: Return multiple potential intents ranked by confidence
-- **Flexible Integration**: Easy integration with existing chat and routing systems
+- **LLM classifier** returns `LLMIntentClassificationResult` with:
+  - `intent`: matched intent name.
+  - `confidence`: `"low"`, `"medium"`, `"high"` (auto-quantised from raw scores).
+  - `p_score`: continuous probability (0–1).
+  - `reasoning`: short explanation.
+  - `extracted_entities`: optional name/value pairs surfaced by the LLM.
+- **Embedding classifier** returns `IntentClassificationResult` with `intent` and `p_score`. Sort or threshold the score to decide automation boundaries.
 
-## Use Cases
+Both variants support `top_k`, letting you offer alternatives to a human or feed multiple candidates into a downstream router.
 
-- **Customer Support Routing**: Automatically route tickets to appropriate teams
-- **Chatbot Intelligence**: Provide contextually relevant responses
-- **Content Personalization**: Customize content based on user intent
-- **Analytics and Insights**: Track user intent patterns and trends
+## Integrating with the router
 
-<Card
-  title="Full Implementation"
-  href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows/workflow_intent_classifier"
->
-  See the complete intent classifier with hierarchical categories and confidence
-  scoring.
-</Card>
+Intent classifiers and routers pair naturally: classify first, then route using a richer skill set.
+
+```python
+intent = (await llm_classifier.classify(request, top_k=1))[0]
+if intent.confidence != "high":
+    return "Escalating to human – intent unclear."
+
+decisions = await router.route(
+    f"[intent={intent.intent}] {request}",
+    top_k=3,
+)
+```
+
+The intent name/metadata can be prepended to the router prompt (as above) or used to select different router instances entirely.
+
+## Tuning and operations
+
+- Override `classification_instruction` to bias LLM behaviour (hierarchical intents, abstain thresholds, multilingual hints).
+- Pass `request_params=RequestParams(strict=True, temperature=0)` to disable sampling variance for high-stakes automation.
+- Pre-compute embeddings for cold start by calling `await classifier.initialize()` at app startup.
+- Record tracing output (`otel.enabled: true`) to inspect intent descriptions, examples, and resulting confidence scores per request.
+
+## Example projects
+
+- [workflow_intent_classifier](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows/workflow_intent_classifier) – shows LLM + embedding classifiers side by side with downstream routing.
+- [Temporal examples](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/temporal) – includes a classifier-driven Temporal workflow.
+
+## Related reading
+
+- [Router pattern](/mcp-agent-sdk/effective-patterns/router)
+- [Workflow & decorators guide](/mcp-agent-sdk/core-components/workflows)
