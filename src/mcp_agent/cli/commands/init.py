@@ -82,11 +82,7 @@ def _copy_pkg_tree(pkg_rel: str, dst: Path, force: bool) -> int:
     Returns 1 on success, 0 on failure.
     """
     try:
-        root = (
-            resources.files("mcp_agent.data")
-            .joinpath("examples")
-            .joinpath(pkg_rel)
-        )
+        root = resources.files("mcp_agent.data").joinpath("examples").joinpath(pkg_rel)
     except Exception:
         return 0
     if not root.exists():
@@ -116,7 +112,9 @@ def init(
     ctx: typer.Context,
     dir: Path = typer.Option(Path("."), "--dir", "-d", help="Target directory"),
     template: str = typer.Option("basic", "--template", "-t", help="Template to use"),
-    quickstart: str = typer.Option(None, "--quickstart", help="Quickstart mode: copy example without config files"),
+    quickstart: str = typer.Option(
+        None, "--quickstart", help="Quickstart mode: copy example without config files"
+    ),
     force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing files"),
     no_gitignore: bool = typer.Option(
         False, "--no-gitignore", help="Skip creating .gitignore"
@@ -172,7 +170,10 @@ def init(
         "mcp-basic-agent": ("mcp_basic_agent", "basic/mcp_basic_agent"),
         "token-counter": ("token_counter", "basic/token_counter"),
         "agent-factory": ("agent_factory", "basic/agent_factory"),
-        "reference-agent-server": ("reference_agent_server", "mcp_agent_server/reference"),
+        "reference-agent-server": (
+            "reference_agent_server",
+            "mcp_agent_server/reference",
+        ),
         "elicitation": ("elicitation", "mcp_agent_server/elicitation"),
         "sampling": ("sampling", "mcp_agent_server/sampling"),
         "notifications": ("notifications", "mcp_agent_server/notifications"),
@@ -187,7 +188,9 @@ def init(
 
         # Templates table
         console.print("[bold cyan]Templates:[/bold cyan]")
-        console.print("[dim]Creates minimal project structure with config files[/dim]\n")
+        console.print(
+            "[dim]Creates minimal project structure with config files[/dim]\n"
+        )
         table1 = Table(show_header=True, header_style="cyan")
         table1.add_column("Template", style="green")
         table1.add_column("Description")
@@ -233,7 +236,9 @@ def init(
         if copied:
             console.print(f"Copied {copied} set(s) to {dst}")
         else:
-            console.print(f"[yellow]Could not copy '{quickstart}' - destination may already exist[/yellow]")
+            console.print(
+                f"[yellow]Could not copy '{quickstart}' - destination may already exist[/yellow]"
+            )
             console.print("Use --force to overwrite")
 
         return
@@ -285,7 +290,9 @@ def init(
         copied = _copy_pkg_tree(pkg_rel, dst, force)
 
         if copied:
-            console.print(f"\n[green]✅ Successfully copied example '{template}'![/green]")
+            console.print(
+                f"\n[green]✅ Successfully copied example '{template}'![/green]"
+            )
             console.print(f"Created: [cyan]{dst}[/cyan]\n")
             console.print("[bold]Next steps:[/bold]")
             console.print(f"1. cd [cyan]{dst}[/cyan]")
@@ -293,7 +300,9 @@ def init(
             console.print("3. Add your API keys to config/secrets files if needed")
         else:
             console.print(f"[yellow]Example '{template}' could not be copied[/yellow]")
-            console.print("The destination may already exist. Use --force to overwrite.")
+            console.print(
+                "The destination may already exist. Use --force to overwrite."
+            )
 
         return
 
@@ -352,13 +361,6 @@ def init(
         readme_content = _load_template("README_server.md")
         if readme_content:
             created = _write_readme(dir, readme_content, force)
-            if created:
-                files_created.append(created)
-
-        # Add basic requirements.txt
-        requirements_content = _load_template("requirements.txt")
-        if requirements_content:
-            created = _write_requirements(dir, requirements_content, force)
             if created:
                 files_created.append(created)
 
