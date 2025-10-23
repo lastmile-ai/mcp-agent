@@ -2,19 +2,19 @@
   "$schema": "https://mintlify.com/docs.json",
   "name": "mcp-agent",
   "logo": {
-    "light": "/logo/mcp-agent.png",
-    "dark": "/logo/mcp-agent.png"
+    "light": "/logo/phetch.gif",
+    "dark": "/logo/phetch.gif"
   },
-  "theme": "willow",
+  "theme": "maple",
   "colors": {
-    "primary": "#3B82F6",
-    "light": "#60A5FA",
-    "dark": "#1E40AF"
+    "primary": "#FF7933",
+    "light": "#FB9560",
+    "dark": "#E46928"
   },
   "background": {
     "color": {
-      "light": "#FFFFFF",
-      "dark": "#0F172A"
+      "light": "#FAF9F5",
+      "dark": "#191919"
     },
     "decoration": "grid"
   },
