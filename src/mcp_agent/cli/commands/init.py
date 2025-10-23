@@ -153,8 +153,8 @@ def init(
     scaffolding_templates = {
         "basic": "Simple agent with filesystem and fetch capabilities",
         "server": "MCP server with workflow and parallel agents",
-        "token": "Token counting example with monitoring",
-        "factory": "Agent factory with router-based selection",
+        # "token": "Token counting example with monitoring",
+        # "factory": "Agent factory with router-based selection",
         "minimal": "Minimal configuration files only",
     }
 
