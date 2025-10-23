@@ -1,3 +1,1 @@
-mcp-agent
-openai
-anthropic
+mcp-agent[anthropic,openai]

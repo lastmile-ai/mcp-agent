@@ -1,5 +1,4 @@
-# Configuration for the Temporal workflow example
-$schema: ../../schema/mcp-agent.config.schema.json
+$schema: https://raw.githubusercontent.com/lastmile-ai/mcp-agent/refs/heads/main/schema/mcp-agent.config.schema.json
 
 # Set the execution engine to Temporal
 execution_engine: "temporal"

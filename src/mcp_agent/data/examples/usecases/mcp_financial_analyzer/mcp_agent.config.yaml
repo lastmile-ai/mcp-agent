@@ -1,4 +1,4 @@
-$schema: ../../schema/mcp-agent.config.schema.json
+$schema: https://raw.githubusercontent.com/lastmile-ai/mcp-agent/refs/heads/main/schema/mcp-agent.config.schema.json
 
 # Configuration for Stock Analyzer with g-search-mcp
 execution_engine: asyncio
@@ -10,12 +10,12 @@ mcp:
     fetch:
       command: "uvx"
       args: ["mcp-server-fetch"]
-    
+
     # Google Search MCP server
     g-search:
       command: "npx"
       args: ["-y", "g-search-mcp"]
-    
+
     # Filesystem server for writing reports
     filesystem:
       command: "npx"
@@ -24,5 +24,3 @@ mcp:
 # Default OpenAI configuration
 openai:
   default_model: gpt-4o
-
-
