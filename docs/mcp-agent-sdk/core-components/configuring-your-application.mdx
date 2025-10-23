@@ -7,20 +7,22 @@ icon: gear
 
 mcp-agent uses YAML configuration files to manage application settings, MCP servers, and model providers.
 
-## Configuration Files
+## Configuration files
 
-mcp-agent uses two configuration files:
+Start with two YAML files at the root of your project:
 
 <CardGroup cols={2}>
   <Card title="mcp_agent.config.yaml" icon="gear">
-    Application configuration, MCP servers, and non-sensitive settings
+    Application configuration, MCP servers, logging, execution engine, model defaults
   </Card>
   <Card title="mcp_agent.secrets.yaml" icon="key">
-    API keys, secrets, and sensitive credentials (gitignored)
+    API keys, OAuth credentials, and other secrets (gitignored)
   </Card>
 </CardGroup>
 
-## Basic Configuration
+See [Specify Secrets](/mcp-agent-sdk/core-components/specify-secrets) for credential management patterns and production tips.
+
+## Basic configuration
 
 Here's a minimal configuration:
 
@@ -138,7 +140,7 @@ mcp:
 
 ## Model Providers
 
-Configure your LLM provider:
+Configure your LLM provider. Many examples follow this layout—for instance, the [basic finder agent](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/basic/mcp_basic_agent) sets OpenAI defaults exactly this way.
 
 <Tabs>
   <Tab title="OpenAI">
@@ -197,6 +199,68 @@ Configure your LLM provider:
     ```
   </Tab>
 </Tabs>
+
+## OAuth configuration
+
+Two places control OAuth behaviour:
+
+1. **Global OAuth settings (`settings.oauth`)** configure token storage and callback behaviour (loopback ports, preload timeouts, Redis support).
+2. **Per-server auth (`mcp.servers[].auth.oauth`)** specifies client credentials, scopes, and provider overrides.
+
+```yaml mcp_agent.config.yaml
+oauth:
+  token_store:
+    backend: redis
+    redis_url: ${OAUTH_REDIS_URL}
+
+mcp:
+  servers:
+    github:
+      command: "uvx"
+      args: ["mcp-server-github"]
+      auth:
+        oauth:
+          enabled: true
+          client_id: ${GITHUB_CLIENT_ID}
+          client_secret: ${GITHUB_CLIENT_SECRET}
+          redirect_uri_options:
+            - "http://127.0.0.1:33418/callback"
+          include_resource_parameter: false
+```
+
+Pair this with secrets in `mcp_agent.secrets.yaml` or environment variables. For concrete walkthroughs, study the [OAuth basic agent](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/basic/oauth_basic_agent) and the [interactive OAuth tool](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/oauth/interactive_tool). The [pre-authorize workflow example](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/oauth/pre_authorize) shows how to seed credentials before a background workflow runs.
+
+## Programmatic configuration
+
+You can bypass file discovery by passing a fully-formed `Settings` object (or a path) to `MCPApp`. This is especially useful for tests and scripts that compose configuration dynamically.
+
+```python
+from mcp_agent.app import MCPApp
+from mcp_agent.config import Settings, OpenAISettings
+
+settings = Settings(
+    execution_engine="asyncio",
+    openai=OpenAISettings(
+        default_model="gpt-4o-mini",
+        temperature=0.3,
+    ),
+)
+
+app = MCPApp(name="dynamic", settings=settings)
+```
+
+Because `Settings` extends `BaseSettings`, environment variables still override any fields you set explicitly.
+
+## Configuration discovery
+
+When `MCPApp` starts, it resolves settings in this order:
+- `MCP_APP_SETTINGS_PRELOAD` / `MCP_APP_SETTINGS_PRELOAD_STRICT`
+- Explicit `settings` argument passed to `MCPApp`
+- `mcp_agent.config.yaml` (or `mcp-agent.config.yaml`) discovered in the working directory, parent directories, `.mcp-agent/` folders, or `~/.mcp-agent/`
+- `mcp_agent.secrets.yaml` / `mcp-agent.secrets.yaml` merged on top
+- Environment variables (including values from `.env`, using `__` for nesting)
+
+Environment variables override file-based values, while the preload option short-circuits everything else—handy for containerised deployments that mount secrets from a vault. [Specify Secrets](/mcp-agent-sdk/core-components/specify-secrets) covers strategies for each stage.
 
 ## Environment Variables
 

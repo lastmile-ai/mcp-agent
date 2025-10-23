@@ -1,6 +1,10 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "name": "mcp-agent",
+  "logo": {
+    "light": "/logo/mcp-agent.png",
+    "dark": "/logo/mcp-agent.png"
+  },
   "theme": "willow",
   "colors": {
     "primary": "#3B82F6",

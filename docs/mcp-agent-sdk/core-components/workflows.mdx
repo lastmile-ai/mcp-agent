@@ -12,6 +12,8 @@ mcp-agent provides two powerful ways to define agent logic:
 
 Both approaches expose your agent logic as MCP tools that can be invoked by any MCP client.
 
+📌 **Reference gallery:** the [workflow examples](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows) walk through router, parallel, orchestrator, evaluator/optimizer, deep research, and swarm patterns built on these primitives.
+
 ## The Workflow Class
 
 The `Workflow` class is the foundation for building complex agent behaviors. It provides:
@@ -100,7 +102,7 @@ class StatefulWorkflow(Workflow[dict]):
         logger.info(f"Running workflow {workflow_id}, run {run_id}")
         
         # Access configuration
-        config = app.context.settings
+        config = app.context.config
         
         return WorkflowResult(value={"workflow_id": workflow_id})
 ```

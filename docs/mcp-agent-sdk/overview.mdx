@@ -9,6 +9,85 @@ icon: cube
 
 mcp-agent is a Python framework for building AI agents using the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction). It provides a simple, composable way to build effective agents by combining standardized MCP servers with proven workflow patterns.
 
+## Anatomy of an MCP Agent
+
+The quickest way to internalise the stack is to walk through the [basic finder agent](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/basic/mcp_basic_agent). Each step maps directly to a core SDK concept:
+
+### 1. Configure servers and models
+
+```yaml mcp_agent.config.yaml
+execution_engine: asyncio
+
+mcp:
+  servers:
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+    filesystem:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-filesystem"]
+
+openai:
+  default_model: gpt-4o-mini
+```
+
+This defines the transports the agent can call and the model preferences it should use.
+
+### 2. Bootstrap the application
+
+```python title="main.py"
+from mcp_agent.app import MCPApp
+
+app = MCPApp(name="finder_app")
+```
+
+`MCPApp` loads the config/secrets, prepares logging and tracing, and manages server connections.
+
+### 3. Describe the agent
+
+```python title="finder_agent.py"
+from mcp_agent.agents.agent import Agent
+
+finder = Agent(
+    name="finder",
+    instruction="Fetch web pages or read files to answer questions.",
+    server_names=["fetch", "filesystem"],
+)
+```
+
+The agent couples instructions with the set of MCP servers it is allowed to use. When `async with finder:` runs, the agent initialises those connections via the app’s server registry.
+
+### 4. Attach an augmented LLM
+
+```python
+from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
+
+async with finder:
+    llm = await finder.attach_llm(OpenAIAugmentedLLM)
+    response = await llm.generate_str("Summarise README.md")
+```
+
+The augmented LLM automatically surfaces the agent’s tools (`fetch`, `read_text_file`, etc.) during generation.
+
+### 5. Run inside the app context
+
+```python
+async def main():
+    async with app.run():
+        async with finder:
+            llm = await finder.attach_llm(OpenAIAugmentedLLM)
+            result = await llm.generate_str("List key files in this repo")
+            print(result)
+```
+
+You gain uniform logging, token accounting, and graceful shutdown by executing inside `app.run()`. From here, layer in more sophisticated patterns:
+
+- Need persistent connections? Check out the [mcp_server_aggregator example](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/basic/mcp_server_aggregator).
+- Want OAuth-protected servers? Follow the [OAuth basic agent walkthrough](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/basic/oauth_basic_agent).
+- Ready for orchestration? Browse the [workflow gallery](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows) and the [Temporal projects](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/temporal).
+
+With these building blocks you can mix and match—swap models, add workflow decorators, run inside Temporal, or expose the whole app as an MCP server.
+
 ## Core Architecture
 
 mcp-agent consists of four main layers:

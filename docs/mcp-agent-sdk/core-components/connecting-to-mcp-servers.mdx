@@ -5,17 +5,141 @@ description: "Learn how to connect to MCP servers using the MCP server registry 
 icon: plug
 ---
 
-<Info>
-Content to be migrated covering MCP server registry, MCP connection manager, gen_client, connect/disconnect patterns.
-</Info>
-
 ## Overview
 
-mcp-agent provides multiple ways to connect to and manage MCP servers:
+Every `MCPApp` initialises a `ServerRegistry` that knows how to start and authenticate each server defined in `mcp_agent.config.yaml`. The registry works hand in hand with `MCPConnectionManager` to provide two patterns:
 
-- **MCP Server Registry** - Central registry of configured servers
-- **MCP Connection Manager** - Lifecycle management for server connections
-- **gen_client** - Context manager for temporary connections
-- **connect/disconnect** - Persistent connection management
+- Short-lived connections using `gen_client`, perfect for one-off operations.
+- Persistent connections managed by the connection manager, ideal for agents and long-running workflows.
 
-[See MCP Servers documentation for details →](/mcp-agent-sdk/core-components/mcp-servers)
+Understanding these two layers lets you control connection reuse, lifecycle, and error handling with precision.
+
+## Inspect configured servers
+
+After `app.run()` the registry is accessible via the context:
+
+```python
+async with app.run() as running_app:
+    registry = running_app.server_registry
+    for name, cfg in registry.registry.items():
+        running_app.logger.info(
+            "Server configured",
+            data={"name": name, "transport": cfg.transport},
+        )
+```
+
+The registry resolves transports (`stdio`, `sse`, `streamable_http`, `websocket`), applies authentication (`api_key` or OAuth), and exposes helpers such as `register_init_hook`.
+
+## Ephemeral sessions with `gen_client`
+
+Use `gen_client` when you need a connection for the duration of a `with` block. It spins up the server process (for stdio transports), performs initialisation, yields an `MCPAgentClientSession`, and tears everything down automatically—a handy pattern for scripts, CLI utilities, or inspection. The [basic finder agent](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/basic/mcp_basic_agent) uses the same underlying helpers when it initialises an agent.
+
+```python
+from mcp_agent.mcp.gen_client import gen_client
+
+async with app.run():
+    async with gen_client(
+        server_name="fetch",
+        server_registry=app.server_registry,
+        context=app.context,
+    ) as session:
+        tools = await session.list_tools()
+        print("Fetch tools:", [tool.name for tool in tools.tools])
+```
+
+This is the simplest way to script against MCP servers without committing to persistent connections.
+
+## Persistent connections and connection pooling
+
+The `ServerRegistry` owns a `MCPConnectionManager` (`registry.connection_manager`) that maintains long-lived connections in a background task group. You can either interact with it directly or rely on helpers such as `mcp_agent.mcp.gen_client.connect`.
+
+```python
+from mcp_agent.mcp.gen_client import connect, disconnect
+
+async with app.run():
+    session = await connect("filesystem", app.server_registry, context=app.context)
+    try:
+        result = await session.list_resources()
+        print("Roots:", [r.uri for r in result.resources])
+    finally:
+        await disconnect("filesystem", app.server_registry)
+```
+
+When you need multiple connections simultaneously, open the manager as a context manager to ensure orderly shutdown:
+
+```python
+async with app.run():
+    async with app.server_registry.connection_manager as manager:
+        fetch_conn = await manager.get_server("fetch")
+        filesystem_conn = await manager.get_server("filesystem")
+        await fetch_conn.session.list_tools()
+        await filesystem_conn.session.list_tools()
+    # Connections are closed when the block exits
+```
+
+## Connection persistence in agents
+
+Agents use the connection manager behind the scenes. Set `connection_persistence=True` (the default) to keep servers warm between tool calls or `False` to close the transport after each request.
+
+```python
+agent = Agent(
+    name="finder",
+    instruction="Use fetch and filesystem tools",
+    server_names=["fetch", "filesystem"],
+    connection_persistence=True,
+    context=app.context,
+)
+```
+
+Persistent connections dramatically reduce latency when calling the same server repeatedly.
+
+## Aggregating multiple servers
+
+`MCPAggregator` builds a “server-of-servers” using the same registry and connection manager. You can namespace tool calls or expose a merged surface area:
+
+```python
+from mcp_agent.mcp.mcp_aggregator import MCPAggregator
+
+async with app.run():
+    async with MCPAggregator.create(
+        server_names=["fetch", "filesystem"],
+        connection_persistence=True,
+        context=app.context,
+    ) as aggregator:
+        await aggregator.list_tools()                # Combined tool view
+        await aggregator.call_tool("fetch_fetch", {"url": "https://example.com"})
+        await aggregator.call_tool("read_text_file", {"path": "README.md"})
+```
+
+This pattern mirrors the [`examples/basic/mcp_server_aggregator`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/basic/mcp_server_aggregator) sample and is commonly used when turning an entire app into a single MCP server.
+
+## OAuth-aware connections
+
+When server definitions include `auth.oauth`, the registry and connection manager automatically coordinate with the app’s token manager. The OAuth examples highlight three recurring patterns:
+
+- [`examples/basic/oauth_basic_agent`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/basic/oauth_basic_agent) – an agent maintains persistent connections to the GitHub MCP server using the client-only loopback flow.
+- [`examples/oauth/interactive_tool`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/oauth/interactive_tool) – a client opens a temporary `gen_client` session, receives an `auth/request`, and walks through the browser login.
+- [`examples/oauth/pre_authorize`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/oauth/pre_authorize) – tokens are seeded before an asynchronous workflow runs so the background execution never needs interactive auth.
+
+In each case, you get the same `ClientSession` interface; the difference lies in how tokens are acquired and stored.
+
+## Initialisation hooks and authentication
+
+You can register custom logic that runs immediately after a server initialises. It is perfect for seeding credentials, warming caches, or performing health checks.
+
+```python
+def after_start(session, auth):
+    session.logger.info("Server ready", data={"auth": bool(auth)})
+
+app.server_registry.register_init_hook("fetch", after_start)
+```
+
+When a server declares OAuth configuration (`mcp.servers[].auth.oauth`), `MCPApp` automatically injects an `OAuthHttpxAuth` handler so `MCPConnectionManager` can obtain and refresh tokens using the shared `TokenManager`. This means you do not need to ship long-lived access tokens in your config.
+
+## Error handling & retries
+
+- `MCPConnectionManager` keeps track of connection health and will surface errors via logs (`ProgressAction.FATAL_ERROR`) without crashing your application.
+- Call `disconnect_all()` or `close()` if you want to force reconnection after rotating credentials.
+- When a connection fails during initialisation, any awaiting `get_server` call unblocks with an exception so that workflows can decide whether to retry or degrade gracefully.
+
+[Deep dive into MCP Servers →](/mcp-agent-sdk/core-components/mcp-servers)

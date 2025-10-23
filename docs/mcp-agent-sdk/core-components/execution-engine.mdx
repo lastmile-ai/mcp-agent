@@ -47,8 +47,9 @@ The Temporal engine provides durable workflow execution with automatic state per
 ```yaml
 execution_engine: temporal
 temporal:
-  server_url: "localhost:7233"
+  host: "localhost:7233"
   namespace: "default"
+  task_queue: "mcp-agent"
 ```
 
 **Use cases:**
@@ -57,6 +58,8 @@ temporal:
 - Critical operations requiring reliability
 - Multi-node deployments
 - Workflows requiring pause/resume
+
+📌 **Example:** The [Temporal workflow gallery](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/temporal) showcases orchestrator, router, and evaluator/optimizer patterns running on this engine.
 
 ## Executors
 
@@ -67,10 +70,14 @@ Executors are the runtime components that actually execute workflows within an e
 Handles workflow execution for the asyncio engine:
 
 ```python
-from mcp_agent.executors.asyncio_executor import AsyncioExecutor
+from mcp_agent.executor.executor import AsyncioExecutor
+
+async def greet(name: str) -> str:
+    return f"Hi {name}"
 
 executor = AsyncioExecutor()
-result = await executor.execute_workflow(workflow, params)
+result = await executor.execute(greet, "Ada")
+print(result)  # "Hi Ada"
 ```
 
 **Features:**
@@ -78,18 +85,23 @@ result = await executor.execute_workflow(workflow, params)
 - Native async/await support
 - Minimal overhead
 
+See it in action in the [basic workflows examples](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows) where tasks run entirely in-process.
+
 ### TemporalExecutor
 
 Manages workflow execution for the Temporal engine:
 
 ```python
-from mcp_agent.executors.temporal_executor import TemporalExecutor
+from mcp_agent.executor.temporal import TemporalExecutor
+from mcp_agent.config import TemporalSettings
 
-executor = TemporalExecutor(
-    temporal_host="localhost:7233",
-    namespace="default"
-)
-result = await executor.execute_workflow(workflow, params)
+executor = TemporalExecutor(config=TemporalSettings(
+    host="localhost:7233",
+    namespace="default",
+    task_queue="mcp-agent",
+))
+handle = await executor.start_workflow("ResearchWorkflow", {"topic": "LLMs"})
+result = await handle.result()
 ```
 
 **Features:**
@@ -97,6 +109,8 @@ result = await executor.execute_workflow(workflow, params)
 - Activity retries
 - Distributed execution
 - Workflow queries and signals
+
+The [`examples/oauth/pre_authorize`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/oauth/pre_authorize) project combines this executor with OAuth-aware workflows.
 
 ## Choosing an Execution Engine
 
@@ -200,12 +214,24 @@ logger:
 ```yaml
 execution_engine: temporal
 temporal:
-  server_url: "temporal.production.internal:7233"
+  host: "temporal.production.internal:7233"
   namespace: "production"
   task_queue: "agent-workflows"
   worker_count: 4
   max_concurrent_activities: 20
 ```
+
+## Accessing the executor in an application
+
+`MCPApp` exposes the active executor and engine selection:
+
+```python
+async with app.run() as running_app:
+    executor = running_app.executor
+    print(executor.execution_engine)  # "asyncio" or "temporal"
+```
+
+You typically call high-level helpers (`workflow.execute()`, `executor.start_workflow`) rather than invoking executor methods directly, but the property is available when you need advanced control or diagnostics.
 
 ## Next Steps
 
