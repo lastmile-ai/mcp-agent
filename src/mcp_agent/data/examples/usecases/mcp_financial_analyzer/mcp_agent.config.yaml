@@ -1,0 +1,28 @@
+$schema: ../../schema/mcp-agent.config.schema.json
+
+# Configuration for Stock Analyzer with g-search-mcp
+execution_engine: asyncio
+
+# MCP server configurations
+mcp:
+  servers:
+    # Fetch server for basic web retrieval
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+    
+    # Google Search MCP server
+    g-search:
+      command: "npx"
+      args: ["-y", "g-search-mcp"]
+    
+    # Filesystem server for writing reports
+    filesystem:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-filesystem"]
+
+# Default OpenAI configuration
+openai:
+  default_model: gpt-4o
+
+

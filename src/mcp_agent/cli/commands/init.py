@@ -4,7 +4,6 @@ Project scaffolding: mcp-agent init (scaffold minimal version or copy curated ex
 
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 from importlib import resources
 from importlib.resources import files as _pkg_files
@@ -17,9 +16,6 @@ from rich.table import Table
 app = typer.Typer(help="Scaffold a new mcp-agent project")
 console = Console()
 err_console = Console(stderr=True)
-
-# Path to repository examples
-EXAMPLE_ROOT = Path(__file__).parents[4] / "examples"
 
 
 def _load_template(template_name: str) -> str:
@@ -78,27 +74,6 @@ def _write_readme(dir_path: Path, content: str, force: bool) -> str | None:
     console.print("[bold]Suggested README contents:[/bold]\n")
     console.print(content)
     return None
-
-
-def _copy_tree(src: Path, dst: Path, force: bool) -> int:
-    """Copy a directory tree from src to dst.
-
-    Returns 1 on success, 0 on failure.
-    """
-    if not src.exists():
-        err_console.print(f"[red]Source not found: {src}[/red]")
-        return 0
-    try:
-        if dst.exists():
-            if force:
-                shutil.rmtree(dst)
-            else:
-                return 0
-        shutil.copytree(src, dst)
-        return 1
-    except Exception as e:
-        err_console.print(f"[red]Error copying tree: {e}[/red]")
-        return 0
 
 
 def _copy_pkg_tree(pkg_rel: str, dst: Path, force: bool) -> int:
@@ -189,14 +164,13 @@ def init(
     templates = {**scaffolding_templates, **example_templates}
 
     # Map template names to their source paths (shared by quickstart and template modes)
-    # Format: "name": (repo_path, dest_name) for repo examples
-    #         "name": (None, dest_name, pkg_rel) for packaged examples
+    # Format: "name": (None, dest_name, pkg_rel) for packaged examples
     example_map = {
-        "workflow": (EXAMPLE_ROOT / "workflows", "workflow"),
-        "researcher": (EXAMPLE_ROOT / "usecases" / "mcp_researcher", "researcher"),
-        "data-analysis": (EXAMPLE_ROOT / "usecases" / "mcp_financial_analyzer", "data-analysis"),
-        "state-transfer": (EXAMPLE_ROOT / "workflows" / "workflow_router", "state-transfer"),
-        "basic-agent-server": (EXAMPLE_ROOT / "mcp_agent_server" / "asyncio", "basic_agent_server"),
+        "workflow": (None, "workflow", "workflows"),
+        "researcher": (None, "researcher", "usecases/mcp_researcher"),
+        "data-analysis": (None, "data-analysis", "usecases/mcp_financial_analyzer"),
+        "state-transfer": (None, "state-transfer", "workflows/workflow_router"),
+        "basic-agent-server": (None, "basic_agent_server", "mcp_agent_server/asyncio"),
         "mcp-basic-agent": (None, "mcp_basic_agent", "basic/mcp_basic_agent"),
         "token-counter": (None, "token_counter", "basic/token_counter"),
         "agent-factory": (None, "agent_factory", "basic/agent_factory"),
@@ -204,10 +178,10 @@ def init(
         "elicitation": (None, "elicitation", "mcp_agent_server/elicitation"),
         "sampling": (None, "sampling", "mcp_agent_server/sampling"),
         "notifications": (None, "notifications", "mcp_agent_server/notifications"),
-        "hello-world": (EXAMPLE_ROOT / "cloud" / "hello_world", "hello_world"),
-        "mcp": (EXAMPLE_ROOT / "cloud" / "mcp", "mcp"),
-        "temporal": (EXAMPLE_ROOT / "cloud" / "temporal", "temporal"),
-        "chatgpt-app": (EXAMPLE_ROOT / "cloud" / "chatgpt_app", "chatgpt_app"),
+        "hello-world": (None, "hello_world", "cloud/hello_world"),
+        "mcp": (None, "mcp", "cloud/mcp"),
+        "temporal": (None, "temporal", "cloud/temporal"),
+        "chatgpt-app": (None, "chatgpt_app", "cloud/chatgpt_app"),
     }
 
     if list_templates:
@@ -254,18 +228,9 @@ def init(
         base_dir = dir.resolve()
         base_dir.mkdir(parents=True, exist_ok=True)
 
-        if len(mapping) == 3:
-            _, dst_name, pkg_rel = mapping
-            dst = base_dir / dst_name
-            copied = _copy_pkg_tree(pkg_rel, dst, force)
-            if not copied:
-                src = EXAMPLE_ROOT / pkg_rel.replace("/", "_")
-                if src.exists():
-                    copied = _copy_tree(src, dst, force)
-        else:
-            src, dst_name = mapping
-            dst = base_dir / dst_name
-            copied = _copy_tree(src, dst, force)
+        _, dst_name, pkg_rel = mapping
+        dst = base_dir / dst_name
+        copied = _copy_pkg_tree(pkg_rel, dst, force)
 
         if copied:
             console.print(f"Copied {copied} set(s) to {dst}")
@@ -317,18 +282,9 @@ def init(
             console.print(f"[red]Example template '{template}' not found[/red]")
             raise typer.Exit(1)
 
-        if len(mapping) == 3:
-            _, dst_name, pkg_rel = mapping
-            dst = dir / dst_name
-            copied = _copy_pkg_tree(pkg_rel, dst, force)
-            if not copied:
-                src = EXAMPLE_ROOT / pkg_rel.replace("/", "_")
-                if src.exists():
-                    copied = _copy_tree(src, dst, force)
-        else:
-            src, dst_name = mapping
-            dst = dir / dst_name
-            copied = _copy_tree(src, dst, force)
+        _, dst_name, pkg_rel = mapping
+        dst = dir / dst_name
+        copied = _copy_pkg_tree(pkg_rel, dst, force)
 
         if copied:
             console.print(f"\n[green]✅ Successfully copied example '{template}'![/green]")
