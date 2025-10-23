@@ -1,32 +1,48 @@
 import asyncio
-
 from pathlib import Path
+
+from mcp.server.fastmcp import Context
 
 from mcp_agent.app import MCPApp
 from mcp_agent.workflows.factory import (
-    load_agent_specs_from_file,
     create_router_llm,
+    load_agent_specs_from_file,
 )
+
+app = MCPApp(name="factory_demo", description="Demo of agent factory with LLM routing")
+
+
+@app.tool()
+async def route_prompt(
+    prompt: str = "Find the README and summarize it", app_ctx: Context | None = None
+) -> str:
+    """Route a prompt to the appropriate agent using an LLMRouter."""
+    context = app_ctx or app.context
+
+    # Add current directory to filesystem server (if needed by your setup)
+    context.config.mcp.servers["filesystem"].args.extend(["."])
+
+    agents_path = Path(__file__).resolve().parent / "agents.yaml"
+    specs = load_agent_specs_from_file(str(agents_path), context=context)
+
+    router = await create_router_llm(
+        server_names=["filesystem", "fetch"],
+        agents=specs,
+        provider="openai",
+        context=context,
+    )
+
+    response = await router.generate_str(prompt)
+    return response
 
 
 async def main():
-    async with MCPApp(name="factory_demo").run() as agent_app:
-        context = agent_app.context
-        # Add current directory to filesystem server (if needed by your setup)
-        context.config.mcp.servers["filesystem"].args.extend(["."])
-
-        agents_path = Path(__file__).resolve().parent / "agents.yaml"
-        specs = load_agent_specs_from_file(str(agents_path), context=context)
-
-        router = await create_router_llm(
-            server_names=["filesystem", "fetch"],
-            agents=specs,
-            provider="openai",
-            context=context,
+    async with app.run() as agent_app:
+        route_res = await route_prompt(
+            prompt="Find the README and summarize it", app_ctx=agent_app.context
         )
 
-        res = await router.generate_str("Find the README and summarize it")
-        print("Routing result:", res)
+        print("Routing result:", route_res)
 
 
 if __name__ == "__main__":
