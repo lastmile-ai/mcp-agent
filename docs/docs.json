@@ -20,8 +20,8 @@
   },
   "favicon": "/favicon.png",
   "banner": {
-    "content": "Deploy agents, MCP servers and ChatGPT apps to [mcp-agent cloud](https://deployments.mcp-agent.com)! Free while in Beta.",
-    "link": "https://deployments.mcp-agent.com"
+    "content": "Deploy agents, MCP servers and ChatGPT apps to [mcp-agent cloud](/deployment/deployment-quickstart)! Free while in Beta.",
+    "link": "/deployment/deployment-quickstart"
   },
   "navigation": {
     "tabs": [
