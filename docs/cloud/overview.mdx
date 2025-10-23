@@ -7,7 +7,7 @@ icon: rocket
 
 <img
   src="https://github.com/user-attachments/assets/92118b28-07a9-4b00-8293-c8684c08ff35"
-  alt="Overview of the mcp-agent cloud platform"
+  alt="Overview of the mcpc platform"
   width="940"
   height="470"
 />
@@ -22,7 +22,7 @@ icon: rocket
 
 ## Deployment paths
 
-- **Managed (mcp-agent cloud)** – `mcp-agent deploy` bundles your project, processes secrets, and ships it to our hosted environment. Agent workflows execute on Temporal, stdio MCP servers run as sidecar containers, and you get managed auth, logging, and tracing. [Learn the architecture →](/cloud/mcp-agent-cloud/architecture-overview)
+- **Managed (mcpc)** – `mcp-agent deploy` bundles your project, processes secrets, and ships it to our hosted environment. Agent workflows execute on Temporal, stdio MCP servers run as sidecar containers, and you get managed auth, logging, and tracing. [Learn the architecture →](/cloud/mcp-agent-cloud/architecture-overview)
 - **Bring-your-own Temporal** – point the same project at your self-hosted Temporal cluster for on-prem or air-gapped requirements. See [Durable agents](/mcp-agent-sdk/advanced/durable-agents) for configuration.
 - **Plain MCP servers** – use FastMCP or `@app.tool` only and deploy without workflows when you just need stateless tools. [Deploy an MCP server →](/cloud/mcp-agent-cloud/deploy-mcp-server)
 - **Local iteration** – run with `asyncio` on your laptop for rapid development and tests. Switch to Temporal when you are ready for durability.
@@ -66,8 +66,8 @@ Any MCP client can connect over SSE/WebSocket using your chosen auth mode.
   <Card title="Deployment Quickstart" icon="rocket" href="/cloud/deployment-quickstart">
     Hands-on walk-through from project to production
   </Card>
-  <Card title="mcp-agent Cloud" icon="cloud" href="/cloud/mcp-agent-cloud/overview">
-    Deep dive into the managed architecture & lifecycle
+  <Card title="mcpc" icon="cloud" href="/cloud/mcp-agent-cloud/overview">
+    Deep dive into the Cloud's architecture & lifecycle
   </Card>
   <Card title="Authentication" icon="shield-check" href="/cloud/authentication/overview">
     Compare bearer tokens, OAuth, and unauthenticated modes
