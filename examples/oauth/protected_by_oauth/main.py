@@ -10,34 +10,39 @@ from mcp_agent.core.context import Context as AppContext
 
 from mcp_agent.app import MCPApp
 from mcp_agent.server.app_server import create_mcp_server_for_app
-from mcp_agent.config import Settings, LoggerSettings, \
-    OAuthTokenStoreSettings, OAuthSettings, MCPAuthorizationServerSettings
+from mcp_agent.config import (
+    Settings,
+    LoggerSettings,
+    OAuthTokenStoreSettings,
+    OAuthSettings,
+    MCPAuthorizationServerSettings,
+)
 
 
-auth_server = "https://auth.mcp-agent.com" # the MCP Agent Cloud auth server, or replace with your own
+auth_server = "https://auth.mcp-agent.com"  # the MCP Agent Cloud auth server, or replace with your own
 resource_server = "http://localhost:8000"  # This server's URL
 
 client_id = "<client id from registration.py>"
 client_secret = "<client secret from registration.py>"
 
 settings = Settings(
-        execution_engine="asyncio",
-        logger=LoggerSettings(level="info"),
-        authorization=MCPAuthorizationServerSettings(
-            enabled=True,
-            issuer_url=AnyHttpUrl(auth_server),
-            resource_server_url=AnyHttpUrl(resource_server),
-            client_id=client_id,
-            client_secret=client_secret,
-            required_scopes=["mcp"],
-            expected_audiences=[client_id],
-        ),
-        oauth=OAuthSettings(
-            callback_base_url=AnyHttpUrl(resource_server),
-            flow_timeout_seconds=300,
-            token_store=OAuthTokenStoreSettings(refresh_leeway_seconds=60),
-        )
-    )
+    execution_engine="asyncio",
+    logger=LoggerSettings(level="info"),
+    authorization=MCPAuthorizationServerSettings(
+        enabled=True,
+        issuer_url=AnyHttpUrl(auth_server),
+        resource_server_url=AnyHttpUrl(resource_server),
+        client_id=client_id,
+        client_secret=client_secret,
+        required_scopes=["mcp"],
+        expected_audiences=[client_id],
+    ),
+    oauth=OAuthSettings(
+        callback_base_url=AnyHttpUrl(resource_server),
+        flow_timeout_seconds=300,
+        token_store=OAuthTokenStoreSettings(refresh_leeway_seconds=60),
+    ),
+)
 
 
 # Define the MCPApp instance. The server created for this app will advertise the
@@ -65,6 +70,7 @@ async def hello(app_ctx: Optional[AppContext] = None) -> str:
             return f"Hello, user with ID {user.subject}!"
     else:
         return "Hello, anonymous user!"
+
 
 async def main():
     async with app.run() as agent_app:

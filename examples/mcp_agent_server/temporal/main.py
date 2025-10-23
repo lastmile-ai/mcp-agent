@@ -100,6 +100,7 @@ icon_data = base64.standard_b64encode(icon_file.read_bytes()).decode()
 icon_data_uri = f"data:image/png;base64,{icon_data}"
 mag_icon = Icon(src=icon_data_uri, mimeType="image/png", sizes=["64x64"])
 
+
 @app.tool(
     name="finder_tool",
     title="Finder Tool",

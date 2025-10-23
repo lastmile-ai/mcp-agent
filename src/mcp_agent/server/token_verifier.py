@@ -54,11 +54,14 @@ class MCPAgentTokenVerifier(TokenVerifier):
                 )
 
                 parsed_url = URL(str(self._settings.issuer_url))
-                metadata_url = str(parsed_url.copy_with(path="/.well-known/oauth-authorization-server" \
-                                                        + parsed_url.path))
+                metadata_url = str(
+                    parsed_url.copy_with(
+                        path="/.well-known/oauth-authorization-server" + parsed_url.path
+                    )
+                )
 
                 # Pydantics AnyHttpUrl may add a trailing `/`, remove it
-                if metadata_url.endswith('/'):
+                if metadata_url.endswith("/"):
                     metadata_url = metadata_url[:-1]
 
                 metadata = await fetch_authorization_server_metadata(
@@ -118,10 +121,7 @@ class MCPAgentTokenVerifier(TokenVerifier):
         data = {"token": token}
 
         auth = None
-        if (
-            self._settings.client_id
-            and self._settings.client_secret
-        ):
+        if self._settings.client_id and self._settings.client_secret:
             auth = httpx.BasicAuth(
                 self._settings.client_id,
                 self._settings.client_secret,

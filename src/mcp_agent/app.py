@@ -61,6 +61,7 @@ phetch = Icon(
     sizes=["48x48"],
 )
 
+
 class MCPApp:
     """
     Main application class that manages global state and can host workflows.
