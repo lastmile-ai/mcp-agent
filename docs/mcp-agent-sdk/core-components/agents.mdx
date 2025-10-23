@@ -8,55 +8,23 @@ icon: robot
 
 ## What is an Agent?
 
-In the `mcp-agent` framework, an **Agent** is your primary interface for building intelligent applications. An agent combines a Large Language Model (LLM) with specialized capabilities, allowing it to use tools, access data, and interact with external systems to accomplish tasks.
+In `mcp-agent`, an **Agent** describes what the model is allowed to do. It captures:
 
-Think of an agent as an intelligent assistant that can:
+- A name and system-level instruction
+- The MCP servers (and optional local functions) that should be available
+- Optional behaviour hooks such as human-input callbacks or whether connections persist
 
-- Understand natural language requests
-- Make decisions about which tools to use
-- Execute complex multi-step workflows
-- Maintain conversation history and context
-- Request human input when needed
+On its own an agent is just configuration and connection management. The agent becomes actionable only after you attach an LLM implementation. Calling `agent.attach_llm(...)` (or constructing an AugmentedLLM with `agent=...`) returns an **AugmentedLLM**—an LLM with the agent’s instructions, tools, and memory bound in. You then use the AugmentedLLM to run generations, call tools, and chain workflows.
 
-<Card>
-  **Core Concept:** An Agent is a configured LLM enhanced with tools, memory,
-  and the ability to take actions in your environment.
-</Card>
+Key ideas:
 
-## Agent Components
-
-An agent in `mcp-agent` consists of several key components working together:
-
-1. **Agent Core**: Manages the overall workflow and orchestrates interactions
-2. **LLM Integration**: Connects to various language model providers (OpenAI, Anthropic, etc.)
-3. **Tool Access**: Provides the LLM with capabilities through MCP servers
-4. **Memory System**: Maintains conversation history and context
-5. **Human Input**: Allows for interactive workflows requiring user input
-
-Here's how these components work together:
-
-```mermaid
-graph TD
-    A[User Request] --> B[Agent Core]
-    B --> C[LLM Provider]
-    C --> D{Needs Tools?}
-    D -->|Yes| E[Call Tools]
-    E --> F[Tool Response]
-    F --> C
-    D -->|No| G[Generate Response]
-    C --> H[Memory Storage]
-    G --> I[User Response]
-
-    subgraph "Agent Components"
-        B
-        C
-        H
-    end
-```
+- **Agent = policy + tool access.** It defines how the model should behave and which MCP servers or functions are reachable.
+- **AugmentedLLM = Agent + model provider.** Attaching an LLM binds a concrete provider (OpenAI, Anthropic, Google, Bedrock, etc.) and exposes generation helpers such as `generate`, `generate_str`, and `generate_structured`.
+- **Agents are reusable.** You can attach different AugmentedLLM providers to the same agent definition without rewriting instructions or server lists.
 
 ## Creating Your First Agent
 
-The simplest way to create an agent is through the `Agent` class. Here's a basic example:
+The simplest way to create an agent is through the `Agent` class. Define the instruction and servers, then attach an LLM to obtain an AugmentedLLM:
 
 ```python
 from mcp_agent.agents.agent import Agent
@@ -83,6 +51,8 @@ async with finder_agent:
     print(result)
 ```
 
+The value returned by `attach_llm` is an `AugmentedLLM` instance. It inherits the agent’s instructions and tool access, so every call to `generate_str` (or `generate` / `generate_structured`) can transparently read files, fetch URLs, or call any other MCP tool the agent exposes.
+
 <CardGroup>
   <Card title="Tool Integration">
     Agents automatically discover and use tools from connected MCP servers,
@@ -94,9 +64,37 @@ async with finder_agent:
   </Card>
 </CardGroup>
 
+## AgentSpec and factory helpers
+
+`AgentSpec` (`mcp_agent.agents.agent_spec.AgentSpec`) is the declarative version of an agent: it captures the same fields (`name`, `instruction`, `server_names`, optional functions) and is used by workflows, config files, and factories. The helpers in [`mcp_agent.workflows.factory`](https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/workflows/factory.py) let you turn specs into agents or AugmentedLLMs with a single call.
+
+```python
+from pathlib import Path
+from mcp_agent.workflows.factory import (
+    load_agent_specs_from_file,
+    create_llm,
+    create_router_llm,
+)
+
+async with app.run() as running_app:
+    context = running_app.context
+    specs = load_agent_specs_from_file(
+        str(Path("examples/basic/agent_factory/agents.yaml")),
+        context=context,
+    )
+
+    # Create a specialist LLM from a spec
+    researcher_llm = create_llm(agent=specs[0], provider="openai", context=context)
+
+    # Or compose higher-level workflows (router, parallel, orchestrator, ...)
+    router = await create_router_llm(agents=specs, provider="openai", context=context)
+```
+
+Explore the [agent factory examples](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/basic/agent_factory) to see how specs keep call sites small, how subagents can be auto-loaded from config, and how factories compose routers, orchestrators, and parallel pipelines.
+
 ## Agent Configuration
 
-Agents can be configured either programmatically or through configuration files. The framework supports both approaches:
+Agents can be configured either programmatically or through configuration files. The framework supports both approaches, and each definition ultimately resolves to an `AgentSpec`:
 
 ### Configuration File Approach
 
@@ -158,7 +156,7 @@ settings = Settings(
 
 ## Agent Capabilities
 
-Agents in `mcp-agent` come with several powerful built-in capabilities:
+Once an agent has an AugmentedLLM attached, it gains the following capabilities:
 
 ### Multi-LLM Provider Support
 

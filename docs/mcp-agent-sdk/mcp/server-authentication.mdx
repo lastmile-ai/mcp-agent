@@ -1,20 +1,163 @@
 ---
 title: Server Authentication
 sidebarTitle: "Server Authentication"
-description: "Configure authentication for MCP servers (OAuth, headers, env)"
+description: "Configure API keys and OAuth when connecting to MCP servers"
 icon: shield-check
 ---
 
-<Info>
-Content to be added covering OAuth, header-based auth, and environment variable authentication for MCP servers.
-</Info>
+mcp-agent connects to MCP servers using the credentials you provide in `mcp_agent.config.yaml`, `mcp_agent.secrets.yaml`, or environment variables. This page shows the common patterns and points to runnable examples.
 
-## Authentication Methods
+## Quick reference
 
-mcp-agent supports multiple authentication methods for MCP servers:
+- **API keys / custom headers** – set `headers` on the server definition and load secrets from `mcp_agent.secrets.yaml` or environment variables.
+- **OAuth (interactive loopback)** – use the same configuration as [`examples/basic/oauth_basic_agent`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/basic/oauth_basic_agent); mcp-agent opens a browser, captures the callback, and stores tokens for reuse.
+- **OAuth (authorization-code with server interaction)** – follow [`examples/oauth/interactive_tool`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/oauth/interactive_tool); the MCP server issues `auth/request` messages when a token is missing.
+- **Pre-authorised tokens** – seed tokens ahead of time as in [`examples/oauth/pre_authorize`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/oauth/pre_authorize); useful for background workflows or Temporal deployments.
+- **Token storage** – configure memory (default) or Redis in `settings.oauth.token_store`.
 
-- **OAuth** - Industry-standard OAuth 2.1 flows
-- **Header-based** - Custom header authentication
-- **Environment variables** - Credentials from environment
+Throughout, use [Specify Secrets](/mcp-agent-sdk/core-components/specify-secrets) to manage sensitive values (secrets file, environment variables, or `MCP_APP_SETTINGS_PRELOAD`).
 
-[See full configuration reference →](/reference/configuration)
+## Header-based authentication
+
+For servers that require static API keys or custom headers, add them directly to the server configuration and load the secret from your secrets file or environment:
+
+```yaml mcp_agent.config.yaml
+mcp:
+  servers:
+    docs_api:
+      transport: "streamable_http"
+      url: "https://api.example.com/mcp"
+      headers:
+        Authorization: "Bearer ${DOCS_API_TOKEN}"
+```
+
+```yaml mcp_agent.secrets.yaml
+DOCS_API_TOKEN: "sk-..."
+```
+
+At runtime mcp-agent resolves `${DOCS_API_TOKEN}` from the secrets file or environment and injects it into every request.
+
+## OAuth basics
+
+OAuth configuration is split into two pieces:
+
+1. **Global OAuth settings** (`settings.oauth`) – token storage, loopback ports, and general behavior.
+2. **Per-server OAuth settings** (`mcp.servers[].auth.oauth`) – provider-specific details such as client ID, scopes, or whether the `resource` parameter is supported.
+
+### Global configuration
+
+```yaml mcp_agent.config.yaml
+oauth:
+  token_store:
+    backend: redis        # or "memory" (default)
+    redis_url: ${OAUTH_REDIS_URL}
+  loopback_ports: [33418, 33419, 33420]  # used by the loopback callback server
+```
+
+Provide secrets via environment variables, a secrets file, or preload:
+
+```bash
+export OAUTH_REDIS_URL="redis://127.0.0.1:6379"
+```
+
+When Redis is configured, tokens survive process restarts. Without Redis, tokens are stored in memory for the lifetime of the app.
+
+### Per-server configuration
+
+```yaml mcp_agent.config.yaml
+mcp:
+  servers:
+    github:
+      command: "uvx"
+      args: ["mcp-server-github"]
+      auth:
+        oauth:
+          enabled: true
+          client_id: ${GITHUB_CLIENT_ID}
+          client_secret: ${GITHUB_CLIENT_SECRET}
+          scopes: ["repo", "read:user"]
+          redirect_uri_options:
+            - "http://127.0.0.1:33418/callback"
+          include_resource_parameter: false  # GitHub does not accept RFC 8707 resource
+```
+
+```yaml mcp_agent.secrets.yaml
+GITHUB_CLIENT_ID: "..."
+GITHUB_CLIENT_SECRET: "..."
+```
+
+This matches the configuration in [`examples/basic/oauth_basic_agent`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/basic/oauth_basic_agent).
+
+## OAuth flows in practice
+
+### Loopback (client-only) flow
+
+When `auth.oauth.enabled` is true and no token is cached, mcp-agent:
+
+1. Launches a loopback HTTP listener on one of the `loopback_ports`.
+2. Opens the provider login page in the user’s browser.
+3. Receives the authorization code at the loopback URL and exchanges it for an access token.
+4. Stores the token in the configured token store (memory or Redis).
+
+Subsequent runs reuse the cached token. Try the [`oauth_basic_agent` example](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/basic/oauth_basic_agent) to see the flow end-to-end.
+
+### Interactive tool flow
+
+Servers can also request authorization during tool execution by emitting `auth/request` messages. The [`examples/oauth/interactive_tool`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/oauth/interactive_tool) project demonstrates this pattern:
+
+- The MCP server (backed by mcp-agent) exposes a tool that talks to the GitHub MCP server.
+- If no token is cached, the server requests authorization; the client opens the browser and resumes once the user approves.
+- Tokens are stored via the same `settings.oauth` configuration.
+
+### Pre-authorised tokens
+
+Sometimes workflows run in the background (for example on Temporal workers) and cannot open a browser. Pre-seed tokens using the `workflows-store-credentials` tool before the workflow runs. The [`examples/oauth/pre_authorize`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/oauth/pre_authorize) folder shows how:
+
+1. Obtain a token out-of-band (using a previous flow or provider tooling).
+2. Call `workflows-store-credentials` with the token and desired server identity.
+3. Run the workflow; it reads the cached token without additional prompts.
+
+You can store tokens in memory or Redis; Redis is recommended when multiple worker processes need access.
+
+## Secrets and environment variables
+
+For local development, keep OAuth credentials in `mcp_agent.secrets.yaml` (gitignored by default). In production or CI/CD, prefer environment variables or `MCP_APP_SETTINGS_PRELOAD` to avoid writing plaintext files:
+
+```bash
+export MCP_APP_SETTINGS_PRELOAD="$(python - <<'PY'
+from pydantic_yaml import to_yaml_str
+from mcp_agent.config import Settings, MCPSettings, MCPServerSettings, OAuthSettings
+
+print(to_yaml_str(Settings(
+    oauth=OAuthSettings(),
+    mcp=MCPSettings(servers={
+        "github": MCPServerSettings(
+            command="uvx",
+            args=["mcp-server-github"],
+            auth={"oauth": {
+                "enabled": True,
+                "client_id": "your-client-id",
+                "client_secret": "your-client-secret",
+            }}
+        )
+    })
+)))
+PY
+)"
+```
+
+Setting `MCP_APP_SETTINGS_PRELOAD_STRICT=true` causes the app to fail fast if the preload cannot be parsed.
+
+## Debugging tips
+
+- Set `logger.level: debug` in `mcp_agent.config.yaml` to inspect OAuth requests and token caching.
+- Cached tokens live under `context.token_store`/`context.token_manager`; inspect them when writing custom automation.
+- For Redis-backed storage, ensure `OAUTH_REDIS_URL` is reachable from both client and worker processes.
+
+## Related links
+
+- [Specify Secrets](/mcp-agent-sdk/core-components/specify-secrets)
+- [Connecting to MCP Servers](/mcp-agent-sdk/core-components/connecting-to-mcp-servers)
+- [OAuth basic agent example](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/basic/oauth_basic_agent)
+- [Interactive OAuth tool example](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/oauth/interactive_tool)
+- [Pre-authorise workflow example](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/oauth/pre_authorize)

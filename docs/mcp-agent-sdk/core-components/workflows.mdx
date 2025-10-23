@@ -6,139 +6,20 @@ icon: diagram-project
 
 ## Overview
 
-mcp-agent provides two powerful ways to define agent logic:
-1. **Workflow Class**: For complex, stateful agent workflows
-2. **Tool Decorators**: For simple, stateless functions
+mcp-agent gives you two complementary ways to expose agent behaviour:
 
-Both approaches expose your agent logic as MCP tools that can be invoked by any MCP client.
+1. **Decorator-based tools** – mark a plain Python function with `@app.tool` or `@app.async_tool` to expose it as an MCP tool. This is the quickest way to add synchronous or long-running behaviour to your app.
+2. **Workflow classes** – build stateful, structured flows by subclassing `Workflow[T]`. Workflows give you fine-grained control over orchestration, retries, and Temporal integration.
 
-📌 **Reference gallery:** the [workflow examples](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows) walk through router, parallel, orchestrator, evaluator/optimizer, deep research, and swarm patterns built on these primitives.
+Both options register MCP tools automatically, so any MCP client can invoke them. The high-level “workflow patterns” in [`examples/workflows`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows) (parallel, router, orchestrator, etc.) are built using these same primitives—they are patterns, not the `Workflow` base class itself.
 
-## The Workflow Class
+The rest of this page walks through the decorators first (because most apps start there) and then dives into the `Workflow` class.
 
-The `Workflow` class is the foundation for building complex agent behaviors. It provides:
-- Type-safe input/output handling
-- Automatic MCP tool registration
-- Support for both asyncio and Temporal execution
-- Built-in error handling and retries
-- Workflow state management
+## Decorator-based tools
 
-### Basic Workflow Definition
+### `@app.tool` – synchronous tools
 
-```python
-from mcp_agent.app import MCPApp
-from mcp_agent.executor.workflow import Workflow, WorkflowResult
-
-app = MCPApp(name="my_agent")
-
-@app.workflow
-class MyWorkflow(Workflow[str]):
-    """A simple workflow that processes text."""
-    
-    @app.workflow_run
-    async def run(self, input_text: str) -> WorkflowResult[str]:
-        # Your agent logic here
-        processed = await self.process_text(input_text)
-        return WorkflowResult(value=processed)
-    
-    async def process_text(self, text: str) -> str:
-        # Helper method
-        return text.upper()
-```
-
-### Generic Type Parameters
-
-Workflows use Python generics to specify return types:
-
-```python
-# String output
-class TextWorkflow(Workflow[str]):
-    @app.workflow_run
-    async def run(self, prompt: str) -> WorkflowResult[str]:
-        return WorkflowResult(value="response")
-
-# Dictionary output
-class DataWorkflow(Workflow[dict]):
-    @app.workflow_run
-    async def run(self, query: dict) -> WorkflowResult[dict]:
-        return WorkflowResult(value={"result": "data"})
-
-# Custom type output
-from pydantic import BaseModel
-
-class AnalysisResult(BaseModel):
-    sentiment: str
-    confidence: float
-    entities: List[str]
-
-class AnalysisWorkflow(Workflow[AnalysisResult]):
-    @app.workflow_run
-    async def run(self, text: str) -> WorkflowResult[AnalysisResult]:
-        result = AnalysisResult(
-            sentiment="positive",
-            confidence=0.95,
-            entities=["Company A", "Product B"]
-        )
-        return WorkflowResult(value=result)
-```
-
-### Workflow Properties
-
-Every workflow has access to important properties:
-
-```python
-@app.workflow
-class StatefulWorkflow(Workflow[dict]):
-    @app.workflow_run
-    async def run(self, data: dict) -> WorkflowResult[dict]:
-        # Unique workflow instance ID
-        workflow_id = self.id
-        
-        # Unique run ID (for this execution)
-        run_id = self.run_id
-        
-        # Access app context
-        logger = app.context.logger
-        logger.info(f"Running workflow {workflow_id}, run {run_id}")
-        
-        # Access configuration
-        config = app.context.config
-        
-        return WorkflowResult(value={"workflow_id": workflow_id})
-```
-
-### Error Handling
-
-Workflows provide structured error handling:
-
-```python
-@app.workflow
-class RobustWorkflow(Workflow[str]):
-    @app.workflow_run
-    async def run(self, input: str) -> WorkflowResult[str]:
-        try:
-            result = await self.risky_operation(input)
-            return WorkflowResult(value=result)
-        except ValidationError as e:
-            # Return error in result
-            return WorkflowResult(
-                value=None,
-                error=f"Validation failed: {e}",
-                metadata={"error_type": "validation"}
-            )
-        except Exception as e:
-            # Log and re-raise for retry
-            app.context.logger.error(f"Workflow failed: {e}")
-            raise
-```
-
-## Tool Decorators
-
-For simpler use cases, mcp-agent provides decorator-based tool definition:
-
-### @app.tool - Synchronous Tools
-
-The `@app.tool` decorator creates tools that return results immediately:
+Use `@app.tool` when the work can complete within a single MCP call. The return value is sent straight back to the client—no polling required.
 
 ```python
 from mcp_agent.app import MCPApp
@@ -153,96 +34,60 @@ async def calculate_sum(numbers: List[float]) -> float:
 
 @app.tool(name="get-weather")
 async def get_weather(
-    city: str, 
+    city: str,
     units: str = "celsius",
-    app_ctx: Optional[Context] = None
+    app_ctx: Optional[Context] = None,
 ) -> dict:
-    """
-    Get weather for a city.
-    
-    Args:
-        city: City name
-        units: Temperature units (celsius or fahrenheit)
-    """
-    # Access app context if needed
     if app_ctx:
-        logger = app_ctx.logger
-        logger.info(f"Getting weather for {city}")
-    
-    # Your logic here
-    weather = await fetch_weather_api(city, units)
-    return weather
+        app_ctx.logger.info("Fetching weather", data={"city": city})
+    return await fetch_weather_api(city, units)
 ```
 
-Key features:
-- Returns final result directly
-- No workflow ID or polling needed
-- Best for quick operations
-- Supports optional `app_ctx` parameter for context access
+Key points:
 
-### @app.async_tool - Asynchronous Tools
+- Works great for quick operations or simple glue code.
+- You can accept an optional `app_ctx: Context` parameter to access logging, server registry, etc.
+- The tool result is serialised and returned to the caller immediately.
 
-The `@app.async_tool` decorator creates tools that start workflows asynchronously:
+### `@app.async_tool` – long-running tools
+
+Agents often need to run tasks that take longer than an MCP request allows (multi-step research, human-in-the-loop flows, durable Temporal runs). Decorate those entry points with `@app.async_tool`:
 
 ```python
 @app.async_tool(name="analyze-document")
 async def analyze_document_async(
     document_url: str,
     analysis_type: str = "summary",
-    app_ctx: Optional[Context] = None
+    app_ctx: Optional[Context] = None,
 ) -> dict:
-    """
-    Start document analysis asynchronously.
-    
-    Returns workflow_id and run_id for status polling.
-    """
-    # Start long-running analysis
     workflow = DocumentAnalysisWorkflow()
     handle = await app_ctx.executor.start_workflow(
         workflow,
-        {"url": document_url, "type": analysis_type}
+        {"url": document_url, "type": analysis_type},
     )
-    
-    # Return IDs for polling
-    return {
-        "workflow_id": workflow.id,
-        "run_id": handle.id,
-        "message": "Analysis started. Use workflows-get_status to check progress."
-    }
+    return {"workflow_id": workflow.id, "run_id": handle.id}
 ```
 
-Key features:
-- Returns workflow/run IDs immediately
-- Client polls for results using `workflows-get_status`
-- Best for long-running operations
-- Enables progress tracking
+`@app.async_tool` starts a workflow in the background and returns identifiers that clients can poll via the built-in `workflows-get_status` tool. This pattern keeps your agent responsive even when the underlying work takes minutes or requires human decisions.
 
-### Tool Naming and Description
+> **Tip:** Agent servers rely heavily on these decorators—see [Agent Servers](/mcp-agent-sdk/mcp/agent-as-mcp-server) for end-to-end examples.
 
-Control how your tools appear to MCP clients:
+## The Workflow Class
 
-```python
-@app.tool(
-    name="search-knowledge-base",
-    description="Search the knowledge base for relevant information"
-)
-async def search(
-    query: str,
-    limit: int = 10,
-    filters: Optional[dict] = None
-) -> List[dict]:
-    """
-    Detailed search implementation.
-    
-    Args:
-        query: Search query
-        limit: Maximum results
-        filters: Optional filters
-    """
-    # The description parameter becomes the tool description
-    # The docstring provides implementation details
-    return await perform_search(query, limit, filters)
-```
+The `Workflow` class is the foundation for building complex agent behaviors. It provides:
+- Type-safe input/output handling
+- Automatic MCP tool registration
+- Support for both asyncio and Temporal execution
+- Built-in error handling and retries
+- Workflow state management
+
+### Basic Workflow Definition
+
+## Workflow patterns (examples/workflows)
+
+The repository has an [`examples/workflows`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows) directory that demonstrates higher-level agent patterns: router, parallel fan-out, orchestrator, evaluator/optimizer, and more. These samples compose agents and AugmentedLLMs with helpers from `mcp_agent.workflows.factory`. They do **not** correspond one-to-one with the `Workflow` base class above—they are ready-made orchestration patterns you can adopt or customise.
+
+Use the patterns when you want opinionated orchestration, and drop down to the `Workflow` class (or `@app.async_tool`) when you need bespoke control flow.
 
 ## Advanced Workflow Patterns
 

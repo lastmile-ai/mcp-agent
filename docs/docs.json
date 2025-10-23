@@ -71,7 +71,7 @@
               {
                 "group": "MCP",
                 "pages": [
-                  "mcp-agent-sdk/mcp/supported-capabilities",
+                  "mcp-agent-sdk/mcp/overview",
                   "mcp-agent-sdk/mcp/agent-as-mcp-server",
                   "mcp-agent-sdk/mcp/server-authentication"
                 ]
