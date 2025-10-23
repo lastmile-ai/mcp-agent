@@ -23,6 +23,7 @@ from mcp_agent.logging.events import (
     EventFilter,
     EventType,
 )
+from mcp_agent.core.request_context import get_current_request_context
 from mcp_agent.logging.listeners import (
     BatchingListener,
     LoggingListener,
@@ -205,14 +206,24 @@ class Logger:
         data: dict,
     ):
         """Create and emit an event."""
+        current_request_ctx = get_current_request_context()
+        request_session_id = None
+        if current_request_ctx is not None:
+            try:
+                request_session_id = getattr(
+                    current_request_ctx, "request_session_id", None
+                )
+            except Exception:
+                request_session_id = None
+
         # Only create or modify context with session_id if we have one
-        if self.session_id:
-            # If no context was provided, create one with our session_id
-            if context is None:
-                context = EventContext(session_id=self.session_id)
-            # If context exists but has no session_id, add our session_id
-            elif context.session_id is None:
-                context.session_id = self.session_id
+        if context is None:
+            session_identifier = request_session_id or self.session_id
+            if session_identifier:
+                context = EventContext(session_id=session_identifier)
+        else:
+            if context.session_id is None:
+                context.session_id = request_session_id or self.session_id
 
         # Attach upstream_session to the event so the upstream listener
         # can forward reliably, regardless of the current task context.
@@ -229,6 +240,16 @@ class Logger:
                 extra_event_fields["upstream_session"] = upstream
         except Exception:
             pass
+        if (
+            "upstream_session" not in extra_event_fields
+            and current_request_ctx is not None
+        ):
+            try:
+                upstream = getattr(current_request_ctx, "upstream_session", None)
+                if upstream is not None:
+                    extra_event_fields["upstream_session"] = upstream
+            except Exception:
+                pass
         # Fallback to default bound context if logger wasn't explicitly bound
         if (
             "upstream_session" not in extra_event_fields
@@ -371,6 +392,18 @@ class LoggingConfig:
     _initialized: bool = False
     _event_filter_ref: EventFilter | None = None
     _upstream_event_filter_ref: EventFilter | None = None
+    _session_min_levels: Dict[str, EventType] = {}
+    _LEVEL_MAPPING: Final[Dict[str, EventType]] = {
+        "debug": "debug",
+        "info": "info",
+        "notice": "info",
+        "warning": "warning",
+        "warn": "warning",
+        "error": "error",
+        "critical": "error",
+        "alert": "error",
+        "emergency": "error",
+    }
 
     @classmethod
     async def configure(
@@ -416,7 +449,8 @@ class LoggingConfig:
                     bus.add_listener(
                         MCP_UPSTREAM_LISTENER_NAME,
                         MCPUpstreamLoggingListener(
-                            event_filter=cls._upstream_event_filter_ref
+                            event_filter=cls._upstream_event_filter_ref,
+                            session_level_getter=cls.get_session_min_level,
                         ),
                     )
             except Exception:
@@ -458,7 +492,8 @@ class LoggingConfig:
                 bus.add_listener(
                     MCP_UPSTREAM_LISTENER_NAME,
                     MCPUpstreamLoggingListener(
-                        event_filter=cls._upstream_event_filter_ref
+                        event_filter=cls._upstream_event_filter_ref,
+                        session_level_getter=cls.get_session_min_level,
                     ),
                 )
         except Exception:
@@ -476,31 +511,47 @@ class LoggingConfig:
         bus = AsyncEventBus.get()
         await bus.stop()
         cls._initialized = False
+        cls._session_min_levels.clear()
 
     @classmethod
     def set_min_level(cls, level: EventType | str) -> None:
         """Update the minimum logging level on the shared event filter, if available."""
         if cls._upstream_event_filter_ref is None:
             return
-        # Normalize level
-        normalized = str(level).lower()
-        # Map synonyms to our EventType scale
-        mapping: Dict[str, EventType] = {
-            "debug": "debug",
-            "info": "info",
-            "notice": "info",
-            "warning": "warning",
-            "warn": "warning",
-            "error": "error",
-            "critical": "error",
-            "alert": "error",
-            "emergency": "error",
-        }
-        cls._upstream_event_filter_ref.min_level = mapping.get(normalized, "info")
+        cls._upstream_event_filter_ref.min_level = cls._normalize_level(level)
 
     @classmethod
     def get_event_filter(cls) -> EventFilter | None:
         return cls._event_filter_ref
+
+    @classmethod
+    def set_session_min_level(
+        cls, session_id: str, level: EventType | str | None
+    ) -> None:
+        """Update or clear the logging level override for a specific session."""
+        if not session_id:
+            return
+        if level is None:
+            cls._session_min_levels.pop(session_id, None)
+            return
+        cls._session_min_levels[session_id] = cls._normalize_level(level)
+
+    @classmethod
+    def get_session_min_level(cls, session_id: str | None) -> EventType | None:
+        if not session_id:
+            return None
+        return cls._session_min_levels.get(session_id)
+
+    @classmethod
+    def clear_session_min_level(cls, session_id: str | None) -> None:
+        if not session_id:
+            return
+        cls._session_min_levels.pop(session_id, None)
+
+    @classmethod
+    def _normalize_level(cls, level: EventType | str) -> EventType:
+        normalized = str(level).lower()
+        return cls._LEVEL_MAPPING.get(normalized, "info")
 
     @classmethod
     @asynccontextmanager

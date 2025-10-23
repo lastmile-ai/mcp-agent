@@ -35,6 +35,7 @@ from mcp_agent.workflows.llm.llm_selector import ModelSelector
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.tracing.token_counter import TokenCounter
 from mcp_agent.oauth.identity import OAuthUserIdentity
+from mcp_agent.core.request_context import get_current_request_context
 
 
 if TYPE_CHECKING:
@@ -73,7 +74,6 @@ class Context(MCPContext):
     human_input_handler: Optional[HumanInputCallback] = None
     elicitation_handler: Optional[ElicitationCallback] = None
     signal_notification: Optional[SignalWaitCallback] = None
-    upstream_session: Optional[ServerSession] = None
     model_selector: Optional[ModelSelector] = None
     session_id: str | None = None
     app: Optional["MCPApp"] = None
@@ -105,11 +105,42 @@ class Context(MCPContext):
     token_store: Optional[TokenStore] = None
     token_manager: Optional[TokenManager] = None
     identity_registry: Dict[str, OAuthUserIdentity] = Field(default_factory=dict)
+    request_session_id: str | None = None
+    request_identity: OAuthUserIdentity | None = None
 
     model_config = ConfigDict(
         extra="allow",
         arbitrary_types_allowed=True,  # Tell Pydantic to defer type evaluation
     )
+
+    @property
+    def upstream_session(self) -> ServerSession | None:  # type: ignore[override]
+        """
+        Resolve the active upstream session, preferring the request-scoped clone.
+
+        The base application context keeps an optional session used by scripts or
+        tests that set MCPApp.upstream_session directly. During an MCP request the
+        request-bound context is stored in a ContextVar; whenever callers reach the
+        base context while that request is active we return the request's session
+        instead of whichever client touched the base context last.
+        """
+        request_ctx = get_current_request_context()
+        if request_ctx is self:
+            return getattr(self, "_upstream_session", None)
+
+        explicit = getattr(self, "_upstream_session", None)
+        if explicit is not None:
+            return explicit
+
+        parent = getattr(self, "_parent_context", None)
+        if parent is not None:
+            return getattr(parent, "_upstream_session", None)
+
+        return None
+
+    @upstream_session.setter
+    def upstream_session(self, value: ServerSession | None) -> None:
+        object.__setattr__(self, "_upstream_session", value)
 
     @property
     def mcp(self) -> FastMCP | None:
@@ -144,9 +175,10 @@ class Context(MCPContext):
 
         Returns None when no session can be resolved (e.g., local scripts).
         """
-        # 1) Explicit upstream session set by app/workflow
-        if getattr(self, "upstream_session", None) is not None:
-            return self.upstream_session
+        # 1) Explicit upstream session set by app/workflow (handles request clones)
+        explicit = getattr(self, "upstream_session", None)
+        if explicit is not None:
+            return explicit
 
         # 2) Try request-scoped session from FastMCP Context (may raise outside requests)
         try:
@@ -216,6 +248,13 @@ class Context(MCPContext):
         """
         # Shallow copy to preserve references to registries/loggers while keeping isolation
         bound: Context = self.model_copy(deep=False)
+        object.__setattr__(bound, "_upstream_session", None)
+        try:
+            object.__setattr__(bound, "_parent_context", self)
+        except Exception:
+            pass
+        bound.request_session_id = None
+        bound.request_identity = None
         try:
             setattr(bound, "_request_context", request_context)
         except Exception:
@@ -260,11 +299,16 @@ class Context(MCPContext):
         """
         # If we have a live FastMCP request context, delegate to parent
         try:
-            # will raise if request_context is not available
             _ = self.request_context  # type: ignore[attr-defined]
-            return await super().log(level, message, logger_name=logger_name)  # type: ignore[misc]
         except Exception:
             pass
+        else:
+            try:
+                return await super().log(  # type: ignore[misc]
+                    level, message, logger_name=logger_name
+                )
+            except Exception:
+                pass
 
         # Fall back to local logger if available
         try:
@@ -305,12 +349,10 @@ class Context(MCPContext):
         """
         # Use the parent implementation if request-bound fastmcp is available
         try:
-            if getattr(self, "_fastmcp", None) is not None:
-                return await super().read_resource(uri)  # type: ignore[misc]
+            return await super().read_resource(uri)  # type: ignore[misc]
         except Exception:
             pass
 
-        # Fall back to app-managed FastMCP if present
         try:
             mcp = self.mcp
             if mcp is not None:
@@ -501,6 +543,9 @@ def get_current_context() -> Context:
     Synchronous initializer/getter for global application context.
     For async usage, use aget_current_context instead.
     """
+    request_ctx = get_current_request_context()
+    if request_ctx is not None:
+        return request_ctx
     global _global_context
     if _global_context is None:
         try:

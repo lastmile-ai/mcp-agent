@@ -7,7 +7,7 @@ import logging
 import time
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Protocol, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, Protocol, TYPE_CHECKING
 
 from mcp_agent.logging.events import Event, EventFilter, EventType
 from mcp_agent.logging.event_progress import convert_log_event
@@ -239,8 +239,21 @@ class MCPUpstreamLoggingListener(FilteredListener):
     the event is skipped.
     """
 
-    def __init__(self, event_filter: EventFilter | None = None) -> None:
+    _LEVEL_ORDER: Dict[str, int] = {
+        "debug": 10,
+        "info": 20,
+        "progress": 20,
+        "warning": 30,
+        "error": 40,
+    }
+
+    def __init__(
+        self,
+        event_filter: EventFilter | None = None,
+        session_level_getter: Callable[[str | None], EventType | None] | None = None,
+    ) -> None:
         super().__init__(event_filter=event_filter)
+        self._session_level_getter = session_level_getter
 
     async def handle_matched_event(self, event: Event) -> None:
         # Use upstream session provided on the event
@@ -251,6 +264,17 @@ class MCPUpstreamLoggingListener(FilteredListener):
         if upstream_session is None:
             # No upstream_session available; silently skip
             return
+
+        if self._session_level_getter:
+            try:
+                session_id = (
+                    event.context.session_id if event.context is not None else None
+                )
+            except Exception:
+                session_id = None
+            min_level = self._session_level_getter(session_id)
+            if min_level is not None and not self._allows_event(event.type, min_level):
+                return
 
         # Map our EventType to MCP LoggingLevel; fold progress -> info
         mcp_level_map: Dict[str, str] = {
@@ -277,7 +301,7 @@ class MCPUpstreamLoggingListener(FilteredListener):
             data["trace"] = {"trace_id": event.trace_id, "span_id": event.span_id}
         if event.context is not None:
             try:
-                data["context"] = event.context.dict()
+                data["context"] = event.context.model_dump()
             except Exception:
                 pass
 
@@ -295,3 +319,9 @@ class MCPUpstreamLoggingListener(FilteredListener):
         except Exception as e:
             # Avoid raising inside listener; best-effort delivery
             _ = e
+
+    @classmethod
+    def _allows_event(cls, event_level: EventType, min_level: EventType) -> bool:
+        event_value = cls._LEVEL_ORDER.get(event_level, 0)
+        min_value = cls._LEVEL_ORDER.get(min_level, 0)
+        return event_value >= min_value

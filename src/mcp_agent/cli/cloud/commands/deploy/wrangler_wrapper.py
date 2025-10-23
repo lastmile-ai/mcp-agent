@@ -162,8 +162,15 @@ def wrangler_deploy(
         npm_prefix.mkdir(parents=True, exist_ok=True)
         env_updates["npm_config_prefix"] = str(npm_prefix)
 
-    if os.environ.get("__MCP_DISABLE_TLS_VALIDATION", "").lower() in ("1", "true", "yes"):
-        if deployment_settings.DEPLOYMENTS_UPLOAD_API_BASE_URL == DEFAULT_DEPLOYMENTS_UPLOAD_API_BASE_URL:
+    if os.environ.get("__MCP_DISABLE_TLS_VALIDATION", "").lower() in (
+        "1",
+        "true",
+        "yes",
+    ):
+        if (
+            deployment_settings.DEPLOYMENTS_UPLOAD_API_BASE_URL
+            == DEFAULT_DEPLOYMENTS_UPLOAD_API_BASE_URL
+        ):
             print_error(
                 f"Cannot disable TLS validation when using {DEFAULT_DEPLOYMENTS_UPLOAD_API_BASE_URL}. "
                 "Set MCP_DEPLOYMENTS_UPLOAD_API_BASE_URL to a custom endpoint."
