@@ -22,6 +22,8 @@ from mcp_agent.agents.agent import Agent
 from mcp_agent.agents.agent_spec import AgentSpec
 from mcp_agent.core.context import Context as AppContext
 from mcp_agent.workflows.factory import create_agent
+
+# We are using the OpenAI augmented LLM for this example but you can swap with others (e.g. AnthropicAugmentedLLM)
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 
 # Create the MCPApp, the root of mcp-agent.
@@ -138,6 +140,7 @@ async def main():
         #########################################################
         # Create the MCP server that exposes both workflows and agent configurations,
         # optionally using custom FastMCP settings
+        # from mcp_agent.server.app_server import create_mcp_server_for_app
         # mcp_server = create_mcp_server_for_app(agent_app)
 
         # # Run the server
@@ -148,7 +151,7 @@ if __name__ == "__main__":
     asyncio.run(main())
 
 # When you're ready to deploy this MCPApp as a remote SSE server, run:
-# > mcp-agent deploy "hello_world"
+# > uv run mcp-agent deploy "hello_world" --no-auth
 #
 # Congrats! You made it to the end of the getting-started example!
 # There is a lot more that mcp-agent can do, and we hope you'll explore the rest of the documentation.
