@@ -27,10 +27,10 @@ mcp-agent cloud supports multiple authentication modes so you can choose the rig
 
 | Mode | Use case | How | Docs |
 | --- | --- | --- | --- |
-| **Bearer token** (default) | Internal deployments, quick sharing within a team | `mcp-agent login` → provides `MCP_API_KEY`. Clients send `Authorization: Bearer`. | [Deployment auth →](/deployment/authentication/deployment-auth) |
-| **Unauthenticated** | Public endpoints, ChatGPT Apps | Deploy with `mcp-agent deploy ... --no-auth`. | [Deployment auth →](/deployment/authentication/deployment-auth) |
+| **Bearer token** (default) | Internal deployments, quick sharing within a team | `mcp-agent login` → provides `MCP_API_KEY`. Clients send `Authorization: Bearer`. | [Deployment auth →](/cloud/authentication/deployment-auth) |
+| **Unauthenticated** | Public endpoints, ChatGPT Apps | Deploy with `mcp-agent deploy ... --no-auth`. | [Deployment auth →](/cloud/authentication/deployment-auth) |
 | **OAuth 2.1 (Upcoming)** | Enterprise SSO, fine-grained scopes | Follows MCP OAuth spec (RFC 9728 + RFC 8414). | (Coming soon) |
-| **External MCP auth** | Your agent needs to authenticate to downstream MCP servers | Configure `mcp_agent.config.yaml -> mcp.servers.<name>.auth` for API keys or OAuth client credentials. | [External MCP auth →](/deployment/authentication/external-mcp-auth) |
+| **External MCP auth** | Your agent needs to authenticate to downstream MCP servers | Configure `mcp_agent.config.yaml -> mcp.servers.<name>.auth` for API keys or OAuth client credentials. | [External MCP auth →](/cloud/authentication/external-mcp-auth) |
 
 ## Current flow (Bearer tokens)
 
@@ -60,6 +60,6 @@ We aim to make the default configuration zero-touch for mcp-agent cloud deployme
 
 ## Related guides
 
-- [Configure deployment auth (bearer, unauthenticated, OAuth preview) →](/deployment/authentication/deployment-auth)
-- [Authenticate to external MCP servers →](/deployment/authentication/external-mcp-auth)
-- [Manage secrets →](/deployment/mcp-agent-cloud/manage-secrets)
+- [Configure deployment auth (bearer, unauthenticated, OAuth preview) →](/cloud/authentication/deployment-auth)
+- [Authenticate to external MCP servers →](/cloud/authentication/external-mcp-auth)
+- [Manage secrets →](/cloud/mcp-agent-cloud/manage-secrets)

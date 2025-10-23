@@ -66,7 +66,7 @@ description: "[Beta] Deploy, orchestrate, and observe MCP applications on manage
 
 - **Bearer tokens** – default authentication mode. API keys created via `mcp-agent login` are scoped per user and can be rotated.
 - **Unauthenticated mode** – enable with `mcp-agent deploy <name> --no-auth` for public endpoints (required for ChatGPT Apps).
-- **OAuth 2.1 (preview)** – the platform’s authorization server follows the MCP OAuth specification, enabling end-to-end user authentication for enterprise scenarios. See [Authentication →](/deployment/authentication/overview).
+- **OAuth 2.1 (preview)** – the platform’s authorization server follows the MCP OAuth specification, enabling end-to-end user authentication for enterprise scenarios. See [Authentication →](/cloud/authentication/overview).
 - **Downstream OAuth** – use `mcp_agent.config.yaml` to configure client credentials for the agent’s outbound connections (e.g., Linear MCP server). Tokens are stored via the built-in token manager (`token_store` supports in-memory and Redis backends).
 
 ## Observability
@@ -98,8 +98,8 @@ If you need to run in regulated environments or on-premises, use the same app wi
 
 ## Next steps
 
-- [Deploy your first agent →](/deployment/deployment-quickstart)
-- [Dive into the architecture →](/deployment/mcp-agent-cloud/architecture-overview)
-- [Manage secrets →](/deployment/mcp-agent-cloud/manage-secrets)
-- [Long-running tools →](/deployment/mcp-agent-cloud/long-running-tools)
-- [Use-case guides →](/deployment/use-cases/deploy-agents)
+- [Deploy your first agent →](/cloud/deployment-quickstart)
+- [Dive into the architecture →](/cloud/mcp-agent-cloud/architecture-overview)
+- [Manage secrets →](/cloud/mcp-agent-cloud/manage-secrets)
+- [Long-running tools →](/cloud/mcp-agent-cloud/long-running-tools)
+- [Use-case guides →](/cloud/use-cases/deploy-agents)

@@ -28,7 +28,7 @@ The environment is split into three planes:
 
 - **Deployment service** – receives bundles from `mcp-agent deploy`, validates manifests, resolves dependencies, and produces container images.
 - **Secrets service** – encrypts deployment secrets and stores handles returned to your app via `mcp_agent.deployed.secrets.yaml`. `mcp-agent cloud configure` interacts with the same service to capture user-provided secrets.
-- **Auth service** – issues API keys (`mcp-agent login`) and will host the OAuth 2.1 authorization server described in the [Authentication design](https://github.com/lastmile-ai/lm/docs-revamp/blob/main/mcp-agent9/docs/deployment/authentication/overview.mdx) (Beta).
+- **Auth service** – issues API keys (`mcp-agent login`) and will host the OAuth 2.1 authorization server described in the [Authentication design](https://github.com/lastmile-ai/lm/docs-revamp/blob/main/mcp-agent9/docs/cloud/authentication/overview.mdx) (Beta).
 - **Artifact store** – versioned bundles and metadata (git commit, description, ignore patterns). The same bundle can be replayed to recreate deployments.
 
 ### Runtime plane
@@ -97,7 +97,7 @@ sequenceDiagram
 
 ## Related pages
 
-- [Cloud overview →](/deployment/mcp-agent-cloud/overview)
-- [Secrets & credential management →](/deployment/mcp-agent-cloud/manage-secrets)
-- [Long-running tools & workflows →](/deployment/mcp-agent-cloud/long-running-tools)
-- [Authentication modes →](/deployment/authentication/overview)
+- [Cloud overview →](/cloud/mcp-agent-cloud/overview)
+- [Secrets & credential management →](/cloud/mcp-agent-cloud/manage-secrets)
+- [Long-running tools & workflows →](/cloud/mcp-agent-cloud/long-running-tools)
+- [Authentication modes →](/cloud/authentication/overview)

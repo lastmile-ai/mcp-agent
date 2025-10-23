@@ -20,8 +20,8 @@
   },
   "favicon": "/favicon.png",
   "banner": {
-    "content": "Deploy agents, MCP servers and ChatGPT apps to [mcp-agent cloud](/deployment/deployment-quickstart)! Free while in Beta.",
-    "link": "/deployment/deployment-quickstart"
+    "content": "Deploy agents, MCP servers and ChatGPT apps to [mcp-agent cloud](/cloud/deployment-quickstart)! Free while in Beta.",
+    "link": "/cloud/deployment-quickstart"
   },
   "navigation": {
     "tabs": [
@@ -91,33 +91,33 @@
           {
             "group": "Deployment",
             "pages": [
-              "deployment/overview",
-              "deployment/deployment-quickstart",
+              "cloud/overview",
+              "cloud/deployment-quickstart",
               {
                 "group": "mcp-agent cloud",
                 "pages": [
-                  "deployment/mcp-agent-cloud/architecture-overview",
-                  "deployment/mcp-agent-cloud/long-running-tools",
-                  "deployment/mcp-agent-cloud/manage-secrets",
-                  "deployment/mcp-agent-cloud/deploy-mcp-server",
-                  "deployment/mcp-agent-cloud/use-deployed-server"
+                  "cloud/mcp-agent-cloud/architecture-overview",
+                  "cloud/mcp-agent-cloud/long-running-tools",
+                  "cloud/mcp-agent-cloud/manage-secrets",
+                  "cloud/mcp-agent-cloud/deploy-mcp-server",
+                  "cloud/mcp-agent-cloud/use-deployed-server"
                 ]
               },
               {
                 "group": "Use Cases",
                 "pages": [
-                  "deployment/use-cases/deploy-agents",
-                  "deployment/use-cases/deploy-mcp-servers",
-                  "deployment/use-cases/deploy-chatgpt-apps"
+                  "cloud/use-cases/deploy-agents",
+                  "cloud/use-cases/deploy-mcp-servers",
+                  "cloud/use-cases/deploy-chatgpt-apps"
                 ]
               },
-              "deployment/observability",
+              "cloud/observability",
               {
                 "group": "Authentication",
                 "pages": [
-                  "deployment/authentication/overview",
-                  "deployment/authentication/deployment-auth",
-                  "deployment/authentication/external-mcp-auth"
+                  "cloud/authentication/overview",
+                  "cloud/authentication/deployment-auth",
+                  "cloud/authentication/external-mcp-auth"
                 ]
               }
             ]
