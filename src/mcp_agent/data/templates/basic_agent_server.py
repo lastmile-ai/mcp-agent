@@ -7,7 +7,6 @@ This example demonstrates three approaches to creating agents and workflows:
 3. Declarative agent configuration using FastMCPApp decorators
 """
 
-import argparse
 import asyncio
 import os
 from typing import Optional
@@ -20,14 +19,15 @@ from mcp_agent.server.app_server import create_mcp_server_for_app
 from mcp_agent.agents.agent import Agent
 from mcp_agent.workflows.llm.augmented_llm import RequestParams
 from mcp_agent.workflows.llm.llm_selector import ModelPreferences
-from mcp_agent.workflows.llm.augmented_llm_anthropic import AnthropicAugmentedLLM
+
+# We are using the OpenAI augmented LLM for this example but you can swap with others (e.g. AnthropicAugmentedLLM)
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 from mcp_agent.workflows.parallel.parallel_llm import ParallelLLM
 from mcp_agent.executor.workflow import Workflow, WorkflowResult
 
 # Note: This is purely optional:
 # if not provided, a default FastMCP server will be created by MCPApp using create_mcp_server_for_app()
-mcp = FastMCP(name="basic_agent_server", description="My basic agent server example.")
+mcp = FastMCP(name="basic_agent_server")
 
 # Define the MCPApp instance. The server created for this app will advertise the
 # MCP logging capability and forward structured logs upstream to connected clients.
@@ -57,8 +57,8 @@ class BasicAgentWorkflow(Workflow[str]):
             WorkflowResult containing the processed data.
         """
 
-        logger = app.logger
         context = app.context
+        logger = context.logger
 
         logger.info("Current config:", data=context.config.model_dump())
         logger.info(
@@ -82,7 +82,7 @@ class BasicAgentWorkflow(Workflow[str]):
             result = await finder_agent.list_tools()
             logger.info("Tools available:", data=result.model_dump())
 
-            llm = await finder_agent.attach_llm(AnthropicAugmentedLLM)
+            llm = await finder_agent.attach_llm(OpenAIAugmentedLLM)
 
             result = await llm.generate_str(
                 message=input,
@@ -123,12 +123,8 @@ async def grade_story(story: str, app_ctx: Optional[AppContext] = None) -> str:
         story: The student's short story to grade
         app_ctx: Optional MCPApp context for accessing app resources and logging
     """
-    # Use the context's app if available for proper logging with upstream_session
-    _app = app_ctx.app if app_ctx else app
-    # Ensure the app's logger is bound to the current context with upstream_session
-    if _app._logger and hasattr(_app._logger, "_bound_context"):
-        _app._logger._bound_context = app_ctx
-    logger = _app.logger
+    context = app_ctx or app.context
+    logger = context.logger
     logger.info(f"grade_story: Received input: {story}")
 
     proofreader = Agent(
@@ -184,15 +180,6 @@ async def grade_story(story: str, app_ctx: Optional[AppContext] = None) -> str:
 
 
 async def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--custom-fastmcp-settings",
-        action="store_true",
-        help="Enable custom FastMCP settings for the server",
-    )
-    args = parser.parse_args()
-    use_custom_fastmcp_settings = args.custom_fastmcp_settings
-
     async with app.run() as agent_app:
         # Add the current directory to the filesystem server's args if needed
         context = agent_app.context
@@ -200,24 +187,17 @@ async def main():
             context.config.mcp.servers["filesystem"].args.extend([os.getcwd()])
 
         # Log registered workflows and agent configurations
-        agent_app.logger.info(f"Creating MCP server for {agent_app.name}")
+        context.logger.info(f"Creating MCP server for {agent_app.name}")
 
-        agent_app.logger.info("Registered workflows:")
+        context.logger.info("Registered workflows:")
         for workflow_id in agent_app.workflows:
-            agent_app.logger.info(f"  - {workflow_id}")
+            context.logger.info(f"  - {workflow_id}")
 
-        # Create the MCP server that exposes both workflows and agent configurations,
-        # optionally using custom FastMCP settings
-        fast_mcp_settings = (
-            {"host": "localhost", "port": 8001, "debug": True, "log_level": "DEBUG"}
-            if use_custom_fastmcp_settings
-            else None
-        )
-        mcp_server = create_mcp_server_for_app(agent_app, **(fast_mcp_settings or {}))
-        agent_app.logger.info(f"MCP Server settings: {mcp_server.settings}")
+        mcp_server = create_mcp_server_for_app(agent_app)
+        context.logger.info(f"MCP Server settings: {mcp_server.settings}")
 
         # Run the server
-        await mcp_server.run_stdio_async()
+        await mcp_server.run_sse_async()
 
 
 if __name__ == "__main__":
