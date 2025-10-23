@@ -20,7 +20,7 @@
   },
   "favicon": "/favicon.png",
   "banner": {
-    "content": "Deploy agents, MCP servers and ChatGPT apps to our cloud, [mcpc](/cloud/deployment-quickstart)! Free while in Beta.",
+    "content": "Deploy agents, MCP servers and ChatGPT apps to our cloud, [mcp-c](/cloud/deployment-quickstart)! Free while in Beta.",
     "link": "/cloud/deployment-quickstart"
   },
   "navigation": {
@@ -94,7 +94,7 @@
               "cloud/overview",
               "cloud/deployment-quickstart",
               {
-                "group": "mcpc",
+                "group": "mcp-c",
                 "pages": [
                   "cloud/mcp-agent-cloud/architecture-overview",
                   "cloud/mcp-agent-cloud/long-running-tools",
