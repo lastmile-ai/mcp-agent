@@ -5,13 +5,6 @@ description: "Deploy mcp-agent applications to production"
 icon: rocket
 ---
 
-<img
-  src="https://github.com/user-attachments/assets/92118b28-07a9-4b00-8293-c8684c08ff35"
-  alt="Overview of the mcp-c platform"
-  width="940"
-  height="470"
-/>
-
 `mcp-agent` gives you one programming model that scales from a laptop to a managed cloud runtime. You can deploy full agents **and** standalone MCP servers (FastMCP services, ChatGPT App backends, bespoke tool APIs) without rewriting your app. This section maps the deployment options, explains when to reach for each path, and points to the detailed runbooks that follow.
 
 ## Why deploy with `mcp-agent`?
@@ -19,6 +12,17 @@ icon: rocket
 - **One protocol everywhere** – every deployment option exposes the same MCP endpoints (`call_tool`, `read_resource`, `list_prompts`). Any MCP client (Claude, Cursor, ChatGPT Apps, custom SSE client) can connect without rewriting code.
 - **Durable workflows when you need them** – the same decorators (`@app.tool`, `@app.async_tool`, `@app.workflow`) run on `asyncio` locally and on Temporal in the cloud. Pause/resume, retries, and human-in-the-loop all come along for free.
 - **Operational guardrails** – the CLI manages build artifacts, secrets, auth configuration, client installation, and observability so you can focus on agent logic.
+
+<iframe
+  src="https://www.youtube.com/embed/0C4VY-3IVNU"
+  title="mcp-agent cloud overview"
+  width="100%"
+  height="420"
+  frameborder="0"
+  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+  allowfullscreen
+/>
+
 
 ## Deployment paths
 
@@ -59,6 +63,14 @@ Any MCP client can connect over SSE/WebSocket using your chosen auth mode.
 2. **Each stdio MCP server is containerized** – servers declared in `mcp_agent.config.yaml` run in sand-boxed containers with managed lifecycle.
 3. **Observability is turned on** – logs are streamed through the `mcp-agent cloud logger tail` API and you can forward traces to any OTLP endpoint.
 4. **Clients install with one command** – `mcp-agent install` or `mcp-agent cloud configure` writes the right headers/URLs into Claude Desktop, Cursor, VS Code, or ChatGPT Apps.
+
+<img
+  src="https://github.com/user-attachments/assets/92118b28-07a9-4b00-8293-c8684c08ff35"
+  alt="Overview of the mcp-c platform"
+  width="940"
+  height="470"
+/>
+
 
 ## Explore next
 
