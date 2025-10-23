@@ -1,0 +1,23 @@
+---
+title: Logging
+sidebarTitle: "Logging"
+description: "Configure structured logging for your agents"
+icon: file-lines
+---
+
+<Info>
+Content to be migrated from monitoring.mdx and configuration.mdx logging sections.
+</Info>
+
+## Overview
+
+mcp-agent provides structured logging with multiple transport options.
+
+```yaml
+logger:
+  transports: [console, file]
+  level: info
+  path: "logs/mcp-agent.jsonl"
+```
+
+[See Configuration Reference →](/reference/configuration)

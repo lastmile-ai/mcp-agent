@@ -15,6 +15,10 @@
     "decoration": "grid"
   },
   "favicon": "/favicon.png",
+  "banner": {
+    "content": "Deploy agents, MCP servers and ChatGPT apps to [mcp-agent cloud](https://deployments.mcp-agent.com)! Free while in Beta.",
+    "link": "https://deployments.mcp-agent.com"
+  },
   "navigation": {
     "tabs": [
       {
@@ -22,79 +26,112 @@
         "icon": "book",
         "groups": [
           {
-            "group": "Getting Started",
+            "group": "Get Started",
             "pages": [
-              "index",
-              "installation",
-              "quickstart",
-              "configuration"
+              "get-started/welcome",
+              "get-started/install",
+              "get-started/quickstart",
+              "get-started/deploy-to-cloud"
             ]
           },
           {
-            "group": "Core Concepts",
+            "group": "MCP Agent SDK",
             "pages": [
-              "concepts/agents",
-              "concepts/workflows",
-              "concepts/execution-engines",
-              "concepts/mcp-servers",
-              "concepts/augmented-llms",
-              "concepts/mcp-primitives"
+              "mcp-agent-sdk/overview",
+              {
+                "group": "Core Components",
+                "pages": [
+                  "mcp-agent-sdk/core-components/configuring-your-application",
+                  "mcp-agent-sdk/core-components/specify-secrets",
+                  "mcp-agent-sdk/core-components/mcpapp",
+                  "mcp-agent-sdk/core-components/agents",
+                  "mcp-agent-sdk/core-components/augmented-llm",
+                  "mcp-agent-sdk/core-components/connecting-to-mcp-servers",
+                  "mcp-agent-sdk/core-components/execution-engine",
+                  "mcp-agent-sdk/core-components/workflows"
+                ]
+              },
+              {
+                "group": "Effective Agent Patterns",
+                "pages": [
+                  "mcp-agent-sdk/effective-patterns/overview",
+                  "mcp-agent-sdk/effective-patterns/map-reduce",
+                  "mcp-agent-sdk/effective-patterns/router",
+                  "mcp-agent-sdk/effective-patterns/intent-classifier",
+                  "mcp-agent-sdk/effective-patterns/planner",
+                  "mcp-agent-sdk/effective-patterns/deep-research",
+                  "mcp-agent-sdk/effective-patterns/evaluator-optimizer",
+                  "mcp-agent-sdk/effective-patterns/build-your-own"
+                ]
+              },
+              {
+                "group": "MCP",
+                "pages": [
+                  "mcp-agent-sdk/mcp/supported-capabilities",
+                  "mcp-agent-sdk/mcp/agent-as-mcp-server",
+                  "mcp-agent-sdk/mcp/server-authentication"
+                ]
+              },
+              {
+                "group": "Advanced",
+                "pages": [
+                  "mcp-agent-sdk/advanced/durable-agents",
+                  "mcp-agent-sdk/advanced/observability",
+                  "mcp-agent-sdk/advanced/logging",
+                  "mcp-agent-sdk/advanced/authentication",
+                  "mcp-agent-sdk/advanced/pause-and-resume"
+                ]
+              }
             ]
           },
           {
-            "group": "Workflow Patterns",
+            "group": "Deployment",
             "pages": [
-              "workflows/overview",
-              "workflows/parallel",
-              "workflows/router",
-              "workflows/intent-classifier",
-              "workflows/orchestrator",
-              "workflows/deep-orchestrator",
-              "workflows/evaluator-optimizer",
-              "workflows/swarm"
+              "deployment/overview",
+              "deployment/deployment-quickstart",
+              {
+                "group": "mcp-agent cloud",
+                "pages": [
+                  "deployment/mcp-agent-cloud/architecture-overview",
+                  "deployment/mcp-agent-cloud/long-running-tools",
+                  "deployment/mcp-agent-cloud/manage-secrets",
+                  "deployment/mcp-agent-cloud/deploy-mcp-server",
+                  "deployment/mcp-agent-cloud/use-deployed-server"
+                ]
+              },
+              {
+                "group": "Use Cases",
+                "pages": [
+                  "deployment/use-cases/deploy-agents",
+                  "deployment/use-cases/deploy-mcp-servers",
+                  "deployment/use-cases/deploy-chatgpt-apps"
+                ]
+              },
+              "deployment/observability",
+              {
+                "group": "Authentication",
+                "pages": [
+                  "deployment/authentication/overview",
+                  "deployment/authentication/deployment-auth",
+                  "deployment/authentication/external-mcp-auth"
+                ]
+              }
             ]
           },
           {
-            "group": "MCP Protocol",
+            "group": "Test and Evaluate",
             "pages": [
-              "mcp/overview",
-              "concepts/mcp-primitives"
-            ]
-          },
-          {
-            "group": "Agent as MCP Server",
-            "pages": [
-              "cloud/agent-server"
-            ]
-          },
-          {
-            "group": "mcp-agent cloud",
-            "pages": [
-              "cloud/overview",
-              "cloud/getting-started",
-              "cloud/deploying-mcp-servers"
-            ]
-          },
-          {
-            "group": "OpenAI apps",
-            "pages": [
-              "openai/deploy"
-            ]
-          },
-          {
-            "group": "Advanced Topics",
-            "pages": [
-              "advanced/temporal",
-              "advanced/composition",
-              "advanced/monitoring"
+              "test-evaluate/overview",
+              "test-evaluate/mcp-eval",
+              "test-evaluate/agent-evaluation",
+              "test-evaluate/server-evaluation"
             ]
           },
           {
             "group": "Reference",
             "pages": [
-              "cli-reference",
-              "configuration",
-              "roadmap"
+              "reference/cli",
+              "reference/decorators"
             ]
           }
         ]
@@ -117,7 +154,11 @@
     ]
   },
   "styling": {
-    "eyebrows": "breadcrumbs"
+    "eyebrows": "breadcrumbs",
+    "css": [
+      "/css/style.css",
+      "/css/version-badge.css"
+    ]
   },
   "contextual": {
     "options": [
@@ -152,6 +193,10 @@
           {
             "label": "Building Effective Agents",
             "href": "https://www.anthropic.com/research/building-effective-agents"
+          },
+          {
+            "label": "mcp-eval",
+            "href": "https://mcp-eval.ai"
           }
         ]
       },

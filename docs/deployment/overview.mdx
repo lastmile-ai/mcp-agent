@@ -1,0 +1,123 @@
+---
+title: Deployment Overview
+sidebarTitle: "Overview"
+description: "Deploy mcp-agent applications to production"
+icon: rocket
+---
+
+mcp-agent applications can be deployed in multiple ways depending on your needs:
+
+## Deployment Options
+
+<CardGroup cols={2}>
+  <Card
+    title="Local Development"
+    icon="laptop-code"
+  >
+    Run agents locally with asyncio for rapid development
+  </Card>
+  <Card
+    title="mcp-agent Cloud"
+    icon="cloud"
+    href="/deployment/mcp-agent-cloud/overview"
+  >
+    Managed cloud infrastructure with one-command deployment
+  </Card>
+  <Card
+    title="Self-Hosted Temporal"
+    icon="server"
+    href="/mcp-agent-sdk/advanced/durable-agents"
+  >
+    Deploy with your own Temporal cluster for full control
+  </Card>
+  <Card
+    title="As MCP Servers"
+    icon="plug"
+    href="/mcp-agent-sdk/mcp/agent-as-mcp-server"
+  >
+    Expose agents as MCP servers for Claude Desktop and other clients
+  </Card>
+</CardGroup>
+
+## Quick Start
+
+Deploy to mcp-agent cloud in 3 commands:
+
+```bash
+# Install CLI
+uv tool install mcp-agent
+
+# Log in
+mcp-agent login
+
+# Deploy
+mcp-agent deploy my-agent
+```
+
+[See Deployment Quickstart →](/deployment/deployment-quickstart)
+
+## Use Cases
+
+<Tabs>
+  <Tab title="Deploy Agents">
+    Deploy complete agent applications with workflows and MCP servers:
+
+    ```bash
+    mcp-agent deploy my-agent-app
+    ```
+
+    Your agent becomes accessible as an MCP server at:
+    ```
+    https://deployments.mcp-agent.com/servers/my-agent-app
+    ```
+  </Tab>
+
+  <Tab title="Deploy MCP Servers">
+    Deploy standalone MCP servers to the cloud:
+
+    ```bash
+    mcp-agent cloud servers deploy my-mcp-server
+    ```
+
+    [Learn more →](/deployment/mcp-agent-cloud/deploy-mcp-server)
+  </Tab>
+
+  <Tab title="Deploy ChatGPT Apps">
+    Expose agents as ChatGPT custom actions:
+
+    [See OpenAI Integration →](/deployment/use-cases/deploy-chatgpt-apps)
+  </Tab>
+</Tabs>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Deployment Quickstart"
+    icon="rocket"
+    href="/deployment/deployment-quickstart"
+  >
+    Deploy your first agent
+  </Card>
+  <Card
+    title="mcp-agent Cloud"
+    icon="cloud"
+    href="/deployment/mcp-agent-cloud/overview"
+  >
+    Learn about cloud architecture
+  </Card>
+  <Card
+    title="Authentication"
+    icon="shield-check"
+    href="/deployment/authentication/overview"
+  >
+    Secure your deployments
+  </Card>
+  <Card
+    title="Observability"
+    icon="chart-line"
+    href="/deployment/observability"
+  >
+    Monitor your agents
+  </Card>
+</CardGroup>

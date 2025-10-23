@@ -1,0 +1,22 @@
+.version-badge {
+  display: inline-block;
+  font-size: 1em;
+  padding: 6px 20px;
+  font-family: "Inter", sans-serif;
+  color: #3b82f6;            /* Blue text */
+  background: #eff6ff;       /* Light blue background */
+  border: 1px solid rgba(59, 130, 246, 0.3);  /* Blue border */
+  border-radius: 12px;
+  transition: box-shadow 0.2s, transform 0.15s;
+}
+
+.version-badge:hover {
+  box-shadow: 0 2px 8px 0 rgba(59, 130, 246, 0.2);
+  transform: translateY(-1px) scale(1.03);
+}
+
+.dark .version-badge {
+  color: #f1f5f9;       /* Light text in dark mode */
+  background: #334155;  /* Dark slate background */
+  border: 1px solid #64748b;
+}

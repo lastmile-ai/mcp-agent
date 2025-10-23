@@ -1,0 +1,215 @@
+---
+title: MCP Agent SDK Overview
+sidebarTitle: "Overview"
+description: "Understanding the core components and patterns of mcp-agent"
+icon: cube
+---
+
+## What is mcp-agent?
+
+mcp-agent is a Python framework for building AI agents using the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction). It provides a simple, composable way to build effective agents by combining standardized MCP servers with proven workflow patterns.
+
+## Core Architecture
+
+mcp-agent consists of four main layers:
+
+<CardGroup cols={2}>
+  <Card title="MCP Integration" icon="plug">
+    Connect to any MCP server and automatically discover tools, resources, and prompts
+  </Card>
+  <Card title="Agent Layer" icon="robot">
+    Agents that combine instructions with MCP server capabilities
+  </Card>
+  <Card title="LLM Integration" icon="brain">
+    Augmented LLMs that can use tools and maintain conversation context
+  </Card>
+  <Card title="Workflow Patterns" icon="diagram-project">
+    Composable patterns for orchestrating agents and tasks
+  </Card>
+</CardGroup>
+
+## Key Components
+
+### MCPApp
+
+The `MCPApp` is the central application context that manages configuration, logging, and server connections:
+
+```python
+from mcp_agent.app import MCPApp
+
+app = MCPApp(name="my_agent_app")
+
+# Use as context manager
+async with app.run() as mcp_agent_app:
+    logger = mcp_agent_app.logger
+    # Your agent code here
+```
+
+[Learn more about MCPApp →](/mcp-agent-sdk/core-components/mcpapp)
+
+### Agents
+
+Agents are entities with specific instructions and access to MCP servers:
+
+```python
+from mcp_agent.agents.agent import Agent
+
+agent = Agent(
+    name="researcher",
+    instruction="Research topics using web and filesystem access",
+    server_names=["fetch", "filesystem"]
+)
+
+async with agent:
+    # Agent automatically connects to servers and discovers tools
+    tools = await agent.list_tools()
+```
+
+[Learn more about Agents →](/mcp-agent-sdk/core-components/agents)
+
+### AugmentedLLM
+
+AugmentedLLMs are LLMs enhanced with tools from MCP servers:
+
+```python
+from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
+
+async with agent:
+    llm = await agent.attach_llm(OpenAIAugmentedLLM)
+
+    # LLM can now use tools from connected MCP servers
+    result = await llm.generate_str("Research quantum computing")
+```
+
+[Learn more about AugmentedLLM →](/mcp-agent-sdk/core-components/augmented-llm)
+
+### MCP Servers
+
+MCP servers provide tools, resources, and other capabilities to agents:
+
+```yaml mcp_agent.config.yaml
+mcp:
+  servers:
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+    filesystem:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+```
+
+[Learn more about MCP Servers →](/mcp-agent-sdk/core-components/mcp-servers)
+
+### Workflows
+
+Workflows are composable patterns for orchestrating agents:
+
+```python
+from mcp_agent.workflows.parallel.parallel_llm import ParallelLLM
+
+# Fan out to multiple agents in parallel
+parallel = ParallelLLM(
+    fan_in_agent=grader,
+    fan_out_agents=[proofreader, fact_checker, style_enforcer],
+    llm_factory=OpenAIAugmentedLLM,
+)
+
+result = await parallel.generate_str("Review this essay...")
+```
+
+[Learn more about Workflows →](/mcp-agent-sdk/core-components/workflows)
+
+### Execution Engines
+
+Execution engines determine how workflows run:
+
+- **asyncio**: In-memory execution for development
+- **Temporal**: Durable execution with pause/resume capabilities
+
+```yaml mcp_agent.config.yaml
+execution_engine: temporal  # or asyncio
+```
+
+[Learn more about Execution Engines →](/mcp-agent-sdk/core-components/execution-engine)
+
+## Workflow Patterns
+
+mcp-agent implements all patterns from Anthropic's [Building Effective Agents](https://www.anthropic.com/research/building-effective-agents):
+
+<CardGroup cols={2}>
+  <Card title="Parallel" icon="arrows-split-up-and-left" href="/mcp-agent-sdk/effective-patterns/parallel">
+    Fan-out tasks to multiple agents
+  </Card>
+  <Card title="Router" icon="route" href="/mcp-agent-sdk/effective-patterns/router">
+    Intelligent request routing
+  </Card>
+  <Card title="Intent Classifier" icon="brain" href="/mcp-agent-sdk/effective-patterns/intent-classifier">
+    Understand user intent
+  </Card>
+  <Card title="Planner" icon="list-check" href="/mcp-agent-sdk/effective-patterns/planner">
+    Plan and execute complex tasks
+  </Card>
+  <Card title="Deep Research" icon="magnifying-glass" href="/mcp-agent-sdk/effective-patterns/deep-research">
+    Adaptive planning with knowledge extraction
+  </Card>
+  <Card title="Evaluator-Optimizer" icon="arrows-rotate" href="/mcp-agent-sdk/effective-patterns/evaluator-optimizer">
+    Iterative improvement with LLM-as-judge
+  </Card>
+  <Card title="Swarm" icon="circle-nodes" href="/mcp-agent-sdk/effective-patterns/swarm">
+    Multi-agent collaboration
+  </Card>
+</CardGroup>
+
+## Model Context Protocol
+
+mcp-agent provides full support for MCP capabilities:
+
+<CardGroup cols={2}>
+  <Card title="Tools" icon="wrench">
+    Execute functions and produce side effects
+  </Card>
+  <Card title="Resources" icon="database">
+    Access data and load context
+  </Card>
+  <Card title="Prompts" icon="message-code">
+    Reusable templates for interactions
+  </Card>
+  <Card title="Sampling" icon="wand-magic-sparkles">
+    Request LLM completions from clients
+  </Card>
+</CardGroup>
+
+[Learn more about MCP Support →](/mcp-agent-sdk/mcp/overview)
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Core Components"
+    icon="cubes"
+    href="/mcp-agent-sdk/core-components/configuring-your-application"
+  >
+    Learn about the building blocks
+  </Card>
+  <Card
+    title="Effective Patterns"
+    icon="diagram-project"
+    href="/mcp-agent-sdk/effective-patterns/overview"
+  >
+    Explore agent workflow patterns
+  </Card>
+  <Card
+    title="MCP Protocol"
+    icon="plug"
+    href="/mcp-agent-sdk/mcp/overview"
+  >
+    Understand MCP capabilities
+  </Card>
+  <Card
+    title="Advanced Topics"
+    icon="rocket"
+    href="/mcp-agent-sdk/advanced/durable-agents"
+  >
+    Durable agents, observability, and more
+  </Card>
+</CardGroup>

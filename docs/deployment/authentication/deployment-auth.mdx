@@ -1,0 +1,27 @@
+---
+title: Deployment Auth
+sidebarTitle: "Deployment Auth"
+description: "Configure authentication for deployed agents (--no-auth, bearer token, OAuth)"
+icon: key
+---
+
+<Info>
+Content on --no-auth flag, bearer token authentication, and OAuth for deployments.
+</Info>
+
+## Deployment Authentication Options
+
+- **--no-auth** - Deploy without authentication (development only)
+- **Bearer Token** - Simple token-based authentication
+- **OAuth** - Full OAuth 2.1 authentication flows
+
+```bash
+# Deploy with OAuth
+mcp-agent deploy my-agent --auth oauth
+
+# Deploy with bearer token
+mcp-agent deploy my-agent --auth bearer
+
+# Deploy without auth (not recommended)
+mcp-agent deploy my-agent --no-auth
+```

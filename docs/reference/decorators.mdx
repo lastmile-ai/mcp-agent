@@ -1,0 +1,61 @@
+---
+title: Decorators Reference
+sidebarTitle: "Decorators"
+description: "Complete reference for mcp-agent decorators"
+icon: at
+---
+
+<Info>
+Content to be extracted from agent-server and workflow documentation.
+</Info>
+
+## MCPApp Decorators
+
+### @app.tool
+
+Expose a function as an MCP tool:
+
+```python
+@app.tool
+def greet(name: str) -> str:
+    """Greet someone by name."""
+    return f"Hello, {name}!"
+```
+
+### @app.async_tool
+
+Expose an async function as an MCP tool:
+
+```python
+@app.async_tool
+async def fetch_data(url: str) -> dict:
+    """Fetch data from a URL."""
+    # async implementation
+    pass
+```
+
+### @app.workflow
+
+Define a workflow class:
+
+```python
+@app.workflow
+class MyWorkflow(Workflow[str]):
+    @app.workflow_run
+    async def run(self, input: str) -> WorkflowResult[str]:
+        # workflow implementation
+        pass
+```
+
+### @app.workflow_task
+
+Define individual workflow tasks:
+
+```python
+@app.workflow_task
+async def process_step(data: str) -> str:
+    # task implementation
+    pass
+```
+
+[See Agent as MCP Server for more examples →](/mcp-agent-sdk/mcp/agent-as-mcp-server)

@@ -1,0 +1,35 @@
+---
+title: MCPApp
+sidebarTitle: "MCPApp"
+description: "The central application context for mcp-agent"
+icon: cube
+---
+
+<Info>
+Content to be extracted from existing documentation and examples.
+</Info>
+
+## Overview
+
+`MCPApp` is the central application context that manages configuration, logging, MCP server connections, and execution engines.
+
+```python
+from mcp_agent.app import MCPApp
+
+app = MCPApp(name="my_agent_app")
+
+async with app.run() as mcp_agent_app:
+    logger = mcp_agent_app.logger
+    # Your agent code here
+```
+
+## Decorators
+
+MCPApp provides decorators for exposing agents and workflows as MCP tools:
+
+- `@app.tool` - Expose a function as an MCP tool
+- `@app.async_tool` - Expose an async function as an MCP tool
+- `@app.workflow` - Define a workflow class
+- `@app.workflow_task` - Define individual workflow tasks
+
+[See Agent as MCP Server →](/mcp-agent-sdk/mcp/agent-as-mcp-server)
