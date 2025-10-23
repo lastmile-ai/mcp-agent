@@ -1,24 +1,128 @@
 ---
 title: Observability
 sidebarTitle: "Observability"
-description: "Configure custom OTEL endpoints and use cloud logger tail"
+description: "Stream logs, emit traces, and integrate mcp-agent cloud with your OTEL stack"
 icon: chart-line
 ---
 
-<Info>
-Content from monitoring.mdx on configuring custom OTEL endpoints and cloud logger tail command.
-</Info>
+Robust observability is critical for diagnosing LLM workflows and multi-agent behaviour. mcp-agent cloud provides two complementary surfaces:
 
-## Cloud Logging
+1. **Managed telemetry** – live log streaming, request metadata, and token usage accessible via CLI.
+2. **Bring-your-own OTEL** – forward traces and metrics to any OpenTelemetry collector (Grafana, Honeycomb, Datadog, etc.).
 
-Monitor your deployed agents:
+## Live logs from the CLI
 
 ```bash
-# Tail logs in real-time
-mcp-agent cloud logger tail my-agent --follow
+# Tail logs (newest first)
+mcp-agent cloud logger tail app_abc123
 
-# Filter for errors
-mcp-agent cloud logger tail my-agent --grep "ERROR" --since 5m
+# Follow in real time
+mcp-agent cloud logger tail app_abc123 --follow
+
+# Filter and limit
+mcp-agent cloud logger tail app_abc123 \
+  --since 30m \
+  --grep "ERROR|timeout" \
+  --limit 200 \
+  --format json
 ```
 
-[See Advanced Observability →](/mcp-agent-sdk/advanced/observability)
+Options:
+
+- `--since 5m | 2h | 1d` – relative duration.
+- `--grep "pattern"` – regex filtering.
+- `--format text|json|yaml` – machine-readable output for automation.
+- `--order-by timestamp|severity` + `--asc/--desc` – sort order (non-follow mode).
+
+> Pro tip: Pipe JSON output into `jq` for structured analysis:  
+> `mcp-agent cloud logger tail app_abc123 --format json --limit 200 | jq '.message'`
+
+## Configure your own OTEL endpoint
+
+Forward logs and traces to your collector:
+
+```bash
+mcp-agent cloud logger configure https://otel.example.com:4318/v1/logs \
+  --headers "Authorization=Bearer abc123,X-Org=lastmile"
+```
+
+- `--test` validates the current configuration without saving.
+- The command writes OTEL settings back into your project’s `mcp_agent.config.yaml` for portability.
+
+### Sample OTEL configuration
+
+```yaml mcp_agent.config.yaml
+otel:
+  enabled: true
+  service_name: web-summarizer
+  sample_rate: 1.0
+  exporters:
+    - type: otlp
+      protocol: http/protobuf
+      endpoint: https://otel.example.com:4318
+      headers:
+        Authorization: "Bearer ${OTEL_API_TOKEN}"
+```
+
+Set `OTEL_API_TOKEN` in your deployment secrets to keep credentials secure.
+
+## Instrumentation inside your app
+
+The logging and tracing helpers automatically annotate spans with MCP metadata (tool names, agent names, token counts). Supplement with custom attributes:
+
+```python
+context.logger.info(
+    "Planner completed",
+    data={"plan_steps": len(plan), "user": context.session_id},
+)
+
+from mcp_agent.tracing.telemetry import record_attribute
+record_attribute("workflow.stage", "summarize")
+```
+
+When using AugmentedLLM classes, request/response payloads and tool invocations are automatically traced (provider, model, max tokens, tool call IDs).
+
+## Temporal workflow insights
+
+- `mcp-agent cloud workflows describe` prints Temporal status, history length, retries, and memo.
+- Enable the Temporal Web UI (coming soon) or connect to your own instance if you self-host.
+- For long workflows, log progress using `context.logger.info` so run history includes human-friendly breadcrumbs.
+
+## Tracing examples
+
+Explore the tracing examples in the repository for end-to-end setups:
+
+- [`examples/tracing/agent`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/tracing/agent) – structured logs + spans for agent lifecycle.
+- [`examples/tracing/temporal`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/tracing/temporal) – demo with Temporal and OTEL collector.
+- [`examples/tracing/langfuse`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/tracing/langfuse) – integrate with Langfuse dashboards.
+
+## Alerting and dashboards (BYO)
+
+Because telemetry is standardised on OTEL, you can:
+
+- Emit metrics to Prometheus/Grafana (set up an OTLP receiver and transform logs to metrics).
+- Send traces to Honeycomb/Langfuse for timeline analysis.
+- Export logs to Datadog or Splunk via OTLP → vendor-specific connectors.
+
+## Best practices
+
+<AccordionGroup>
+  <Accordion title="Include contextual metadata">
+    Add `data={...}` payloads to log calls. When streamed to OTEL, these become searchable attributes (e.g., `workflow_id`, `customer_id`, `plan_length`).
+  </Accordion>
+  <Accordion title="Avoid sensitive content">
+    Logs and traces can include LLM prompts/responses. Mask secrets before logging (`***`) or disable verbose logging in production.
+  </Accordion>
+  <Accordion title="Sample appropriately">
+    High-volume workflows may require sampling (`otel.sample_rate`). You can also implement custom sampling logic in code (e.g., only record traces for specific users or stages).
+  </Accordion>
+  <Accordion title="Correlate runs">
+    Store run IDs or correlation IDs in workflow memo and include them in log messages. This makes it easier to pivot between CLI output, OTEL dashboards, and Temporal history.
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+- [Deployment quickstart →](/deployment/deployment-quickstart)
+- [Long-running tools →](/deployment/mcp-agent-cloud/long-running-tools)
+- [mcp-agent SDK observability deep dive →](/mcp-agent-sdk/advanced/observability)

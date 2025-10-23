@@ -88,7 +88,7 @@ Before you begin, make sure you have:
     You'll see output like:
     ```
     App ID: app_abc123xyz
-    App URL: https://deployments.mcp-agent.com/servers/my-first-agent
+    App URL: https://<app_id>.deployments.mcp-agent.com
     App Status: ONLINE
     ```
   </Step>
@@ -219,7 +219,7 @@ Your agent is now available as an MCP server. Here's how to use it:
     First configure the agent (this handles authentication and user secrets):
     
     ```bash
-    mcp-agent cloud configure --id https://deployments.mcp-agent.com/servers/web-summarizer
+    mcp-agent cloud configure --id https://<app_id>.deployments.mcp-agent.com
     ```
     
     Then add to your Claude Desktop config (`~/.claude-desktop/config.json`):
@@ -232,7 +232,7 @@ Your agent is now available as an MCP server. Here's how to use it:
           "args": [
             "-y",
             "mcp-remote",
-            "https://deployments.mcp-agent.com/servers/web-summarizer/sse",
+            "https://<app_id>.deployments.mcp-agent.com/sse",
             "--header",
             "Authorization: Bearer <MCP_AGENT_API_KEY>"
           ]
@@ -245,39 +245,51 @@ Your agent is now available as an MCP server. Here's how to use it:
   </Tab>
   
   <Tab title="Python Client">
-    ```python
-    from mcp_agent.mcp.gen_client import gen_client
-    
-    async def use_cloud_agent():
-        # Connect to your cloud agent
-        async with gen_client("https://deployments.mcp-agent.com/servers/web-summarizer") as server:
-            # Run the workflow
-            result = await server.call_tool(
-                "workflows-WebSummarizerWorkflow-run",
-                arguments={
-                    "run_parameters": {
-                        "url": "https://www.anthropic.com/research/building-effective-agents"
-                    }
-                }
-            )
-            
-            # Get the run ID
-            run_id = result.content[0].text
-            
-            # Check status
-            status = await server.call_tool(
-                "workflows-get_status",
-                arguments={"run_id": run_id}
-            )
-            
-            print(f"Summary: {status.content[0].text}")
-    ```
+    1. Add the deployed server to your config:
+
+       ```yaml mcp_agent.config.yaml
+       mcp:
+         servers:
+           web_summarizer_cloud:
+             transport: sse
+             url: "https://<app_id>.deployments.mcp-agent.com/sse"
+             headers:
+               Authorization: "Bearer ${MCP_API_KEY}"
+       ```
+
+    2. Call the workflow via the shared registry:
+
+       ```python
+       import asyncio
+       from mcp_agent.config import get_settings
+       from mcp_agent.mcp.gen_client import gen_client
+
+       async def use_cloud_agent():
+           async with gen_client("web_summarizer_cloud", server_registry=registry) as server:
+               result = await server.call_tool(
+                   "workflows-WebSummarizerWorkflow-run",
+                   arguments={
+                       "run_parameters": {
+                           "url": "https://www.anthropic.com/research/building-effective-agents"
+                       }
+                   },
+               )
+
+               run_id = result.content[0].text
+               status = await server.call_tool(
+                   "workflows-get_status",
+                   arguments={"run_id": run_id},
+               )
+               print(f"Summary: {status.content[0].text}")
+
+       asyncio.run(use_cloud_agent())
+       ```
   </Tab>
   
   <Tab title="cURL">
     ```bash
     # Run workflow
-    curl -X POST https://deployments.mcp-agent.com/servers/web-summarizer/call_tool \
+    curl -X POST https://<app_id>.deployments.mcp-agent.com/call_tool \
       -H "Authorization: Bearer $MCP_AGENT_TOKEN" \
       -H "Content-Type: application/json" \
       -d '{
@@ -443,10 +455,10 @@ Help users connect to your deployed agent:
 
 ```bash
 # Configure access for a deployed agent (handles auth and secrets)
-mcp-agent cloud configure --id https://deployments.mcp-agent.com/servers/my-agent
+mcp-agent cloud configure --id https://<app_id>.deployments.mcp-agent.com
 
 # Show required parameters for configuration
-mcp-agent cloud configure --id https://deployments.mcp-agent.com/servers/my-agent --params
+mcp-agent cloud configure --id https://<app_id>.deployments.mcp-agent.com --params
 ```
 
 After configuration, users can connect with their MCP client using the server URL and appropriate transport (SSE or streamable HTTP).

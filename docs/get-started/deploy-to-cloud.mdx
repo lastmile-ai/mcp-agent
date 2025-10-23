@@ -56,7 +56,7 @@ uvx mcp-agent deploy my-agent --dry-run
 After a successful deploy you'll receive an endpoint like:
 
 ```
-https://deployments.mcp-agent.com/servers/my-agent
+https://<app_id>.deployments.mcp-agent.com
 ```
 
 ## 3. Connect from clients
@@ -66,23 +66,41 @@ Your cloud deployment is a standard MCP server. Use any MCP client:
 <Tabs>
   <Tab title="Claude Desktop">
     ```bash
-    uvx mcp-agent cloud configure --id https://deployments.mcp-agent.com/servers/my-agent
+    uvx mcp-agent cloud configure --id https://<app_id>.deployments.mcp-agent.com
     ```
 
     This command writes a ready-to-paste entry for `~/.claude-desktop/config.json` including the SSE URL and headers.
   </Tab>
 
   <Tab title="Python">
-    ```python
-    from mcp_agent.mcp.gen_client import gen_client
+    1. Add the cloud server to your config so the registry knows how to connect:
 
-    async def use_agent():
-        async with gen_client(
-            "https://deployments.mcp-agent.com/servers/my-agent"
-        ) as client:
-            result = await client.call_tool("my_tool", {"param": "value"})
-            print(result)
-    ```
+       ```yaml mcp_agent.config.yaml
+       mcp:
+         servers:
+           my_agent_cloud:
+             transport: sse
+             url: "https://<app_id>.deployments.mcp-agent.com/sse"
+             headers:
+               Authorization: "Bearer ${MCP_API_KEY}"
+       ```
+
+    2. Connect via the shared registry:
+
+       ```python
+       import asyncio
+       from mcp_agent.config import get_settings
+       from mcp_agent.mcp.mcp_server_registry import ServerRegistry
+       from mcp_agent.mcp.gen_client import gen_client
+
+       async def use_agent():
+           registry = ServerRegistry(config=get_settings())
+           async with gen_client("my_agent_cloud", server_registry=registry) as client:
+               result = await client.call_tool("my_tool", {"param": "value"})
+               print(result)
+
+       asyncio.run(use_agent())
+       ```
   </Tab>
 </Tabs>
 
