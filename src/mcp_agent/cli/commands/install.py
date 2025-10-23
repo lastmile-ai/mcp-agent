@@ -49,11 +49,6 @@ from mcp_agent.cli.utils.ux import (
     print_success,
 )
 
-app = typer.Typer(
-    help="Install MCP server to client applications", no_args_is_help=False
-)
-
-
 def _get_claude_desktop_config_path() -> Path:
     """Get the Claude Desktop config path based on platform."""
     if platform.system() == "Darwin":  # macOS
@@ -266,7 +261,6 @@ def _build_server_config(
         }
 
 
-@app.callback(invoke_without_command=True)
 def install(
     server_identifier: str = typer.Argument(..., help="Server URL to install"),
     client: str = typer.Option(

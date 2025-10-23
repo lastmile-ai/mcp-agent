@@ -13,5 +13,8 @@
       "mcp-agent.secrets.yaml",
       "mcp_agent.secrets.yaml"
     ]
+  },
+  "files.watcherExclude": {
+    "**/target": true
   }
 }
