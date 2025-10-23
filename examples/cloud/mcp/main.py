@@ -228,7 +228,7 @@ async def grade_story_async(story: str, app_ctx: Optional[AppContext] = None) ->
 
     grader = Agent(
         name="grader",
-        instruction="""Compile the feedback from the Proofreader, Fact Checker, and Style Enforcer
+        instruction="""Compile the feedback from the Proofreader and Fact Checker
         into a structured report. Summarize key issues and categorize them by type. 
         Provide actionable recommendations for improving the story, 
         and give an overall grade based on the feedback.""",

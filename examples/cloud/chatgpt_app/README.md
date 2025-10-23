@@ -130,8 +130,8 @@ uv run mcp-agent login
 
 3. Set up your mcp-agent cloud API Key and copy & paste it into your terminal
 
-```
-andrew_lm@Mac sdk-cloud % uv run mcp-agent login
+```bash
+uv run mcp-agent login
 INFO: Directing to MCP Agent Cloud API login...
 Please enter your API key =:
 ```

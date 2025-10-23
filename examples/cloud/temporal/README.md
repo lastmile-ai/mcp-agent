@@ -1,6 +1,6 @@
 # MCP Agent Server Example (Temporal)
 
-This example demonstrates how to create and an MCP Agent Server with durable execution using [Temporal](https://temporal.io/). It shows how to build, run, deploy and connect to an MCP server which leverages Temporal workflows for execution.
+This example demonstrates how to create an MCP Agent Server with durable execution using [Temporal](https://temporal.io/). It shows how to build, run, deploy and connect to an MCP server which leverages Temporal workflows for execution.
 
 ## Motivation
 
@@ -43,9 +43,8 @@ The MCP agent server exposes the following tools:
 
 - `workflows-list` - Lists all available workflows
 - `workflows-BasicAgentWorkflow-run` - Runs the BasicAgentWorkflow, returns the workflow run ID
-- `workflows-BasicAgentWorkflow-get_status` - Gets the status of a running workflow
+- `workflows--get_status` - Gets the status of a running workflow
 - `workflows-PauseResumeWorkflow-run` - Runs the PauseResumeWorkflow, returns the workflow run ID
-- `workflows-PauseResumeWorkflow-get_status` - Gets the status of a running workflow
 - `workflows-resume` - Sends a signal to resume a workflow that's waiting
 - `workflows-cancel` - Cancels a running workflow
 
@@ -146,7 +145,7 @@ You can deploy this MCP-Agent app as a hosted mcp-agent app in the Cloud.
 
 1. In your terminal, authenticate into mcp-agent cloud by running:
 
-```
+```bash
 uv run mcp-agent login
 ```
 
@@ -154,15 +153,15 @@ uv run mcp-agent login
 
 3. Set up your mcp-agent cloud API Key and copy & paste it into your terminal
 
-```
-andrew_lm@Mac sdk-cloud % uv run mcp-agent login
+```bash
+uv run mcp-agent login
 INFO: Directing to MCP Agent Cloud API login...
 Please enter your API key 🔑:
 ```
 
 4. In your terminal, deploy the MCP app:
 
-```
+```bash
 uv run mcp-agent deploy temporal_example
 ```
 

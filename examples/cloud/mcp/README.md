@@ -103,13 +103,13 @@ Before running the example, you'll need to configure the necessary paths and API
 
 1. Copy the example secrets file:
 
-```
+```bash
 cp mcp_agent.secrets.yaml.example mcp_agent.secrets.yaml
 ```
 
 2. Edit `mcp_agent.secrets.yaml` to add your API keys:
 
-```
+```yaml
 openai:
   api_key: "your-openai-api-key"
 ```
@@ -141,7 +141,7 @@ You can deploy this MCP-Agent app as a hosted mcp-agent app in the Cloud.
 
 1. In your terminal, authenticate into mcp-agent cloud by running:
 
-```
+```bash
 uv run mcp-agent login
 ```
 
@@ -149,15 +149,15 @@ uv run mcp-agent login
 
 3. Set up your mcp-agent cloud API Key and copy & paste it into your terminal
 
-```
-andrew_lm@Mac sdk-cloud % uv run mcp-agent login
+```bash
+uv run mcp-agent login
 INFO: Directing to MCP Agent Cloud API login...
 Please enter your API key 🔑:
 ```
 
 4. In your terminal, deploy the MCP app:
 
-```
+```bash
 uv run mcp-agent deploy mcp_agent_server
 ```
 
