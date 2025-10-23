@@ -7,7 +7,7 @@ We will cover:
   - @app.tool and @app.async_tool decorators to expose your agents as long-running tools on an MCP server.
   - Advanced MCP features: Notifications, sampling, and elicitation
 
-You can run this example locally using "uv run main.py", and also deploy it as an MCP server using "mcp-agent deploy".
+You can run this example locally using "uv run main.py", and also deploy it as an MCP server using "uv run mcp-agent deploy".
 
 Let's get started!
 """
@@ -21,7 +21,12 @@ from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
 from mcp_agent.agents.agent_spec import AgentSpec
 from mcp_agent.core.context import Context as AppContext
+
+# UNCOMMENT to run this MCPApp as a server
+# from mcp_agent.server.app_server import create_mcp_server_for_app
 from mcp_agent.workflows.factory import create_agent
+
+# We are using the OpenAI augmented LLM for this example but you can swap with others (e.g. AnthropicAugmentedLLM)
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 
 # Create the MCPApp, the root of mcp-agent.
@@ -134,7 +139,8 @@ async def main():
         print("Webpage summary:")
         print(webpage_summary)
 
-        # UNCOMMENT to run this MCPApp as an MCP server
+        # UNCOMMENT to run this MCPApp as an MCP server (also uncomment the import of create_mcp_server_for_app at the top)
+        # NOTE: You can comment-out the above agent runs if you only want to run the server
         #########################################################
         # Create the MCP server that exposes both workflows and agent configurations,
         # optionally using custom FastMCP settings
@@ -148,7 +154,7 @@ if __name__ == "__main__":
     asyncio.run(main())
 
 # When you're ready to deploy this MCPApp as a remote SSE server, run:
-# > mcp-agent deploy "hello_world"
+# > uv run mcp-agent deploy "hello_world"
 #
 # Congrats! You made it to the end of the getting-started example!
 # There is a lot more that mcp-agent can do, and we hope you'll explore the rest of the documentation.
