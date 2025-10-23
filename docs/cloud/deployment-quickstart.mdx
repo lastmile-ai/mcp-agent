@@ -1,68 +1,52 @@
 ---
 title: Cloud Quickstart
-description: "Deploy your first application to mcp-agent cloud in 10 minutes or less"
+description: "Deploy an MCP application to mcp-agent cloud in a couple of commands"
+icon: rocket
 ---
 
 <Info>
-  **mcp-agent cloud** is in open beta. Report issues and feature requests on
-  [GitHub](https://github.com/lastmile-ai/mcp-agent/issues) or join the community in
-  [Discord](https://lmai.link/discord/mcp-agent).
+  **mcp-agent cloud** is in open beta. Share feedback via [GitHub](https://github.com/lastmile-ai/mcp-agent/issues) or [Discord](https://lmai.link/discord/mcp-agent).
 </Info>
 
-This guide walks through the full deployment loop:
-
-<Tip>
-Use the same workflow whether you are shipping a full `mcp-agent` application or a plain MCP server (FastMCP, ChatGPT App backend, custom tooling). The CLI treats them all as deployable MCP apps.
-</Tip>
-
-1. scaffold or adapt an existing `mcp-agent` project,
-2. configure Temporal + MCP servers,
-3. prepare secrets,
-4. deploy with `mcp-agent deploy`,
-5. verify, monitor, and connect an MCP client.
-
-## Prerequisites
-
-- Python **3.10+** and [`uv`](https://docs.astral.sh/uv/) or `pip`
-- `mcp-agent` CLI (installs both local and cloud commands):
-
-  ```bash
-  uv tool install mcp-agent     # or: pip install mcp-agent
-  ```
-
-- An MCP project (run `mcp-agent init` or clone an example)
-- Access to an LLM provider (e.g. OpenAI) with API keys
-
-## 1. Create or open an agent project
-
-Use the scaffolder or start from an example:
+## TL;DR
 
 ```bash
-mcp-agent init --template basic       # Creates main.py, config, and secrets files
-# or clone an existing example
-git clone https://github.com/lastmile-ai/mcp-agent.git
-cd mcp-agent/examples/cloud/hello_world
+uvx mcp-agent login
+uvx mcp-agent deploy my-agent
+uvx mcp-agent cloud servers describe my-agent
 ```
 
-Install dependencies for your project (either via `uv sync` or `uv pip install -r requirements.txt`).
+That is enough to put any MCP application—`mcp-agent` workflow, FastMCP server, or ChatGPT App backend—online. Deployments automatically run on the managed Temporal cluster; you do **not** need to configure Temporal hosts or queues yourself.
 
-## 2. Configure the app for cloud execution
+The sections below add a little context and point to deeper guides when you are ready.
 
-Ensure `mcp_agent.config.yaml` sets the Temporal execution engine and references any stdio MCP servers you plan to ship alongside the agent. A minimal configuration looks like:
+## 1. Authenticate (one time)
+
+```bash
+uvx mcp-agent login
+```
+
+The CLI opens a browser window so you can sign in with GitHub or Google and generate an API key. Credentials are cached under `~/.mcp-agent/credentials.json`. In CI, set the `MCP_API_KEY` environment variable instead.
+
+## 2. Confirm your project layout
+
+Minimal structure:
+
+```
+my-agent/
+├── main.py
+├── mcp_agent.config.yaml
+└── (optional) mcp_agent.secrets.yaml
+```
+
+`mcp_agent.config.yaml` just needs to describe your app. You can keep `execution_engine: temporal` if you already use it locally, but the cloud service will always launch your code on Temporal automatically.
+
+Example:
 
 ```yaml mcp_agent.config.yaml
 name: web_summarizer
-description: "Fetch a page and summarize it with an LLM"
-
-execution_engine: temporal
 logger:
   transports: [console]
-  level: info
-
-temporal:
-  host: temporal.mcp-agent.cloud    # Managed Temporal endpoint
-  namespace: default
-  task_queue: mcp-agent
 
 mcp:
   servers:
@@ -74,357 +58,54 @@ openai:
   default_model: gpt-4o
 ```
 
-<Tip>
-Add a `pyproject.toml` or `requirements.txt` at the project root. The deploy
-command bundles the whole directory, so include any modules or front-end assets
-your agent loads at runtime. To exclude files, add a `.mcpacignore` (gitignore
-syntax) or pass `--ignore-file <path>` to `mcp-agent deploy`.
-</Tip>
+If your app needs API keys, place them in `mcp_agent.secrets.yaml` (details in [Manage secrets](/cloud/mcp-agent-cloud/manage-secrets)).
 
-## 3. Capture secrets
-
-Create `mcp_agent.secrets.yaml` with provider keys and any other sensitive values that must be available at deploy time:
-
-```yaml mcp_agent.secrets.yaml
-openai:
-  api_key: "sk-...your-openai-key..."
-
-github:
-  token: "ghp_..."
-
-external_api:
-  api_key: "!user_secret CRM_API_KEY"
-```
-
-During deployment the CLI:
-
-1. loads `mcp_agent.secrets.yaml`,
-2. prompts you to classify each value as a **deployment secret** (stored encrypted and injected at runtime) or **user secret** (collected later via `mcp-agent cloud configure`),
-3. writes the transformed file to `mcp_agent.deployed.secrets.yaml` (safe to commit),
-4. replaces any `!user_secret` entries with placeholders that downstream users can fill by running the configure command.
-
-You can run the transformation ahead of time using `mcp-agent cloud deploy --non-interactive` to reuse existing secrets without prompts.
-
-## 4. Optional – run locally before shipping
+## 3. Deploy
 
 ```bash
-uv run main.py
-# or for live reload / structured logs
-mcp-agent dev start --script main.py
+uvx mcp-agent deploy web-summarizer
 ```
 
-Everything that works locally under `asyncio` will execute on Temporal after deployment.
-
-## 5. Authenticate with the cloud
-
-```bash
-mcp-agent login
-```
-
-The command opens the browser, guides you through Google/GitHub auth, and asks for permission to create an API key (stored at `~/.config/mcp-agent/credentials.json`). You can alternatively set `MCP_API_KEY` in the environment for CI/CD.
-
-Verify login status at any time:
-
-```bash
-mcp-agent cloud auth whoami
-```
-
-## 6. Deploy
-
-Deploy from the project directory (or use `--config-dir` to point at another folder):
-
-```bash
-mcp-agent deploy web-summarizer \
-  --app-description "Summaries with fetch + GPT-4o"
-```
-
-During the deploy flow the CLI:
-
-1. Checks for an existing app with that name (you can reuse to create versions).
-2. Processes `mcp_agent.secrets.yaml` → `mcp_agent.deployed.secrets.yaml`.
-3. Archives your source, config, dependencies, and assets.
-4. Uploads the bundle and triggers the deployment service.
-5. Streams progress (uploading → building → deploying → verifying).
-
-Example output:
+The CLI bundles the current directory, prompts you to classify secrets (deployment vs. user), uploads the bundle, and provisions the runtime. On success you will see something like:
 
 ```
-✓ Secrets processed (2 deployment, 1 user secret)
-✓ Bundle created (.mcp-agent/dist/web-summarizer-2024-10-19T23-40-02.tgz)
 ✓ Deployed app ID: app_abc123xyz
-   Server URL: https://<app_id>.deployments.mcp-agent.com
-(replace `<app_id>` with the hostname printed above, e.g., `app_abc123xyz`)
+   Server URL: https://app_abc123xyz.deployments.mcp-agent.com
    Status: ONLINE
 ```
 
-<Note>
-Use `--no-auth` to publish unauthenticated servers (required for ChatGPT Apps).
-Use `--auth` to re-enable authentication on an existing deployment.
-Other helpful flags:
+Redeploy with the same name to ship updates. Useful flags:
 
-- `--config-dir ./apps/finance_bot`
-- `--working-dir ..` (bundle from another repo location)
-- `--non-interactive` (skip prompts, reuse stored secrets)
-- `--git-tag` (create a git tag after a successful deploy)
-</Note>
+- `--config-dir <path>` – deploy from another directory.
+- `--non-interactive` – reuse stored secrets (CI/CD).
+- `--dry-run` – validate without uploading.
 
-## 7. Verify deployment health
-
-List and inspect servers:
+## 4. Check status & logs
 
 ```bash
-mcp-agent cloud servers list
-mcp-agent cloud servers describe app_abc123xyz
+uvx mcp-agent cloud servers describe app_abc123xyz
+uvx mcp-agent cloud logger tail app_abc123xyz --follow
 ```
 
-Tail logs (supports `--follow`, `--grep`, `--since`, `--format`):
+`describe` prints the endpoint, auth mode, and worker status. `logger tail` streams application logs; add `--since 30m` or `--grep "ERROR"` as needed. All other operational commands are listed on the [cloud overview](/cloud/mcp-agent-cloud/overview).
+
+## 5. Configure clients
+
+Most deployments need per-user credentials. Prompt users (or your CI job) with:
 
 ```bash
-mcp-agent cloud logger tail app_abc123xyz --follow
-mcp-agent cloud logger tail app_abc123xyz --since 30m --grep "ERROR|WARN"
-```
-
-Set up log forwarding to your own OTEL endpoint:
-
-```bash
-mcp-agent cloud logger configure https://otel.example.com:4318/v1/logs \
-  --headers "Authorization=Bearer abc123"
-```
-
-Check workflow activity:
-
-```bash
-mcp-agent cloud workflows list app_abc123xyz
-mcp-agent cloud workflows runs app_abc123xyz --limit 10
-mcp-agent cloud workflows describe app_abc123xyz run_456
-```
-
-Suspend, resume, or cancel long-running workflows:
-
-```bash
-mcp-agent cloud workflows suspend app_abc123xyz run_456
-mcp-agent cloud workflows resume app_abc123xyz run_456 \
-  --payload '{"action": "continue"}'
-mcp-agent cloud workflows cancel app_abc123xyz run_456
-```
-
-Delete when finished:
-
-```bash
-mcp-agent cloud servers delete app_abc123xyz
-```
-
-## Example agent – durable web summarizer
-
-This example shows a workflow that fetches a URL and summarizes content using the OpenAI Augmented LLM primitive.
-
-<CodeGroup>
-```python main.py
-import asyncio
-from mcp_agent.app import MCPApp
-from mcp_agent.agents.agent import Agent
-from mcp_agent.executor.workflow import Workflow, WorkflowResult
-from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
-
-app = MCPApp(name="web_summarizer")
-
-@app.workflow
-class WebSummarizerWorkflow(Workflow[str]):
-    """Fetch and summarize a URL."""
-
-    @app.workflow_run
-    async def run(self, url: str) -> WorkflowResult[str]:
-        agent = Agent(
-            name="summarizer",
-            instruction="Fetch the page and produce a concise summary.",
-            server_names=["fetch"],
-        )
-
-        async with agent:
-            llm = await agent.attach_llm(OpenAIAugmentedLLM)
-            summary = await llm.generate_str(
-                f"Fetch {url} and summarize it in three sentences."
-            )
-            return WorkflowResult(value=summary)
-
-if __name__ == "__main__":
-    async def demo():
-        async with app.run():
-            workflow = WebSummarizerWorkflow()
-            result = await workflow.run("https://example.com")
-            print(result.value)
-
-    asyncio.run(demo())
-```
-
-```yaml mcp_agent.config.yaml
-execution_engine: temporal
-logger:
-  transports: [console]
-  level: info
-
-temporal:
-  host: temporal.mcp-agent.cloud
-  namespace: default
-  task_queue: mcp-agent
-
-mcp:
-  servers:
-    fetch:
-      command: "uvx"
-      args: ["mcp-server-fetch"]
-
-openai:
-  default_model: gpt-4o
-```
-
-```yaml mcp_agent.secrets.yaml
-openai:
-  api_key: "sk-..."
-```
-</CodeGroup>
-
-Deploy with `mcp-agent deploy web-summarizer` and the workflow is immediately available as an MCP tool (`workflows-WebSummarizerWorkflow-run`) plus the helper tools (`workflows-get_status`, `workflows-cancel`, etc.).
-
-## Connect clients to the deployed server
-
-First, help users configure secrets for the deployment if you tagged any `!user_secret` entries:
-
-```bash
-mcp-agent cloud configure \
-  --id https://<app_id>.deployments.mcp-agent.com
-# Inspect required parameters without storing secrets
-mcp-agent cloud configure --id <server-url> --params
+uvx mcp-agent cloud configure --id https://app_abc123xyz.deployments.mcp-agent.com
 ```
 
 Then install the server into your favourite MCP client:
 
-<Tabs>
-  <Tab title="Claude Desktop">
-    ```bash
-    mcp-agent install https://<app_id>.deployments.mcp-agent.com/sse \
-      --client claude_desktop --name web-summarizer
-    ```
+- **Claude Desktop / Cursor / VS Code / ChatGPT** – `uvx mcp-agent install --client <client> https://app_abc123xyz.deployments.mcp-agent.com/sse`
+- **ChatGPT Apps** – deploy with `--no-auth` and register the SSE endpoint in the Apps dashboard.
+- **Python** – add the server endpoint to your MCP client config ([see guide](/cloud/mcp-agent-cloud/use-deployed-server)).
 
-    The command writes the correct `mcp-remote` wrapper plus `Authorization` header into `~/Library/Application Support/Claude/claude_desktop_config.json`. Restart Claude Desktop and the server appears in the tool list.
-  </Tab>
-  <Tab title="Cursor / VS Code">
-    ```bash
-    mcp-agent install https://<app_id>.deployments.mcp-agent.com/sse \
-      --client cursor
-    # or
-    mcp-agent install https://<app_id>.deployments.mcp-agent.com/sse \
-      --client vscode
-    ```
+## Going further
 
-    Cursor writes `~/.cursor/mcp.json`; VS Code writes `.vscode/mcp.json` in the current workspace.
-  </Tab>
-  <Tab title="Python">
-    1. Add the deployed server to `mcp_agent.config.yaml` so the registry knows how to connect:
-
-       ```yaml mcp_agent.config.yaml
-       mcp:
-         servers:
-           web_summarizer_cloud:
-             transport: sse
-             url: "https://<app_id>.deployments.mcp-agent.com/sse"
-             headers:
-               Authorization: "Bearer ${MCP_API_KEY}"
-       ```
-
-       After running `mcp-agent login`, export `MCP_API_KEY` (or place it in `mcp_agent.configured.secrets.yaml`) so the header can be expanded.
-
-    2. Open a short-lived client session using the shared server registry:
-
-       ```python
-       import asyncio
-       from mcp_agent.config import get_settings
-       from mcp_agent.mcp.mcp_server_registry import ServerRegistry
-       from mcp_agent.mcp.gen_client import gen_client
-
-       async def run_workflow():
-           settings = get_settings()
-           registry = ServerRegistry(config=settings)
-
-           async with gen_client(
-               server_name="web_summarizer_cloud",
-               server_registry=registry,
-           ) as client:
-               response = await client.call_tool(
-                   "workflows-WebSummarizerWorkflow-run",
-                   arguments={"run_parameters": {"url": "https://www.anthropic.com"}},
-               )
-               run_id = response.content[0].text
-               status = await client.call_tool(
-                   "workflows-get_status",
-                   arguments={"run_id": run_id},
-               )
-               print(status.content[0].text)
-
-       asyncio.run(run_workflow())
-       ```
-  </Tab>
-  <Tab title="cURL / MCP Inspector">
-    ```bash
-curl -X POST https://<app_id>.deployments.mcp-agent.com/call_tool \
-      -H "Authorization: Bearer $MCP_API_KEY" \
-      -H "Content-Type: application/json" \
-      -d '{
-        "name": "workflows-WebSummarizerWorkflow-run",
-        "arguments": {"run_parameters": {"url": "https://example.com"}}
-      }'
-    ```
-
-    The response contains `workflow_id` and `run_id` which you can poll via `workflows-get_status`. MCP Inspector works the same way—choose the SSE transport and paste the URL with your API key.
-  </Tab>
-  <Tab title="ChatGPT Apps">
-    Deploy with `--no-auth`, then install:
-    ```bash
-    mcp-agent install https://<app_id>.deployments.mcp-agent.com/sse \
-      --client chatgpt
-    ```
-    In the ChatGPT Apps builder, add the server URL under “Actions”. Widgets and other metadata can be returned via tool annotations—see the [ChatGPT app example](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/cloud/chatgpt_app).
-  </Tab>
-</Tabs>
-
-## Secrets and configuration recap
-
-<AccordionGroup>
-  <Accordion title="Developer vs user secrets">
-    Deployment secrets (API keys your team controls) are stored securely in MCP Agent Cloud and injected at runtime. User secrets are marked with `!user_secret` and collected later for each user or environment via `mcp-agent cloud configure`.
-  </Accordion>
-  <Accordion title="Automating in CI/CD">
-    Set `MCP_API_KEY`, run `mcp-agent deploy --non-interactive --config-dir <path>` and check the exit code. The command is idempotent—redeploying overwrites the existing bundle while preserving secret handles.
-  </Accordion>
-  <Accordion title="Local overrides">
-    Use `MCP_APP_SETTINGS_PRELOAD` to inject temporary config at runtime, or create per-environment YAML files that you merge during deployment.
-  </Accordion>
-  <Accordion title="Ignoring files">
-    Create `.mcpacignore` with paths to omit from the bundle (node_modules, tests, notebooks, etc.). You can keep different ignore files per app folder.
-  </Accordion>
-</AccordionGroup>
-
-## Troubleshooting
-
-<AccordionGroup>
-  <Accordion title="Deployment fails">
-    Check build logs with `mcp-agent cloud logger tail <id> --since 10m`. Typical issues: missing dependencies, syntax errors, or failing to respond to required secrets. Re-run with `--verbose` for additional CLI diagnostics.
-  </Accordion>
-  <Accordion title="Server stays offline">
-    Run `mcp-agent cloud servers describe <id>` and confirm `Status: 🟢 Active`. If offline, inspect logs for startup failures (missing `.env`, failed MCP server bootstrap, etc.).
-  </Accordion>
-  <Accordion title="Workflow never completes">
-    Use `mcp-agent cloud workflows describe <id> <run>` to inspect Temporal status. Long-running tasks might be waiting on human input or hitting tool timeouts.
-  </Accordion>
-  <Accordion title="Authentication errors from clients">
-    Re-run `mcp-agent login` (API keys expire), or `export MCP_API_KEY=...` before launching the client. For ChatGPT Apps ensure the deployment was created with `--no-auth`.
-  </Accordion>
-</AccordionGroup>
-
-## Next steps
-
-- [mcp-agent cloud overview →](/cloud/mcp-agent-cloud/overview)
-- [Authentication options →](/cloud/authentication/overview)
-- [Observability & OTEL exporters →](/cloud/observability)
-- [Use case guides (agents, MCP servers, ChatGPT Apps) →](/cloud/use-cases/deploy-agents)
-- [CLI command reference →](/reference/cli)
+- [Cloud overview](/cloud/mcp-agent-cloud/overview) – architecture, auth, observability.
+- [Long-running tools](/cloud/mcp-agent-cloud/long-running-tools) – design durable workflows.
+- [Manage secrets](/cloud/mcp-agent-cloud/manage-secrets) – developer vs. user secrets.
+- [Use a deployed server](/cloud/mcp-agent-cloud/use-deployed-server) – client setup recipes.
