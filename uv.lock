@@ -2103,7 +2103,7 @@ wheels = [
 
 [[package]]
 name = "mcp-agent"
-version = "0.2.0"
+version = "0.2.2"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
@@ -2116,14 +2116,17 @@ dependencies = [
     { name = "opentelemetry-exporter-otlp-proto-http" },
     { name = "opentelemetry-instrumentation-anthropic" },
     { name = "opentelemetry-instrumentation-openai" },
+    { name = "pathspec" },
     { name = "prompt-toolkit" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "pydantic-yaml" },
+    { name = "python-dotenv" },
     { name = "pyyaml" },
     { name = "rich" },
     { name = "scikit-learn" },
     { name = "typer" },
+    { name = "watchdog" },
     { name = "websockets" },
 ]
 
@@ -2144,11 +2147,6 @@ azure = [
 ]
 bedrock = [
     { name = "boto3" },
-]
-cli = [
-    { name = "pathspec" },
-    { name = "python-dotenv" },
-    { name = "watchdog" },
 ]
 cohere = [
     { name = "cohere" },
@@ -2211,22 +2209,22 @@ requires-dist = [
     { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.29.0" },
     { name = "opentelemetry-instrumentation-anthropic", specifier = ">=0.39.3" },
     { name = "opentelemetry-instrumentation-openai", specifier = ">=0.39.3" },
-    { name = "pathspec", marker = "extra == 'cli'", specifier = ">=0.12.1" },
+    { name = "pathspec", specifier = ">=0.12.1" },
     { name = "prompt-toolkit", specifier = ">=3.0.50" },
     { name = "pydantic", specifier = ">=2.10.4" },
     { name = "pydantic-settings", specifier = ">=2.7.0" },
     { name = "pydantic-yaml", specifier = ">=1.5.1" },
-    { name = "python-dotenv", marker = "extra == 'cli'", specifier = ">=1.0.0" },
+    { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "redis", extras = ["hiredis"], marker = "extra == 'redis'", specifier = ">=5.0.4" },
     { name = "rich", specifier = ">=13.9.4" },
     { name = "scikit-learn", specifier = ">=1.6.0" },
     { name = "temporalio", extras = ["opentelemetry"], marker = "extra == 'temporal'", specifier = ">=1.10.0" },
     { name = "typer", specifier = ">=0.15.3" },
-    { name = "watchdog", marker = "extra == 'cli'", specifier = ">=6.0.0" },
+    { name = "watchdog", specifier = ">=6.0.0" },
     { name = "websockets", specifier = ">=12.0" },
 ]
-provides-extras = ["cli", "temporal", "anthropic", "anthropic-bedrock", "anthropic-vertex", "bedrock", "openai", "azure", "google", "cohere", "langchain", "redis", "crewai"]
+provides-extras = ["temporal", "anthropic", "anthropic-bedrock", "anthropic-vertex", "bedrock", "openai", "azure", "google", "cohere", "langchain", "redis", "crewai"]
 
 [package.metadata.requires-dev]
 dev = [

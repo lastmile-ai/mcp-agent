@@ -37,7 +37,9 @@ async def test_fetch_introspection_endpoint_from_well_known():
     endpoint = await verifier._ensure_introspection_endpoint()
 
     assert endpoint == "https://auth.example.com/oauth2/introspect"
-    assert verifier._introspection_endpoint == "https://auth.example.com/oauth2/introspect"
+    assert (
+        verifier._introspection_endpoint == "https://auth.example.com/oauth2/introspect"
+    )
 
     # Verify it's cached - call again and it should return cached value
     endpoint2 = await verifier._ensure_introspection_endpoint()
@@ -123,7 +125,9 @@ async def test_well_known_endpoint_missing_introspection():
 
     verifier._client.get = AsyncMock(return_value=mock_response)
 
-    with pytest.raises(ValueError, match="does not advertise an introspection endpoint"):
+    with pytest.raises(
+        ValueError, match="does not advertise an introspection endpoint"
+    ):
         await verifier._ensure_introspection_endpoint()
 
     await verifier.aclose()
@@ -165,9 +169,7 @@ async def test_well_known_endpoint_404_error():
     # Mock HTTP client to raise 404
     verifier._client.get = AsyncMock(
         side_effect=httpx.HTTPStatusError(
-            "Not Found",
-            request=Mock(),
-            response=Mock(status_code=404)
+            "Not Found", request=Mock(), response=Mock(status_code=404)
         )
     )
 
@@ -740,8 +742,6 @@ async def test_concurrent_metadata_fetch():
     await verifier.aclose()
 
 
-
-
 @pytest.mark.asyncio
 async def test_audience_extraction():
     """Test audience extraction from various token payloads."""
@@ -759,7 +759,9 @@ async def test_audience_extraction():
     assert "https://api.example.com" in audiences
 
     # Test array audience
-    audiences = verifier._extract_audiences({"aud": ["https://api1.example.com", "https://api2.example.com"]})
+    audiences = verifier._extract_audiences(
+        {"aud": ["https://api1.example.com", "https://api2.example.com"]}
+    )
     assert "https://api1.example.com" in audiences
     assert "https://api2.example.com" in audiences
 
@@ -768,10 +770,9 @@ async def test_audience_extraction():
     assert "https://api.example.com" in audiences
 
     # Test combined aud and resource
-    audiences = verifier._extract_audiences({
-        "aud": "https://api1.example.com",
-        "resource": "https://api2.example.com"
-    })
+    audiences = verifier._extract_audiences(
+        {"aud": "https://api1.example.com", "resource": "https://api2.example.com"}
+    )
     assert "https://api1.example.com" in audiences
     assert "https://api2.example.com" in audiences
 
@@ -797,7 +798,10 @@ async def test_audience_validation():
     assert verifier._validate_audiences(["https://api2.example.com"]) is True
 
     # Valid - multiple with one match
-    assert verifier._validate_audiences(["https://api.example.com", "https://other.com"]) is True
+    assert (
+        verifier._validate_audiences(["https://api.example.com", "https://other.com"])
+        is True
+    )
 
     # Invalid - no match
     assert verifier._validate_audiences(["https://malicious.example.com"]) is False

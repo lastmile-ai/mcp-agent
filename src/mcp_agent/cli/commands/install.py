@@ -49,6 +49,7 @@ from mcp_agent.cli.utils.ux import (
     print_success,
 )
 
+
 def _get_claude_desktop_config_path() -> Path:
     """Get the Claude Desktop config path based on platform."""
     if platform.system() == "Darwin":  # macOS

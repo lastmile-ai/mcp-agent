@@ -7,7 +7,7 @@ auth_server_url = "https://auth.mcp-agent.com"
 redirect_uris = [
     # These are the redirect URIs for MCP Inspector. Replace with your app's URIs.
     "http://localhost:6274/oauth/callback",
-    "http://localhost:6274/oauth/callback/debug"
+    "http://localhost:6274/oauth/callback/debug",
 ]
 client_name = "My Python Application"
 
@@ -28,13 +28,10 @@ else:
 registration_request = {
     "client_name": client_name,
     "redirect_uris": redirect_uris,
-    "grant_types": [
-        "authorization_code",
-        "refresh_token"
-    ],
+    "grant_types": ["authorization_code", "refresh_token"],
     "scope": "mcp",
     # use client_secret_basic when testing with MCP Inspector
-    "token_endpoint_auth_method": "client_secret_basic"
+    "token_endpoint_auth_method": "client_secret_basic",
 }
 
 print(f"Registering client at: {registration_endpoint}")
@@ -43,7 +40,7 @@ print(f"Registering client at: {registration_endpoint}")
 response = requests.post(
     registration_endpoint,
     json=registration_request,
-    headers={"Content-Type": "application/json"}
+    headers={"Content-Type": "application/json"},
 )
 
 if response.status_code in [200, 201]:

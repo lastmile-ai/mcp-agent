@@ -386,7 +386,9 @@ async def test_tool_decorator_uses_custom_icons_when_provided():
 
     # Register a tool with custom icons
     @app.tool(
-        name="custom_icon_tool", description="Tool with custom icon", icons=[custom_icon]
+        name="custom_icon_tool",
+        description="Tool with custom icon",
+        icons=[custom_icon],
     )
     async def custom_icon_tool(text: str) -> str:
         return text
@@ -401,7 +403,8 @@ async def test_tool_decorator_uses_custom_icons_when_provided():
 
     # Find the registered tool and check its icons
     tool_entry = next(
-        (entry for entry in mcp.added_tools if entry["name"] == "custom_icon_tool"), None
+        (entry for entry in mcp.added_tools if entry["name"] == "custom_icon_tool"),
+        None,
     )
     assert tool_entry is not None, "Tool should be registered"
 
@@ -434,7 +437,8 @@ async def test_async_tool_decorator_defaults_to_phetch_icon_when_no_icons_provid
 
     # Find the registered tool and check its icons
     tool_entry = next(
-        (entry for entry in mcp.added_tools if entry["name"] == "no_icon_async_tool"), None
+        (entry for entry in mcp.added_tools if entry["name"] == "no_icon_async_tool"),
+        None,
     )
     assert tool_entry is not None, "Tool should be registered"
 
@@ -473,7 +477,11 @@ async def test_async_tool_decorator_uses_custom_icons_when_provided():
 
     # Find the registered tool and check its icons
     tool_entry = next(
-        (entry for entry in mcp.added_tools if entry["name"] == "custom_icon_async_tool"),
+        (
+            entry
+            for entry in mcp.added_tools
+            if entry["name"] == "custom_icon_async_tool"
+        ),
         None,
     )
     assert tool_entry is not None, "Tool should be registered"
