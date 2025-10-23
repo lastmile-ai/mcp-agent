@@ -21,7 +21,9 @@ from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
 from mcp_agent.agents.agent_spec import AgentSpec
 from mcp_agent.core.context import Context as AppContext
-from mcp_agent.server.app_server import create_mcp_server_for_app
+
+# UNCOMMENT to run this MCPApp as a server
+# from mcp_agent.server.app_server import create_mcp_server_for_app
 from mcp_agent.workflows.factory import create_agent
 
 # We are using the OpenAI augmented LLM for this example but you can swap with others (e.g. AnthropicAugmentedLLM)
@@ -137,15 +139,15 @@ async def main():
         print("Webpage summary:")
         print(webpage_summary)
 
-        # UNCOMMENT to run this MCPApp as an MCP server
+        # UNCOMMENT to run this MCPApp as an MCP server (also uncomment the import of create_mcp_server_for_app at the top)
         # NOTE: You can comment-out the above agent runs if you only want to run the server
         #########################################################
         # Create the MCP server that exposes both workflows and agent configurations,
         # optionally using custom FastMCP settings
-        mcp_server = create_mcp_server_for_app(agent_app)
+        # mcp_server = create_mcp_server_for_app(agent_app)
 
         # # Run the server
-        await mcp_server.run_sse_async()
+        # await mcp_server.run_sse_async()
 
 
 if __name__ == "__main__":

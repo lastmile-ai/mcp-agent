@@ -74,6 +74,26 @@ def _write_readme(dir_path: Path, content: str, force: bool) -> str | None:
     return None
 
 
+def write_requirements(dir_path: Path, content: str, force: bool) -> str | None:
+    """Create a requirements.txt file with fallback logging if one already exists.
+
+    Returns the filename created, or None if it could not be written (in which case
+    the content is printed to console as a fallback).
+    """
+    path = dir_path / "requirements.txt"
+    if not path.exists() or force:
+        ok = _write(path, content, force)
+        if ok:
+            return "requirements.txt"
+    # Fallback: print content to console if we couldn't write the file
+    console.print(
+        "\n[yellow]A requirements.txt already exists and could not be overwritten.[/yellow]"
+    )
+    console.print("[bold]Suggested requirements.txt contents:[/bold]\n")
+    console.print(content)
+    return None
+
+
 @app.callback(invoke_without_command=True)
 def init(
     ctx: typer.Context,
@@ -188,6 +208,13 @@ def init(
         readme_content = _load_template("README_init.md")
         if readme_content:
             created = _write_readme(dir, readme_content, force)
+            if created:
+                files_created.append(created)
+
+        # Add basic requirements.txt
+        requirements_content = _load_template("requirements.txt")
+        if requirements_content:
+            created = write_requirements(dir, requirements_content, force)
             if created:
                 files_created.append(created)
 
