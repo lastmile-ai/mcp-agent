@@ -1158,6 +1158,40 @@ class Settings(BaseSettings):
 
         return None
 
+    def to_deployed_config(
+        self,
+        deployment_metadata: dict[str, Any] | None = None,
+        server_metadata: dict[str, dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Serialize this Settings instance to a deployment-ready config dict.
+
+        This creates a "realized" config that captures the state of the configuration
+        as it was deployed, including runtime metadata and resolved server configurations.
+
+        Args:
+            deployment_metadata: Optional metadata about the deployment (app_id, deploy time, git info)
+            server_metadata: Optional per-server runtime metadata (URLs, container IDs, etc.)
+
+        Returns:
+            Dictionary suitable for serializing to mcp_agent.deployed.config.yaml
+        """
+        # Start with a full model dump, excluding unset and None values
+        config_dict = self.model_dump(mode="json", exclude_none=True)
+
+        # Add deployment metadata at the top level
+        if deployment_metadata:
+            config_dict["_deployment"] = deployment_metadata
+
+        # Merge server-specific metadata if provided
+        if server_metadata and "mcp" in config_dict and "servers" in config_dict["mcp"]:
+            for server_name, meta in server_metadata.items():
+                if server_name in config_dict["mcp"]["servers"]:
+                    if "_runtime" not in config_dict["mcp"]["servers"][server_name]:
+                        config_dict["mcp"]["servers"][server_name]["_runtime"] = {}
+                    config_dict["mcp"]["servers"][server_name]["_runtime"].update(meta)
+
+        return config_dict
+
 
 Settings.model_rebuild()
 
@@ -1330,6 +1364,23 @@ def get_settings(config_path: str | None = None, set_global: bool = True) -> Set
                 secrets_content = _read_file_content(secrets_file)
                 yaml_secrets = _load_yaml_from_string(secrets_content)
                 merged_settings = deep_merge(merged_settings, yaml_secrets)
+
+        # Check for deployed config in the same directory as the config file
+        # This takes precedence over base config and secrets
+        from mcp_agent.cli.core.constants import (
+            MCP_DEPLOYED_CONFIG_FILENAME,
+        )
+
+        deployed_config_file = config_dir / MCP_DEPLOYED_CONFIG_FILENAME
+        if _check_file_exists(deployed_config_file):
+            deployed_content = _read_file_content(deployed_config_file)
+            yaml_deployed = _load_yaml_from_string(deployed_content)
+            # Extract and remove deployment metadata before merging
+            deployment_meta = yaml_deployed.pop("_deployment", None)
+            merged_settings = deep_merge(merged_settings, yaml_deployed)
+            # Store deployment metadata separately if needed
+            if deployment_meta:
+                merged_settings["_deployment"] = deployment_meta
 
         settings = Settings(**merged_settings)
         if set_global:

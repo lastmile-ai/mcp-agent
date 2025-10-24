@@ -8,6 +8,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional, List, Tuple
 import json
+import yaml
 
 import typer
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -19,6 +20,7 @@ from mcp_agent.cli.core.constants import (
     ENV_API_BASE_URL,
     ENV_API_KEY,
     MCP_CONFIG_FILENAME,
+    MCP_DEPLOYED_CONFIG_FILENAME,
     MCP_DEPLOYED_SECRETS_FILENAME,
     MCP_SECRETS_FILENAME,
 )
@@ -453,6 +455,58 @@ def deploy_config(
                 f"[bright_black]{json.dumps(mcp_config, indent=2)}[/bright_black]",
                 soft_wrap=True,
             )
+
+        # Write deployed config file after successful deployment
+        try:
+            deployed_config_path = config_dir / MCP_DEPLOYED_CONFIG_FILENAME
+            loaded_settings = get_settings(config_path=str(config_file), set_global=False)
+
+            # Prepare deployment metadata
+            git_meta = get_git_metadata(config_dir)
+            deployment_metadata = {
+                "app_id": app_id,
+                "app_name": app_name,
+                "deployed_at": end_time,
+                "deployed_to": server_url if app.appServerInfo else None,
+            }
+
+            if git_meta:
+                deployment_metadata["git"] = {
+                    "commit": git_meta.commit_sha,
+                    "short": git_meta.short_sha,
+                    "branch": git_meta.branch,
+                    "dirty": git_meta.dirty,
+                    "tag": git_meta.tag,
+                }
+
+            # Generate deployed config with metadata
+            deployed_config_dict = loaded_settings.to_deployed_config(
+                deployment_metadata=deployment_metadata
+            )
+
+            # Write to file with header comment
+            with open(deployed_config_path, "w", encoding="utf-8") as f:
+                f.write("# Auto-generated deployed configuration\n")
+                f.write("# This file captures the realized config from deployment\n")
+                f.write(f"# Generated: {end_time}\n")
+                f.write("# Do not edit manually - will be overwritten on next deploy\n")
+                f.write("#\n")
+                f.write("# This config is automatically loaded and takes precedence over\n")
+                f.write("# mcp_agent.config.yaml when present in the same directory.\n")
+                f.write("# You can use this to redeploy with the same configuration.\n")
+                f.write("#\n\n")
+                yaml.safe_dump(
+                    deployed_config_dict,
+                    f,
+                    default_flow_style=False,
+                    sort_keys=False,
+                    allow_unicode=True,
+                )
+
+            print_verbose(f"Wrote deployed config to {deployed_config_path}")
+        except Exception as e:
+            # Non-fatal: log but don't fail the deployment
+            print_verbose(f"Failed to write deployed config: {e}")
 
         return app_id
 

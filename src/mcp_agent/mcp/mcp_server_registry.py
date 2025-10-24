@@ -9,7 +9,7 @@ server initialization.
 
 from contextlib import asynccontextmanager
 from datetime import timedelta
-from typing import Callable, Dict, AsyncGenerator, Optional, TYPE_CHECKING
+from typing import Any, Callable, Dict, AsyncGenerator, Optional, TYPE_CHECKING
 
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from mcp import ClientSession
@@ -465,3 +465,40 @@ class ServerRegistry:
         elif server_config.name is None:
             server_config.name = server_name
         return server_config
+
+    def get_deployed_config(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Extract deployment-ready metadata for all registered servers.
+
+        This captures the runtime state of server connections after initialization,
+        including resolved URLs, transport details, and connection status.
+
+        Returns:
+            Dict mapping server names to their runtime metadata dictionaries.
+        """
+        server_metadata: Dict[str, Dict[str, Any]] = {}
+
+        for server_name, config in self.registry.items():
+            meta: Dict[str, Any] = {
+                "transport": config.transport,
+                "initialized": False,
+            }
+
+            # Add transport-specific details
+            if config.transport == "stdio":
+                meta.update({
+                    "command": config.command,
+                    "args": config.args,
+                    "cwd": config.cwd,
+                })
+            elif config.transport in ["sse", "streamable_http", "websocket"]:
+                meta["url"] = config.url
+
+            # Check if server is currently connected via connection manager
+            if hasattr(self.connection_manager, "_active_sessions"):
+                if server_name in self.connection_manager._active_sessions:
+                    meta["initialized"] = True
+
+            server_metadata[server_name] = meta
+
+        return server_metadata
