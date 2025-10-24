@@ -77,7 +77,7 @@ def test_exit_request_context_clears_session_level():
         LoggingConfig.set_session_min_level("client-exit", "warning")
         assert LoggingConfig.get_session_min_level("client-exit") == "warning"
     finally:
-        app_server._exit_request_context(ctx, token)  # type: ignore[attr-defined]
+        app_server._exit_request_context(ctx, token)
 
     # Session override should persist beyond the request lifecycle.
     assert LoggingConfig.get_session_min_level("client-exit") == "warning"

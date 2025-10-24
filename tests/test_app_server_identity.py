@@ -55,7 +55,7 @@ def test_set_upstream_updates_session_each_request():
         assert "session-one" in app_context.identity_registry
         assert app_context.identity_registry["session-one"].subject == "session-one"
         assert app_context.session_id == "app-session"
-        app_server._exit_request_context(bound_ctx1, token1)  # type: ignore[attr-defined]
+        app_server._exit_request_context(bound_ctx1, token1)
         assert app_context.upstream_session is None
 
         ctx2 = DummyMCPContext("session-two", fastmcp)
@@ -67,7 +67,7 @@ def test_set_upstream_updates_session_each_request():
         assert app_context.identity_registry["session-two"].subject == "session-two"
         assert app_context.identity_registry["session-one"].subject == "session-one"
         assert app_context.session_id == "app-session"
-        app_server._exit_request_context(bound_ctx2, token2)  # type: ignore[attr-defined]
+        app_server._exit_request_context(bound_ctx2, token2)
         assert app_context.upstream_session is None
     finally:
         reset_identity()
@@ -84,4 +84,4 @@ def test_resolve_identity_prefers_request_session(monkeypatch):
     )
     assert isinstance(identity, OAuthUserIdentity)
     assert identity.subject == "client-session"
-    app_server._exit_request_context(bound_ctx, token)  # type: ignore[attr-defined]
+    app_server._exit_request_context(bound_ctx, token)
