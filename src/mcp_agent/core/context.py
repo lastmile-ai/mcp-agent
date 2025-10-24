@@ -125,8 +125,16 @@ class Context(MCPContext):
         instead of whichever client touched the base context last.
         """
         request_ctx = get_current_request_context()
-        if request_ctx is self:
-            return getattr(self, "_upstream_session", None)
+        if request_ctx is not None:
+            if request_ctx is self:
+                return getattr(self, "_upstream_session", None)
+
+            current = request_ctx
+            while current is not None:
+                parent_ctx = getattr(current, "_parent_context", None)
+                if parent_ctx is self:
+                    return getattr(current, "_upstream_session", None)
+                current = parent_ctx
 
         explicit = getattr(self, "_upstream_session", None)
         if explicit is not None:

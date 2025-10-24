@@ -14,7 +14,7 @@ import asyncio
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any, Dict, List, Optional, Set, Tuple, Type, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Set, Tuple, Type
 from pydantic import BaseModel, Field
 from contextvars import ContextVar, Token
 from urllib.parse import parse_qs, urlparse
@@ -64,10 +64,6 @@ from mcp_agent.oauth.errors import (
 )
 from mcp_agent.oauth.records import TokenRecord
 
-
-if TYPE_CHECKING:
-    pass
-
 logger = get_logger(__name__)
 # Simple in-memory registry mapping workflow execution_id -> upstream session handle.
 # Allows external workers (e.g., Temporal) to relay logs/prompts through MCPApp.
@@ -87,39 +83,14 @@ _CURRENT_IDENTITY: ContextVar[OAuthUserIdentity | None] = ContextVar(
 )
 
 
-def _discard_active_request_session(target: Any, session_id: str | None) -> None:
-    if target is None or session_id is None:
+def _clear_cached_session_refs(target: Any, session: Any | None) -> None:
+    if target is None or session is None:
         return
     try:
-        active = getattr(target, "_active_request_sessions", None)
+        if getattr(target, "_last_known_upstream_session", None) is session:
+            setattr(target, "_last_known_upstream_session", None)
     except Exception:
-        active = None
-    if isinstance(active, set) and session_id in active:
-        active.discard(session_id)
-        if not active:
-            try:
-                delattr(target, "_active_request_sessions")
-            except Exception:
-                pass
-
-
-def _clear_cached_session_refs(
-    target: Any, session: Any | None, session_id: str | None
-) -> None:
-    if target is None:
-        return
-    if session is not None:
-        try:
-            if getattr(target, "_last_known_upstream_session", None) is session:
-                setattr(target, "_last_known_upstream_session", None)
-        except Exception:
-            pass
-    if session_id is not None:
-        try:
-            if getattr(target, "_last_request_session_id", None) == session_id:
-                setattr(target, "_last_request_session_id", None)
-        except Exception:
-            pass
+        pass
 
 
 async def _register_session(
@@ -167,12 +138,9 @@ async def _unregister_session(run_id: str) -> None:
                     pass
             if context_ref is not None:
                 app_ref = getattr(context_ref, "app", None)
-                _discard_active_request_session(context_ref, session_id)
+                _clear_cached_session_refs(context_ref, session)
                 if app_ref is not None:
-                    _discard_active_request_session(app_ref, session_id)
-                _clear_cached_session_refs(context_ref, session, session_id)
-                if app_ref is not None:
-                    _clear_cached_session_refs(app_ref, session, session_id)
+                    _clear_cached_session_refs(app_ref, session)
             try:
                 logger.debug(
                     f"Unregistered upstream session mapping for run_id={run_id}, execution_id={execution_id}"
@@ -441,30 +409,6 @@ def _enter_request_context(
                     setattr(app_ref, "_last_known_upstream_session", session)
                 except Exception:
                     pass
-        if session_id:
-            try:
-                setattr(base_context, "_last_request_session_id", session_id)
-                active_sessions = getattr(
-                    base_context, "_active_request_sessions", None
-                )
-                if active_sessions is None:
-                    active_sessions = set()
-                    setattr(base_context, "_active_request_sessions", active_sessions)
-                active_sessions.add(session_id)
-            except Exception:
-                pass
-            app_ref = getattr(base_context, "app", None)
-            if app_ref is not None:
-                try:
-                    setattr(app_ref, "_last_request_session_id", session_id)
-                    app_active = getattr(app_ref, "_active_request_sessions", None)
-                    if app_active is None:
-                        app_active = set()
-                        setattr(app_ref, "_active_request_sessions", app_active)
-                    app_active.add(session_id)
-                except Exception:
-                    pass
-
         if session_id and identity is not None:
             try:
                 base_context.identity_registry[session_id] = identity
@@ -497,8 +441,6 @@ def _exit_request_context(
         bound_context, "_parent_context", None
     )
     session = getattr(bound_context, "_scoped_upstream_session", None)
-    session_id = getattr(bound_context, "request_session_id", None)
-
     targets: list[Any] = []
     app_ref = None
     if base_context is not None:
@@ -508,8 +450,7 @@ def _exit_request_context(
             targets.append(app_ref)
 
     for target in targets:
-        _discard_active_request_session(target, session_id)
-        _clear_cached_session_refs(target, session, session_id)
+        _clear_cached_session_refs(target, session)
 
     if base_context is not None and session is not None:
         previous_session = getattr(bound_context, "_previous_upstream_session", None)
