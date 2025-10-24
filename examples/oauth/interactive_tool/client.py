@@ -86,7 +86,7 @@ async def main() -> None:
             print("[client] Invoking github_org_search...")
             result = await connection.call_tool(
                 "github_org_search",
-                {"query": "lastmileai"},
+                {"query": "lastmile-ai"},
             )
             print("[client] Result:")
             for item in result.content or []:

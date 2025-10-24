@@ -147,22 +147,52 @@ def _resolve_identity_for_request(
     identity = _CURRENT_IDENTITY.get()
     if identity is None and execution_id:
         identity = _get_identity_for_execution(execution_id)
-    if identity is None and app_context is not None:
-        session_id = getattr(app_context, "session_id", None)
-        identity = _session_identity_from_value(session_id)
-    if identity is None and ctx is not None:
-        session_id = _extract_session_id_from_context(ctx)
-        identity = _session_identity_from_value(session_id)
-    if identity is None and app_context is None and ctx is not None:
+    request_session_id: str | None = None
+    if ctx is not None:
+        request_session_id = _extract_session_id_from_context(ctx)
+    if app_context is None and ctx is not None:
         app = _get_attached_app(ctx.fastmcp)
         if app is not None and getattr(app, "context", None) is not None:
             app_context = app.context
+    if identity is None and request_session_id:
+        resolved = get_identity_for_session(request_session_id, app_context)
+        if resolved:
+            logger.debug(
+                "Resolved identity from session registry",
+                data={
+                    "session_id": request_session_id,
+                    "identity": resolved.cache_key,
+                },
+            )
+            identity = resolved
     if identity is None and app_context is not None:
         session_id = getattr(app_context, "session_id", None)
-        identity = _session_identity_from_value(session_id)
+        if session_id and session_id != request_session_id:
+            identity = get_identity_for_session(session_id, app_context)
     if identity is None:
         identity = DEFAULT_PRECONFIGURED_IDENTITY
     return identity
+
+
+def get_identity_for_session(
+    session_id: str | None, app_context: "Context" | None = None
+) -> OAuthUserIdentity | None:
+    """Lookup the cached identity for a given MCP session."""
+    if not session_id:
+        return None
+    if app_context is not None:
+        try:
+            identity = app_context.identity_registry.get(session_id)
+            if identity is not None:
+                return identity
+        except Exception:
+            pass
+    else:
+        logger.debug(
+            "No app context provided when resolving session identity",
+            data={"session_id": session_id},
+        )
+    return _session_identity_from_value(session_id)
 
 
 class ServerContext(ContextDependent):
@@ -250,14 +280,11 @@ def _set_upstream_from_request_ctx_if_available(ctx: MCPContext) -> None:
     # First, try to use the session property from the FastMCP Context
     session = None
     try:
-        session = (
-            ctx.session
-        )  # This accesses the property which returns ctx.request_context.session
+        session = ctx.session
     except (AttributeError, ValueError):
         # ctx.session property might raise ValueError if context not available
         pass
 
-    # Capture authenticated user information if available
     session_id = _extract_session_id_from_context(ctx)
     identity: OAuthUserIdentity | None = None
     try:
@@ -268,7 +295,6 @@ def _set_upstream_from_request_ctx_if_available(ctx: MCPContext) -> None:
     if isinstance(auth_user, AuthenticatedUser):
         access_token = getattr(auth_user, "access_token", None)
         if access_token is not None:
-            # Prefer enriched token instances but fall back to raw data if necessary
             try:
                 from mcp_agent.oauth.access_token import MCPAccessToken
 
@@ -277,37 +303,34 @@ def _set_upstream_from_request_ctx_if_available(ctx: MCPContext) -> None:
                 else:
                     token_dict = getattr(access_token, "model_dump", None)
                     if callable(token_dict):
-                        maybe_token = MCPAccessToken.model_validate(
-                            access_token.model_dump()
-                        )
-                identity = OAuthUserIdentity.from_access_token(maybe_token)
+                        maybe_token = MCPAccessToken.model_validate(token_dict())
+                        if maybe_token is not None:
+                            identity = OAuthUserIdentity.from_access_token(maybe_token)
             except Exception:
                 identity = None
 
+    app_context: "Context" | None = None
     app: MCPApp | None = _get_attached_app(ctx.fastmcp)
     if app is not None and getattr(app, "context", None) is not None:
+        app_context = app.context
         if session is not None:
-            app.context.upstream_session = session
-        if session_id and not getattr(app.context, "session_id", None):
-            app.context.session_id = session_id
+            app_context.upstream_session = session
 
-        app_session_id = getattr(app.context, "session_id", None)
-    else:
-        app_session_id = None
-
-    if app_session_id:
-        app_identity = _session_identity_from_value(app_session_id)
-        if identity is None or (
-            isinstance(identity, OAuthUserIdentity)
-            and identity.provider == "mcp-session"
-        ):
-            identity = app_identity
-
-    if identity is None:
+    if identity is None and session_id:
         identity = _session_identity_from_value(session_id)
 
     if identity is None:
         identity = DEFAULT_PRECONFIGURED_IDENTITY
+
+    if app_context is not None and session_id and identity is not None:
+        try:
+            app_context.identity_registry[session_id] = identity
+            logger.debug(
+                "Registered identity for session",
+                data={"session_id": session_id, "identity": identity.cache_key},
+            )
+        except Exception:
+            pass
 
     _set_current_identity(identity)
 
