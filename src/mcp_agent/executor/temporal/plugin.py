@@ -5,19 +5,19 @@ This plugin provides MCP Agent functionality as a Temporal plugin, allowing user
 MCP Agent capabilities to their Temporal workflows with a single line of configuration.
 """
 
-from contextlib import AbstractAsyncContextManager
-from typing import AsyncIterator, TYPE_CHECKING
+from collections.abc import Awaitable, Callable
+from dataclasses import replace
+from typing import  TYPE_CHECKING
 import warnings
 
 from temporalio.worker import (
-    Plugin as WorkerPlugin,
-    Replayer,
     ReplayerConfig,
-    Worker,
     WorkerConfig,
-    WorkflowReplayResult,
+    WorkflowRunner
 )
-from temporalio.client import ClientConfig, Plugin as ClientPlugin, WorkflowHistory
+from temporalio.plugin import SimplePlugin
+from temporalio.worker.workflow_sandbox import SandboxedWorkflowRunner
+from temporalio.client import ClientConfig
 from temporalio.contrib.pydantic import (
     PydanticPayloadConverter,
     pydantic_data_converter,
@@ -36,7 +36,42 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class MCPAgentPlugin(ClientPlugin, WorkerPlugin):
+def _data_converter(converter: DataConverter | None) -> DataConverter:
+    if converter and converter.payload_converter_class not in (
+        DefaultPayloadConverter,
+        PydanticPayloadConverter,
+    ):
+        warnings.warn(  # pragma: no cover
+            'A non-default Temporal data converter was used which has been replaced with the Pydantic data converter.'
+        )
+
+    return pydantic_data_converter
+
+def _workflow_runner(runner: WorkflowRunner | None) -> WorkflowRunner:
+    if not runner:
+        raise ValueError('No WorkflowRunner provided to the mcp-agent plugin.')
+
+    if isinstance(runner, SandboxedWorkflowRunner):
+        return replace(
+            runner,
+            restrictions=runner.restrictions.with_passthrough_modules(
+                "mcp_agent",
+                "mcp",
+                "rich",
+                "logging",
+                "opentelemetry",
+                "httpx",
+                "httpcore",
+                "sniffio",
+                "aiohttp",
+                "attrs",
+                "numpy",
+                "pydantic",
+            ),
+        )
+    return runner
+
+class MCPAgentPlugin(SimplePlugin):
     """
     Temporal plugin for integrating MCP Agent with Temporal workflows.
 
@@ -91,45 +126,29 @@ class MCPAgentPlugin(ClientPlugin, WorkerPlugin):
         # Register activities with the app so they're available in workflow context
         self._register_activities()
 
-    def init_client_plugin(self, next: ClientPlugin) -> None:
-        self.next_client_plugin = next
-
-    def init_worker_plugin(self, next: WorkerPlugin) -> None:
-        self.next_worker_plugin = next
+        super().__init__(
+            name="MCPAgentPlugin",
+            data_converter=_data_converter,
+            workflow_runner=_workflow_runner,
+            client_interceptors=[TracingInterceptor(), ContextPropagationInterceptor()],
+            worker_interceptors=[TracingInterceptor(), ContextPropagationInterceptor()],
+        )
 
     def configure_client(self, config: ClientConfig) -> ClientConfig:
         """Configure the Temporal client with MCP Agent settings."""
-        # Set up data converter
-        config["data_converter"] = self._get_new_data_converter(
-            config.get("data_converter")
-        )
-
-        # Add interceptors
-        interceptors = list(config.get("interceptors") or [])
-
-        # Add tracing if enabled
-        if self.context and getattr(self.context, "tracing_enabled", False):
-            interceptors.append(TracingInterceptor())
-
-        # Always add context propagation
-        interceptors.append(ContextPropagationInterceptor())
-
-        config["interceptors"] = interceptors
+        updated_config = super().configure_client(config)
 
         # Set namespace from config if available
         if self.temporal_config and self.temporal_config.namespace:
-            config["namespace"] = self.temporal_config.namespace
+            updated_config["namespace"] = self.temporal_config.namespace
+        return updated_config
 
-        return self.next_client_plugin.configure_client(config)
-
-    async def connect_service_client(self, config: ConnectConfig) -> ServiceClient:
+    async def connect_service_client(self, config: ConnectConfig, next: Callable[[ConnectConfig], Awaitable[ServiceClient]]) -> ServiceClient:
         """Configure service connection with MCP Agent settings from config."""
         # Apply connection settings from TemporalSettings config
         if self.temporal_config:
             if self.temporal_config.host:
                 config.target_host = self.temporal_config.host
-            if self.temporal_config.namespace:
-                config.namespace = self.temporal_config.namespace
             if self.temporal_config.api_key:
                 config.api_key = self.temporal_config.api_key
             if self.temporal_config.tls is not None:
@@ -141,8 +160,7 @@ class MCPAgentPlugin(ClientPlugin, WorkerPlugin):
                     **existing_metadata,
                     **self.temporal_config.rpc_metadata,
                 }
-
-        return await self.next_client_plugin.connect_service_client(config)
+        return await next(config)
 
     def _register_activities(self) -> None:
         """Register MCP Agent activities."""
@@ -238,105 +256,21 @@ class MCPAgentPlugin(ClientPlugin, WorkerPlugin):
 
             config["workflows"] = unique_workflows
 
-    def _configure_workflow_runner(self, config: dict) -> None:
-        """Configure workflow sandbox runner with MCP Agent modules.
-
-        This method modifies the config dict in place.
-        """
-        from temporalio.worker.workflow_sandbox import SandboxedWorkflowRunner
-        from dataclasses import replace
-
-        runner = config.get("workflow_runner")
-        if isinstance(runner, SandboxedWorkflowRunner):
-            # Disable most restrictions for MCP Agent workflows
-            # This is necessary because MCP Agent code uses many libraries that aren't workflow-safe by default
-            config["workflow_runner"] = replace(
-                runner,
-                restrictions=runner.restrictions.with_passthrough_modules(
-                    "mcp_agent",
-                    "mcp",
-                    "rich",
-                    "logging",
-                    "opentelemetry",
-                    "httpx",
-                    "httpcore",
-                    "sniffio",
-                    "aiohttp",
-                    "attrs",
-                    "numpy",
-                    "pydantic",
-                ),
-            )
-
-    def _configure_interceptors(self, config: dict) -> None:
-        """Configure interceptors for tracing and context propagation.
-
-        This method modifies the config dict in place.
-        """
-        interceptors = list(config.get("interceptors") or [])
-
-        # Add tracing if enabled
-        if self.context and getattr(self.context, "tracing_enabled", False):
-            interceptors.append(TracingInterceptor())
-
-        # Always add context propagation
-        interceptors.append(ContextPropagationInterceptor())
-
-        config["interceptors"] = interceptors
-
     def configure_worker(self, config: WorkerConfig) -> WorkerConfig:
         """Configure the worker with MCP Agent activities and settings."""
-        self._configure_activities(config)
+        updated_config = super().configure_worker(config)
 
-        self._configure_workflows(config)
-
-        self._configure_workflow_runner(config)
-
-        self._configure_interceptors(config)
+        self._configure_activities(updated_config)
+        self._configure_workflows(updated_config)
 
         # Set task queue from config if available (Worker-specific)
         if self.temporal_config and self.temporal_config.task_queue:
-            config["task_queue"] = self.temporal_config.task_queue
-
-        return self.next_worker_plugin.configure_worker(config)
-
-    async def run_worker(self, worker: Worker) -> None:
-        """Run the worker with MCP Agent context."""
-        # Set up any necessary context before running the worker
-        await self.next_worker_plugin.run_worker(worker)
+            updated_config["task_queue"] = self.temporal_config.task_queue
+        return updated_config
 
     def configure_replayer(self, config: ReplayerConfig) -> ReplayerConfig:
         """Configure the replayer with MCP Agent settings."""
-        # Configure data converter
-        config["data_converter"] = self._get_new_data_converter(
-            config.get("data_converter")
-        )
-
-        self._configure_workflows(config)
-
-        self._configure_workflow_runner(config)
-
-        self._configure_interceptors(config)
-
-        return self.next_worker_plugin.configure_replayer(config)
-
-    def run_replayer(
-        self,
-        replayer: Replayer,
-        histories: AsyncIterator[WorkflowHistory],
-    ) -> AbstractAsyncContextManager[AsyncIterator[WorkflowReplayResult]]:
-        """Run the replayer with MCP Agent context."""
-        return self.next_worker_plugin.run_replayer(replayer, histories)
-
-    def _get_new_data_converter(self, converter: DataConverter | None) -> DataConverter:
-        """Get or create a Pydantic data converter, warning if replacing a custom one."""
-        if converter and converter.payload_converter_class not in (
-            DefaultPayloadConverter,
-            PydanticPayloadConverter,
-        ):
-            warnings.warn(
-                "A non-default Temporal data converter was provided but has been replaced "
-                "with the Pydantic data converter for MCP Agent compatibility."
-            )
-
-        return pydantic_data_converter
+        updated_config = super().configure_replayer(config)
+        
+        self._configure_workflows(updated_config)
+        return updated_config

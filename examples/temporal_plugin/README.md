@@ -12,8 +12,8 @@ This example demonstrates multiple ways to use the Temporal plugin with MCP-Agen
 
 2. **API Keys**: Add your API keys to `mcp_agent.secrets.yaml`:
    ```yaml
-   OPENAI_API_KEY: "your-key-here"
-   ANTHROPIC_API_KEY: "your-key-here"  # optional
+    openai:
+      api_key: "your-key-here"
    ```
 
 3. **Configuration**: Set the execution engine to `temporal` in `mcp_agent.config.yaml`:
