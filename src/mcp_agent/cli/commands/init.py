@@ -133,8 +133,8 @@ def init(
     scaffolding_templates = {
         "basic": "Simple agent with filesystem and fetch capabilities",
         "server": "MCP server with workflow and parallel agents",
-        # "token": "Token counting example with monitoring",
-        # "factory": "Agent factory with router-based selection",
+        "token": "Token counting example with monitoring",
+        "factory": "Agent factory with router-based selection",
         "minimal": "Minimal configuration files only",
     }
 
@@ -382,10 +382,10 @@ def init(
                 files_created.append(created)
 
     elif template == "factory":
-        factory_path = dir / "factory.py"
+        factory_path = dir / "main.py"
         factory_content = _load_template("agent_factory.py")
         if factory_content and _write(factory_path, factory_content, force):
-            files_created.append("factory.py")
+            files_created.append("main.py")
             # Make executable
             try:
                 factory_path.chmod(factory_path.stat().st_mode | 0o111)
@@ -430,7 +430,7 @@ def init(
             console.print("   Watch token usage in real-time!")
         elif template == "factory":
             console.print("3. Customize agents in [cyan]agents.yaml[/cyan]")
-            console.print("4. Run the factory: [cyan]uv run factory.py[/cyan]")
+            console.print("4. Run the factory: [cyan]uv run main.py[/cyan]")
     elif template == "minimal":
         console.print("3. Create your agent script")
         console.print("   See examples: [cyan]mcp-agent init --list[/cyan]")
