@@ -1,3 +1,5 @@
+import asyncio
+
 import anyio
 import pytest
 
@@ -31,6 +33,9 @@ class FakeAggregator:
         self._server_to_prompt_map = {}
         self._namespaced_resource_map = {}
         self._server_to_resource_map = {}
+        self._tool_map_lock = asyncio.Lock()
+        self._prompt_map_lock = asyncio.Lock()
+        self._resource_map_lock = asyncio.Lock()
 
     def set_block(self, block: bool):
         self._block = block
