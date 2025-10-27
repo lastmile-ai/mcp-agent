@@ -11,16 +11,24 @@ Let's get you set up with a hello world mcp-agent!
 
 <Tabs>
   <Tab title="Use CLI (Recommended)">
-    ```bash
-    mkdir mcp-basic-agent
-    cd mcp-basic-agent
-    uvx mcp-agent init
-    uv init
-    uv add mcp-agent
-    uv sync
-    ```
+    <Steps>
+      <Step title="Create a folder">
+        ```bash
+        mkdir mcp-basic-agent
+        cd mcp-basic-agent
+        ```
+      </Step>
 
-    (Prefer pip? `pip install mcp-agent` works too.)
+      <Step title="Initialize your mcp-agent">
+        ```bash
+        uvx mcp-agent init
+        uv init
+        uv add mcp-agent
+        uv sync
+        ```
+        (Prefer pip? `python -m venv .venv && pip install mcp-agent` works too.)
+      </Step>
+    </Steps>
   </Tab>
   <Tab title="Do it manually">
     <Steps>
