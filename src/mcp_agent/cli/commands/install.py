@@ -39,6 +39,7 @@ from mcp_agent.cli.core.constants import (
     ENV_API_BASE_URL,
     ENV_API_KEY,
 )
+from mcp_agent.cli.core.utils import run_async
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.mcp_app.api_client import MCPAppClient
 from mcp_agent.cli.utils.ux import (
@@ -321,7 +322,7 @@ def install(
     )
 
     try:
-        app_info = mcp_client.get_app(server_url=server_url)
+        app_info = run_async(mcp_client.get_app(server_url=server_url))
         app_name = app_info.name if app_info else None
         print_info(f"App name: {app_name}")
     except Exception as e:
@@ -382,7 +383,7 @@ def install(
         )
         return
 
-    server_name = name or "mcp_agent"
+    server_name = name or app_name or "mcp_agent"
 
     transport = "sse" if server_url.rstrip("/").endswith("/sse") else "http"
 
