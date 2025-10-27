@@ -44,7 +44,7 @@
 Altogether, this is the simplest and easiest way to build robust agent applications. Much like MCP, this project is in early development.
 We welcome all kinds of [contributions](/CONTRIBUTING.md), feedback and your help in growing this to become a new standard.
 
-**NEW**: Ready to deploy? Publish your agents as managed MCP servers—see the [Deploy to Cloud guide](https://docs.mcp-agent.com/get-started/deploy-to-cloud).
+**NEW**: Ready to deploy? Publish your agents as managed MCP servers—see the [Deploy to Cloud guide](https://docs.mcp-agent.com/get-started/cloud).
 
 ## Get Started
 
