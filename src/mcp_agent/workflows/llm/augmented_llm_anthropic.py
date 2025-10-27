@@ -4,7 +4,17 @@ from typing import Any, Iterable, List, Type, Union, cast
 
 from pydantic import BaseModel
 
-from anthropic import Anthropic, AnthropicBedrock, AnthropicVertex, AsyncAnthropic
+from anthropic import (
+    Anthropic,
+    AnthropicBedrock,
+    AnthropicVertex,
+    AsyncAnthropic,
+    AuthenticationError,
+    BadRequestError,
+    NotFoundError,
+    PermissionDeniedError,
+    UnprocessableEntityError,
+)
 from anthropic.types import (
     ContentBlock,
     DocumentBlockParam,
@@ -38,6 +48,7 @@ from mcp.types import (
 # from mcp_agent.agents.agent import HUMAN_INPUT_TOOL_NAME
 from mcp_agent.config import AnthropicSettings
 from mcp_agent.executor.workflow_task import workflow_task
+from mcp_agent.executor.errors import to_application_error
 from mcp_agent.tracing.semconv import (
     GEN_AI_AGENT_NAME,
     GEN_AI_REQUEST_MODEL,
@@ -60,6 +71,14 @@ from mcp_agent.workflows.llm.augmented_llm import (
 )
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.workflows.llm.multipart_converter_anthropic import AnthropicConverter
+
+_NON_RETRYABLE_ANTHROPIC_ERRORS = (
+    AuthenticationError,
+    PermissionDeniedError,
+    BadRequestError,
+    NotFoundError,
+    UnprocessableEntityError,
+)
 
 MessageParamContent = Union[
     str,
@@ -100,6 +119,13 @@ def create_anthropic_instance(settings: AnthropicSettings):
     else:
         anthropic = Anthropic(api_key=settings.api_key)
     return anthropic
+
+
+async def _execute_anthropic_async(client: AsyncAnthropic, payload: dict) -> Message:
+    try:
+        return await client.messages.create(**payload)
+    except _NON_RETRYABLE_ANTHROPIC_ERRORS as exc:
+        raise to_application_error(exc, non_retryable=True) from exc
 
 
 class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
@@ -769,7 +795,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
 
 class AnthropicCompletionTasks:
     @staticmethod
-    @workflow_task
+    @workflow_task(retry_policy={"maximum_attempts": 3})
     @telemetry.traced()
     async def request_completion_task(
         request: RequestCompletionRequest,
@@ -777,22 +803,23 @@ class AnthropicCompletionTasks:
         """
         Request a completion from Anthropic's API.
         """
-        # Prefer async client where available to avoid blocking the event loop
+        payload = request.payload
+
         if request.config.provider in (None, "", "anthropic"):
             client = AsyncAnthropic(api_key=request.config.api_key)
-            payload = request.payload
-            response = await client.messages.create(**payload)
-            response = ensure_serializable(response)
-            return response
+            response = await _execute_anthropic_async(client, payload)
         else:
             anthropic = create_anthropic_instance(request.config)
-            payload = request.payload
             loop = asyncio.get_running_loop()
-            response = await loop.run_in_executor(
-                None, functools.partial(anthropic.messages.create, **payload)
-            )
-            response = ensure_serializable(response)
-            return response
+            try:
+                response = await loop.run_in_executor(
+                    None, functools.partial(anthropic.messages.create, **payload)
+                )
+            except _NON_RETRYABLE_ANTHROPIC_ERRORS as exc:
+                raise to_application_error(exc, non_retryable=True) from exc
+
+        response = ensure_serializable(response)
+        return response
 
 
 class AnthropicMCPTypeConverter(ProviderToMCPConverter[MessageParam, Message]):

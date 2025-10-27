@@ -4,6 +4,15 @@ $schema: ../../schema/mcp-agent.config.schema.json
 # Set the execution engine to Temporal
 execution_engine: "temporal"
 
+# Optional: preload modules that declare @workflow_task activities
+# workflow_task_modules:
+#   - my_project.custom_tasks
+
+# Optional: override retry behaviour for specific activities
+# workflow_task_retry_policies:
+#   my_project.custom_tasks.my_activity:
+#     maximum_attempts: 1
+
 # Temporal settings
 temporal:
   host: "localhost:7233" # Default Temporal server address

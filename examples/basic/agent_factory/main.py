@@ -29,17 +29,15 @@ async def route_prompt(
         context=context,
     )
 
-    response = await router.generate_str(prompt)
-    return response
+    return await router.generate_str(prompt)
 
 
 async def main():
     async with app.run() as agent_app:
-        route_res = await route_prompt(
+        result = await route_prompt(
             prompt="Find the README and summarize it", app_ctx=agent_app.context
         )
-
-        print("Routing result:", route_res)
+        print("Routing result:", result)
 
 
 if __name__ == "__main__":

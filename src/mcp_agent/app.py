@@ -1122,6 +1122,53 @@ class MCPApp:
 
         return decorator
 
+    def _get_configured_retry_policy(self, activity_name: str) -> Dict[str, Any] | None:
+        overrides = getattr(self.config, "workflow_task_retry_policies", None)
+        if not overrides:
+            return None
+
+        def coerce(policy: Any) -> Dict[str, Any]:
+            if policy is None:
+                return {}
+            if hasattr(policy, "to_temporal_kwargs"):
+                return policy.to_temporal_kwargs()
+            return dict(policy)
+
+        best_match: tuple[int, int, Dict[str, Any]] | None = None
+
+        def record(priority: int, length: int, policy_dict: Dict[str, Any]):
+            nonlocal best_match
+            candidate = (priority, length, policy_dict)
+            if best_match is None or candidate > best_match:
+                best_match = candidate
+
+        for key, policy_obj in overrides.items():
+            policy_dict = coerce(policy_obj)
+            if not policy_dict:
+                continue
+
+            if key == "*":
+                record(0, 0, policy_dict)
+                continue
+
+            if key.endswith("*"):
+                prefix = key[:-1]
+                if activity_name.startswith(prefix):
+                    record(1, len(prefix), policy_dict)
+                continue
+
+            if "." in key:
+                if activity_name == key:
+                    record(3, len(key), policy_dict)
+                elif activity_name.endswith(f".{key}"):
+                    record(2, len(key), policy_dict)
+                continue
+
+            if activity_name.split(".")[-1] == key:
+                record(2, len(key), policy_dict)
+
+        return best_match[2] if best_match else None
+
     def workflow_task(
         self,
         name: str | None = None,
@@ -1161,6 +1208,11 @@ class MCPApp:
                 "retry_policy": retry_policy or {},
                 **meta_kwargs,
             }
+
+            override_policy = self._get_configured_retry_policy(activity_name)
+            if override_policy:
+                existing_policy = metadata.get("retry_policy") or {}
+                metadata["retry_policy"] = {**existing_policy, **override_policy}
 
             # bookkeeping that survives partial/bound wrappers
             func.is_workflow_task = True
@@ -1235,6 +1287,14 @@ class MCPApp:
                 )
                 self._registered_global_workflow_tasks.add(activity_name)
                 continue
+
+            override_policy = self._get_configured_retry_policy(activity_name)
+            if override_policy:
+                existing_policy = metadata.get("retry_policy") or {}
+                metadata["retry_policy"] = {**existing_policy, **override_policy}
+
+            func.is_workflow_task = True
+            func.execution_metadata = metadata
 
             # Apply the engine-specific decorator if available
             task_defn = self._decorator_registry.get_workflow_task_decorator(

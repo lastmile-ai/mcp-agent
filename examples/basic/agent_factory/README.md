@@ -1,13 +1,15 @@
-Agent Factory
+# Agent Factory
 
-This folder shows how to define agents and compose powerful LLM workflows using the functional helpers in [`factory.py`](https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/workflows/factory.py).
+This folder shows how to define agents and compose powerful LLM workflows using the helpers in [`mcp_agent.workflows.factory`](https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/workflows/factory.py).
 
 What's included
 
 - `agents.yaml`: simple YAML agents
 - `mcp_agent.config.yaml`: enables auto-loading subagents from inline definitions and directories
 - `mcp_agent.secrets.yaml.example`: template for API keys
-- `load_and_route.py`: load agents and route via an LLM
+- `main.py`: load agents, register the `route_prompt` tool, and route requests
+- `run_worker.py`: Temporal worker (set `execution_engine: temporal` and run this in another terminal)
+- `load_and_route.py`: legacy script version of the routing demo
 - `auto_loaded_subagents.py`: discover subagents from config (Claude-style markdown and others)
 - `orchestrator_demo.py`: orchestrator-workers pattern
 - `parallel_demo.py`: parallel fan-out/fan-in pattern
@@ -21,7 +23,21 @@ cp examples/basic/agent_factory/mcp_agent.secrets.yaml.example examples/basic/ag
 # Fill in your provider API keys (OpenAI/Anthropic/etc.)
 ```
 
-2. Run an example
+2. Run the main demo
+
+```bash
+uv run examples/basic/agent_factory/main.py
+```
+
+To exercise the same workflow via Temporal, update `mcp_agent.config.yaml` to set `execution_engine: temporal`, start the worker in another terminal, then invoke the workflow:
+
+```bash
+uv run examples/basic/agent_factory/run_worker.py
+# ...in another terminal
+uv run examples/basic/agent_factory/main.py
+```
+
+Other demos in this folder remain available:
 
 ```bash
 uv run examples/basic/agent_factory/load_and_route.py
