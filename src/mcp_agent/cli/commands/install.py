@@ -28,7 +28,6 @@ import tempfile
 from copy import deepcopy
 from pathlib import Path
 from typing import Optional
-from urllib.parse import urlparse
 
 import typer
 from rich.panel import Panel
@@ -179,8 +178,6 @@ def _write_json(path: Path, data: dict) -> None:
                 os.remove(tmp_name)
         except Exception:
             pass
-
-
 
 
 def _build_server_config(
