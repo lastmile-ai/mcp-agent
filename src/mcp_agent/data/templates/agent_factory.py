@@ -12,7 +12,7 @@ from mcp_agent.workflows.factory import (
 app = MCPApp(name="factory_demo", description="Demo of agent factory with LLM routing")
 
 
-@app.tool()
+@app.async_tool()
 async def route_prompt(
     prompt: str = "Find the README and summarize it", app_ctx: Context | None = None
 ) -> str:

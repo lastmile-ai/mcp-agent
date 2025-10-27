@@ -133,7 +133,6 @@ def init(
     scaffolding_templates = {
         "basic": "Simple agent with filesystem and fetch capabilities",
         "server": "MCP server with workflow and parallel agents",
-        "token": "Token counting example with monitoring",
         "factory": "Agent factory with router-based selection",
         "minimal": "Minimal configuration files only",
     }
@@ -364,23 +363,6 @@ def init(
             if created:
                 files_created.append(created)
 
-    elif template == "token":
-        token_path = dir / "token_example.py"
-        token_content = _load_template("token_counter.py")
-        if token_content and _write(token_path, token_content, force):
-            files_created.append("token_example.py")
-            # Make executable
-            try:
-                token_path.chmod(token_path.stat().st_mode | 0o111)
-            except Exception:
-                pass
-
-        readme_content = _load_template("README_token.md")
-        if readme_content:
-            created = _write_readme(dir, readme_content, force)
-            if created:
-                files_created.append(created)
-
     elif template == "factory":
         factory_path = dir / "main.py"
         factory_content = _load_template("agent_factory.py")
@@ -425,9 +407,6 @@ def init(
             console.print(
                 "   Or serve: [cyan]mcp-agent dev serve --script main.py[/cyan]"
             )
-        elif template == "token":
-            console.print("3. Run the example: [cyan]uv run token_example.py[/cyan]")
-            console.print("   Watch token usage in real-time!")
         elif template == "factory":
             console.print("3. Customize agents in [cyan]agents.yaml[/cyan]")
             console.print("4. Run the factory: [cyan]uv run main.py[/cyan]")
@@ -459,7 +438,6 @@ def interactive(
     templates = {
         "1": ("basic", "Simple agent with filesystem and fetch"),
         "2": ("server", "MCP server with workflows"),
-        "3": ("token", "Token counting with monitoring"),
         "4": ("factory", "Agent factory with routing"),
         "5": ("minimal", "Config files only"),
     }

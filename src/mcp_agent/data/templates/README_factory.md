@@ -55,7 +55,7 @@ uv run mcp-agent deploy agent_factory
 The `deploy` command will bundle the app files and deploy them, wrapping your app as a hosted MCP SSE server with a URL of the form:
 `https://<server_id>.deployments.mcp-agent.com`.
 
-Anything decorated with `@app.tool` (or `@app.async_tool`) runs as a Temporal workflow in the cloud.
+Anything decorated with `@app.async_tool` (or `@app.tool`) runs as a Temporal workflow in the cloud.
 
 Since the mcp-agent app is exposed as an MCP server, it can be used in any MCP client just
 like any other MCP server. For example, you can inspect and test the server using MCP Inspector:
