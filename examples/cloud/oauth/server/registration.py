@@ -1,19 +1,19 @@
-import requests
 import json
 
-# Authorization server URL. This can either be the MCP Agent Clound authorization server (as currently configured),
+import requests
+from main import app
+
+# Authorization server URL. This can either be the mcp-agent Cloud authorization server (as currently configured),
 # or your own.
-auth_server_url = "https://auth.mcp-agent.com"
+auth_server_url = app.config.authorization.issuer_url
 redirect_uris = [
-    # These are the redirect URIs for MCP Inspector. Replace with your app's URIs.
-    "http://localhost:6274/oauth/callback",
-    "http://localhost:6274/oauth/callback/debug",
+    f"{app.config.oauth.callback_base_url}/oauth/callback",
+    f"{app.config.oauth.callback_base_url}/oauth/callback/debug",
 ]
-client_name = "My Python Application"
 
 # Fetch the registration endpoint dynamically from the .well-known/oauth-authorization-server details
 well_known_url = f"{auth_server_url}/.well-known/oauth-authorization-server"
-response = requests.get(well_known_url)
+response = requests.get(well_known_url, timeout=10)
 
 if response.status_code == 200:
     well_known_details = response.json()
@@ -26,7 +26,7 @@ else:
 
 # Client registration request
 registration_request = {
-    "client_name": client_name,
+    "client_name": app.config.name,
     "redirect_uris": redirect_uris,
     "grant_types": ["authorization_code", "refresh_token"],
     "scope": "mcp",
@@ -41,6 +41,7 @@ response = requests.post(
     registration_endpoint,
     json=registration_request,
     headers={"Content-Type": "application/json"},
+    timeout=10,
 )
 
 if response.status_code in [200, 201]:
