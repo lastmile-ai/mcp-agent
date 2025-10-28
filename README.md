@@ -101,7 +101,7 @@ if __name__ == "__main__":
     <td width="50%" valign="top">
       <h3>Full MCP Support</h3>
       <p><b>Core:</b> Tools ✅ Resources ✅ Prompts ✅ Notifications ✅<br/>
-      <b>Advanced</b>: OAuth ✅ Sampling ✅ Elicitation ✅ Roots </p>
+      <b>Advanced</b>: OAuth ✅ Sampling ✅ Elicitation ✅ Roots ✅</p>
       <p>
         <a href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp">Examples ↗</a> | 
         <a href="https://modelcontextprotocol.io/docs/getting-started/intro">MCP Docs ↗</a>
@@ -171,8 +171,8 @@ mcp-agent's complete documentation is available at **[docs.mcp-agent.com](https:
 
 > [!TIP]
 > The CLI is available via `uvx mcp-agent`.
-> To get up and running
-> Scaffold a project with `uvx mcp-agent init` and deploy with `uvx mcp-agent deploy my-agent`.
+> To get up and running,
+> scaffold a project with `uvx mcp-agent init` and deploy with `uvx mcp-agent deploy my-agent`.
 >
 > You can get up and running in 2 minutes by running these commands:
 >
@@ -199,20 +199,18 @@ Alternatively:
 pip install mcp-agent
 ```
 
-Also add optional packages for LLM providers (e.g. `mcp-agent[openai, anthropic, google, azure, bedrock]`).
+Also add optional packages for LLM providers (e.g. `uv add "mcp-agent[openai, anthropic, google, azure, bedrock]"`).
 
 ### Quickstart
 
 > [!TIP]
 > The [`examples`](/examples) directory has several example applications to get started with.
-> To run an example, clone this repo (or generate one with `uvx mcp-agent init --template basic --dir my-first-agent`), then:
+> To run an example, clone this repo (or generate one with `uvx mcp-agent init --template basic --dir my-first-agent`)
 >
 > ```bash
 > cd examples/basic/mcp_basic_agent # Or any other example
 > # Option A: secrets YAML
 > # cp mcp_agent.secrets.yaml.example mcp_agent.secrets.yaml && edit mcp_agent.secrets.yaml
-> # Option B: .env
-> cp .env.example .env && edit .env
 > uv run main.py
 > ```
 
