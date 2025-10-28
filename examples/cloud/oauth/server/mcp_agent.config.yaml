@@ -1,0 +1,12 @@
+$schema: ../../schema/mcp-agent.config.schema.json
+
+execution_engine: asyncio
+logger:
+  transports: [console]
+  level: debug
+
+authorization:
+  enabled: true
+  issuer_url: https://auth.mcp-agent.com
+  resource_server_url: http://localhost:8000
+  required_scopes: [mcp]
