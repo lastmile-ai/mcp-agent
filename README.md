@@ -122,7 +122,7 @@ if __name__ == "__main__":
       <p><b>Beta:</b> Deploy agents yourself, or use <b>mcp-c</b> for a managed agent runtime. All apps are deployed as MCP servers.</p>
       <p>
         <a href="https://www.youtube.com/watch?v=0C4VY-3IVNU">Demo ↗</a> |
-        <a href="https://docs.mcp-agent.com/get-started/deploy-to-cloud">Cloud Quickstart ↗</a> | 
+        <a href="https://docs.mcp-agent.com/get-started/cloud">Cloud Quickstart ↗</a> | 
         <a href="https://docs.mcp-agent.com/cloud/overview">Docs ↗</a>
       </p>
     </td>
@@ -974,7 +974,8 @@ You can use mcp-agent applications in a standalone fashion (i.e. they aren't par
 
 ### How do I deploy to Cloud?
 
-Run `uvx mcp-agent deploy <app-name>` after logging in with `uvx mcp-agent login`. The CLI packages your project, provisions secrets, and exposes an MCP endpoint backed by a durable Temporal runtime. See the [Cloud quickstart](https://docs.mcp-agent.com/get-started/deploy-to-cloud) for step-by-step screenshots and CLI output.
+Run `uvx mcp-agent deploy <app-name>` after logging in with `uvx mcp-agent login`. The CLI packages your project, provisions secrets, and exposes an MCP endpoint backed by a durable Temporal runtime. See the [Cloud quickstart](https://docs.mcp-agent.com/get-started/
+  cloud) for step-by-step screenshots and CLI output.
 
 ### Where is the API reference?
 
