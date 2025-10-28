@@ -11,7 +11,7 @@ OpenAI’s ChatGPT Apps platform can consume MCP servers as “Actions”. This 
 
 - ChatGPT Apps developer access
 - Deployed MCP server with **unauthenticated access enabled** (`mcp-agent deploy ... --no-auth`)
-- Optional: frontend bundle (React, vanilla JS) if you want rich widgets
+- Optional: frontend bundle (React, vanilla JS) if you want rich widgets; the bundle should have build output (JS, CSS) at web/build/static or web/dist/static
 
 ## Recommended project structure
 
@@ -19,7 +19,9 @@ OpenAI’s ChatGPT Apps platform can consume MCP servers as “Actions”. This 
 chatgpt-app/
 ├── main.py                    # MCP server (FastMCP or MCPApp)
 ├── web/                       # Front-end assets (React build)
-├── static/                    # Optional static resources
+│   ├── build/                 # React build (or dist) output
+│   │   └── static/            # Built static resources (JS, CSS, etc.)
+│   └── src/                   # Optional, your React source files
 ├── mcp_agent.config.yaml
 └── requirements.txt
 ```
