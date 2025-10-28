@@ -16,6 +16,7 @@ mcp:
       args: ["-y", "@modelcontextprotocol/server-filesystem"]
       description: "Read and write files on the filesystem"
 
-openai:
-  default_model: gpt-4o
-  # Secrets are loaded from mcp_agent.secrets.yaml
+otel:
+  enabled: true
+  service_name: "BasicObservabilityExample"
+  # OTLP exporter endpoint and headers are configured in mcp_agent.secrets.yaml
