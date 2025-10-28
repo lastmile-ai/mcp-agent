@@ -123,7 +123,7 @@ if __name__ == "__main__":
       <p>
         <a href="https://www.youtube.com/watch?v=0C4VY-3IVNU">Demo ↗</a> |
         <a href="https://docs.mcp-agent.com/get-started/cloud">Cloud Quickstart ↗</a> | 
-        <a href="https://docs.mcp-agent.com/cloud/overview">Docs ↗</a>
+        <a href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/cloud">Examples ↗</a>
       </p>
     </td>
   </tr>
