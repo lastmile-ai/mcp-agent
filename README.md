@@ -8,7 +8,7 @@
 <p align="center">
   <a href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples" target="_blank"><strong>Examples</strong></a>
   |
-  <a href="https://www.anthropic.com/research/building-effective-agents" target="_blank"><strong>Building Effective Agents</strong></a>
+  <a href="https://docs.mcp-agent.com/mcp-agent-sdk/effective-patterns/overview" target="_blank"><strong>Building Effective Agents</strong></a>
   |
   <a href="https://modelcontextprotocol.io/introduction" target="_blank"><strong>MCP</strong></a>
 </p>
@@ -16,7 +16,6 @@
 <p align="center">
 <a href="https://docs.mcp-agent.com"><img src="https://img.shields.io/badge/docs-8F?style=flat&link=https%3A%2F%2Fdocs.mcp-agent.com%2F" /><a/>
 <a href="https://pypi.org/project/mcp-agent/"><img src="https://img.shields.io/pypi/v/mcp-agent?color=%2334D058&label=pypi" /></a>
-<a href="https://github.com/lastmile-ai/mcp-agent/issues"><img src="https://img.shields.io/github/issues-raw/lastmile-ai/mcp-agent" /></a>
 <img alt="Pepy Total Downloads" src="https://img.shields.io/pepy/dt/mcp-agent?label=pypi%20%7C%20downloads"/>
 <a href="https://github.com/lastmile-ai/mcp-agent/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg"/></a>
 <a href="https://lmai.link/discord/mcp-agent"><img src="https://img.shields.io/badge/Discord-%235865F2.svg?logo=discord&logoColor=white" alt="discord"/></a>
@@ -30,25 +29,103 @@
 
 **`mcp-agent`** is a simple, composable framework to build agents using [Model Context Protocol](https://modelcontextprotocol.io/introduction).
 
-**Inspiration**: Anthropic announced 2 foundational updates for AI application developers:
+> [!Note]
+> mcp-agent's vision is that _MCP is all you need to build agents, and that simple patterns are more robust than complex architectures for shipping high-quality agents_.
 
-1. [Model Context Protocol](https://www.anthropic.com/news/model-context-protocol) - a standardized interface to let any software be accessible to AI assistants via MCP servers.
-2. [Building Effective Agents](https://www.anthropic.com/research/building-effective-agents) - a seminal writeup on simple, composable patterns for building production-ready AI agents.
+`mcp-agent` gives you the following:
 
-`mcp-agent` puts these two foundational pieces into an AI application framework:
+1. It fully implements MCP, and handles the pesky business of managing the lifecycle of MCP server connections so you don't have to.
+2. It implements every pattern described in Anthropic's [Building Effective Agents](https://www.anthropic.com/engineering/building-effective-agents) in a _composable_ way, allowing you to chain these patterns together.
+3. **Durable agents**: It works for simple agents and scales to sophisticated workflows built on [Temporal](https://temporal.io/) so you can pause, resume, and recover without any API changes to your agent.
 
-1. It handles the pesky business of managing the lifecycle of MCP server connections so you don't have to.
-2. It implements every pattern described in Building Effective Agents, and does so in a _composable_ way, allowing you to chain these patterns together.
-3. **Durable agents**: It works for simple agents and scales to sophisticated workflows built on [Temporal](https://temporal.io/) so you can pause, resume, and recover effortlessly.
+**Altogether, this is the simplest and easiest way to build robust agent applications**.
 
-Altogether, this is the simplest and easiest way to build robust agent applications. Much like MCP, this project is in early development.
-We welcome all kinds of [contributions](/CONTRIBUTING.md), feedback and your help in growing this to become a new standard.
+We welcome all kinds of [contributions](/CONTRIBUTING.md), feedback and your help in improving this.
 
-**NEW**: Ready to deploy? Publish your agents as managed MCP servers—see the [Deploy to Cloud guide](https://docs.mcp-agent.com/get-started/deploy-to-cloud).
+## At a glance
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <h3>Build an Agent</h3>
+      <p>Connect LLMs to MCP servers in simple, composable patterns like map-reduce, orchestrator, evaluator-optimizer, router & more.</p>
+      <p>
+        <a href="https://docs.mcp-agent.com/get-started/overview">Quick Start ↗</a> | 
+        <a href="https://docs.mcp-agent.com/mcp-agent-sdk/overview">Docs ↗</a>
+      </p>
+    </td>
+    <td width="50%" valign="top">
+      <h3>Create any kind of MCP Server</h3>
+      <p>Create MCP servers with a FastMCP-compatible API. You can even expose agents as MCP servers.</p>
+      <p>
+        <a href="https://docs.mcp-agent.com/mcp-agent-sdk/mcp/agent-as-mcp-server">MCP Agent Server ↗</a> | 
+        <a href="https://docs.mcp-agent.com/cloud/use-cases/deploy-chatgpt-apps">🎨 Build a ChatGPT App ↗</a> | 
+        <a href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp_agent_server">Examples ↗</a>
+      </p>
+    </td>
+  </tr>
+    <tr>
+    <td width="50%" valign="top">
+      <h3>Full MCP Support</h3>
+      <p><b>Core:</b> Tools ✅ Resources ✅ Prompts ✅ Notifications ✅<br/>
+      <b>Advanced</b>: OAuth ✅ Sampling ✅ Elicitation ✅ Roots </p>
+      <p>
+        <a href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp">Examples ↗</a> | 
+        <a href="https://modelcontextprotocol.io/docs/getting-started/intro">MCP Docs ↗</a>
+      </p>
+    </td>
+    <td width="50%" valign="top">
+      <h3>Durable Execution (Temporal)</h3>
+      <p>Scales to production workloads using Temporal as the agent runtime backend <i>without any API changes</i>.</p>
+      <p>
+        <a href="https://docs.mcp-agent.com/mcp-agent-sdk/advanced/durable-agents">Docs ↗</a> | 
+        <a href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/temporal">Examples ↗</a>
+      </p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <h3>☁️ Deploy to Cloud</h3>
+      <p><b>Beta:</b> Deploy agents yourself, or use `mcp-c` for a managed agent runtime. Agents are exposed as MCP servers.</p>
+      <p>
+        <a href="https://docs.mcp-agent.com/get-started/deploy-to-cloud">Cloud Quickstart ↗</a> | 
+        <a href="https://docs.mcp-agent.com/cloud/overview">Docs ↗</a>
+      </p>
+    </td>
+  </tr>
+</table>
+
+## Documentation
+
+mcp-agent's complete documentation is available at **[docs.mcp-agent.com](https://docs.mcp-agent.com)**, including full SDK guides, CLI reference, and advanced patterns. This readme gives a high-level overview to get you started.
+
+### Build with LLMs
+
+- [`llms-full.txt`](https://docs.mcp-agent.com/llms-full.txt): contains entire documentation.
+- [`llms.txt`](https://docs.mcp-agent.com/llms.txt): sitemap listing key pages in the docs.
+- [docs MCP server](https://docs.mcp-agent.com/mcp)
 
 ## Get Started
 
-We recommend using [uv](https://docs.astral.sh/uv/) to manage your Python projects:
+> [!TIP]
+> The CLI is available via `uvx mcp-agent`.
+> To get up and running
+> Scaffold a project with `uvx mcp-agent init` and deploy with `uvx mcp-agent deploy my-agent`.
+>
+> You can get up and running in 2 minutes by running these commands:
+>
+> ```bash
+> mkdir hello-mcp-agent && cd hello-mcp-agent
+> uvx mcp-agent init
+> uv init
+> uv add "mcp-agent[openai]"
+> # Add openai API key to `mcp_agent.secrets.yaml` or set `OPENAI_API_KEY`
+> uv run main.py
+> ```
+
+### Installation
+
+We recommend using [uv](https://docs.astral.sh/uv/) to manage your Python projects (`uv init`).
 
 ```bash
 uv add "mcp-agent"
@@ -60,8 +137,7 @@ Alternatively:
 pip install mcp-agent
 ```
 
-> [!TIP]
-> The CLI is available via `uvx`. Scaffold a project with `uvx mcp-agent init --template basic --dir my-agent` or deploy with `uvx mcp-agent deploy my-agent`.
+Also add optional packages for LLM providers (e.g. `mcp-agent[openai, anthropic, google, azure, bedrock]`).
 
 ### Quickstart
 
