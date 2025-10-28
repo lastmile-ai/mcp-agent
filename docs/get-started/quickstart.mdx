@@ -11,16 +11,31 @@ Let's get you set up with a hello world mcp-agent!
 
 <Tabs>
   <Tab title="Use CLI (Recommended)">
-    ```bash
-    mkdir mcp-basic-agent
-    cd mcp-basic-agent
-    uvx mcp-agent init
-    uv init
-    uv add mcp-agent
-    uv sync
-    ```
+    <Steps>
+      <Step title="Create a folder">
+        ```bash
+        mkdir mcp-basic-agent
+        cd mcp-basic-agent
+        ```
+      </Step>
 
-    (Prefer pip? `pip install mcp-agent` works too.)
+      <Step title="Initialize your mcp-agent">
+        ```bash
+        uvx mcp-agent init
+        uv init
+        uv add "mcp-agent[openai]"
+        uv sync
+        ```
+        (Prefer pip? `python -m venv .venv && pip install mcp-agent` works too.)
+      </Step>
+      <Step title="Add your model provider key">
+        In the `mcp_agent.secrets.yaml` in your project directory, add your OpenAI or other model provider key.
+        ```yaml mcp_agent.secrets.yaml
+        openai:
+          api_key: "your-openai-api-key"
+        ```
+      </Step>
+    </Steps>
   </Tab>
   <Tab title="Do it manually">
     <Steps>
@@ -34,7 +49,7 @@ Let's get you set up with a hello world mcp-agent!
       <Step title="Install dependencies with uv">
         ```bash
         uv init
-        uv add mcp-agent
+        uv add "mcp-agent[openai]"
         uv sync
         ```
 
@@ -43,7 +58,7 @@ Let's get you set up with a hello world mcp-agent!
 
       <Step title="Add configuration files">
         `mcp_agent.config.yaml`
-        ```yaml
+        ```yaml mcp_agent.config.yaml
         execution_engine: asyncio
         logger:
           transports: [console]
@@ -63,7 +78,7 @@ Let's get you set up with a hello world mcp-agent!
         ```
 
         `mcp_agent.secrets.yaml`
-        ```yaml
+        ```yaml mcp_agent.secrets.yaml
         openai:
           api_key: "your-openai-api-key"
         ```
@@ -71,7 +86,7 @@ Let's get you set up with a hello world mcp-agent!
 
       <Step title="Paste the hello world agent">
         `main.py`
-        ```python
+        ```python main.py
         import asyncio
         import os
         import time
@@ -150,4 +165,4 @@ uvx mcp-agent deploy
 
 - Check out the generated README (if you used the CLI) for tips on extending the agent.
 - Layer in more capabilities using the [Effective Patterns](/mcp-agent-sdk/effective-patterns/overview) guide.
-- Ready to deploy your agent? Follow [Deploy to Cloud](/get-started/deploy-to-cloud).
+- Ready to deploy your agent? Follow [Deploy to Cloud](/get-started/cloud).

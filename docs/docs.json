@@ -33,9 +33,9 @@
             "group": "Get Started",
             "pages": [
               "get-started/welcome",
-              "get-started/install",
               "get-started/quickstart",
-              "get-started/deploy-to-cloud"
+              "get-started/install",
+              "get-started/cloud"
             ]
           },
           {
