@@ -108,3 +108,4 @@ Integration touchpoints:
 - Metadata discovery + PKCE generation (pure python tests).
 - Integration-style test for delegated flow using mocked HTTP server + fake MCP client (ensures `auth/request` plumbing works end-to-end).
 - Tests around server 401 enforcement + WWW-Authenticate header.
+- 
