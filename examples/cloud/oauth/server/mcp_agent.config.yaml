@@ -1,5 +1,7 @@
 $schema: ../../schema/mcp-agent.config.schema.json
 
+name: my_mcp_agent_oauth_server
+
 execution_engine: asyncio
 logger:
   transports: [console]
@@ -7,6 +9,20 @@ logger:
 
 authorization:
   enabled: true
+  # Issuer URL advertised to clients (must resolve to provider metadata)
   issuer_url: https://auth.mcp-agent.com
+  # Base URL of the protected resource (used for discovery and validation).
+  # i.e. this server URL.
   resource_server_url: http://localhost:8000
+  # Scopes that clients must present when accessing this resource.
   required_scopes: [mcp]
+  # client_id and client_secret are provided via mcp_agent.secrets.yaml
+
+oauth:
+  # Base URL for internal callbacks (used when `use_internal_callback` is true).
+  callback_base_url: http://localhost:8000
+  # Maximum number of seconds to wait for an authorization callback before timing out.
+  flow_timeout_seconds: 300
+  token_store:
+    # Seconds before expiry when tokens should be refreshed.
+    refresh_leeway_seconds: 60
