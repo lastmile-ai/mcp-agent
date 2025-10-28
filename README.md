@@ -34,13 +34,45 @@
 
 `mcp-agent` gives you the following:
 
-1. It fully implements MCP, and handles the pesky business of managing the lifecycle of MCP server connections so you don't have to.
-2. It implements every pattern described in Anthropic's [Building Effective Agents](https://www.anthropic.com/engineering/building-effective-agents) in a _composable_ way, allowing you to chain these patterns together.
+1. **Full MCP support**: It _fully_ implements MCP, and handles the pesky business of managing the lifecycle of MCP server connections so you don't have to.
+2. **Effective agent patterns**: It implements every pattern described in Anthropic's [Building Effective Agents](https://www.anthropic.com/engineering/building-effective-agents) in a _composable_ way, allowing you to chain these patterns together.
 3. **Durable agents**: It works for simple agents and scales to sophisticated workflows built on [Temporal](https://temporal.io/) so you can pause, resume, and recover without any API changes to your agent.
 
-**Altogether, this is the simplest and easiest way to build robust agent applications**.
+<u>Altogether, this is the simplest and easiest way to build robust agent applications</u>.
 
-We welcome all kinds of [contributions](/CONTRIBUTING.md), feedback and your help in improving this.
+We welcome all kinds of [contributions](/CONTRIBUTING.md), feedback and your help in improving this project.
+
+**Minimal example**
+
+```python
+import asyncio
+
+from mcp_agent.app import MCPApp
+from mcp_agent.agents.agent import Agent
+from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
+
+app = MCPApp(name="hello_world")
+
+async def main():
+    async with app.run():
+        agent = Agent(
+            name="finder",
+            instruction="Use filesystem and fetch to answer questions.",
+            server_names=["filesystem", "fetch"],
+        )
+        async with agent:
+            llm = await agent.attach_llm(OpenAIAugmentedLLM)
+            answer = await llm.generate_str("Summarize README.md in two sentences.")
+            print(answer)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
+# Add your LLM API key to `mcp_agent.secrets.yaml` or set it in env.
+# The [Getting Started guide](https://docs.mcp-agent.com/get-started/overview) walks through configuration and secrets in detail.
+
+```
 
 ## At a glance
 
@@ -86,8 +118,9 @@ We welcome all kinds of [contributions](/CONTRIBUTING.md), feedback and your hel
   <tr>
     <td width="50%" valign="top">
       <h3>☁️ Deploy to Cloud</h3>
-      <p><b>Beta:</b> Deploy agents yourself, or use `mcp-c` for a managed agent runtime. Agents are exposed as MCP servers.</p>
+      <p><b>Beta:</b> Deploy agents yourself, or use <b>mcp-c</b> for a managed agent runtime. All apps are deployed as MCP servers.</p>
       <p>
+        <a href="https://www.youtube.com/watch?v=0C4VY-3IVNU">Demo ↗</a> |
         <a href="https://docs.mcp-agent.com/get-started/deploy-to-cloud">Cloud Quickstart ↗</a> | 
         <a href="https://docs.mcp-agent.com/cloud/overview">Docs ↗</a>
       </p>
@@ -95,15 +128,41 @@ We welcome all kinds of [contributions](/CONTRIBUTING.md), feedback and your hel
   </tr>
 </table>
 
-## Documentation
+## Documentation & build with LLMs
 
 mcp-agent's complete documentation is available at **[docs.mcp-agent.com](https://docs.mcp-agent.com)**, including full SDK guides, CLI reference, and advanced patterns. This readme gives a high-level overview to get you started.
-
-### Build with LLMs
 
 - [`llms-full.txt`](https://docs.mcp-agent.com/llms-full.txt): contains entire documentation.
 - [`llms.txt`](https://docs.mcp-agent.com/llms.txt): sitemap listing key pages in the docs.
 - [docs MCP server](https://docs.mcp-agent.com/mcp)
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Quickstart](#get-started)
+- [Why mcp-agent](#why-use-mcp-agent)
+- [Core concepts](#core-concepts)
+  - [MCPApp](#mcpapp)
+  - [Agents & AgentSpec](#agents--agentspec)
+  - [Augmented LLM](#augmented-llm)
+  - [Workflows & decorators](#workflows--decorators)
+  - [Configuration & secrets](#configuration--secrets)
+  - [MCP integration](#mcp-integration)
+- [Workflow patterns](#workflow-patterns)
+- [Durable execution](#durable-execution)
+- [Agent servers](#agent-servers)
+- [CLI reference](#cli-reference)
+- [Authentication](#authentication)
+- [Advanced](#advanced)
+  - [Observability & controls](#observability--controls)
+  - [Composing workflows](#composability)
+  - [Signals & human input](#signaling-and-human-input)
+  - [App configuration](#app-config)
+  - [MCP server management](#mcp-server-management)
+- [Cloud deployment](#cloud-deployment)
+- [Examples](#examples)
+- [FAQ](#faq)
+- [Community & contributions](#community--contributions)
 
 ## Get Started
 
