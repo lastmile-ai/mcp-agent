@@ -48,11 +48,25 @@ This gallery collects runnable projects from `/examples` that correspond to sect
 
 ## Spotlight demos
 
-- **Claude Desktop multi-agent evaluation** — [Video](https://github.com/user-attachments/assets/7807cffd-dba7-4f0c-9c70-9482fd7e0699) showing Claude Desktop connected to the `mcp_agent_server` orchestration workflow. Code: [`examples/basic/mcp_server_aggregator`](./examples/basic/mcp_server_aggregator/). Thanks to [Jerron Lim (@StreetLamb)](https://github.com/StreetLamb).
-- **Gmail Streamlit agent** — [Video](https://github.com/user-attachments/assets/54899cac-de24-4102-bd7e-4b2022c956e3) that drives Gmail actions (read/send/delete) via an MCP server from a Streamlit UI. Code: [gmail-mcp-server](https://github.com/jasonsum/gmail-mcp-server/blob/add-mcp-agent-streamlit/streamlit_app.py). Thanks to [Jason Summer (@jasonsum)](https://github.com/jasonsum).
-- **Streamlit RAG chatbot** — [Video](https://github.com/user-attachments/assets/f4dcd227-cae9-4a59-aa9e-0eceeb4acaf4) answering questions against a Qdrant corpus with MCP servers. Code: [`examples/usecases/streamlit_mcp_rag_agent`](./examples/usecases/streamlit_mcp_rag_agent/). Thanks to [Jerron Lim (@StreetLamb)](https://github.com/StreetLamb).
-- **Marimo file finder** — [Screenshot](https://github.com/user-attachments/assets/139a95a5-e3ac-4ea7-9c8f-bad6577e8597) of the Quickstart finder agent running inside [Marimo](https://github.com/marimo-team/marimo). Code: [`examples/usecases/marimo_mcp_basic_agent`](./examples/usecases/marimo_mcp_basic_agent/). Thanks to [Akshay Agrawal (@akshayka)](https://github.com/akshayka).
-- **Swarm airline workflow** — [Video](https://github.com/user-attachments/assets/b314d75d-7945-4de6-965b-7f21eb14a8bd) featuring the Swarm workflow for customer service handoffs. Code: [`examples/workflows/workflow_swarm`](./examples/workflows/workflow_swarm/).
+- **Claude Desktop multi-agent evaluation** — Claude Desktop connected to the `mcp_agent_server` orchestration workflow. Code: [`examples/basic/mcp_server_aggregator`](./examples/basic/mcp_server_aggregator/). Thanks to [Jerron Lim (@StreetLamb)](https://github.com/StreetLamb).
+
+  https://github.com/user-attachments/assets/7807cffd-dba7-4f0c-9c70-9482fd7e0699
+
+- **Gmail Streamlit agent** — Drives Gmail actions (read/send/delete) via an MCP server from a Streamlit UI. Code: [gmail-mcp-server](https://github.com/jasonsum/gmail-mcp-server/blob/add-mcp-agent-streamlit/streamlit_app.py). Thanks to [Jason Summer (@jasonsum)](https://github.com/jasonsum).
+
+  https://github.com/user-attachments/assets/54899cac-de24-4102-bd7e-4b2022c956e3
+
+- **Streamlit RAG chatbot** — Answers questions against a Qdrant corpus with MCP servers. Code: [`examples/usecases/streamlit_mcp_rag_agent`](./examples/usecases/streamlit_mcp_rag_agent/). Thanks to [Jerron Lim (@StreetLamb)](https://github.com/StreetLamb).
+
+  https://github.com/user-attachments/assets/f4dcd227-cae9-4a59-aa9e-0eceeb4acaf4
+
+- **Marimo file finder** — Screenshot of the Quickstart finder agent running inside [Marimo](https://github.com/marimo-team/marimo). Code: [`examples/usecases/marimo_mcp_basic_agent`](./examples/usecases/marimo_mcp_basic_agent/). Thanks to [Akshay Agrawal (@akshayka)](https://github.com/akshayka).
+
+  https://github.com/user-attachments/assets/139a95a5-e3ac-4ea7-9c8f-bad6577e8597
+
+- **Swarm airline workflow** — Customer service workflow built with the Swarm pattern. Code: [`examples/workflows/workflow_swarm`](./examples/workflows/workflow_swarm/).
+
+  https://github.com/user-attachments/assets/b314d75d-7945-4de6-965b-7f21eb14a8bd
 
 ---
 
