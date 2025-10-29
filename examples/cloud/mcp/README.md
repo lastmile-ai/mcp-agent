@@ -184,3 +184,15 @@ This will launch the MCP Inspector UI where you can:
 - See all available tools
 - Test workflow execution
 - View request/response details
+
+Make sure Inspector is configured with the following settings:
+
+| Setting          | Value                                               |
+| ---------------- | --------------------------------------------------- |
+| _Transport Type_ | _SSE_                                               |
+| _SSE_            | _https://[server_id].deployments.mcp-agent.com/sse_ |
+| _Header Name_    | _Authorization_                                     |
+| _Bearer Token_   | _your-mcp-agent-cloud-api-token_                    |
+
+> [!TIP]
+> In the Configuration, change the request timeout to a longer time period. Since your agents are making LLM calls, it is expected that it should take longer than simple API calls.
