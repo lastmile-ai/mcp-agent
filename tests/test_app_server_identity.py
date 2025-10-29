@@ -50,7 +50,6 @@ def test_set_upstream_updates_session_each_request():
         bound_ctx1, token1 = app_server._enter_request_context(ctx1)  # type: ignore[attr-defined]
 
         assert bound_ctx1.upstream_session is ctx1.session
-        assert bound_ctx1.upstream_session is ctx1.session
         assert app_context.upstream_session is ctx1.session
         assert "session-one" in app_context.identity_registry
         assert app_context.identity_registry["session-one"].subject == "session-one"
