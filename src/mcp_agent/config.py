@@ -1320,10 +1320,19 @@ def get_settings(config_path: str | None = None, set_global: bool = True) -> Set
                 key in merged
                 and isinstance(merged[key], list)
                 and isinstance(value, list)
-                and current_path == ("otel", "exporters")
+                and current_path
+                in {
+                    ("otel", "exporters"),
+                    ("workflow_task_modules",),
+                }
             ):
-                # Concatenate exporters lists from config and secrets
-                merged[key] = merged[key] + value
+                # Concatenate list-based settings while preserving order and removing duplicates
+                combined = merged[key] + value
+                deduped = []
+                for item in combined:
+                    if not any(existing == item for existing in deduped):
+                        deduped.append(item)
+                merged[key] = deduped
             else:
                 merged[key] = value
         return merged

@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from mcp.server.fastmcp import Context
+from mcp_agent.core.context import Context
 
 from mcp_agent.app import MCPApp
 from mcp_agent.workflows.factory import (
@@ -13,7 +13,10 @@ from mcp_agent.workflows.factory import (
     load_agent_specs_from_file,
 )
 
-from custom_tasks import knowledge_base_lookup_task
+try:
+    from .custom_tasks import knowledge_base_lookup_task
+except ImportError:  # pragma: no cover - executed when run as a script
+    from custom_tasks import knowledge_base_lookup_task
 
 app = MCPApp(
     name="cloud_agent_factory",

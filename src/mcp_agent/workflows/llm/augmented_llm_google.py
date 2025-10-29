@@ -39,14 +39,6 @@ from mcp_agent.workflows.llm.augmented_llm import (
 from mcp_agent.workflows.llm.multipart_converter_google import GoogleConverter
 from mcp_agent.tracing.token_tracking_decorator import track_tokens
 
-_NON_RETRYABLE_GOOGLE_ERRORS = (
-    google_exceptions.InvalidArgument,
-    google_exceptions.FailedPrecondition,
-    google_exceptions.PermissionDenied,
-    google_exceptions.NotFound,
-    google_exceptions.Unauthenticated,
-)
-
 if google_exceptions:
     _NON_RETRYABLE_GOOGLE_ERRORS = (
         google_exceptions.InvalidArgument,

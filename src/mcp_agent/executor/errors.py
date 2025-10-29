@@ -38,23 +38,36 @@ class WorkflowApplicationError(TemporalApplicationError):
         details: object | None = None,
         **kwargs: object,
     ):
-        self._workflow_details_fallback = details
+        normalized_details = details
+        if isinstance(normalized_details, tuple):
+            normalized_details = list(normalized_details)
+
+        self._workflow_details_fallback = normalized_details
+
         if _TEMPORAL_AVAILABLE:
-            super().__init__(message, type=type, non_retryable=non_retryable, **kwargs)
-            if details is not None:
-                setter = getattr(self, "set_details", None)
-                if callable(setter):
-                    setter(details)
-                else:  # pragma: no cover - unexpected behaviour
-                    try:
-                        setattr(self, "details", details)
-                    except AttributeError:
-                        pass
+            detail_args: tuple = ()
+            if normalized_details is not None:
+                if isinstance(normalized_details, list):
+                    detail_args = tuple(normalized_details)
+                else:
+                    detail_args = (normalized_details,)
+
+            super().__init__(
+                message,
+                *detail_args,
+                type=type,
+                non_retryable=non_retryable,
+                **kwargs,
+            )
+
             if not hasattr(self, "non_retryable"):
                 setattr(self, "non_retryable", non_retryable)
         else:
             super().__init__(
-                message, type=type, non_retryable=non_retryable, details=details
+                message,
+                type=type,
+                non_retryable=non_retryable,
+                details=normalized_details,
             )
 
     @property

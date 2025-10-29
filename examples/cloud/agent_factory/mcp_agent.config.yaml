@@ -7,7 +7,7 @@ workflow_task_modules:
   - custom_tasks # module path relative to sys.path (here, alongside main.py)
 
 workflow_task_retry_policies:
-  cloud_agent_factory.knowledge_base_lookup_task:
+  cloud_agent_factory.knowledge_base_lookup:
     maximum_attempts: 1
 
 # Temporal settings

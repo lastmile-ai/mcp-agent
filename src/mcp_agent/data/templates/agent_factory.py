@@ -1,7 +1,7 @@
 import asyncio
 from pathlib import Path
 
-from mcp.server.fastmcp import Context
+from mcp_agent.core.context import Context
 
 from mcp_agent.app import MCPApp
 from mcp_agent.workflows.factory import (

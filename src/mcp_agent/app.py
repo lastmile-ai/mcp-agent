@@ -1123,6 +1123,15 @@ class MCPApp:
         return decorator
 
     def _get_configured_retry_policy(self, activity_name: str) -> Dict[str, Any] | None:
+        """
+        Compute the retry policy override for a workflow task.
+
+        Matching precedence (highest first):
+        - Exact full activity name (e.g., ``package.module.task``)
+        - Dotted suffix match (``task`` or ``module.task``)
+        - Prefix wildcard (``package.*``), with longest prefix winning
+        - Global fallback (``*``)
+        """
         overrides = getattr(self.config, "workflow_task_retry_policies", None)
         if not overrides:
             return None

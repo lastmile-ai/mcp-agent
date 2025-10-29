@@ -9,7 +9,6 @@ What's included
 - `mcp_agent.secrets.yaml.example`: template for API keys
 - `main.py`: load agents, register the `route_prompt` tool, and route requests
 - `run_worker.py`: Temporal worker (set `execution_engine: temporal` and run this in another terminal)
-- `load_and_route.py`: legacy script version of the routing demo
 - `auto_loaded_subagents.py`: discover subagents from config (Claude-style markdown and others)
 - `orchestrator_demo.py`: orchestrator-workers pattern
 - `parallel_demo.py`: parallel fan-out/fan-in pattern
@@ -40,7 +39,6 @@ uv run examples/basic/agent_factory/main.py
 Other demos in this folder remain available:
 
 ```bash
-uv run examples/basic/agent_factory/load_and_route.py
 uv run examples/basic/agent_factory/orchestrator_demo.py
 uv run examples/basic/agent_factory/parallel_demo.py
 uv run examples/basic/agent_factory/auto_loaded_subagents.py

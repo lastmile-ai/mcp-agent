@@ -188,6 +188,7 @@ workflow_task_retry_policies:
   - Google GenAI: `InvalidArgument`, `FailedPrecondition`, `PermissionDenied`, `NotFound`, `Unauthenticated`.
 - mcp-agent raises `WorkflowApplicationError` (wrapping Temporal's `ApplicationError` when available) for known non-retryable provider failures, so these policies work even if you run without the Temporal extra installed.
 - Inspect an activity’s fully-qualified name via `func.execution_metadata["activity_name"]` or through the Temporal UI history when adding a mapping.
+- Temporal matches `non_retryable_error_types` using the exception class name string you supply (see the [RetryPolicy reference](https://docs.temporal.io/references/sdk-apis/python/temporalio.common/#temporalio-common-RetryPolicy)). Use the narrowest names possible—overly generic entries such as `NotFoundError` can suppress legitimate retries if a workflow expects to handle that condition and try again.
 
 With these pieces in place you can gradually introduce durability: start on asyncio, flip the config once you need retries/pause/resume, then iterate on policies and module preloading as your workflow surface grows.
 
