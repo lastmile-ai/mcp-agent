@@ -1,110 +1,96 @@
 ---
-title: mcp-agent cloud
-description: "[In beta] Deploy and manage AI agents as MCP servers"
+title: Deployment Overview
+sidebarTitle: "Overview"
+description: "Deploy mcp-agent applications to production"
+icon: rocket
 ---
 
-## Overview
+`mcp-agent` gives you one programming model that scales from a laptop to a managed cloud runtime. You can deploy full agents **and** standalone MCP servers (FastMCP services, ChatGPT App backends, bespoke tool APIs) without rewriting your app. This section maps the deployment options, explains when to reach for each path, and points to the detailed runbooks that follow.
 
-**mcp-agent cloud** deploys your agents as MCP servers, where agent workflows become long-running MCP tools executed in a durable workflow orchestration engine (Temporal). This architecture enables:
+## Why deploy with `mcp-agent`?
 
-- **Agents as MCP Servers**: Your agents are exposed as standard MCP servers that any MCP client can connect to
-- **Workflows as Durable Tools**: Agent workflows are exposed as MCP tools that run durably via Temporal
-- **Production-Ready Infrastructure**: Built-in retry logic, fault tolerance, and state persistence
+- **One protocol everywhere** – every deployment option exposes the same MCP endpoints (`call_tool`, `read_resource`, `list_prompts`). Any MCP client (Claude, Cursor, ChatGPT Apps, custom SSE client) can connect without rewriting code.
+- **Durable workflows when you need them** – the same decorators (`@app.tool`, `@app.async_tool`, `@app.workflow`) run on `asyncio` locally and on Temporal in the cloud. Pause/resume, retries, and human-in-the-loop all come along for free.
+- **Operational guardrails** – the CLI manages build artifacts, secrets, auth configuration, client installation, and observability so you can focus on agent logic.
 
-## Key Features
+<iframe
+  src="https://www.youtube.com/embed/0C4VY-3IVNU"
+  title="mcp-agent cloud overview"
+  width="100%"
+  height="420"
+  frameborder="0"
+  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+  allowfullscreen
+/>
 
-- **Agent Deployment**: Deploy agents as MCP servers accessible via HTTP/WebSocket
-- **Temporal Integration**: Durable workflow execution with automatic retries
-- **Secrets Management**: Secure storage and injection of API keys
-- **Monitoring**: Real-time logs, metrics, and workflow tracking
 
-## Preparing your mcp-agent app as a server
+## Deployment paths
 
-1. Double check that your entrypoint python file is named `main.py`
+- **Managed (mcp-c)** – `mcp-agent deploy` bundles your project, processes secrets, and ships it to our hosted environment. Agent workflows execute on Temporal, stdio MCP servers run as sidecar containers, and you get managed auth, logging, and tracing. [Learn the architecture →](/cloud/mcp-agent-cloud/architecture-overview)
+- **Bring-your-own Temporal** – point the same project at your self-hosted Temporal cluster for on-prem or air-gapped requirements. See [Durable agents](/mcp-agent-sdk/advanced/durable-agents) for configuration.
+- **Plain MCP servers** – use FastMCP or `@app.tool` only and deploy without workflows when you just need stateless tools. [Deploy an MCP server →](/cloud/mcp-agent-cloud/deploy-mcp-server)
+- **Local iteration** – run with `asyncio` on your laptop for rapid development and tests. Switch to Temporal when you are ready for durability.
 
-<Note>When packaging your mcp-agent app for the cloud, our CLI will be searching for `main.py`. The entire directory will be deployed, so you can reference other files and upload other assets.</Note>
+| Use case | Recommended path | What you get |
+| --- | --- | --- |
+| Prototype & debugging | `uv run main.py` or `mcp-agent dev start` | Hot reload, local logs, same decorators |
+| Durable agents in hours | `mcp-agent deploy` (managed) | Temporal-backed workflows, cloud logging, secrets, auth |
+| Regulated / on-prem | Self-hosted Temporal + `mcp_agent.config.yaml` overrides | Same workflow code, you manage infra |
+| Publish reusable MCP tools | FastMCP or `@app.tool` deployed via cloud | Standard MCP transport, installable from CLI |
 
-<Note>You can optionally exclude files from the bundle using an ignore file (gitignore syntax). Precedence: 1) `--ignore-file <path>` (explicit override), 2) `.mcpacignore` in `--config-dir`, 3) `.mcpacignore` in the working directory (CWD).</Note>
-
-2. Make sure you have either a `pyproject.toml` or a `requirements.txt` file in your app directory.
-
-3. Mark your functions that you'd like to be tool calls with the `@app.tool` decorators
-
-```python main.py
-# Your agent definition
-@app.tool
-async def research(query) -> str:
-  # this is where your agent logic exists (functions and calls)
-  return results
-
-# Becomes an MCP tool when deployed:
-# Tool: "research"
-```
-
-## Deploying your mcp-agent app
-
-1. Login into mcp-agent cloud to get your `api key`
+## Two-minute preview
 
 ```bash
-uv run mcp-agent login
+uv tool install mcp-agent          # Install the CLI
+mcp-agent login                    # Launch browser auth and create an API key
+mcp-agent deploy web-summarizer    # Bundle code, process secrets, push to the cloud
+mcp-agent install web-summarizer   # Add the MCP server to a client config
 ```
 
-2. Deploy your app
+The deployment produces a URL such as:
 
-```bash
-uv run mcp-agent deploy my-first-agent
+```
+https://<app_id>.deployments.mcp-agent.com
 ```
 
-<Note>During the deployment flow, you will be guided through how you'd like your secrets to be managed.</Note>
+`<app_id>` is the hostname printed by the CLI (for example, `app_abc123xyz`).
 
-## Connect to your deployed mcp-agent server
+Any MCP client can connect over SSE/WebSocket using your chosen auth mode.
 
-### Claude Desktop integration
+## What happens after deployment?
 
-Configure Claude Desktop to access your agent server
+1. **Temporal schedules your workflows** – every `@app.async_tool` and `@app.workflow` runs as a Temporal workflow with pause/resume, retries, and human input support.
+2. **Each stdio MCP server is containerized** – servers declared in `mcp_agent.config.yaml` run in sand-boxed containers with managed lifecycle.
+3. **Observability is turned on** – logs are streamed through the `mcp-agent cloud logger tail` API and you can forward traces to any OTLP endpoint.
+4. **Clients install with one command** – `mcp-agent install` or `mcp-agent cloud configure` writes the right headers/URLs into Claude Desktop, Cursor, VS Code, or ChatGPT Apps.
 
-```json .claude-desktop/config.json
-"my-agent-server": {
-  "command": "/path/to/npx",
-  "args": [
-    "mcp-remote",
-    "https://[your-agent-server-id].deployments.mcp-agent.com/sse",
-    "--header",
-    "Authorization: Bearer ${BEARER_TOKEN}"
-  ],
-  "env": {
-        "BEARER_TOKEN": "your-mcp-agent-cloud-api-token"
-      }
-}
-```
-
-### MCP Inspector
-
-Run your local MCP Inspector
-```bash
-npx @modelcontextprotocol/inspector 
-```
-
-Connect with the following settings
-| Setting | Value | 
-|---|---|
-| *Transport Type* | *SSE* |
-| *SSE* | *https://[your-agent-server-id].deployments.mcp-agent.com/sse* |
-| *Header Name* | *Authorization* | 
-| *Bearer Token* | *your-mcp-agent-cloud-api-token* |
+<img
+  src="https://github.com/user-attachments/assets/92118b28-07a9-4b00-8293-c8684c08ff35"
+  alt="Overview of the mcp-c platform"
+  width="940"
+  height="470"
+/>
 
 
-## Example Use Cases
+## Explore next
 
-Explore use cases in the [examples directory](https://github.com/lastmile-ai/mcp-agent/tree/main/examples):
-- [**Github to Slack agent**](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/usecases/mcp_github_to_slack_agent): Deploy an agent that will give you and your team a daily report of high-pri PRs and issues from github.
-- [**Research agent**](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/usecases/mcp_researcher): Deploy a research agent server to do a LLM-based research across the internet.
-- [**Financial analyzer agent**](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/usecases/mcp_financial_analyzer): Deploy a financial analyzer agent to research information about a specific company
-
-
-## Next Steps
-
-- [Getting Started Guide](/cloud/getting-started)
-- [CLI Reference](/cloud/cli-reference)
-- [Agent Server Documentation](/cloud/agent-server)
-- [Examples](https://github.com/lastmile-ai/mcp-agent/tree/main/examples)
+<CardGroup cols={2}>
+  <Card title="Deployment Quickstart" icon="rocket" href="/cloud/deployment-quickstart">
+    Hands-on walk-through from project to production
+  </Card>
+  <Card title="mcp-c" icon="cloud" href="/cloud/mcp-agent-cloud/overview">
+    Deep dive into the Cloud's architecture & lifecycle
+  </Card>
+  <Card title="Authentication" icon="shield-check" href="/cloud/authentication/overview">
+    Compare bearer tokens, OAuth, and unauthenticated modes
+  </Card>
+  <Card title="Observability" icon="chart-line" href="/cloud/observability">
+    Wire up OTEL exporters and live log streaming
+  </Card>
+  <Card title="Use cases" icon="diagram-project" href="/cloud/use-cases/deploy-agents">
+    Guides for agents, MCP servers, and ChatGPT Apps
+  </Card>
+  <Card title="CLI reference" icon="terminal" href="/reference/cli">
+    Full command catalog for automation and CI
+  </Card>
+</CardGroup>

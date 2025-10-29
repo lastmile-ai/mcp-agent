@@ -1,0 +1,442 @@
+---
+title: Configuration
+description: "Understand how mcp-agent loads settings, manages secrets, and connects to providers, servers, and telemetry backends."
+---
+
+## Overview
+
+`mcp-agent` reads configuration from YAML files, environment variables, and optional preload strings to assemble a `Settings` object that powers every `MCPApp`. This page explains the load order, file format, and key sections you will customize for local development, automated workflows, and MCP Agent Cloud deployments.
+
+<Tip>
+Use `uvx mcp-agent config builder` for an interactive wizard that generates both config and secrets files. Run `uvx mcp-agent config show --secrets` (or `uv run mcp-agent …` inside your project) at any time to see what the CLI discovers.
+</Tip>
+
+## How settings are loaded
+
+- **Preload string** — if `MCP_APP_SETTINGS_PRELOAD` is set, the CLI and `MCPApp` parse it first. Set `MCP_APP_SETTINGS_PRELOAD_STRICT=true` to fail fast on invalid YAML.
+- **Explicit paths** — CLI commands such as `dev serve --config` or code that calls `get_settings(config_path=...)` override the search logic.
+- **Discovered files** — `Settings.find_config()` and `Settings.find_secrets()` scan the current directory, each parent, `./.mcp-agent/`, and finally `~/.mcp-agent/`.
+- **Secrets merge** — `mcp_agent.secrets.yaml` is merged over the main config so sensitive values override defaults.
+- **Environment variables** — every field exposes aliases like `OPENAI_API_KEY`, `ANTHROPIC_DEFAULT_MODEL`, or nested keys such as `MCP__SERVERS__filesystem__args=...`. A `.env` file in the project root is read automatically.
+- **Programmatic overrides** — passing a `Settings` instance to `MCPApp(settings=...)` takes precedence over disk files.
+
+## Primary files
+
+<CardGroup cols={2}>
+  <Card title="mcp_agent.config.yaml" icon="gear">
+    Main configuration: execution engine, MCP servers, logging, providers, OAuth, and temporal settings.
+  </Card>
+  <Card title="mcp_agent.secrets.yaml" icon="key">
+    Sensitive material such as API keys, OAuth client secrets, and passwords. Always add this file to `.gitignore`.
+  </Card>
+</CardGroup>
+
+### Minimal example
+
+```yaml
+# mcp_agent.config.yaml
+name: research_agent
+execution_engine: asyncio
+
+logger:
+  transports: [console]
+  level: info
+  progress_display: true
+
+mcp:
+  servers:
+    fetch:
+      command: uvx
+      args: ["mcp-server-fetch"]
+    filesystem:
+      command: npx
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+
+openai:
+  default_model: gpt-4o-mini
+
+anthropic:
+  default_model: claude-3-5-sonnet-20241022
+```
+
+```yaml
+# mcp_agent.secrets.yaml
+openai:
+  api_key: sk-...
+
+anthropic:
+  api_key: sk-ant-...
+```
+
+### Programmatic configuration
+
+```python
+from mcp_agent.app import MCPApp
+from mcp_agent.config import Settings, MCPSettings, MCPServerSettings, LoggerSettings
+
+settings = Settings(
+    name="programmatic_agent",
+    logger=LoggerSettings(transports=["console"], level="debug"),
+    mcp=MCPSettings(
+        servers={
+            "fetch": MCPServerSettings(command="uvx", args=["mcp-server-fetch"]),
+        }
+    ),
+)
+
+app = MCPApp(settings=settings)
+```
+
+## Secrets management
+
+- Prefer storing secrets in `mcp_agent.secrets.yaml` or environment variables; the CLI and `get_settings()` automatically merge them.
+- For temporary runs (CI, notebooks), serialize a `Settings` instance and set `MCP_APP_SETTINGS_PRELOAD` to the YAML string. This keeps secrets out of disk.
+- When deploying with `mcp-agent deploy`, you will be prompted to classify each secret as developer- or user-provided; the CLI generates `mcp_agent.configured.secrets.yaml` with the required runtime schema.
+
+## Top-level keys
+
+| Key | Type | Purpose |
+| :-- | :--- | :------ |
+| `name`, `description` | `str` | Metadata used for logging and MCP server identification. |
+| `execution_engine` | `"asyncio"` \| `"temporal"` | Selects the workflow executor backend. |
+| `mcp` | `MCPSettings` | Defines all upstream MCP servers available to agents and workflows. |
+| `logger` | `LoggerSettings` | Controls console/file logging, batching, and progress display. |
+| `otel` | `OpenTelemetrySettings` | Configures tracing exporters for observability. |
+| `usage_telemetry` | `UsageTelemetrySettings` | Toggles anonymous usage metrics. |
+| `openai`, `anthropic`, `azure`, `google`, `bedrock`, `cohere` | Provider-specific settings | Establish API endpoints, defaults, and credentials. |
+| `agents` | `SubagentSettings` | Autoload additional agents from disk (Claude Code style). |
+| `authorization` | `MCPAuthorizationServerSettings` | Expose your app as an OAuth-protected MCP server. |
+| `oauth` | `OAuthSettings` | Global client OAuth defaults and token storage. |
+| `temporal` | `TemporalSettings` | Host, namespace, and queue information for durable workflows. |
+
+## Execution engine
+
+The default `asyncio` engine suits most agents:
+
+```yaml
+execution_engine: asyncio
+```
+
+Switch to Temporal when you need durable, resumable workflows:
+
+```yaml
+execution_engine: temporal
+temporal:
+  host: "${TEMPORAL_HOST:-localhost:7233}"
+  namespace: "prod"
+  task_queue: "mcp-agent-prod"
+  max_concurrent_activities: 25
+  timeout_seconds: 120
+  id_reuse_policy: allow_duplicate_failed_only
+  api_key: "${TEMPORAL_API_KEY}"
+```
+
+## Logging
+
+`LoggerSettings` controls the event logger used by `MCPApp`:
+
+```yaml
+logger:
+  transports: [console, file]
+  level: debug
+  progress_display: true
+  path_settings:
+    path_pattern: "logs/mcp-agent-{unique_id}.jsonl"
+    unique_id: timestamp
+    timestamp_format: "%Y%m%d_%H%M%S"
+```
+
+- `transports` accepts any combination of `console`, `file`, or `http`.
+- `path_settings` generates unique filenames per run without writing fragile scripts.
+- For HTTP logging, set `http_endpoint`, `http_headers`, and `batch_size`.
+
+## Tracing and usage telemetry
+
+Enable OpenTelemetry exporters to ship spans and metrics:
+
+```yaml
+otel:
+  enabled: true
+  sample_rate: 0.5
+  exporters:
+    - console
+    - file: {path: "traces/mcp-agent.jsonl"}
+    - otlp: {endpoint: "https://otel.example.com:4317", headers: {Authorization: "Bearer ${OTEL_TOKEN}"}}
+  service_name: "mcp-agent"
+  service_version: "1.2.0"
+```
+
+Usage telemetry is opt-in by default; disable if you prefer zero reporting:
+
+```yaml
+usage_telemetry:
+  enabled: false
+```
+
+## MCP servers
+
+Each entry in `mcp.servers` defines how to reach an upstream MCP server. Common patterns:
+
+```yaml
+mcp:
+  servers:
+    filesystem:
+      command: npx
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+      env:
+        DEBUG: "true"
+
+    fetch:
+      command: uvx
+      args: ["mcp-server-fetch"]
+
+    knowledge_api:
+      transport: streamable_http
+      url: "https://analysis.example.com/mcp"
+      headers:
+        Authorization: "Bearer ${API_TOKEN}"
+      http_timeout_seconds: 30
+      read_timeout_seconds: 120
+
+    websocket_demo:
+      transport: websocket
+      url: "wss://demo.example.com/mcp/ws"
+
+    remote_repo:
+      transport: sse
+      url: "https://git.example.com/mcp/sse"
+      auth:
+        api_key: "${REPO_TOKEN}"
+```
+
+- `allowed_tools` restricts which tools the LLM sees per server.
+- `roots` lets you remap local directories into server roots using `file://` URIs.
+- For long-running HTTP transports, set `terminate_on_close: false` to keep sessions alive.
+
+## Server authentication and OAuth
+
+Per-server `auth` blocks support API keys or OAuth clients:
+
+```yaml
+mcp:
+  servers:
+    github:
+      transport: streamable_http
+      url: "https://github.example.com/mcp"
+      auth:
+        oauth:
+          enabled: true
+          authorization_server: "https://github.com/login/oauth"
+          client_id: "${GITHUB_CLIENT_ID}"
+          client_secret: "${GITHUB_CLIENT_SECRET}"
+          scopes: ["repo", "user:email"]
+          redirect_uri_options:
+            - "http://127.0.0.1:33418/callback"
+          include_resource_parameter: false
+```
+
+Global OAuth defaults configure token storage and callback behaviour:
+
+```yaml
+oauth:
+  token_store:
+    backend: redis
+    redis_url: "redis://localhost:6379/2"
+    redis_prefix: "mcp_agent:oauth_tokens"
+  flow_timeout_seconds: 300
+  callback_base_url: "https://agent.example.com/internal/oauth"
+  loopback_ports: [33418, 33419]
+```
+
+To secure your own MCP server with OAuth 2.0, populate the `authorization` section:
+
+```yaml
+authorization:
+  enabled: true
+  issuer_url: "https://auth.example.com"
+  resource_server_url: "https://agent.example.com/mcp"
+  required_scopes: ["mcp.read", "mcp.write"]
+  introspection_endpoint: "https://auth.example.com/oauth/introspect"
+  introspection_client_id: "${INTROSPECTION_CLIENT_ID}"
+  introspection_client_secret: "${INTROSPECTION_CLIENT_SECRET}"
+  expected_audiences: ["agent.example.com"]
+```
+
+## Model providers
+
+### OpenAI-compatible APIs
+
+```yaml
+openai:
+  default_model: gpt-4o-mini
+  reasoning_effort: medium
+  base_url: "https://api.openai.com/v1"
+  user: "research-team"
+```
+
+- Override `base_url` to target OpenAI-compatible services such as Groq (`https://api.groq.com/openai/v1`), Together, or local Ollama (`http://localhost:11434/v1`). Provide a dummy `api_key` for services that do not check it.
+- Use `default_headers` to inject custom headers when talking to proxies or gateways.
+
+### Anthropic
+
+```yaml
+anthropic:
+  default_model: claude-3-5-sonnet-20241022
+  api_key: "${ANTHROPIC_API_KEY}"
+```
+
+Run Claude via Bedrock or Vertex AI by adjusting the provider and credentials:
+
+```yaml
+anthropic:
+  provider: bedrock
+  default_model: "anthropic.claude-3-5-sonnet-20241022-v2:0"
+  aws_region: "us-east-1"
+  aws_access_key_id: "${AWS_ACCESS_KEY_ID}"
+  aws_secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+```
+
+### Azure OpenAI
+
+```yaml
+azure:
+  endpoint: "https://my-resource.openai.azure.com"
+  api_key: "${AZURE_OPENAI_API_KEY}"
+  api_version: "2024-10-01-preview"
+  azure_deployment: "gpt-4o-mini"
+```
+
+Set `credential_scopes` if you authenticate with Entra ID tokens instead of API keys.
+
+### Google Gemini and Vertex AI
+
+```yaml
+google:
+  default_model: gemini-2.0-flash
+  api_key: "${GOOGLE_API_KEY}"
+  vertexai: false
+```
+
+Enable Vertex AI by toggling `vertexai` and providing project metadata:
+
+```yaml
+google:
+  vertexai: true
+  project: "my-gcp-project"
+  location: "us-central1"
+  default_model: "gemini-1.5-flash"
+```
+
+### Bedrock (generic) and Cohere
+
+```yaml
+bedrock:
+  aws_access_key_id: "${AWS_ACCESS_KEY_ID}"
+  aws_secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+  aws_region: "us-west-2"
+
+cohere:
+  api_key: "${COHERE_API_KEY}"
+```
+
+## Subagents
+
+Use `agents` to auto-load agent specifications from disk (Claude Code compatible):
+
+```yaml
+agents:
+  enabled: true
+  search_paths:
+    - ".claude/agents"
+    - "~/.mcp-agent/agents"
+  pattern: "**/*.json"
+  definitions:
+    - name: "reviewer"
+      instruction: "Review code for defects and summarize findings."
+      server_names: ["filesystem", "fetch"]
+```
+
+## Temporal configuration
+
+When `execution_engine` is `temporal`, every workflow and task decorator wires into the Temporal SDK. Ensure the queue name matches your worker process (`uv run mcp-temporal-worker ...`):
+
+```yaml
+temporal:
+  host: "${TEMPORAL_HOST}"
+  namespace: "agents"
+  task_queue: "agents-tasks"
+  max_concurrent_activities: 50
+  timeout_seconds: 300
+  rpc_metadata:
+    team: agents
+```
+
+## Example scenarios
+
+### Local development preset
+
+```yaml
+name: local_playground
+execution_engine: asyncio
+logger:
+  transports: [console]
+  level: debug
+  progress_display: true
+mcp:
+  servers:
+    filesystem:
+      command: npx
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+    fetch:
+      command: uvx
+      args: ["mcp-server-fetch"]
+openai:
+  default_model: gpt-4o-mini
+usage_telemetry:
+  enabled: false
+```
+
+### Production with Temporal and OAuth
+
+```yaml
+name: research_production
+execution_engine: temporal
+logger:
+  transports: [file]
+  level: info
+  path_settings:
+    path_pattern: "/var/log/mcp-agent/mcp-agent-{unique_id}.jsonl"
+    unique_id: session_id
+temporal:
+  host: "${TEMPORAL_SERVER}"
+  namespace: "production"
+  task_queue: "research-agents"
+  api_key: "${TEMPORAL_API_KEY}"
+authorization:
+  enabled: true
+  issuer_url: "https://auth.example.com"
+  resource_server_url: "https://research.example.com/mcp"
+  required_scopes: ["research.run"]
+oauth:
+  token_store:
+    backend: redis
+    redis_url: "${REDIS_URL}"
+mcp:
+  servers:
+    github:
+      transport: streamable_http
+      url: "https://api.example.com/github/mcp"
+      auth:
+        oauth:
+          enabled: true
+          authorization_server: "https://github.com/login/oauth"
+          client_id: "${GITHUB_CLIENT_ID}"
+          client_secret: "${GITHUB_CLIENT_SECRET}"
+          scopes: ["repo", "workflow"]
+openai:
+  default_model: gpt-4o
+anthropic:
+  default_model: claude-3-5-sonnet-20241022
+```
+
+For CLI usage, see the [CLI reference](/reference/cli), and explore decorator capabilities in the [Decorators reference](/reference/decorators).

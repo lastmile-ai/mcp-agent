@@ -1,0 +1,106 @@
+---
+title: Agent Evaluation
+sidebarTitle: "Agent Evaluation"
+description: "Evaluate agent performance and reliability"
+icon: robot
+---
+
+Agent evaluations treat your workflow as the system under test. Connect an mcp-agent-powered agent to `mcp-eval`, run realistic scenarios, and check that it uses tools correctly, follows instructions, and produces the expected outputs.
+
+<Info>
+  Use evaluations to confirm the agent behaves as expected before you release changes.
+</Info>
+
+<Tip>
+  The full agent playbook is at <a href="https://mcp-eval.ai/agent-evaluation">mcp-eval.ai/agent-evaluation</a>; reference it for extended patterns, datasets, and troubleshooting.
+</Tip>
+
+## Define the agent under test
+
+You can point `mcp-eval` at an `AgentSpec`, an instantiated `Agent`, or a factory that builds agents on demand. For example, to test the Finder agent from `examples/basic/mcp_basic_agent`:
+
+```python agent_under_test.py
+from mcp_eval import use_agent
+from mcp_agent.agents.agent_spec import AgentSpec
+
+use_agent(
+    AgentSpec(
+        name="finder",
+        instruction="Locate information via fetch or filesystem tools.",
+        server_names=["fetch", "filesystem"],
+    )
+)
+```
+
+Prefer factories when the agent keeps mutable state or long-lived connections:
+
+```python agent_factory.py
+from mcp_eval.config import use_agent_factory
+from mcp_agent.agents.agent import Agent
+
+def make_finder():
+    return Agent(
+        name="finder",
+        instruction="Locate information via fetch or filesystem.",
+        server_names=["fetch", "filesystem"],
+    )
+
+use_agent_factory(make_finder)
+```
+
+## Choose a test style
+
+- **Decorator tasks** (`@task`) are great for narrative scenarios and map cleanly to the patterns described in Anthropic’s *Building Effective Agents* paper.
+- **Pytest** works when you want to stay inside your existing test harness.
+- **Datasets** let you replay curated or generated cases against multiple agents.
+
+The official repo includes all three styles—see the fetch server example in `lastmile-ai/mcp-eval/examples/mcp_server_fetch/tests/`.
+
+## Write assertions that match agent expectations
+
+`Expect` covers tool usage, quality, efficiency, and performance. Combine multiple checks in a single run:
+
+```python agent_eval_test.py
+from mcp_eval import Expect, task
+
+@task("Finder summarizes Example Domain")
+async def test_finder_fetch(agent, session):
+    response = await agent.generate_str("Fetch https://example.com and summarize it.")
+
+    await session.assert_that(Expect.tools.was_called("fetch"))
+    await session.assert_that(Expect.tools.sequence(["fetch"], allow_other_calls=True))
+    await session.assert_that(
+        Expect.content.contains("Example Domain"), response=response
+    )
+    await session.assert_that(Expect.performance.max_iterations(3))
+    await session.assert_that(
+        Expect.judge.llm("Summary captures the main idea", min_score=0.8),
+        response=response,
+    )
+```
+
+Layer efficiency expectations with path validators to mirror the workflows you built using `mcp_agent.workflows.*`:
+
+```python path_validation.py
+await session.assert_that(
+    Expect.path.efficiency(expected_tool_sequence=["fetch"], allow_extra_steps=1)
+)
+```
+
+## Inspect metrics and spans
+
+Every evaluation captures telemetry you can read during or after the test:
+
+```python telemetry.py
+metrics = session.get_metrics()
+tool_latency = metrics.tools["fetch"].avg_latency_ms
+span_tree = session.get_span_tree()
+```
+
+Combine this with mcp-agent’s built-in tracing (`context.tracer`) to debug tool failures, retries, or human-input pauses.
+
+## Scenario ideas
+
+- **Regression suites** for workflows in `examples/workflows/`—verify orchestrators still call the same tool chain after prompt or model changes.
+- **Human-in-the-loop flows**—assert that `Expect.tools.was_called("__human_input__")` fires when you send a pause signal from the `SignalRegistry`.
+- **Multi-agent swarms**—ensure router decisions and downstream agents cooperate by validating tool sequences and final content.

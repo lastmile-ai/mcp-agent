@@ -1,0 +1,338 @@
+---
+title: Configuring Your Application
+sidebarTitle: "Configuring Your Application"
+description: "Learn how to configure mcp-agent applications"
+icon: gear
+---
+
+mcp-agent uses YAML configuration files to manage application settings, MCP servers, and model providers.
+
+## Configuration files
+
+Start with two YAML files at the root of your project:
+
+<CardGroup cols={2}>
+  <Card title="mcp_agent.config.yaml" icon="gear">
+    Application configuration, MCP servers, logging, execution engine, model defaults
+  </Card>
+  <Card title="mcp_agent.secrets.yaml" icon="key">
+    API keys, OAuth credentials, and other secrets (gitignored)
+  </Card>
+</CardGroup>
+
+See [Specify Secrets](/mcp-agent-sdk/core-components/specify-secrets) for credential management patterns and production tips.
+
+## Basic configuration
+
+Here's a minimal configuration:
+
+<CodeGroup>
+```yaml mcp_agent.config.yaml
+execution_engine: asyncio
+logger:
+  transports: [console]
+  level: info
+
+mcp:
+  servers:
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+
+openai:
+  default_model: gpt-4o
+```
+
+```yaml mcp_agent.secrets.yaml
+openai:
+  api_key: "sk-..."
+```
+</CodeGroup>
+
+## Execution Engine
+
+Choose how your workflows execute:
+
+<Tabs>
+  <Tab title="asyncio">
+    In-memory execution for development and simple deployments:
+
+    ```yaml
+    execution_engine: asyncio
+    ```
+
+    Best for:
+    - Local development
+    - Simple agents
+    - Quick prototyping
+  </Tab>
+
+  <Tab title="Temporal">
+    Durable execution with automatic retries and pause/resume:
+
+    ```yaml
+    execution_engine: temporal
+
+    temporal:
+      host: localhost:7233
+      namespace: default
+      task_queue: mcp-agent
+    ```
+
+    Best for:
+    - Production deployments
+    - Long-running workflows
+    - Human-in-the-loop agents
+  </Tab>
+</Tabs>
+
+[Learn more about Execution Engines →](/mcp-agent-sdk/core-components/execution-engine)
+
+## Logging
+
+Configure logging output and level:
+
+```yaml mcp_agent.config.yaml
+logger:
+  transports: [console, file]  # Output to console and file
+  level: info  # debug, info, warning, error
+  path: "logs/mcp-agent.jsonl"  # For file transport
+```
+
+You can also use dynamic log filenames:
+
+```yaml
+logger:
+  transports: [file]
+  level: debug
+  path_settings:
+    path_pattern: "logs/mcp-agent-{unique_id}.jsonl"
+    unique_id: "timestamp"  # Or "session_id"
+    timestamp_format: "%Y%m%d_%H%M%S"
+```
+
+[Learn more about Logging →](/mcp-agent-sdk/advanced/logging)
+
+## MCP Servers
+
+Define MCP servers your agents can connect to:
+
+```yaml mcp_agent.config.yaml
+mcp:
+  servers:
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+      description: "Fetch web content"
+
+    filesystem:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+      description: "Local filesystem access"
+
+    sqlite:
+      command: "uvx"
+      args: ["mcp-server-sqlite", "--db-path", "data.db"]
+      description: "SQLite database operations"
+```
+
+[Learn more about MCP Servers →](/mcp-agent-sdk/core-components/mcp-servers)
+
+## Model Providers
+
+Configure your LLM provider. Many examples follow this layout—for instance, the [basic finder agent](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/basic/mcp_basic_agent) sets OpenAI defaults exactly this way.
+
+<Tabs>
+  <Tab title="OpenAI">
+    ```yaml mcp_agent.config.yaml
+    openai:
+      default_model: gpt-4o
+      temperature: 0.7
+      max_tokens: 4096
+    ```
+
+    ```yaml mcp_agent.secrets.yaml
+    openai:
+      api_key: "sk-..."
+    ```
+  </Tab>
+
+  <Tab title="Anthropic">
+    ```yaml mcp_agent.config.yaml
+    anthropic:
+      default_model: claude-3-5-sonnet-20241022
+      temperature: 0.7
+      max_tokens: 4096
+    ```
+
+    ```yaml mcp_agent.secrets.yaml
+    anthropic:
+      api_key: "sk-ant-..."
+    ```
+  </Tab>
+
+  <Tab title="Azure OpenAI">
+    ```yaml mcp_agent.config.yaml
+    azure:
+      default_model: gpt-4o
+      api_version: "2024-02-15-preview"
+      azure_endpoint: "https://your-resource.openai.azure.com"
+    ```
+
+    ```yaml mcp_agent.secrets.yaml
+    azure:
+      api_key: "..."
+    ```
+  </Tab>
+
+  <Tab title="AWS Bedrock">
+    ```yaml mcp_agent.config.yaml
+    bedrock:
+      default_model: anthropic.claude-3-5-sonnet-20241022-v2:0
+      region: us-east-1
+    ```
+
+    ```yaml mcp_agent.secrets.yaml
+    bedrock:
+      aws_access_key_id: "..."
+      aws_secret_access_key: "..."
+    ```
+  </Tab>
+</Tabs>
+
+## OAuth configuration
+
+Two places control OAuth behaviour:
+
+1. **Global OAuth settings (`settings.oauth`)** configure token storage and callback behaviour (loopback ports, preload timeouts, Redis support).
+2. **Per-server auth (`mcp.servers[].auth.oauth`)** specifies client credentials, scopes, and provider overrides.
+
+```yaml mcp_agent.config.yaml
+oauth:
+  token_store:
+    backend: redis
+    redis_url: ${OAUTH_REDIS_URL}
+
+mcp:
+  servers:
+    github:
+      command: "uvx"
+      args: ["mcp-server-github"]
+      auth:
+        oauth:
+          enabled: true
+          client_id: ${GITHUB_CLIENT_ID}
+          client_secret: ${GITHUB_CLIENT_SECRET}
+          redirect_uri_options:
+            - "http://127.0.0.1:33418/callback"
+          include_resource_parameter: false
+```
+
+Pair this with secrets in `mcp_agent.secrets.yaml` or environment variables. For concrete walkthroughs, study the [OAuth basic agent](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/basic/oauth_basic_agent) and the [interactive OAuth tool](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/oauth/interactive_tool). The [pre-authorize workflow example](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/oauth/pre_authorize) shows how to seed credentials before a background workflow runs.
+
+## Programmatic configuration
+
+You can bypass file discovery by passing a fully-formed `Settings` object (or a path) to `MCPApp`. This is especially useful for tests and scripts that compose configuration dynamically.
+
+```python
+from mcp_agent.app import MCPApp
+from mcp_agent.config import Settings, OpenAISettings
+
+settings = Settings(
+    execution_engine="asyncio",
+    openai=OpenAISettings(
+        default_model="gpt-4o-mini",
+        temperature=0.3,
+    ),
+)
+
+app = MCPApp(name="dynamic", settings=settings)
+```
+
+Because `Settings` extends `BaseSettings`, environment variables still override any fields you set explicitly.
+
+## Configuration discovery
+
+When `MCPApp` starts, it resolves settings in this order:
+- `MCP_APP_SETTINGS_PRELOAD` / `MCP_APP_SETTINGS_PRELOAD_STRICT`
+- Explicit `settings` argument passed to `MCPApp`
+- `mcp_agent.config.yaml` (or `mcp-agent.config.yaml`) discovered in the working directory, parent directories, `.mcp-agent/` folders, or `~/.mcp-agent/`
+- `mcp_agent.secrets.yaml` / `mcp-agent.secrets.yaml` merged on top
+- Environment variables (including values from `.env`, using `__` for nesting)
+
+Environment variables override file-based values, while the preload option short-circuits everything else—handy for containerised deployments that mount secrets from a vault. [Specify Secrets](/mcp-agent-sdk/core-components/specify-secrets) covers strategies for each stage.
+
+## Environment Variables
+
+You can reference environment variables in configuration:
+
+```yaml mcp_agent.config.yaml
+openai:
+  default_model: ${OPENAI_MODEL:-gpt-4o}  # Default to gpt-4o
+
+temporal:
+  host: ${TEMPORAL_HOST:-localhost:7233}
+```
+
+<Tip>
+  Use environment variables for deployment-specific settings like endpoints and regions, while keeping model choices in the config file.
+</Tip>
+
+## Project Structure
+
+Recommended project layout:
+
+```
+your-project/
+├── agent.py                  # Your agent code
+├── mcp_agent.config.yaml     # Application configuration
+├── mcp_agent.secrets.yaml    # API keys (gitignored)
+├── .gitignore                # Ignore secrets file
+├── requirements.txt          # Python dependencies
+└── logs/                     # Execution logs
+```
+
+Add to `.gitignore`:
+
+```gitignore
+mcp_agent.secrets.yaml
+logs/
+*.log
+```
+
+## Complete Configuration Reference
+
+For all available configuration options, see the [Configuration Reference](/reference/configuration).
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Specify Secrets"
+    icon="key"
+    href="/mcp-agent-sdk/core-components/specify-secrets"
+  >
+    Learn about secrets management
+  </Card>
+  <Card
+    title="MCPApp"
+    icon="cube"
+    href="/mcp-agent-sdk/core-components/mcpapp"
+  >
+    Understand the application context
+  </Card>
+  <Card
+    title="Agents"
+    icon="robot"
+    href="/mcp-agent-sdk/core-components/agents"
+  >
+    Create your first agent
+  </Card>
+  <Card
+    title="Configuration Reference"
+    icon="book"
+    href="/reference/configuration"
+  >
+    Complete configuration documentation
+  </Card>
+</CardGroup>

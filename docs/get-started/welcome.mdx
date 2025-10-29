@@ -1,0 +1,90 @@
+---
+title: "Welcome to mcp-agent"
+sidebarTitle: "Welcome"
+description: Build effective agents with Model Context Protocol using simple, composable patterns.
+icon: hand-wave
+---
+
+<img
+  src="/logo/mcp-agent-logo.png"
+  alt="mcp-agent logo"
+  noZoom
+  className="rounded-2xl block"
+/>
+
+**mcp-agent** is your pattern library for building [Model Context Protocol](https://modelcontextprotocol.io/introduction) agents. It pairs Anthropic's [Building Effective Agents](https://www.anthropic.com/research/building-effective-agents) patterns with a batteries-included runtime so you can focus on agent behavior—not wiring.
+
+## Why teams pick mcp-agent
+
+<CardGroup cols={2}>
+  <Card title="Composable patterns" icon="puzzle-piece">
+    Parallel, router, planner, evaluator—every pattern from Anthropic's guide ships as a first-class workflow.
+  </Card>
+  <Card title="MCP-native" icon="plug">
+    Works with any MCP server. Drop in the filesystem, fetch, Slack, Jira, or your own FastMCP servers and start calling tools immediately.
+  </Card>
+  <Card title="Production ready" icon="shield">
+    Durable execution with Temporal, structured logging, token accounting, observability hooks, and cloud deployment via the CLI.
+  </Card>
+  <Card title="Lightweight & Pythonic" icon="feather">
+    Define an agent with a few lines of Python—mcp-agent handles the lifecycle, connections, and MCP server wiring for you.
+  </Card>
+</CardGroup>
+
+```python {1}
+import asyncio
+from mcp_agent.app import MCPApp
+from mcp_agent.agents.agent import Agent
+from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
+
+app = MCPApp(name="researcher")
+
+async def main():
+    async with app.run() as session:
+        agent = Agent(
+            name="researcher",
+            instruction="Use available tools to gather concise answers.",
+            server_names=["fetch", "filesystem"],
+        )
+
+        async with agent:
+            llm = await agent.attach_llm(OpenAIAugmentedLLM)
+            report = await llm.generate_str("Summarize the latest MCP news")
+            print(report)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Install the toolkit"
+    icon="arrow-down-to-line"
+    href="/get-started/install"
+  >
+    Set up Python, optional MCP servers, and run the `mcp-agent` CLI with `uvx`.
+  </Card>
+  <Card
+    title="Hello world in minutes"
+    icon="rocket-launch"
+    href="/get-started/quickstart"
+  >
+    Scaffold an agent with `uvx mcp-agent init` and run it locally.
+  </Card>
+  <Card
+    title="Deploy to the cloud"
+    icon="cloud"
+    href="/get-started/cloud"
+  >
+    Use `uvx mcp-agent deploy` to host your agent as a managed MCP server.
+  </Card>
+  <Card
+    title="Explore the patterns"
+    icon="diagram-project"
+    href="/mcp-agent-sdk/effective-patterns/overview"
+  >
+    Learn how to combine planner, router, evaluator, and more.
+  </Card>
+</CardGroup>

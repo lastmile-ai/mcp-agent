@@ -1,0 +1,181 @@
+---
+title: MCPApp
+sidebarTitle: "MCPApp"
+description: "The central application context for mcp-agent"
+icon: cube
+---
+
+## Overview
+
+`MCPApp` is the orchestration layer for every mcp-agent project. It boots the global `Context`, loads configuration, wires in logging and tracing, manages MCP server connections, and exposes workflows and tools to clients. If you think of agents, LLMs, and workflows as the “workers”, `MCPApp` is the runtime that keeps them coordinated.
+
+<CardGroup cols={2}>
+  <Card title="Configuration loader" icon="gear">
+    Discovers `mcp_agent.config.yaml`, merges `mcp_agent.secrets.yaml`, `.env`, and environment overrides, or uses explicit `Settings`
+  </Card>
+  <Card title="Runtime context" icon="stack">
+    Initialises the global `Context` with registries, executors, token stores, tracing, and logging
+  </Card>
+  <Card title="MCP integration" icon="plug">
+    Provides a FastMCP server façade so workflows and tools can be exposed over MCP
+  </Card>
+  <Card title="Decorator hub" icon="wand-magic-sparkles">
+    Supplies decorators that turn Python callables and classes into durable workflows and tools
+  </Card>
+</CardGroup>
+
+## Quick start
+
+The fastest way to use `MCPApp` is the pattern followed in the [finder agent example](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/basic/mcp_basic_agent):
+
+```python
+from mcp_agent.app import MCPApp
+
+app = MCPApp(name="research_assistant")
+
+async def main():
+    async with app.run() as running_app:
+        logger = running_app.logger
+        context = running_app.context
+        logger.info("App ready", data={"servers": list(context.server_registry.registry)})
+        # build agents, workflows, etc.
+```
+
+- `app.run()` initialises the context and cleans it up automatically.
+- `app.initialize()` / `app.cleanup()` are still available for advanced CLI or testing flows.
+- Keep one `MCPApp` per process; share it across agents, workflows, and custom tasks.
+
+You can see this pattern reused in examples such as [mcp_server_aggregator](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/basic/mcp_server_aggregator) and the OAuth samples.
+
+## Key properties
+
+Once initialised you gain access to the runtime building blocks via the `MCPApp` instance:
+
+- `app.context`: the shared `Context` object containing registries, token manager, `MCPApp` reference, and request helpers.
+- `app.config`: the resolved `Settings` model.
+- `app.logger`: a structured logger that automatically injects the session id and context.
+- `app.server_registry`: the `ServerRegistry` that tracks configured MCP servers.
+- `app.executor`: the active execution backend (`AsyncioExecutor` or `TemporalExecutor`).
+- `app.engine`: shorthand for `app.executor.execution_engine`.
+- `app.mcp`: the FastMCP server instance backing this application (when created).
+
+These properties make it straightforward to inspect configuration, open ephemeral MCP sessions, or schedule workflows inside your own code.
+
+## Supplying configuration explicitly
+
+`MCPApp` accepts multiple configuration entrypoints:
+
+- `settings=None` (default) discovers config/secrets automatically.
+- `settings="/path/to/mcp_agent.config.yaml"` loads an explicit file.
+- `settings=Settings(...)` reuses an existing `Settings` instance (for example when you derive from environment variables at runtime).
+
+Any constructor keyword arguments augment the runtime: 
+
+```python
+from mcp_agent.app import MCPApp
+from mcp_agent.config import Settings, OpenAISettings
+from mcp_agent.human_input.handler import console_input_callback
+
+app = MCPApp(
+    name="grader",
+    description="Grade essays with human-in-the-loop review",
+    settings=Settings(openai=OpenAISettings(default_model="gpt-4o-mini")),
+    human_input_callback=console_input_callback,
+    signal_notification=lambda signal: print(f"Workflow waiting on {signal}"),
+)
+```
+
+Common constructor hooks:
+- `human_input_callback` exposes human input as a tool.
+- `elicitation_callback` forwards elicitation responses from MCP clients.
+- `signal_notification` surfaces Temporal/asyncio workflow signal waits (great for dashboards).
+- `model_selector`: provide a custom `ModelSelector` implementation.
+- `session_id`: override the generated session identifier.
+
+## Automatic subagent loading
+
+When `settings.agents.enabled` is true, the app automatically discovers `AgentSpec` definitions from the configured search paths (and optional inline definitions) via `load_agent_specs_from_dir`. This creates a pool of reusable subagents that can be fetched inside workflows or factories without manual registration.
+
+```yaml
+agents:
+  enabled: true
+  search_paths:
+    - "./agents"
+    - "~/.mcp-agent/agents"
+```
+
+Discovered specs are available on `app.context.loaded_subagents`.
+
+## Observability and credentials
+
+During initialisation `MCPApp`:
+- Configures structured logging and progress reporting based on `settings.logger`.
+- Enables tracing when `settings.otel.enabled` is true, flushing exporters safely during cleanup.
+- Creates the shared `TokenManager` and `TokenStore` when OAuth is configured (`settings.oauth`), allowing downstream MCP servers to participate in delegated auth.
+- Installs a token counter when tracing is enabled so you can query usage (`await app.get_token_summary()`).
+
+### OAuth and delegated auth
+
+`MCPApp`’s OAuth integration is what powers the GitHub flows in the [OAuth basic agent](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/basic/oauth_basic_agent) and the server/client samples under [`examples/oauth`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/oauth):
+
+- If a server declares `auth.oauth`, the app injects `OAuthHttpxAuth` so connections can request tokens on demand.
+- Pre-seeded tokens (for example via `workflows-store-credentials`) are written to the configured token store (memory or Redis).
+- `app.context.token_manager` and `app.context.token_store` expose the runtime handles when you need custom automation.
+
+See [Specify Secrets](/mcp-agent-sdk/core-components/specify-secrets) for credential storage options and links to the reference examples.
+
+## Decorator toolkit
+
+`MCPApp` is the home for all decorators that transform plain Python into MCP-ready workflows and tools:
+
+- `@app.workflow`: register a workflow class (e.g. for Temporal orchestration).
+- `@app.workflow_run`: mark the entrypoint method on a workflow.
+- `@app.workflow_task`: declare reusable activities/tasks that work across engines.
+- `@app.workflow_signal`: register signal handlers (Temporal-compatible).
+- `@app.tool`: expose a function as a synchronous MCP tool (with auto-generated workflow bindings).
+- `@app.async_tool`: expose a long-running tool that returns workflow handles.
+
+When you export an MCP server (`create_mcp_server_for_app`), mcp-agent automatically emits additional tools like `workflows-run` and `workflows-get_status` for every decorated workflow.
+
+## Running as an MCP server
+
+`MCPApp` pairs with FastMCP to expose your application as an MCP server:
+
+```python
+from mcp_agent.mcp.server import create_mcp_server_for_app
+
+async def main():
+    async with app.run():
+        server = create_mcp_server_for_app(app)
+        await server.run_stdio_async()
+```
+
+You can also supply an existing `FastMCP` instance via the `mcp` parameter to piggyback on a shared server or embed the app into another MCP host.
+
+## Integrating with agents and workflows
+
+`app.context.server_registry` grants access to the configured MCP servers. Agents created inside the app automatically reuse the same registry and connection manager, and workflows scheduled through `app.executor` inherit the same `Context`.
+
+```python
+from mcp_agent.agents.agent import Agent
+from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
+
+async with app.run():
+    agent = Agent(
+        name="finder",
+        instruction="Use fetch + filesystem to answer questions",
+        server_names=["fetch", "filesystem"],
+        context=app.context,
+    )
+    async with agent:
+        llm = await agent.attach_llm(OpenAIAugmentedLLM)
+        summary = await llm.generate_str("Find the README and summarise it.")
+```
+
+Because everything shares the same `Context`, server connections, logging metadata, token counters, and tracing spans remain consistent across the stack.
+
+## Related reading
+
+- [Configuring Your Application](/mcp-agent-sdk/core-components/configuring-your-application)
+- [Connecting to MCP Servers](/mcp-agent-sdk/core-components/connecting-to-mcp-servers)
+- [Workflows and Decorators](/mcp-agent-sdk/core-components/workflows)

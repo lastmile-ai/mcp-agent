@@ -1,0 +1,111 @@
+---
+title: Cloud Quickstart
+description: "Deploy an MCP application to mcp-c in a couple of commands"
+icon: rocket
+---
+
+<Info>
+  **mcp-c** is in open beta. Share feedback via [GitHub](https://github.com/lastmile-ai/mcp-agent/issues) or [Discord](https://lmai.link/discord/mcp-agent).
+</Info>
+
+## TL;DR
+
+```bash
+uvx mcp-agent login
+uvx mcp-agent deploy my-agent
+uvx mcp-agent cloud servers describe my-agent
+```
+
+That is enough to put any MCP application—`mcp-agent` workflow, FastMCP server, or ChatGPT App backend—online. Deployments automatically run on the managed Temporal cluster; you do **not** need to configure Temporal hosts or queues yourself.
+
+The sections below add a little context and point to deeper guides when you are ready.
+
+## 1. Authenticate (one time)
+
+```bash
+uvx mcp-agent login
+```
+
+The CLI opens a browser window so you can sign in with GitHub or Google and generate an API key. Credentials are cached under `~/.mcp-agent/credentials.json`. In CI, set the `MCP_API_KEY` environment variable instead.
+
+## 2. Confirm your project layout
+
+Minimal structure:
+
+```
+my-agent/
+├── main.py
+├── mcp_agent.config.yaml
+└── (optional) mcp_agent.secrets.yaml
+```
+
+`mcp_agent.config.yaml` just needs to describe your app. You can keep `execution_engine: temporal` if you already use it locally, but the cloud service will always launch your code on Temporal automatically.
+
+Example:
+
+```yaml mcp_agent.config.yaml
+name: web_summarizer
+logger:
+  transports: [console]
+
+mcp:
+  servers:
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+
+openai:
+  default_model: gpt-4o
+```
+
+If your app needs API keys, place them in `mcp_agent.secrets.yaml` (details in [Manage secrets](/cloud/mcp-agent-cloud/manage-secrets)).
+
+## 3. Deploy
+
+```bash
+uvx mcp-agent deploy web-summarizer
+```
+
+The CLI bundles the current directory, prompts you to classify secrets (deployment vs. user), uploads the bundle, and provisions the runtime. On success you will see something like:
+
+```
+✓ Deployed app ID: app_abc123xyz
+   Server URL: https://app_abc123xyz.deployments.mcp-agent.com
+   Status: ONLINE
+```
+
+Redeploy with the same name to ship updates. Useful flags:
+
+- `--config-dir <path>` – deploy from another directory.
+- `--non-interactive` – reuse stored secrets (CI/CD).
+- `--dry-run` – validate without uploading.
+
+## 4. Check status & logs
+
+```bash
+uvx mcp-agent cloud servers describe app_abc123xyz
+uvx mcp-agent cloud logger tail app_abc123xyz --follow
+```
+
+`describe` prints the endpoint, auth mode, and worker status. `logger tail` streams application logs; add `--since 30m` or `--grep "ERROR"` as needed. All other operational commands are listed on the [cloud overview](/cloud/mcp-agent-cloud/overview).
+
+## 5. Configure clients
+
+Most deployments need per-user credentials. Prompt users (or your CI job) with:
+
+```bash
+uvx mcp-agent cloud configure --id https://app_abc123xyz.deployments.mcp-agent.com
+```
+
+Then install the server into your favourite MCP client:
+
+- **Claude Desktop / Cursor / VS Code / ChatGPT** – `uvx mcp-agent install --client <client> https://app_abc123xyz.deployments.mcp-agent.com/sse`
+- **ChatGPT Apps** – deploy with `--no-auth` and register the SSE endpoint in the Apps dashboard.
+- **Python** – add the server endpoint to your MCP client config ([see guide](/cloud/mcp-agent-cloud/use-deployed-server)).
+
+## Going further
+
+- [Cloud overview](/cloud/mcp-agent-cloud/overview) – architecture, auth, observability.
+- [Long-running tools](/cloud/mcp-agent-cloud/long-running-tools) – design durable workflows.
+- [Manage secrets](/cloud/mcp-agent-cloud/manage-secrets) – developer vs. user secrets.
+- [Use a deployed server](/cloud/mcp-agent-cloud/use-deployed-server) – client setup recipes.

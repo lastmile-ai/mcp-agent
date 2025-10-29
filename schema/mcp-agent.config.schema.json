@@ -698,22 +698,7 @@
           "title": "Jwks Uri",
           "description": "Optional JWKS endpoint for validating JWT access tokens."
         },
-        "introspection_endpoint": {
-          "anyOf": [
-            {
-              "format": "uri",
-              "minLength": 1,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Introspection Endpoint",
-          "description": "Optional OAuth introspection endpoint for opaque tokens."
-        },
-        "introspection_client_id": {
+        "client_id": {
           "anyOf": [
             {
               "type": "string"
@@ -723,10 +708,10 @@
             }
           ],
           "default": null,
-          "title": "Introspection Client Id",
+          "title": "Client Id",
           "description": "Client id to use when calling the introspection endpoint."
         },
-        "introspection_client_secret": {
+        "client_secret": {
           "anyOf": [
             {
               "type": "string"
@@ -736,7 +721,7 @@
             }
           ],
           "default": null,
-          "title": "Introspection Client Secret",
+          "title": "Client Secret",
           "description": "Client secret to use when calling the introspection endpoint."
         },
         "token_cache_ttl_seconds": {

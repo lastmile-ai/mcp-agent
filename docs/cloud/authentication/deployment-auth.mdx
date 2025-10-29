@@ -1,0 +1,102 @@
+---
+title: Deployment Auth
+sidebarTitle: "Deployment Auth"
+description: "Configure authentication for deployed MCP servers"
+icon: key
+---
+
+Every deployment needs an explicit stance on who can call its tools. This page covers the options supported today and what’s coming next.
+
+## 1. Bearer token authentication (default)
+
+- Each user runs `mcp-agent login` to obtain an API key (`lm_mcp_api_*`).
+- Keys are stored locally (`~/.config/mcp-agent/credentials.json`) and can also be provided via the `MCP_API_KEY` environment variable (CI, containers).
+- Clients include the key in the `Authorization: Bearer <token>` header.
+- Deployments validate the token before executing requests.
+
+### Share instructions with users
+
+```
+1. Install mcp-agent (uv tool install mcp-agent)
+2. Run mcp-agent login and follow the browser prompts
+3. Configure the client (mcp-agent install ... --client claude_desktop)
+```
+
+### Rotate or revoke
+
+- Re-run `mcp-agent login` to issue a new key (old keys will stop working).
+- Delete the key file to force re-authentication.
+- Per-user revocation UI is on the roadmap; in the interim contact support if a key is compromised.
+
+### CLI recap
+
+```bash
+mcp-agent login                # browser flow
+mcp-agent cloud auth whoami    # confirm identity
+mcp-agent install <url> --client cursor  # writes config with Authorization header
+```
+
+## 2. Unauthenticated access (`--no-auth`)
+
+Use this mode for public servers, demos, or ChatGPT Apps (which cannot provide custom headers).
+
+```bash
+mcp-agent deploy blog-tools --no-auth
+```
+
+- Anyone with the server URL can call it.
+- Logs still capture caller metadata (IP, user agent) for monitoring.
+- You can re-enable auth later:
+
+  ```bash
+  mcp-agent deploy blog-tools --auth
+  ```
+
+  (`--auth` toggles `unauthenticatedAccess` back to false.)
+
+> For apps deployed without auth, consider rate limiting or requiring custom user-provided secrets to avoid abuse.
+
+## 3. OAuth 2.1 (coming soon, preview)
+
+The upcoming release implements the MCP OAuth specification across three surfaces:
+
+1. **Authorization server** (control plane)  
+   - Metadata endpoint: `/.well-known/oauth-authorization-server`  
+   - Supports Google + GitHub providers initially  
+   - Issues access & refresh tokens
+2. **Resource server** (your deployment)  
+   - Implements `/.well-known/oauth-protected-resource` (RFC 9728)  
+   - Validates JWTs or proxies to token introspection  
+   - Allows per-scope access control (e.g., `read`, `write`, `admin`)
+3. **Client tooling**  
+   - `mcp-agent install` and `mcp-agent cloud configure` will drive the auth flow for supported clients (browser-based loopback or device code).
+
+Keep an eye on release notes for timelines. The migration will be additive—existing bearer-token flows continue to work.
+
+## 4. Combining with secrets management
+
+- Store long-lived service credentials in `mcp_agent.secrets.yaml` as deployment secrets; the runtime injects them securely.
+- Ask end-users for their own credentials via `mcp-agent cloud configure` (user secrets). You can enforce domain restrictions or other policies in code when processing those secrets.
+
+## 5. Security best practices
+
+<AccordionGroup>
+  <Accordion title="Least privilege">
+    Only expose tools/resources that need to be public. For internal deployments, keep `--auth` enabled and share API keys via secure channels.
+  </Accordion>
+  <Accordion title="Audit logs">
+    The platform records every API call (user, timestamp, tool, outcome). A user-facing audit surface is planned—ask the team if you need access before it ships.
+  </Accordion>
+  <Accordion title="Secret rotation">
+    Rotate provider API keys regularly. Redeploy with updated secrets; the CLI invalidates old handles automatically.
+  </Accordion>
+  <Accordion title="Client distribution">
+    Provide install scripts (`mcp-agent install`) rather than asking users to edit config files manually. This reduces the risk of misconfigured auth headers.
+  </Accordion>
+</AccordionGroup>
+
+## References
+
+- [Authentication overview →](/cloud/authentication/overview)
+- [External MCP server auth (downstream credentials) →](/cloud/authentication/external-mcp-auth)
+- [Secrets management →](/cloud/mcp-agent-cloud/manage-secrets)

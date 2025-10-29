@@ -1,0 +1,105 @@
+---
+title: "Authentication"
+sidebarTitle: "Authentication"
+description: "Secure outbound MCP server access and protect your agent endpoints"
+icon: lock
+---
+
+mcp-agent supports both sides of authentication:
+
+- **Outbound** – the agent authenticates to downstream MCP servers or third-party APIs (OAuth 2.1, API keys, service accounts).
+- **Inbound** – the agent itself acts as an OAuth-protected MCP server, validating bearer tokens before exposing tools or workflows.
+
+This page summarises the configuration surface and points to working examples. For protocol details, see the [Model Context Protocol authentication spec](https://modelcontextprotocol.io/specification/2025-06-18/server/authentication).
+
+## Authenticating to downstream MCP servers
+
+### OAuth 2.1
+
+Use the `mcp.servers.<name>.auth.oauth` block to configure delegated flows. mcp-agent ships with a full OAuth client implementation that handles loopback callbacks, Redis-backed token storage, and background refresh.
+
+```yaml
+oauth:
+  token_store:
+    backend: redis             # memory (default) or redis
+    redis_url: "redis://localhost:6379/0"
+    redis_prefix: "mcp_agent:oauth_tokens"
+  flow_timeout_seconds: 300
+  loopback_ports: [33418, 33419, 33420]
+
+mcp:
+  servers:
+    notion:
+      command: "uvx"
+      args: ["mcp-server-notion"]
+      description: "Notion knowledge base"
+      auth:
+        oauth:
+          authorization_server: "https://auth.notion.example.com"
+          client_id: "${NOTION_CLIENT_ID}"
+          client_secret: "${NOTION_CLIENT_SECRET}"
+          scopes:
+            - "workspace.read"
+            - "workspace.write"
+          redirect_uri_options:
+            - "http://localhost:33418/callback"
+```
+
+When you run the agent, mcp-agent opens a browser window (or loopback server) to complete the OAuth flow and caches the token according to the settings above. Populate secrets via `mcp_agent.secrets.yaml`, environment variables (`export NOTION_CLIENT_SECRET=...`), or `MCP_APP_SETTINGS_PRELOAD`.
+
+### Static headers / environment variables
+
+When a server expects API keys or custom headers, configure them directly under `auth` or `env`. The Slack example ([`examples/usecases/mcp_basic_slack_agent`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/usecases/mcp_basic_slack_agent)) injects credentials via environment variables:
+
+```yaml
+mcp:
+  servers:
+    slack:
+      command: "uvx"
+      args: ["mcp-server-slack"]
+      env:
+        SLACK_BOT_TOKEN: "${SLACK_BOT_TOKEN}"
+        SLACK_TEAM_ID: "${SLACK_TEAM_ID}"
+```
+
+You can also attach static request headers when registering a remote server—as shown in the SSE examples (`examples/mcp/mcp_sse_with_headers`):
+
+```yaml
+mcp:
+  servers:
+    github:
+      transport: sse
+      url: "https://api.example.com/mcp"
+      headers:
+        Authorization: "Bearer ${GITHUB_TOKEN}"
+        X-Org-Id: "${ORG_ID}"
+```
+
+Examples in [`examples/model_providers`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/model_providers) show how to configure providers such as Azure OpenAI, Amazon Bedrock, Google Gemini, and Ollama using env vars or header-based credentials.
+
+## Protecting your agent with OAuth
+
+If your MCP app should require bearer tokens from clients, enable the `authorization` section. mcp-agent advertises the protected-resource metadata (`/.well-known/oauth-protected-resource`) and validates tokens via JWKS or introspection endpoints.
+
+```yaml
+authorization:
+  enabled: true
+  issuer_url: "https://auth.example.com"
+  resource_server_url: "https://agent.example.com"
+  service_documentation_url: "https://agent.example.com/docs"
+  required_scopes: ["agent.read", "agent.execute"]
+  expected_audiences: ["api://agent.example.com"]
+  jwks_uri: "https://auth.example.com/.well-known/jwks.json"
+  token_cache_ttl_seconds: 300
+```
+
+When deployed (locally or hosted on mcp-c), clients must present a valid access token with the listed audiences/scopes. This is fully compatible with the Model Context Protocol logging, workflow, and elicitation utilities.
+
+For an overview of secret management (`mcp_agent.secrets.yaml`, environment overrides, preload strategies), see [Configuring your application → Secrets](/mcp-agent-sdk/core-components/configuring-your-application#secrets).
+
+## Example projects
+
+- [examples/basic/oauth_basic_agent](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/basic/oauth_basic_agent) – minimal OAuth client that authenticates to GitHub and Notion MCP servers.
+- [examples/oauth/interactive_tool](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/oauth/interactive_tool) – demonstrates interactive authorisation from within a tool.
+- [examples/oauth/pre_authorize](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/oauth/pre_authorize) – seeds refresh tokens before launching a durable Temporal workflow.
+- [examples/mcp_agent_server/temporal](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp_agent_server/temporal) – combines resource-server protection with long-running workflows and human approvals.

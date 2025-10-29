@@ -1,0 +1,202 @@
+---
+title: "MCP-Cloud (mcp-c)"
+sidebarTitle: "Cloud"
+description: "Deploy and host your mcp-agents and apps on the cloud."
+icon: cloud
+---
+
+<Info>
+  `mcp-c` is in open beta, and free to use. Share feedback via [GitHub issues](https://github.com/lastmile-ai/mcp-agent/issues) or [Discord](https://lmai.link/discord/mcp-agent).
+</Info>
+
+## What is MCP-Cloud?
+
+MCP-Cloud (mcp-c) is a fully managed cloud platform for hosting mcp-agents, apps, and mcp servers. 
+
+<iframe
+  src="https://www.youtube.com/embed/0C4VY-3IVNU"
+  title="mcp-agent cloud overview"
+  width="100%"
+  height="420"
+  frameborder="0"
+  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+  allowfullscreen
+/>
+
+### Key Benefits
+
+- **One runtime for any MCP application** – deploy durable `mcp-agent` workflows, FastMCP servers, or ChatGPT App backends. Everything is exposed as an MCP server at `https://<unique_id>.deployments.mcp-agent.com` ([Cloud overview](/cloud/mcp-agent-cloud/overview)).
+- **Temporal-backed execution** – long-running tools and workflows run on Temporal with retries, pause/resume, and human input support ([Long-running tools](/cloud/mcp-agent-cloud/long-running-tools)).
+- **Managed secrets & authentication** – manage secrets for both you, as the developer, and your users. Allow users to specify their own keys, and choose bearer or unauthenticated access today (OAuth coming soon) ([Manage secrets](/cloud/mcp-agent-cloud/manage-secrets) and [Deployment auth](/cloud/authentication/deployment-auth)).
+- **Observability built in** – stream logs, forward traces, and inspect workflow history directly from the CLI ([Observability](/cloud/observability)).
+- **Easy client install** – use `mcp-agent install` or `mcp-agent cloud configure` to wire the deployed server into Claude Desktop, Cursor, VS Code, or ChatGPT Apps ([Use a deployed server](/cloud/mcp-agent-cloud/use-deployed-server)).
+
+With that context, the steps below show exactly how to deploy.
+
+## 1. Authenticate
+
+```bash
+uvx mcp-agent login
+```
+
+The CLI opens the Cloud dashboard so you can generate an API token. Credentials are stored under `~/.mcp-agent/`.
+
+## 2. Deploy
+
+From the directory containing your `mcp_agent.config.yaml` (or pass `--config-dir`):
+
+```bash
+uvx mcp-agent deploy my-agent
+```
+
+During deployment you'll classify secrets as **deployment** (stored securely) or **user** (provided later via `mcp-agent cloud configure`). 
+
+<CodeGroup>
+```bash basic
+directory/
+├── main.py
+├── mcp_agent.config.yaml
+└── mcp_agent.secrets.yaml
+```
+```bash deploy
+uvx mcp-agent deploy my-agent
+```
+</CodeGroup>
+
+After a successful deploy you'll receive an endpoint like:
+
+```
+https://<unique_id>.deployments.mcp-agent.com
+```
+
+## 3. Connect from clients
+
+Your cloud deployment is a standard MCP server. Use any MCP client:
+
+<Tabs>
+  <Tab title="Claude Desktop">
+    ```bash
+    uvx mcp-agent install https://<unique_id>.deployments.mcp-agent.com \
+      --client claude_desktop \
+      --name research-buddy
+    ```
+
+    Replace `claude_desktop` with `vscode`, `cursor`, `chatgpt`, `claude_code` to install in those clients instead.
+  </Tab>
+
+  <Tab title="Python">
+    1. Add the cloud server to your config so the registry knows how to connect:
+
+       ```yaml mcp_agent.config.yaml
+       mcp:
+         servers:
+           my_agent_cloud:
+             transport: sse
+             url: "https://<unique_id>.deployments.mcp-agent.com/sse"
+             headers:
+               Authorization: "Bearer ${MCP_API_KEY}"
+       ```
+
+    2. Connect via the shared registry:
+
+       ```python
+       import asyncio
+       from mcp_agent.config import get_settings
+       from mcp_agent.mcp.mcp_server_registry import ServerRegistry
+       from mcp_agent.mcp.gen_client import gen_client
+
+       async def use_agent():
+           registry = ServerRegistry(config=get_settings())
+           async with gen_client("my_agent_cloud", server_registry=registry) as client:
+               result = await client.call_tool("my_tool", {"param": "value"})
+               print(result)
+
+       asyncio.run(use_agent())
+       ```
+  </Tab>
+</Tabs>
+
+## Monitor & manage
+
+<Tabs>
+  <Tab title="Logs">
+    ```bash
+    uvx mcp-agent cloud logger tail my-agent --follow
+    uvx mcp-agent cloud logger tail my-agent --grep "ERROR" --since 5m
+    ```
+  </Tab>
+  <Tab title="Servers">
+    ```bash
+    uvx mcp-agent cloud servers list
+    uvx mcp-agent cloud servers describe my-agent
+    ```
+  </Tab>
+  <Tab title="Workflows">
+    ```bash
+    uvx mcp-agent cloud workflows list
+    uvx mcp-agent cloud workflows describe my-agent run_123
+    ```
+  </Tab>
+</Tabs>
+
+## Example: 👋 Hello World agent
+
+```python main.py
+import asyncio
+from typing import Optional
+
+from mcp_agent.app import MCPApp
+from mcp_agent.agents.agent import Agent
+from mcp_agent.core.context import Context as AppContext
+from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
+
+# Create the MCPApp, the root of mcp-agent.
+app = MCPApp(name="hello_world", description="Hello world mcp-agent application")
+
+# Hello world agent: an Agent using MCP servers + LLM
+@app.tool()
+async def finder_agent(request: str, app_ctx: Optional[AppContext] = None) -> str:
+    """
+    Run an Agent with access to MCP servers (fetch + filesystem) to handle 
+    the input request.
+    """
+    agent = Agent(
+        name="finder",
+        instruction=(
+            """You are a helpful assistant. Use MCP servers to fetch and read 
+            files, then answer the request concisely."""
+        ),
+        server_names=["fetch", "filesystem"],
+        context=app_ctx,
+    )
+
+    async with agent:
+        llm = await agent.attach_llm(OpenAIAugmentedLLM)
+        result = await llm.generate_str(message=request)
+        return result
+
+async def main():
+    async with app.run() as agent_app:
+        # Run the agent
+        readme_summary = await finder_agent(
+            request="Please summarize the README.md file in this directory.",
+            app_ctx=agent_app.context,
+        )
+        print(readme_summary)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+Deploy with:
+
+```bash
+uvx mcp-agent deploy hello-world
+```
+
+## Learn more
+
+- [CLI reference](/reference/cli) – all commands and flags.
+- [Secrets configuration](/mcp-agent-sdk/core-components/configuring-your-application#secrets) – how secrets are merged for Cloud.
+- [Cloud agent server guide](/cloud/agent-server) – architecture, auth, and best practices.

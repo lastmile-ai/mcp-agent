@@ -1,0 +1,180 @@
+---
+title: Agent Servers
+description: "Expose an mcp-agent application as an MCP server"
+icon: server
+---
+
+## Why turn an agent into an MCP server?
+
+Exposing your mcp-agent app as an MCP server lets any MCP-compatible client (Claude Desktop, Cursor, VS Code, custom tooling) call your workflows over the standard protocol. It is the easiest way to:
+
+- Reuse an agent from multiple clients without rewriting logic
+- Chain agents together (one agent can call another as a server)
+- Deploy long-running workflows on dedicated infrastructure
+
+If you want to see the full picture, start with the runnable examples:
+
+- [`examples/mcp_agent_server/asyncio`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp_agent_server/asyncio) – in-memory execution, great for local testing
+- [`examples/mcp_agent_server/temporal`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp_agent_server/temporal) – durable execution backed by Temporal
+
+The READMEs in those folders walk through prerequisites, commands, and client integration.
+
+## Execution modes
+
+- **Asyncio** – Runs entirely in-memory with minimal setup. Perfect for local development, demos, or lightweight agents.
+- **Temporal** – Uses the Temporal orchestration engine for durable, resumable workflows with retries and pause/resume.
+
+You can reuse the same application code with either engine by switching the `execution_engine` setting.
+
+## Prerequisites
+
+Before running the examples you will need:
+
+- Python 3.10+
+- [uv](https://github.com/astral-sh/uv) for dependency management
+- API keys for the model providers referenced in the example (OpenAI / Anthropic)
+- A copy of the example secrets file:
+
+```bash
+cp mcp_agent.secrets.yaml.example mcp_agent.secrets.yaml
+# Edit the file or export matching environment variables
+```
+
+## Quick start (asyncio)
+
+```python title="examples/mcp_agent_server/asyncio/main.py"
+from mcp_agent.app import MCPApp
+from mcp_agent.server import create_mcp_server_for_app
+
+app = MCPApp(name="basic_agent_server")
+
+@app.tool
+async def grade_story(story: str) -> str:
+    """Grade a student's short story and return a report."""
+    # Implement using your agents/LLMs…
+    return "Report..."
+
+@app.async_tool(name="grade_story_async")
+async def grade_story_async(story: str) -> dict:
+    """Start grading asynchronously and return workflow IDs."""
+    # Launch a long-running workflow and return {"workflow_id","run_id"}
+    return {"workflow_id": "...", "run_id": "..."}
+
+if __name__ == "__main__":
+    mcp_server = create_mcp_server_for_app(app)
+    mcp_server.run_stdio()
+```
+
+Run it locally (from the `examples/mcp_agent_server/asyncio` directory):
+
+```bash
+uv run main.py            # start the MCP server
+uv run client.py          # connect using gen_client
+```
+
+1. Populate `mcp_agent.secrets.yaml` (or export environment variables) with your provider keys.
+2. Run `uv run main.py` to start the server.
+3. Run `uv run client.py` to invoke the tools and watch status updates.
+
+- `@app.tool` exposes a synchronous MCP tool. The client gets the final result immediately.
+- `@app.async_tool` is designed for long-running work. It starts a workflow in the background, returns `workflow_id`/`run_id`, and the client polls `workflows-get_status` until completion.
+- Under the hood you can launch any `Workflow` ([see the Workflow class documentation](/mcp-agent-sdk/core-components/workflows)) from inside an async tool.
+
+The example `client.py` shows how to call your server with `gen_client`, and the README covers Claude Desktop / MCP Inspector connections.
+
+## Temporal variant
+
+Use the Temporal example when you need durable execution, pause/resume, or production-grade retries. It follows the same pattern as above but uses `create_temporal_worker_for_app` to run workflows on a Temporal cluster. See [`examples/mcp_agent_server/temporal`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp_agent_server/temporal) for setup instructions. In short:
+
+1. Start a Temporal server locally (`temporal server start-dev`).
+2. Run `uv run run_worker.py` to start the worker that hosts your workflows.
+3. In another terminal run `uv run main.py` to expose the MCP endpoint.
+4. Connect using `uv run client.py` or any MCP client.
+
+Temporal retains workflow history, so async tools can pause for human input, survive restarts, and resume later.
+
+## Predefined Tools
+
+When you call `create_mcp_server_for_app(app)` the server registers:
+
+- Every `@app.tool` / `@app.async_tool` defined on the app
+- Workflow entry points (e.g. `workflows-<Workflow>-run`) for explicit `@app.workflow` classes
+- A set of management tools that every MCP client can rely on:
+  - `workflows-list` – discover available workflows, parameter schemas, and tool names.
+  - `workflows-run` – start a workflow synchronously and receive `workflow_id`/`run_id`.
+  - `workflows-get_status` – poll for status, outputs, or errors.
+  - `workflows-cancel` – terminate a running workflow.
+  - `workflows-resume` – resume paused workflows (useful with Temporal + signals).
+
+Clients interact with these tools just like any other MCP server, so the experience feels native in Claude Desktop, Cursor, or custom clients.
+
+## Connecting from MCP clients
+
+- **Claude Desktop** – add an entry in `~/.claude-desktop/config.json` pointing to `uv run main.py` (the asyncio example README includes a copy-paste snippet).
+- **MCP Inspector** – run `npx @modelcontextprotocol/inspector` and point it at your server command.
+- **Custom code** – reuse the `gen_client` example provided in each folder.
+
+Because the server speaks standard MCP, any client that understands the protocol can connect.
+
+## Deployment options
+
+- Run locally via `uv run`
+- Package and deploy the command anywhere you can run Python
+- Use `uv run mcp-agent deploy …` to publish to [mcp-agent cloud](/cloud/overview) (the example README outlines the CLI flow)
+
+Whichever approach you choose, the public MCP endpoint looks the same to clients.
+
+## Connecting from common MCP clients
+
+### Claude Desktop
+
+Update `~/.claude-desktop/config.json` with a command that starts your server:
+
+```json
+{
+  "mcpServers": {
+    "my-agent-server": {
+      "command": "uv",
+      "args": [
+        "run",
+        "examples/mcp_agent_server/asyncio/main.py"
+      ]
+    }
+  }
+}
+```
+
+For cloud deployments replace the command with `mcp-remote` plus your SSE endpoint and bearer token, as shown in the example README.
+
+### MCP Inspector
+
+```bash
+npx @modelcontextprotocol/inspector \
+  uv \
+  --directory examples/mcp_agent_server/asyncio \
+  run main.py
+```
+
+The inspector will list every exposed tool (`grade_story`, `grade_story_async`, `workflows-list`, etc.) so you can interactively test them.
+
+### Programmatic access (`gen_client`)
+
+```python
+from mcp_agent.app import MCPApp
+from mcp_agent.mcp.gen_client import gen_client
+
+app = MCPApp(name="client")
+
+async def list_tools():
+    async with app.run():
+        async with gen_client("my-agent-server", app.server_registry, context=app.context) as session:
+            tools = await session.list_tools()
+            return [tool.name for tool in tools.tools]
+```
+
+## Next steps
+
+- Browse the asyncio and Temporal READMEs for end-to-end workflows, screenshots, and configuration details.
+- Review [Server Authentication](/mcp-agent-sdk/mcp/server-authentication) if your server needs API keys or OAuth.
+- Combine agent servers with other agents to build multi-agent ecosystems over MCP.
+

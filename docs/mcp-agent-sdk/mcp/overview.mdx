@@ -1,0 +1,303 @@
+---
+title: MCP Capabilities
+description: "How mcp-agent integrates with the Model Context Protocol"
+icon: plug
+---
+
+mcp-agent is built on top of the Model Context Protocol (MCP). Agents connect to MCP servers to gain tools, data, prompts, and filesystem-style access. If you are new to the protocol, start with the [official MCP introduction](https://modelcontextprotocol.io/docs/getting-started/intro); this page shows how MCP fits into mcp-agent.
+
+## MCP primitives at a glance
+
+<CardGroup cols={3}>
+  <Card title="Tools" icon="wrench">
+    Functions exposed by MCP servers—use `agent.call_tool` or let an AugmentedLLM invoke them during generation.
+  </Card>
+  <Card title="Resources" icon="database">
+    Structured content retrievable via URIs (`agent.list_resources`, `agent.read_resource`).
+  </Card>
+  <Card title="Prompts" icon="message-lines">
+    Parameterised templates listed with `agent.list_prompts` and fetched via `agent.get_prompt`.
+  </Card>
+  <Card title="Roots" icon="folder-tree">
+    Named filesystem locations agents can browse; list with `agent.list_roots`.
+  </Card>
+  <Card title="Elicitation" icon="question-circle">
+    Servers can pause a tool to request structured user input; see the elicitation example under `examples/mcp`.
+  </Card>
+  <Card title="Sampling" icon="sparkles">
+    Some servers provide LLM completion endpoints; try the sampling demo in [`examples/mcp`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp).
+  </Card>
+</CardGroup>
+
+[Supported Capabilities →](/mcp-agent-sdk/mcp/supported-capabilities) covers each primitive in depth.
+
+## Example-driven overview
+
+The quickest way to learn is to run the projects in [`examples/mcp`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp):
+
+| Example | Focus | Transport |
+| ------- | ----- | --------- |
+| [`mcp_streamable_http`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp/mcp_streamable_http) | Connect to a remote HTTP MCP server with streaming responses | `streamable_http` |
+| [`mcp_sse`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp/mcp_sse) | Subscribe to an SSE MCP server | `sse` |
+| [`mcp_websockets`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp/mcp_websockets) | Bi-directional WebSocket communication | `websocket` |
+| [`mcp_prompts_and_resources`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp/mcp_prompts_and_resources) | List and consume prompts/resources | stdio |
+| [`mcp_roots`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp/mcp_roots) | Browse server roots (filesystem access) | stdio |
+| [`mcp_elicitation`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp/mcp_elicitation) | Handle elicitation (interactive prompts) | stdio |
+
+Each example includes a minimal server configuration and client code that connects via `gen_client`.
+
+## Configuring servers
+
+Add servers to `mcp_agent.config.yaml`:
+
+```yaml
+mcp:
+  servers:
+    filesystem:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "/data"]
+
+    docs_api:
+      transport: "streamable_http"
+      url: "https://api.example.com/mcp"
+      headers:
+        Authorization: "Bearer ${DOCS_API_TOKEN}"
+```
+
+Store secrets in `mcp_agent.secrets.yaml`, environment variables, or preload settings (see [Specify Secrets](/mcp-agent-sdk/core-components/specify-secrets)).
+
+## Using MCP capabilities from an agent
+
+```python
+from mcp_agent.agents.agent import Agent
+
+agent = Agent(
+    name="mcp_demo",
+    instruction="Use all available MCP capabilities.",
+    server_names=["filesystem", "docs_api"],
+)
+
+async with agent:
+    tools = await agent.list_tools()
+    resources = await agent.list_resources()
+    prompts = await agent.list_prompts()
+    roots = await agent.list_roots()
+
+    print("Tools:", [t.name for t in tools.tools])
+    print("Resources:", [r.uri for r in resources.resources])
+```
+
+Common API calls:
+
+- `await agent.call_tool("tool_name", arguments={...})`
+- `await agent.read_resource(uri)`
+- `await agent.get_prompt(name, arguments)`
+- `await agent.list_roots()`
+
+AugmentedLLMs inherit these capabilities automatically.
+
+## Lightweight MCP client (`gen_client`)
+
+```python
+from mcp_agent.app import MCPApp
+from mcp_agent.mcp.gen_client import gen_client
+
+app = MCPApp(name="mcp_client_demo")
+
+async def main():
+    async with app.run():
+        async with gen_client("filesystem", app.server_registry, context=app.context) as session:
+            tools = await session.list_tools()
+            print("Tools:", [t.name for t in tools.tools])
+```
+
+For persistent connections or aggregators, see [Connecting to MCP Servers](/mcp-agent-sdk/core-components/connecting-to-mcp-servers).
+
+## Authentication
+
+- Static headers/API keys go in `headers` and pull values from secrets or env variables.
+- OAuth flows (loopback, interactive tool flow, pre-authorised tokens) are fully supported; see [Server Authentication](/mcp-agent-sdk/mcp/server-authentication).
+- Examples under [`examples/basic/oauth_basic_agent`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/basic/oauth_basic_agent) and [`examples/oauth`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/oauth) demonstrate each pattern.
+
+## Related documentation
+
+- [Connecting to MCP Servers](/mcp-agent-sdk/core-components/connecting-to-mcp-servers)
+- [Server Authentication](/mcp-agent-sdk/mcp/server-authentication)
+- [Agent Servers](/mcp-agent-sdk/mcp/agent-as-mcp-server)
+
+
+## Detailed reference
+
+### Transport configurations
+
+<AccordionGroup>
+  <Accordion title="STDIO (Standard Input/Output)">
+    Best for local subprocess servers:
+    ```yaml
+    mcp:
+      servers:
+        filesystem:
+          transport: "stdio"
+          command: "npx"
+          args: ["-y", "@modelcontextprotocol/server-filesystem"]
+    ```
+  </Accordion>
+  
+  <Accordion title="Server-Sent Events (SSE)">
+    Ideal for streaming responses and near-real-time updates:
+    ```yaml
+    mcp:
+      servers:
+        sse_server:
+          transport: "sse"
+          url: "http://localhost:8000/sse"
+          headers:
+            Authorization: "Bearer ${SSE_TOKEN}"
+    ```
+  </Accordion>
+  
+  <Accordion title="WebSocket">
+    Bi-directional, persistent connections:
+    ```yaml
+    mcp:
+      servers:
+        websocket_server:
+          transport: "websocket"
+          url: "ws://localhost:8001/ws"
+    ```
+  </Accordion>
+  
+  <Accordion title="Streamable HTTP">
+    HTTP servers with streaming support:
+    ```yaml
+    mcp:
+      servers:
+        http_server:
+          transport: "streamable_http"
+          url: "https://api.example.com/mcp"
+          headers:
+            Authorization: "Bearer ${API_TOKEN}"
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Build a minimal MCP server
+
+```python title="demo_server.py"
+from mcp.server.fastmcp import FastMCP
+
+mcp = FastMCP("Resource Demo MCP Server")
+
+@mcp.resource("demo://docs/readme")
+def get_readme():
+    """Provide the README file content."""
+    return "# Demo Resource Server\n\nThis is a sample README resource."
+
+@mcp.prompt()
+def echo(message: str) -> str:
+    """Echo the provided message."""
+    return f"Prompt: {message}"
+
+if __name__ == "__main__":
+    mcp.run()
+```
+
+### Agent configuration for that server
+
+```yaml title="mcp_agent.config.yaml"
+execution_engine: asyncio
+
+mcp:
+  servers:
+    demo:
+      command: "python"
+      args: ["demo_server.py"]
+
+openai:
+  default_model: "gpt-4o-mini"
+```
+
+### Using tools, resources, prompts, and roots
+
+```python
+# Tools
+result = await agent.call_tool("read_file", {"path": "/data/config.json"})
+
+# Resources
+resource = await agent.read_resource("file:///data/report.pdf")
+
+# Prompts
+prompt = await agent.get_prompt("code_review", {"language": "python", "file": "main.py"})
+
+# Roots
+roots = await agent.list_roots()
+```
+
+### Elicitation example
+
+```python
+from mcp.server.fastmcp import FastMCP, Context
+from mcp.server.elicitation import (
+    AcceptedElicitation,
+    DeclinedElicitation,
+    CancelledElicitation,
+)
+from pydantic import BaseModel, Field
+
+mcp = FastMCP("Interactive Server")
+
+@mcp.tool()
+async def deploy_application(app_name: str, environment: str, ctx: Context) -> str:
+    class DeploymentConfirmation(BaseModel):
+        confirm: bool = Field(description="Confirm deployment?")
+        notify_team: bool = Field(default=False)
+        message: str = Field(default="")
+
+    result = await ctx.elicit(
+        message=f"Confirm deployment of {app_name} to {environment}?",
+        schema=DeploymentConfirmation,
+    )
+
+    match result:
+        case AcceptedElicitation(data=data):
+            return "Deployed" if data.confirm else "Deployment cancelled"
+        case DeclinedElicitation():
+            return "Deployment declined"
+        case CancelledElicitation():
+            return "Deployment cancelled"
+```
+
+### Capability matrix
+
+| Primitive   | STDIO | SSE | WebSocket | HTTP | Status |
+| ----------- | ----- | --- | --------- | ---- | ------ |
+| Tools       | ✅    | ✅  | ✅        | ✅   | Fully supported |
+| Resources   | ✅    | ✅  | ✅        | ✅   | Fully supported |
+| Prompts     | ✅    | ✅  | ✅        | ✅   | Fully supported |
+| Roots       | ✅    | ✅  | ✅        | ✅   | Fully supported |
+| Elicitation | ✅    | ✅  | ✅        | ✅   | Fully supported |
+| Sampling    | ✅    | ✅  | ✅        | ✅   | Supported via examples |
+
+### Example gallery
+
+<CardGroup cols={2}>
+  <Card title="Prompts & Resources" icon="github" href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp/mcp_prompts_and_resources">
+    Complete example with prompts and resources
+  </Card>
+  <Card title="MCP Server Examples" icon="code" href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp">
+    All MCP primitive examples
+  </Card>
+  <Card title="Agent Server" icon="server" href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp_agent_server">
+    Agents as MCP servers with all primitives
+  </Card>
+  <Card title="MCP Specification" icon="book" href="https://modelcontextprotocol.io/specification">
+    Official MCP specification
+  </Card>
+</CardGroup>
+
+## Related documentation
+
+- [Connecting to MCP Servers](/mcp-agent-sdk/core-components/connecting-to-mcp-servers)
+- [Server Authentication](/mcp-agent-sdk/mcp/server-authentication)
+- [Agent Servers](/mcp-agent-sdk/mcp/agent-as-mcp-server)
+

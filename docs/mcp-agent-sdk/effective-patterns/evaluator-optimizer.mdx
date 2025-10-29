@@ -1,0 +1,107 @@
+---
+title: "Evaluator-Optimizer"
+description: "Iteratively refine LLM outputs with an evaluator loop"
+icon: arrows-rotate
+---
+
+![Evaluator-optimizer workflow](/images/evaluator-optimizer-workflow.png)
+
+## When to use it
+
+- Quality matters and you need an automated reviewer to approve or demand revisions.
+- You have an explicit rubric (score threshold, policy checklist, guardrail) that can be evaluated programmatically.
+- You want traceability: each attempt, its score, and the feedback that drove the next revision.
+- You need to wrap another workflow (router, orchestrator, parallel, even a deterministic function) with an evaluation loop.
+
+## How the loop works
+
+[`create_evaluator_optimizer_llm`](https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/workflows/factory.py#L436) returns an [`EvaluatorOptimizerLLM`](https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/workflows/evaluator_optimizer/evaluator_optimizer.py) that:
+
+1. Calls the `optimizer` to generate an initial response.
+2. Sends the response to the `evaluator`, which returns an [`EvaluationResult`](https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/workflows/evaluator_optimizer/evaluator_optimizer.py#L30) with:
+   - `rating`: a [`QualityRating`](https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/workflows/evaluator_optimizer/evaluator_optimizer.py#L16) (`POOR`, `FAIR`, `GOOD`, `EXCELLENT` mapped to 0–3).
+   - `feedback`: free-form comments.
+   - `needs_improvement`: boolean.
+   - `focus_areas`: list of bullet points for the next iteration.
+3. If the rating meets `min_rating`, the loop stops. Otherwise it regenerates with the optimizer, incorporating the evaluator’s feedback, until `max_refinements` is reached.
+4. Every attempt is recorded in `refinement_history` for audit or UI display.
+
+## Quick start
+
+```python
+from mcp_agent.app import MCPApp
+from mcp_agent.workflows.factory import AgentSpec, RequestParams, create_evaluator_optimizer_llm
+from mcp_agent.workflows.evaluator_optimizer.evaluator_optimizer import QualityRating
+
+app = MCPApp(name="eval_opt_example")
+
+async def main():
+    async with app.run() as running_app:
+        evaluator_optimizer = create_evaluator_optimizer_llm(
+            name="policy_checked_writer",
+            optimizer=AgentSpec(
+                name="draft",
+                instruction="Write detailed answers with citations when available.",
+            ),
+            evaluator=AgentSpec(
+                name="compliance",
+                instruction=(
+                    "Score the response from 0-3.\n"
+                    "Reject anything that violates policy or lacks citations."
+                ),
+            ),
+            min_rating=QualityRating.EXCELLENT,  # require top score
+            max_refinements=4,
+            provider="anthropic",  # evaluator/optimizer can use different providers internally
+            request_params=RequestParams(temperature=0.4),
+            context=running_app.context,
+        )
+
+        result = await evaluator_optimizer.generate_str(
+            "Summarise MCP Agent's router pattern for a product manager."
+        )
+
+        # Inspect the iteration history
+        for attempt in evaluator_optimizer.refinement_history:
+            print(
+                attempt["attempt"],
+                attempt["evaluation_result"].rating,
+                attempt["evaluation_result"].feedback,
+            )
+
+        return result
+```
+
+You can pass an existing AugmentedLLM (router, orchestrator, parallel workflow) as the optimizer instead of an `AgentSpec`. For evaluators, strings are allowed: if you pass a literal string, the factory spins up an evaluator agent using that instruction.
+
+## Configuration knobs
+
+- `min_rating`: numeric threshold (0–3). Set to `None` to keep all iterations and let a human pick the best attempt.
+- `max_refinements`: hard cap on iteration count; default is 3.
+- `evaluator`: accept `AgentSpec`, `Agent`, `AugmentedLLM`, or string instruction. Use this to plug in policy engines or MCP tools that act as judges.
+- `request_params`: forwarded to both optimizer and evaluator LLMs (temperature, max tokens, strict schema enforcement).
+- `llm_factory`: automatically injected based on the `provider` you specify; override if you need custom model selection or instrumentation.
+- `evaluator_optimizer.refinement_history`: list of dicts containing `response` and `evaluation_result` per attempt—useful for UI timelines or telemetry.
+
+## Pairing with other patterns
+
+- **Router + evaluator**: Route to a specialised agent, then run the evaluator loop before returning to the user.
+- **Parallel + evaluator**: Run multiple evaluators in parallel (e.g. clarity, policy, bias). Feed the aggregated verdict back into the optimizer.
+- **Deep research failsafe**: Wrap sections of a deep orchestrator plan with an evaluator-optimizer step to enforce domain-specific QA.
+
+## Operational tips
+
+- Evaluator instructions should reference the previous feedback: the default prompt asks the optimizer to address each focus area. Ensure your instruction echoes that requirement.
+- Call `await evaluator_optimizer.get_token_node()` to see how many tokens each iteration consumed (optimiser vs evaluator).
+- Log or persist `refinement_history` when you need postmortem evidence of what the evaluator flagged and how the optimizer reacted.
+- Combine with OpenTelemetry (`otel.enabled: true`) to capture spans for each iteration, including evaluation scores and decision rationale.
+
+## Example projects
+
+- [workflow_evaluator_optimizer](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/workflows/workflow_evaluator_optimizer) – job application cover letter refinement with evaluator feedback surfaced via MCP tools.
+- [Temporal evaluator optimizer](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/temporal/evaluator_optimizer.py) – durable loop running under Temporal with pause/resume.
+
+## Related reading
+
+- [Workflow & decorators guide](/mcp-agent-sdk/core-components/workflows)
+- [Parallel pattern](/mcp-agent-sdk/effective-patterns/map-reduce)

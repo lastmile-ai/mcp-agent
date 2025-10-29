@@ -1,0 +1,168 @@
+---
+title: Quickstart
+sidebarTitle: "Quickstart"
+description: "Copy, paste, and run your first mcp-agent in minutes."
+icon: rocket-launch
+---
+
+Let's get you set up with a hello world mcp-agent!
+
+## Create the agent
+
+<Tabs>
+  <Tab title="Use CLI (Recommended)">
+    <Steps>
+      <Step title="Create a folder">
+        ```bash
+        mkdir mcp-basic-agent
+        cd mcp-basic-agent
+        ```
+      </Step>
+
+      <Step title="Initialize your mcp-agent">
+        ```bash
+        uvx mcp-agent init
+        uv init
+        uv add "mcp-agent[openai]"
+        uv sync
+        ```
+        (Prefer pip? `python -m venv .venv && pip install mcp-agent` works too.)
+      </Step>
+      <Step title="Add your model provider key">
+        In the `mcp_agent.secrets.yaml` in your project directory, add your OpenAI or other model provider key.
+        ```yaml mcp_agent.secrets.yaml
+        openai:
+          api_key: "your-openai-api-key"
+        ```
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="Do it manually">
+    <Steps>
+      <Step title="Create a folder">
+        ```bash
+        mkdir mcp-basic-agent
+        cd mcp-basic-agent
+        ```
+      </Step>
+
+      <Step title="Install dependencies with uv">
+        ```bash
+        uv init
+        uv add "mcp-agent[openai]"
+        uv sync
+        ```
+
+        (Prefer pip? `python -m venv .venv && pip install mcp-agent` works too.)
+      </Step>
+
+      <Step title="Add configuration files">
+        `mcp_agent.config.yaml`
+        ```yaml mcp_agent.config.yaml
+        execution_engine: asyncio
+        logger:
+          transports: [console]
+          level: info
+
+        mcp:
+          servers:
+            fetch:
+              command: "uvx"
+              args: ["mcp-server-fetch"]
+            filesystem:
+              command: "npx"
+              args: ["-y", "@modelcontextprotocol/server-filesystem"]
+
+        openai:
+          default_model: gpt-4o-mini
+        ```
+
+        `mcp_agent.secrets.yaml`
+        ```yaml mcp_agent.secrets.yaml
+        openai:
+          api_key: "your-openai-api-key"
+        ```
+      </Step>
+
+      <Step title="Paste the hello world agent">
+        `main.py`
+        ```python main.py
+        import asyncio
+        import os
+        import time
+
+        from mcp_agent.app import MCPApp
+        from mcp_agent.agents.agent import Agent
+        from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
+
+        app = MCPApp(name="mcp_basic_agent")
+
+        @app.tool()
+        async def example_usage() -> str:
+            async with app.run() as session:
+                logger = session.logger
+                context = session.context
+
+                # Let the filesystem server access the current directory
+                context.config.mcp.servers["filesystem"].args.extend([os.getcwd()])
+
+                agent = Agent(
+                    name="finder",
+                    instruction="""You can read local files or fetch URLs.
+                        Return the requested information when asked.""",
+                    server_names=["fetch", "filesystem"],
+                )
+
+                async with agent:
+                    logger.info("Connected MCP servers", data=list(context.server_registry.registry.keys()))
+
+                    llm = await agent.attach_llm(OpenAIAugmentedLLM)
+                    result = await llm.generate_str(
+                        "Print the contents of README.md verbatim; create it first if missing"
+                    )
+                    logger.info("README contents", data=result)
+
+                    result = await llm.generate_str(
+                        "Fetch the first two paragraphs from https://modelcontextprotocol.io/introduction"
+                    )
+                    logger.info("Fetched content", data=result)
+
+                    tweet = await llm.generate_str(
+                        "Summarize that content in a 140-character tweet"
+                    )
+                    logger.info("Tweet", data=tweet)
+                    return tweet
+
+        if __name__ == "__main__":
+            start = time.time()
+            asyncio.run(example_usage())
+            end = time.time()
+            print(f"Finished in {end - start:.2f}s")
+        ```
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+## Run it locally
+
+```bash
+uv run main.py
+```
+
+You should see log entries for tool discovery, file access, web fetches, and the final summary tweet. Try editing the instructions or adding new MCP servers to see how the agent evolves.
+
+## Deploy it (optional)
+
+You can deploy your agent as an MCP server.
+
+```bash
+uvx mcp-agent login
+uvx mcp-agent deploy
+```
+
+## Next steps
+
+- Check out the generated README (if you used the CLI) for tips on extending the agent.
+- Layer in more capabilities using the [Effective Patterns](/mcp-agent-sdk/effective-patterns/overview) guide.
+- Ready to deploy your agent? Follow [Deploy to Cloud](/get-started/cloud).

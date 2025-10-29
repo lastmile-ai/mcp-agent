@@ -1,0 +1,170 @@
+---
+title: mcp-eval
+sidebarTitle: "mcp-eval"
+description: "Comprehensive evaluation platform for MCP"
+icon: chart-simple
+---
+
+`mcp-eval` tests Model Context Protocol servers and agents. It runs scripted scenarios, captures telemetry, and enforces assertions so you can confirm behavior is stable before releasing changes.
+
+<Tip>
+  The full documentation lives at <a href="https://mcp-eval.ai">mcp-eval.ai</a>. Keep it handy for configuration specifics, advanced examples, and release updates.
+</Tip>
+
+<Info>
+  `mcp-eval` connects to your targets over MCP, executes scenarios, and records detailed metrics for every tool call.
+</Info>
+
+## Why teams run it
+
+- Catch regressions when prompts, workflows, or model settings change
+- Confirm that the right MCP tools fire in the expected order with the expected payloads
+- Exercise recovery paths such as human-input pauses or fallback workflows
+- Produce repeatable evidence—reports, traces, and badges—that a release is safe
+
+## What you can cover
+
+<Columns cols={4}>
+  <Card title="Test MCP Servers" icon="server" href="./server-evaluation">
+    Validate tool definitions, edge cases, and error responses before exposing servers to users
+  </Card>
+  <Card title="Evaluate Agents" icon="robot" href="./agent-evaluation">
+    Measure tool usage, reasoning quality, and recovery behavior
+  </Card>
+  <Card title="Track Performance" icon="chart-line" href="https://mcp-eval.ai">
+    Capture latency, token usage, and cost with built-in telemetry
+  </Card>
+  <Card title="Assert Quality" icon="circle-check" href="https://mcp-eval.ai/agent-evaluation">
+    Combine structural checks, path validators, and LLM judges in one run
+  </Card>
+</Columns>
+
+## Install mcp-eval
+
+<CodeGroup>
+```bash uv (recommended)
+uv tool install mcpevals      # CLI
+uv add mcpevals               # project dependency
+mcp-eval init                 # scaffold config, tests/, and datasets/
+```
+```bash pip
+pip install mcpevals
+mcp-eval init
+```
+</CodeGroup>
+
+The `init` wizard can generate decorator tests, pytest scaffolding, and dataset examples—you can rerun it as your suite grows.
+
+## Register what you test
+
+After an mcp-agent workflow or aggregator is running locally:
+
+1. **Register servers** with the same command or endpoint your agent uses:
+
+   ```bash
+   mcp-eval server add \
+     --name fetch \
+     --transport stdio \
+     --command "uv" "run" "python" "-m" "mcp_servers.fetch"
+   ```
+
+2. **Register agents** by pointing to an `AgentSpec`, an instantiated `Agent`, or your `MCPApp`:
+
+   ```yaml
+   # tests/config/targets.yaml
+   agents:
+     - name: finder
+       type: agent_spec
+       path: ../../examples/basic/mcp_basic_agent/mcp_agent/agents/finder.py
+   servers:
+     - name: fetch
+       transport: stdio
+       command: ["uv", "run", "python", "-m", "mcp_servers.fetch"]
+   ```
+
+3. When you introduce a new workflow or capability, run `mcp-eval generate` to draft scenario ideas with LLM assistance.
+
+## Structure evaluations
+
+`mcp-eval` follows a code-first layout similar to Pydantic AI’s evals package: datasets hold cases, cases reference evaluators, and evaluators score the outputs.
+
+### Decorator tasks
+
+```python decorator_style.py
+from mcp_eval import Expect, task
+
+@task("Finder summarizes Example Domain")
+async def test_finder_fetch(agent, session):
+    response = await agent.generate_str("Fetch https://example.com and summarize it.")
+
+    await session.assert_that(Expect.tools.was_called("fetch"))
+    await session.assert_that(Expect.content.contains("Example Domain"), response=response)
+    await session.assert_that(Expect.performance.max_iterations(3))
+```
+
+### Pytest suites
+
+```python pytest_style.py
+import pytest
+from mcp_eval import create_agent, Expect
+
+@pytest.mark.asyncio
+async def test_finder_fetch_pytest():
+    agent = await create_agent("finder")
+    response = await agent.generate_str("Fetch https://example.com")
+    assert "Example Domain" in response
+    await Expect.tools.was_called("fetch").evaluate(agent.session)
+```
+
+### Dataset runs
+
+```python dataset_style.py
+from mcp_eval import Case, Dataset, Expect
+from mcp_eval import create_agent
+
+dataset = Dataset(
+    cases=[
+        Case(
+            name="fetch_example_domain",
+            inputs="Fetch https://example.com and summarize it.",
+            evaluators=[Expect.tools.was_called("fetch")],
+        )
+    ]
+)
+
+async def run_case(prompt: str) -> str:
+    agent = await create_agent("finder")
+    return await agent.generate_str(prompt)
+
+report = await dataset.evaluate(run_case)  # call from an async test or helper
+```
+
+<Note>
+  Datasets, cases, and evaluators match the structure in Pydantic AI evals: cases define inputs and expectations, evaluators score results, and datasets group related cases for reuse.
+</Note>
+
+## Run and inspect
+
+```bash
+mcp-eval run tests/   # decorator, dataset, and CLI suites
+uv run pytest -q tests
+```
+
+During a run you can pull structured telemetry:
+
+```python
+metrics = session.get_metrics()
+span_tree = session.get_span_tree()
+```
+
+## Pick a focus area
+
+- Work through end-to-end agent scenarios in [`Agent Evaluation`](./agent-evaluation).
+- Validate server behavior and tool contracts in [`MCP Server Evaluation`](./server-evaluation).
+- Refer back to [mcp-eval.ai](https://mcp-eval.ai) for extended guides, configuration options, and community examples.
+
+## Observability, reports, and CI/CD
+
+- OpenTelemetry traces flow to Grafana, Honeycomb, Pydantic Logfire, or any OTEL target
+- JSON/Markdown/HTML reports are ready for CI artifacts or release notes
+- Reusable GitHub Actions (`mcp-eval/.github/actions/mcp-eval/run`) publish test results, summaries, and badges

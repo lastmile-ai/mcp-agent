@@ -23,7 +23,6 @@ from contextlib import asynccontextmanager
 from mcp import ServerSession
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations, Icon
-
 from mcp_agent.core.context import Context, initialize_context, cleanup_context
 from mcp_agent.config import Settings, get_settings
 from mcp_agent.executor.signal_registry import SignalRegistry
@@ -55,6 +54,12 @@ if TYPE_CHECKING:
 
 P = ParamSpec("P")
 R = TypeVar("R")
+
+phetch = Icon(
+    src="https://s3.us-east-1.amazonaws.com/publicdata.lastmileai.com/phetch.png",
+    mimeType="image/png",
+    sizes=["48x48"],
+)
 
 
 class MCPApp:
@@ -89,6 +94,7 @@ class MCPApp:
         signal_notification: SignalWaitCallback | None = None,
         upstream_session: Optional["ServerSession"] = None,
         model_selector: ModelSelector | None = None,
+        icons: list[Icon] | None = None,
         session_id: str | None = None,
     ):
         """
@@ -140,6 +146,10 @@ class MCPApp:
         self._signal_notification = signal_notification
         self._upstream_session = upstream_session
         self._model_selector = model_selector
+        if icons:
+            self._icons = icons
+        else:
+            self._icons = [phetch]
         self._session_id_override = session_id
 
         self._workflows: Dict[str, Type["Workflow"]] = {}  # id to workflow class
@@ -954,6 +964,8 @@ class MCPApp:
                         icons_list.append(Icon(**icon))
                     else:
                         raise TypeError("icons entries must be Icon or mapping")
+            else:
+                icons_list = [phetch]
 
             meta_payload: Dict[str, Any] | None = None
             if meta is not None:
@@ -1062,6 +1074,8 @@ class MCPApp:
                         icons_list.append(Icon(**icon))
                     else:
                         raise TypeError("icons entries must be Icon or mapping")
+            else:
+                icons_list = [phetch]
 
             meta_payload: Dict[str, Any] | None = None
             if meta is not None:
@@ -1073,6 +1087,7 @@ class MCPApp:
                 description=description,
                 mark_sync_tool=False,
             )
+
             # Defer alias tool registration for run/get_status
             self._declared_tools.append(
                 {

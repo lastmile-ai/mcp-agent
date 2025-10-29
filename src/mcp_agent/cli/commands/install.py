@@ -28,7 +28,6 @@ import tempfile
 from copy import deepcopy
 from pathlib import Path
 from typing import Optional
-from urllib.parse import urlparse
 
 import typer
 from rich.panel import Panel
@@ -47,10 +46,6 @@ from mcp_agent.cli.utils.ux import (
     console,
     print_info,
     print_success,
-)
-
-app = typer.Typer(
-    help="Install MCP server to client applications", no_args_is_help=False
 )
 
 
@@ -186,36 +181,6 @@ def _write_json(path: Path, data: dict) -> None:
             pass
 
 
-def _server_hostname(server_url: str, app_name: Optional[str] = None) -> str:
-    """
-    Generate a friendly server name from the URL.
-
-    Extracts the subdomain or hostname to create a short, readable name.
-    For example, "https://abc123.deployments.mcp-agent.com/sse" -> "abc123"
-
-    Args:
-        server_url: The server URL
-        app_name: Optional app name from API (preferred if available)
-
-    Returns:
-        A friendly server name
-    """
-    if app_name:
-        return app_name
-
-    parsed = urlparse(server_url)
-    hostname = parsed.hostname or ""
-
-    parts = hostname.split(".")
-    if len(parts) > 2 and "deployments" in hostname:
-        return parts[0]
-
-    if len(parts) >= 2:
-        return ".".join(parts[:-1])
-
-    return hostname or "mcp-server"
-
-
 def _build_server_config(
     server_url: str,
     transport: str = "http",
@@ -266,7 +231,6 @@ def _build_server_config(
         }
 
 
-@app.callback(invoke_without_command=True)
 def install(
     server_identifier: str = typer.Argument(..., help="Server URL to install"),
     client: str = typer.Option(
@@ -368,9 +332,6 @@ def install(
     # For ChatGPT, check if server has unauthenticated access enabled
     if client_lc == "chatgpt":
         try:
-            if not app_info:
-                app_info = run_async(mcp_client.get_app(server_url=server_url))
-
             has_unauth_access = app_info.unauthenticatedAccess is True or (
                 app_info.appServerInfo
                 and app_info.appServerInfo.unauthenticatedAccess is True
@@ -422,7 +383,7 @@ def install(
         )
         return
 
-    server_name = name or _server_hostname(server_url, app_name)
+    server_name = name or app_name or "mcp_agent"
 
     transport = "sse" if server_url.rstrip("/").endswith("/sse") else "http"
 
@@ -554,4 +515,9 @@ def install(
                 title="MCP Server Installed",
                 border_style="green",
             )
+        )
+
+        console.print(
+            "\n💡 You may need to restart your MCP client for the changes to take effect.",
+            style="dim",
         )

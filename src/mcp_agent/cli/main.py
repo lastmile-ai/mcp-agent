@@ -15,7 +15,7 @@ from pathlib import Path
 import typer
 from rich.console import Console
 
-from mcp_agent.cli.utils.ux import print_error
+from mcp_agent.cli.utils.ux import print_error, LOG_VERBOSE
 from mcp_agent.cli.utils.version_check import maybe_warn_newer_version
 
 # Mount existing cloud CLI
@@ -54,9 +54,6 @@ from mcp_agent.cli.commands import (
 )
 from mcp_agent.cli.commands import (
     models as models_cmd,
-)
-from mcp_agent.cli.commands import (
-    quickstart as quickstart_cmd,
 )
 from mcp_agent.cli.utils.typer_utils import HelpfulTyperGroup
 
@@ -108,7 +105,6 @@ def main(
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Enable verbose output"
     ),
-    quiet: bool = typer.Option(False, "--quiet", "-q", help="Reduce output"),
     color: bool = typer.Option(
         True, "--color/--no-color", help="Enable/disable color output"
     ),
@@ -122,10 +118,10 @@ def main(
     ),
 ) -> None:
     """mcp-agent command line interface."""
-    # Persist global options on context for subcommands
+    if verbose:
+        LOG_VERBOSE.set(True)
+
     ctx.obj = {
-        "verbose": verbose,
-        "quiet": quiet,
         "color": color,
         "format": format.lower(),
     }
@@ -146,8 +142,11 @@ def main(
 
 
 # Mount non-cloud command groups (top-level, curated)
-app.add_typer(init_cmd.app, name="init", help="Scaffold a new mcp-agent project")
-app.add_typer(quickstart_cmd.app, name="quickstart", help="Copy curated examples")
+app.add_typer(
+    init_cmd.app,
+    name="init",
+    help="Scaffold a new mcp-agent project or copy curated examples",
+)
 app.add_typer(config_cmd.app, name="config", help="Manage and inspect configuration")
 app.add_typer(doctor_cmd.app, name="doctor", help="Comprehensive diagnostics")
 
@@ -188,8 +187,8 @@ app.command(
 )(login)
 
 # Register install command as top-level
-app.add_typer(
-    install_cmd.app, name="install", help="Install MCP server to client applications"
+app.command(name="install", help="Install MCP server to client applications")(
+    install_cmd.install
 )
 
 
