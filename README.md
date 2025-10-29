@@ -101,7 +101,7 @@ if __name__ == "__main__":
     <td width="50%" valign="top">
       <h3>Full MCP Support</h3>
       <p><b>Core:</b> Tools ✅ Resources ✅ Prompts ✅ Notifications ✅<br/>
-      <b>Advanced</b>: OAuth ✅ Sampling ✅ Elicitation ✅ Roots </p>
+      <b>Advanced</b>: OAuth ✅ Sampling ✅ Elicitation ✅ Roots ✅</p>
       <p>
         <a href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp">Examples ↗</a> | 
         <a href="https://modelcontextprotocol.io/docs/getting-started/intro">MCP Docs ↗</a>
@@ -123,7 +123,7 @@ if __name__ == "__main__":
       <p>
         <a href="https://www.youtube.com/watch?v=0C4VY-3IVNU">Demo ↗</a> |
         <a href="https://docs.mcp-agent.com/get-started/cloud">Cloud Quickstart ↗</a> | 
-        <a href="https://docs.mcp-agent.com/cloud/overview">Docs ↗</a>
+        <a href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/cloud">Examples ↗</a>
       </p>
     </td>
   </tr>
@@ -150,29 +150,29 @@ mcp-agent's complete documentation is available at **[docs.mcp-agent.com](https:
   - [Workflows & decorators](#workflows--decorators)
   - [Configuration & secrets](#configuration--secrets)
   - [MCP integration](#mcp-integration)
-- [Workflow patterns](#workflows)
-- [Durable execution](#durable-execution)
-- [Agent servers](#agent-servers)
+- [Workflow patterns](#workflow-patterns)
 - [CLI reference](#cli-reference)
 - [Authentication](#authentication)
 - [Advanced](#advanced)
   - [Observability & controls](#observability--controls)
-  - [Composing workflows](#composability)
-  - [Signals & human input](#signaling-and-human-input)
-  - [App configuration](#app-config)
+  - [Composing workflows](#composing-workflows)
+  - [Durable execution](#durable-execution)
+  - [Agent servers](#agent-servers)
+  - [Signals & human input](#signals--human-input)
+  - [App configuration](#app-configuration)
   - [Icons](#icons)
   - [MCP server management](#mcp-server-management)
 - [Cloud deployment](#cloud-deployment)
 - [Examples](#examples)
-- [FAQ](#faqs)
+- [FAQs](#faqs)
 - [Community & contributions](#contributing)
 
 ## Get Started
 
 > [!TIP]
 > The CLI is available via `uvx mcp-agent`.
-> To get up and running
-> Scaffold a project with `uvx mcp-agent init` and deploy with `uvx mcp-agent deploy my-agent`.
+> To get up and running,
+> scaffold a project with `uvx mcp-agent init` and deploy with `uvx mcp-agent deploy my-agent`.
 >
 > You can get up and running in 2 minutes by running these commands:
 >
@@ -199,20 +199,18 @@ Alternatively:
 pip install mcp-agent
 ```
 
-Also add optional packages for LLM providers (e.g. `mcp-agent[openai, anthropic, google, azure, bedrock]`).
+Also add optional packages for LLM providers (e.g. `uv add "mcp-agent[openai, anthropic, google, azure, bedrock]"`).
 
 ### Quickstart
 
 > [!TIP]
 > The [`examples`](/examples) directory has several example applications to get started with.
-> To run an example, clone this repo (or generate one with `uvx mcp-agent init --template basic --dir my-first-agent`), then:
+> To run an example, clone this repo (or generate one with `uvx mcp-agent init --template basic --dir my-first-agent`)
 >
 > ```bash
 > cd examples/basic/mcp_basic_agent # Or any other example
 > # Option A: secrets YAML
 > # cp mcp_agent.secrets.yaml.example mcp_agent.secrets.yaml && edit mcp_agent.secrets.yaml
-> # Option B: .env
-> cp .env.example .env && edit .env
 > uv run main.py
 > ```
 
@@ -466,15 +464,15 @@ Docs: [MCP integration overview](https://docs.mcp-agent.com/mcp/overview) • Ex
 
 Key agent patterns are implemented as an `AugmentedLLM`. Use factory helpers to wire them up or inspect the runnable projects listed in [gallery.md](gallery.md#workflow-patterns).
 
-| Pattern               | Factory helper                                                                 | Summary                                                  | Docs & examples                                                                                                                                                                |
-| --------------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Parallel (Map-Reduce) | `create_parallel_llm(...)`                                                     | Fan out to specialists and combine their reports.        | [Docs](https://docs.mcp-agent.com/mcp-agent-sdk/effective-patterns/map-reduce) • [`workflow_parallel`](./examples/workflows/workflow_parallel/)                                |
-| Router                | `create_router_llm(...)`, `create_router_embedding(...)`                       | Route requests to the best agent, server, or function.   | [Docs](https://docs.mcp-agent.com/mcp-agent-sdk/effective-patterns/router) • [`workflow_router`](./examples/workflows/workflow_router/)                                        |
-| Intent classifier     | `create_intent_classifier_llm(...)`, `create_intent_classifier_embedding(...)` | Bucket requests into labelled intents before automation. | [Docs](https://docs.mcp-agent.com/mcp-agent-sdk/effective-patterns/intent-classifier) • [`workflow_intent_classifier`](./examples/workflows/workflow_intent_classifier/)       |
-| Orchestrator-workers  | `create_orchestrator(...)`                                                     | Generate plans, assign work, and coordinate completion.  | [Docs](https://docs.mcp-agent.com/mcp-agent-sdk/effective-patterns/planner) • [`workflow_orchestrator_worker`](./examples/workflows/workflow_orchestrator_worker/)             |
-| Deep research         | `create_deep_orchestrator(...)`                                                | Long-horizon research with policy guardrails.            | [Docs](https://docs.mcp-agent.com/mcp-agent-sdk/effective-patterns/deep-research) • [`workflow_deep_orchestrator`](./examples/workflows/workflow_deep_orchestrator/)           |
-| Evaluator-optimizer   | `create_evaluator_optimizer_llm(...)`                                          | Iterate until a reviewer approves the output.            | [Docs](https://docs.mcp-agent.com/mcp-agent-sdk/effective-patterns/evaluator-optimizer) • [`workflow_evaluator_optimizer`](./examples/workflows/workflow_evaluator_optimizer/) |
-| Swarm                 | `create_swarm(...)`                                                            | Multi-agent handoffs compatible with OpenAI Swarm.       | [Docs](https://docs.mcp-agent.com/mcp-agent-sdk/effective-patterns/swarm) • [`workflow_swarm`](./examples/workflows/workflow_swarm/)                                           |
+| Pattern               | Helper                                                                          | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Docs                                                                                                   |
+| --------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| Parallel (Map-Reduce) | `create_parallel_llm(...)`                                                      | Fan-out specialists and fan-in aggregated reports.<br><a href="https://www.anthropic.com/_next/image?url=https%3A%2F%2Fwww-cdn.anthropic.com%2Fimages%2F4zrzovbb%2Fwebsite%2F406bb032ca007fd1624f261af717d70e6ca86286-2401x1000.png&w=3840&q=75"><img src="https://www.anthropic.com/_next/image?url=https%3A%2F%2Fwww-cdn.anthropic.com%2Fimages%2F4zrzovbb%2Fwebsite%2F406bb032ca007fd1624f261af717d70e6ca86286-2401x1000.png&w=3840&q=75" width="260"/></a>     | [Parallel](https://docs.mcp-agent.com/mcp-agent-sdk/effective-patterns/map-reduce)                     |
+| Router                | `create_router_llm(...)` / `create_router_embedding(...)`                       | Route requests to the best agent, server, or function.<br><a href="https://www.anthropic.com/_next/image?url=https%3A%2F%2Fwww-cdn.anthropic.com%2Fimages%2F4zrzovbb%2Fwebsite%2F5c0c0e9fe4def0b584c04d37849941da55e5e71c-2401x1000.png&w=3840&q=75"><img src="https://www.anthropic.com/_next/image?url=https%3A%2F%2Fwww-cdn.anthropic.com%2Fimages%2F4zrzovbb%2Fwebsite%2F5c0c0e9fe4def0b584c04d37849941da55e5e71c-2401x1000.png&w=3840&q=75" width="260"/></a> | [Router](https://docs.mcp-agent.com/mcp-agent-sdk/effective-patterns/router)                           |
+| Intent classifier     | `create_intent_classifier_llm(...)` / `create_intent_classifier_embedding(...)` | Bucket user input into intents before automation.                                                                                                                                                                                                                                                                                                                                                                                                                  | [Intent classifier](https://docs.mcp-agent.com/mcp-agent-sdk/effective-patterns/intent-classifier)     |
+| Orchestrator-workers  | `create_orchestrator(...)`                                                      | Generate plans and coordinate worker agents.<br><a href="https://www.anthropic.com/_next/image?url=https%3A%2F%2Fwww-cdn.anthropic.com%2Fimages%2F4zrzovbb%2Fwebsite%2F8985fc683fae4780fb34eab1365ab78c7e51bc8e-2401x1000.png&w=3840&q=75"><img src="https://www.anthropic.com/_next/image?url=https%3A%2F%2Fwww-cdn.anthropic.com%2Fimages%2F4zrzovbb%2Fwebsite%2F8985fc683fae4780fb34eab1365ab78c7e51bc8e-2401x1000.png&w=3840&q=75" width="260"/></a>           | [Planner](https://docs.mcp-agent.com/mcp-agent-sdk/effective-patterns/planner)                         |
+| Deep research         | `create_deep_orchestrator(...)`                                                 | Long-horizon research with knowledge extraction and policy checks.                                                                                                                                                                                                                                                                                                                                                                                                 | [Deep research](https://docs.mcp-agent.com/mcp-agent-sdk/effective-patterns/deep-research)             |
+| Evaluator-optimizer   | `create_evaluator_optimizer_llm(...)`                                           | Iterate until an evaluator approves the result.<br><a href="https://www.anthropic.com/_next/image?url=https%3A%2F%2Fwww-cdn.anthropic.com%2Fimages%2F4zrzovbb%2Fwebsite%2F14f51e6406ccb29e695da48b17017e899a6119c7-2401x1000.png&w=3840&q=75"><img src="https://www.anthropic.com/_next/image?url=https%3A%2F%2Fwww-cdn.anthropic.com%2Fimages%2F4zrzovbb%2Fwebsite%2F14f51e6406ccb29e695da48b17017e899a6119c7-2401x1000.png&w=3840&q=75" width="260"/></a>        | [Evaluator-optimizer](https://docs.mcp-agent.com/mcp-agent-sdk/effective-patterns/evaluator-optimizer) |
+| Swarm                 | `create_swarm(...)`                                                             | Multi-agent handoffs compatible with OpenAI Swarm.<br><a href="https://github.com/openai/swarm/blob/main/assets/swarm_diagram.png?raw=true"><img src="https://github.com/openai/swarm/blob/main/assets/swarm_diagram.png?raw=true" width="220"/></a>                                                                                                                                                                                                               | [Swarm](https://docs.mcp-agent.com/mcp-agent-sdk/effective-patterns/swarm)                             |
 
 ## Durable execution
 
@@ -717,7 +715,7 @@ You can use mcp-agent applications in a standalone fashion (i.e. they aren't par
 ### How do I deploy to Cloud?
 
 Run `uvx mcp-agent deploy <app-name>` after logging in with `uvx mcp-agent login`. The CLI packages your project, provisions secrets, and exposes an MCP endpoint backed by a durable Temporal runtime. See the [Cloud quickstart](https://docs.mcp-agent.com/get-started/
-  cloud) for step-by-step screenshots and CLI output.
+cloud) for step-by-step screenshots and CLI output.
 
 ### Where is the API reference?
 
