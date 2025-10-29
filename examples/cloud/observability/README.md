@@ -144,7 +144,7 @@ npx @modelcontextprotocol/inspector --transport sse --server-url https://<server
 This will launch the MCP Inspector UI where you can:
 
 - See all available tools
-- Test the `grade_story_async` workflow execution
+- Test the `grade_story_async` and `ResearchWorkflow` workflow execution
 
 Make sure Inspector is configured with the following settings:
 

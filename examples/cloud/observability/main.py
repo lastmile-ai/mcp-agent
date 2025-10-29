@@ -3,19 +3,20 @@ Observability Example MCP App
 
 This example demonstrates a very basic MCP app with observability features using OpenTelemetry.
 
-mcp-agent automatically instruments tool calls, workflows, LLM calls, and more, allowing you to trace
-and monitor the execution of your app. You can also add custom tracing spans as needed.
+mcp-agent automatically instruments workflows (runs, tasks/activities), tool calls, LLM calls, and more,
+allowing you to trace and monitor the execution of your app. You can also add custom tracing spans as needed.
 
 """
 
 import asyncio
-from typing import Optional
+from typing import List, Optional
 
 from opentelemetry import trace
 
 from mcp_agent.agents.agent import Agent
 from mcp_agent.app import MCPApp
 from mcp_agent.core.context import Context as AppContext
+from mcp_agent.executor.workflow import Workflow
 from mcp_agent.server.app_server import create_mcp_server_for_app
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 from mcp_agent.workflows.parallel.parallel_llm import ParallelLLM
@@ -33,7 +34,24 @@ def get_magic_number(original_number: int = 0) -> int:
         return result
 
 
-# Tool calls, workflows, LLM calls, etc. are automatically traced by mcp-agent
+# Workflows (runs, tasks/activities), tool calls, LLM calls, etc. are automatically traced by mcp-agent
+@app.workflow_task()
+async def gather_sources(query: str) -> list[str]:
+    app.context.logger.info("Gathering sources", data={"query": query})
+    return [f"https://example.com/search?q={query}"]
+
+
+@app.workflow
+class ResearchWorkflow(Workflow[None]):
+    @app.workflow_run
+    async def run(self, topic: str) -> List[str]:
+        sources = await self.context.executor.execute(gather_sources, topic)
+        self.context.logger.info(
+            "Workflow completed", data={"topic": topic, "sources": sources}
+        )
+        return sources
+
+
 @app.async_tool(name="grade_story_async")
 async def grade_story_async(story: str, app_ctx: Optional[AppContext] = None) -> str:
     """
