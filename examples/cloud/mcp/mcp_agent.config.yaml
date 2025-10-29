@@ -1,8 +1,9 @@
+$schema: ../../schema/mcp-agent.config.schema.json
+
 execution_engine: asyncio
 logger:
-  transports: [file]
+  transports: [console]
   level: debug
-  path: "logs/mcp-agent.jsonl"
 
 mcp:
   servers:

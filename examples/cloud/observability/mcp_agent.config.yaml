@@ -1,0 +1,11 @@
+$schema: ../../schema/mcp-agent.config.schema.json
+
+execution_engine: asyncio
+logger:
+  transports: [console]
+  level: debug
+
+otel:
+  enabled: true
+  service_name: "BasicObservabilityExample"
+  # OTLP exporter endpoint and headers are configured in mcp_agent.secrets.yaml
