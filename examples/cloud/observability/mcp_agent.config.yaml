@@ -5,17 +5,6 @@ logger:
   transports: [console]
   level: debug
 
-mcp:
-  servers:
-    fetch:
-      command: "uvx"
-      args: ["mcp-server-fetch"]
-      description: "Fetch content at URLs from the world wide web"
-    filesystem:
-      command: "npx"
-      args: ["-y", "@modelcontextprotocol/server-filesystem"]
-      description: "Read and write files on the filesystem"
-
 otel:
   enabled: true
   service_name: "BasicObservabilityExample"
