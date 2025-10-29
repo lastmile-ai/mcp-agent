@@ -3,12 +3,17 @@ import json
 import requests
 from main import app
 
-# Authorization server URL. This can either be the mcp-agent Cloud authorization server (as currently configured),
+# Authorization server URL. This can either be the mcp-agent cloud authorization server (as currently configured),
 # or your own.
 auth_server_url = app.config.authorization.issuer_url
+
 redirect_uris = [
-    f"{app.config.oauth.callback_base_url}/oauth/callback",
-    f"{app.config.oauth.callback_base_url}/oauth/callback/debug",
+    # MCP Server redirect URIs
+    f"{app.config.oauth.callback_base_url}/callback",
+    f"{app.config.oauth.callback_base_url}/callback/debug",
+    # MCP Inspector redirect URIs (for testing with MCP Inspector)
+    "http://localhost:6274/oauth/callback",
+    "http://localhost:6274/oauth/callback/debug",
 ]
 
 # Fetch the registration endpoint dynamically from the .well-known/oauth-authorization-server details
@@ -41,7 +46,7 @@ response = requests.post(
     registration_endpoint,
     json=registration_request,
     headers={"Content-Type": "application/json"},
-    timeout=10,
+    timeout=60,
 )
 
 if response.status_code in [200, 201]:
