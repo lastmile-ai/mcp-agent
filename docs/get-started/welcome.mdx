@@ -12,19 +12,22 @@ icon: hand-wave
   className="rounded-2xl block"
 />
 
-**mcp-agent** is your pattern library for building [Model Context Protocol](https://modelcontextprotocol.io/introduction) agents. It pairs Anthropic's [Building Effective Agents](https://www.anthropic.com/research/building-effective-agents) patterns with a batteries-included runtime so you can focus on agent behavior—not wiring.
+[`mcp-agent`](https://github.com/lastmile-ai/mcp-agent) is a simple, composable framework to build effective agents using [Model Context Protocol](https://modelcontextprotocol.io/introduction).
+
+**mcp-agent**'s vision is that MCP is all you need to build agents, and that simple patterns are more robust than complex architectures for shipping high-quality agents.
+When you're ready to deploy, [`mcp-c`](https://docs.mcp-agent.com/get-started/cloud) let's you deploy any kind of MCP server to a managed Cloud. You can even deploy agents as MCP servers!
 
 ## Why teams pick mcp-agent
 
 <CardGroup cols={2}>
-  <Card title="Composable patterns" icon="puzzle-piece">
-    Parallel, router, planner, evaluator—every pattern from Anthropic's guide ships as a first-class workflow.
-  </Card>
   <Card title="MCP-native" icon="plug">
-    Works with any MCP server. Drop in the filesystem, fetch, Slack, Jira, or your own FastMCP servers and start calling tools immediately.
+    Fully implements the MCP spec, including auth, elicitation, sampling, and notifications.
   </Card>
-  <Card title="Production ready" icon="shield">
-    Durable execution with Temporal, structured logging, token accounting, observability hooks, and cloud deployment via the CLI.
+  <Card title="Composable patterns" icon="puzzle-piece">
+    Map-reduce, router, deep research, evaluator — every pattern from Anthropic's [Building Effective Agents](https://www.anthropic.com/research/building-effective-agents) guide ships as a first-class workflow.
+  </Card>
+  <Card title="Built for Production" icon="shield">
+    Durable execution with Temporal, OpenTelemetry observability, and cloud deployment via the CLI.
   </Card>
   <Card title="Lightweight & Pythonic" icon="feather">
     Define an agent with a few lines of Python—mcp-agent handles the lifecycle, connections, and MCP server wiring for you.
@@ -60,25 +63,18 @@ if __name__ == "__main__":
 
 <CardGroup cols={2}>
   <Card
-    title="Install the toolkit"
-    icon="arrow-down-to-line"
-    href="/get-started/install"
-  >
-    Set up Python, optional MCP servers, and run the `mcp-agent` CLI with `uvx`.
-  </Card>
-  <Card
-    title="Hello world in minutes"
+    title="Quickstart"
     icon="rocket-launch"
     href="/get-started/quickstart"
   >
-    Scaffold an agent with `uvx mcp-agent init` and run it locally.
+    Scaffold an agent with `uvx mcp-agent init` and run it locally in under 5 minutes.
   </Card>
   <Card
-    title="Deploy to the cloud"
+    title="Deploy to Cloud"
     icon="cloud"
     href="/get-started/cloud"
   >
-    Use `uvx mcp-agent deploy` to host your agent as a managed MCP server.
+    Deploy any kind of MCP server using `mcp-c`. Use `uvx mcp-agent deploy` to host your agent as a managed MCP server.
   </Card>
   <Card
     title="Explore the patterns"
@@ -88,3 +84,10 @@ if __name__ == "__main__":
     Learn how to combine planner, router, evaluator, and more.
   </Card>
 </CardGroup>
+
+### Build with LLMs
+
+The docs are also available in [llms.txt format](https://llmstxt.org/):
+- [llms.txt](https://docs.mcp-agent.com/llms.txt) - A sitemap listing all documentation pages
+- [llms-full.txt](https://docs.mcp-agent.com/llms-full.txt) - The entire documentation in one file (may exceed context windows)
+- [docs MCP server](https://docs.mcp-agent.com/mcp) - Directly connect the docs to an MCP-compatible AI coding assistant.
