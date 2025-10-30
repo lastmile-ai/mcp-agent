@@ -74,6 +74,8 @@ openai:
   api_key: "your-openai-api-key"
 ```
 
+The provided `mcp_agent.config.yaml` already targets the local Temporal dev server. If you register additional `@workflow_task` activities in your own modules, uncomment the top-level `workflow_task_modules` list in that file and add your module paths so the worker imports them at startup.
+
 ## Test Locally
 
 Before running this example, you need to have a Temporal server running:

@@ -150,6 +150,48 @@ The same helper works on the asyncio executor via `app.context.executor.signal_b
 
 The Temporal server example also shows how durable workflows call nested MCP servers and trigger [MCP elicitation](https://modelcontextprotocol.io/specification/2025-06-18/client/elicitation) when a human response is required. Activities such as `call_nested_elicitation` log progress via `app.app.logger` so the request trace and Temporal history stay aligned.
 
+## Configure workflow-task modules and retry policies
+
+Add optional top-level overrides to preload custom workflow tasks and refine retry behaviour:
+
+```yaml
+execution_engine: temporal
+
+workflow_task_modules:
+  - my_project.temporal_tasks  # importable module path
+
+workflow_task_retry_policies:
+  my_project.temporal_tasks.generate_summary:
+    maximum_attempts: 1
+  mcp_agent.workflows.llm.augmented_llm_openai.OpenAICompletionTasks.request_completion_task:
+    maximum_attempts: 2
+    non_retryable_error_types:
+      - AuthenticationError
+      - PermissionDeniedError
+      - BadRequestError
+      - NotFoundError
+      - UnprocessableEntityError
+  custom_tasks.*:
+    initial_interval: 1.5   # seconds (number, string, or timedelta)
+    backoff_coefficient: 1.2
+  *:
+    maximum_attempts: 3
+```
+
+- `workflow_task_modules` entries are standard Python import paths; they are imported before the worker begins polling so `@workflow_task` functions register globally.
+- `workflow_task_retry_policies` accepts exact activity names, module or class suffixes (`prefix.suffix`), trailing wildcards like `custom_tasks.*`, or the global `*`. The most specific match wins.
+- Retry intervals accept seconds (`1.5`), strings (`"2"`), or `timedelta` objects.
+- Marking error `type`s in `non_retryable_error_types` prevents Temporal from re-running an activity when the failure is not recoverable (see the [Temporal failure reference](https://docs.temporal.io/references/failures#application-failure)). For provider SDKs, useful values include:
+  - OpenAI/Azure OpenAI: `AuthenticationError`, `PermissionDeniedError`, `BadRequestError`, `NotFoundError`, `UnprocessableEntityError`.
+  - Anthropic: `AuthenticationError`, `PermissionDeniedError`, `BadRequestError`, `NotFoundError`, `UnprocessableEntityError`.
+  - Azure AI Inference: `HttpResponseError` (raised with non-retryable status codes such as 400/401/403/404/422).
+  - Google GenAI: `InvalidArgument`, `FailedPrecondition`, `PermissionDenied`, `NotFound`, `Unauthenticated`.
+- mcp-agent raises `WorkflowApplicationError` (wrapping Temporal's `ApplicationError` when available) for known non-retryable provider failures, so these policies work even if you run without the Temporal extra installed.
+- Inspect an activity’s fully-qualified name via `func.execution_metadata["activity_name"]` or through the Temporal UI history when adding a mapping.
+- Temporal matches `non_retryable_error_types` using the exception class name string you supply (see the [RetryPolicy reference](https://docs.temporal.io/references/sdk-apis/python/temporalio.common/#temporalio-common-RetryPolicy)). Use the narrowest names possible—overly generic entries such as `NotFoundError` can suppress legitimate retries if a workflow expects to handle that condition and try again.
+
+With these pieces in place you can gradually introduce durability: start on asyncio, flip the config once you need retries/pause/resume, then iterate on policies and module preloading as your workflow surface grows.
+
 ## Operating durable agents
 
 - **Temporal Web UI** (http://localhost:8233) lets you inspect history, replay workflow code, and emit signals.

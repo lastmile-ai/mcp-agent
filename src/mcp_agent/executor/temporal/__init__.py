@@ -6,6 +6,7 @@ Read more: https://docs.temporal.io/develop/python/core-application
 """
 
 import asyncio
+import importlib
 from contextlib import asynccontextmanager
 from datetime import timedelta
 import functools
@@ -27,7 +28,7 @@ from temporalio import activity, workflow, exceptions
 from temporalio.client import Client as TemporalClient, WorkflowHandle
 from temporalio.contrib.opentelemetry import TracingInterceptor
 from temporalio.contrib.pydantic import pydantic_data_converter
-from temporalio.common import WorkflowIDReusePolicy
+from temporalio.common import RetryPolicy, WorkflowIDReusePolicy
 from temporalio.worker import Worker
 
 from mcp_agent.config import TemporalSettings
@@ -47,6 +48,24 @@ if TYPE_CHECKING:
     from uuid import UUID
 
 logger = get_logger(__name__)
+
+DEFAULT_TEMPORAL_WORKFLOW_TASK_MODULES: tuple[str, ...] = (
+    "mcp_agent.workflows.llm.augmented_llm_openai",
+    "mcp_agent.workflows.llm.augmented_llm_anthropic",
+    "mcp_agent.workflows.llm.augmented_llm_azure",
+    "mcp_agent.workflows.llm.augmented_llm_bedrock",
+    "mcp_agent.workflows.llm.augmented_llm_google",
+    "mcp_agent.workflows.llm.augmented_llm_ollama",
+)
+
+MODULE_OPTIONAL_EXTRAS: dict[str, str] = {
+    "mcp_agent.workflows.llm.augmented_llm_openai": "openai",
+    "mcp_agent.workflows.llm.augmented_llm_anthropic": "anthropic",
+    "mcp_agent.workflows.llm.augmented_llm_azure": "azure",
+    "mcp_agent.workflows.llm.augmented_llm_bedrock": "bedrock",
+    "mcp_agent.workflows.llm.augmented_llm_google": "google",
+    "mcp_agent.workflows.llm.augmented_llm_ollama": "ollama",
+}
 
 
 class TemporalExecutorConfig(ExecutorConfig, TemporalSettings):
@@ -191,6 +210,15 @@ class TemporalExecutor(Executor):
             schedule_to_close = timedelta(seconds=schedule_to_close)
 
         retry_policy = execution_metadata.get("retry_policy", None)
+        if isinstance(retry_policy, dict):
+            try:
+                retry_policy = RetryPolicy(**retry_policy)
+            except TypeError as exc:
+                logger.warning(
+                    "Invalid retry policy configuration; falling back to default",
+                    data={"activity": activity_name, "error": str(exc)},
+                )
+                retry_policy = None
 
         try:
             # Temporal's execute_activity accepts at most one positional arg;
@@ -494,6 +522,60 @@ class TemporalExecutor(Executor):
             return super().random()
 
 
+def _preload_workflow_task_modules(app: "MCPApp") -> None:
+    """
+    Import modules that define @workflow_task activities so they register with the app
+    before we hand the activity list to the Temporal worker.
+    """
+
+    module_names = set(DEFAULT_TEMPORAL_WORKFLOW_TASK_MODULES)
+
+    try:
+        global_modules = getattr(
+            getattr(app.context, "config", None), "workflow_task_modules", None
+        )
+        if global_modules:
+            module_names.update(module for module in global_modules if module)
+    except Exception:
+        pass
+
+    try:
+        temporal_settings = getattr(
+            getattr(app.context, "config", None), "temporal", None
+        )
+        if temporal_settings and getattr(
+            temporal_settings, "workflow_task_modules", None
+        ):
+            module_names.update(
+                module for module in temporal_settings.workflow_task_modules if module
+            )
+    except Exception:
+        # Best-effort only
+        pass
+
+    for module_name in sorted(module_names):
+        try:
+            importlib.import_module(module_name)
+        except ModuleNotFoundError as exc:
+            missing_dep = exc.name or module_name
+            extra_hint = MODULE_OPTIONAL_EXTRAS.get(module_name)
+            logger.warning(
+                "Workflow task module import skipped; install optional dependency",
+                data={
+                    "module": module_name,
+                    "missing_dependency": missing_dep,
+                    "install_hint": f'pip install "mcp-agent[{extra_hint}]"'
+                    if extra_hint
+                    else "Install the matching optional extras for your provider",
+                },
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to import workflow task module",
+                data={"module": module_name, "error": str(exc)},
+            )
+
+
 @asynccontextmanager
 async def create_temporal_worker_for_app(app: "MCPApp"):
     """
@@ -507,6 +589,7 @@ async def create_temporal_worker_for_app(app: "MCPApp"):
             raise ValueError("App executor is not a TemporalExecutor.")
 
         await running_app.executor.ensure_client()
+        _preload_workflow_task_modules(running_app)
 
         from mcp_agent.agents.agent import AgentTasks
 
@@ -530,6 +613,9 @@ async def create_temporal_worker_for_app(app: "MCPApp"):
         )
         app.workflow_task(name="mcp_relay_notify")(system_activities.relay_notify)
         app.workflow_task(name="mcp_relay_request")(system_activities.relay_request)
+
+        # Ensure any newly-imported @workflow_task functions are attached to the app
+        running_app._register_global_workflow_tasks()
 
         for name in activity_registry.list_activities():
             activities.append(activity_registry.get_activity(name))

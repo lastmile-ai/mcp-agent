@@ -1,5 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
+from types import SimpleNamespace
 
 from mcp.types import CallToolResult, TextContent
 
@@ -32,7 +33,28 @@ def mock_swarm_agent():
     agent.shutdown = AsyncMock()
     agent.parallel_tool_calls = False
     agent.functions = []
-    agent.context = Context()
+
+    ctx = MagicMock(spec=Context)
+    ctx.config = SimpleNamespace(
+        anthropic=SimpleNamespace(default_model="claude-3-5-sonnet-20241022")
+    )
+    ctx.executor = MagicMock()
+    ctx.executor.execute = AsyncMock()
+    ctx.executor.execute_many = AsyncMock()
+    ctx.model_selector = MagicMock()
+    token_counter = MagicMock()
+    token_counter.push = AsyncMock()
+    token_counter.pop = AsyncMock()
+    token_counter.record_usage = AsyncMock()
+    token_counter.get_summary = AsyncMock()
+    token_counter.get_tree = AsyncMock()
+    token_counter.reset = AsyncMock()
+    ctx.token_counter = token_counter
+    ctx.tracing_enabled = False
+    ctx.tracing_config = None
+    ctx.app = None
+    ctx.session_id = None
+    agent.context = ctx
     agent._function_tool_map = {}
     return agent
 

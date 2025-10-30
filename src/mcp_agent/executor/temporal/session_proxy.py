@@ -15,7 +15,13 @@ from mcp.server.models import InitializationOptions
 from mcp.server.session import ServerSession
 from mcp.shared.message import ServerMessageMetadata
 
+from contextlib import contextmanager
+
 from mcp_agent.core.context import Context
+from mcp_agent.core.request_context import (
+    set_current_request_context,
+    reset_current_request_context,
+)
 from mcp_agent.executor.temporal.system_activities import SystemActivities
 from mcp_agent.executor.temporal.temporal_context import get_execution_id
 from mcp_agent.oauth.identity import DEFAULT_PRECONFIGURED_IDENTITY
@@ -73,6 +79,33 @@ class SessionProxy(ServerSession):
         # Provide a low-level RPC facade similar to real ServerSession
         self.rpc = _RPC(self)
 
+    @contextmanager
+    def _scoped_context(self):
+        token = None
+        previous_identity = None
+        app_server_module = None
+        try:
+            if self._context is not None:
+                token = set_current_request_context(self._context)
+            try:
+                from mcp_agent.server import app_server as app_server_module
+            except Exception:
+                app_server_module = None
+            if app_server_module is not None:
+                try:
+                    previous_identity = app_server_module.get_current_identity()
+                except Exception:
+                    previous_identity = None
+            yield
+        finally:
+            if token is not None:
+                reset_current_request_context(token)
+            if app_server_module is not None:
+                try:
+                    app_server_module._set_current_identity(previous_identity)
+                except Exception:
+                    pass
+
     def _ensure_identity(self) -> None:
         exec_id = get_execution_id()
         identity = None
@@ -102,31 +135,32 @@ class SessionProxy(ServerSession):
 
         Returns True on best-effort success.
         """
-        self._ensure_identity()
-        exec_id = get_execution_id()
-        if not exec_id:
-            return False
-
-        if _in_workflow_runtime():
-            try:
-                act = self._context.task_registry.get_activity("mcp_relay_notify")
-                await self._executor.execute(
-                    act,
-                    exec_id,
-                    method,
-                    params or {},
-                )
-                return True
-            except Exception:
+        with self._scoped_context():
+            self._ensure_identity()
+            exec_id = get_execution_id()
+            if not exec_id:
                 return False
-        # Non-workflow (activity/asyncio): fire-and-forget best-effort
-        try:
-            asyncio.create_task(
-                self._system_activities.relay_notify(exec_id, method, params or {})
-            )
-        except Exception:
-            pass
-        return True
+
+            if _in_workflow_runtime():
+                try:
+                    act = self._context.task_registry.get_activity("mcp_relay_notify")
+                    await self._executor.execute(
+                        act,
+                        exec_id,
+                        method,
+                        params or {},
+                    )
+                    return True
+                except Exception:
+                    return False
+            # Non-workflow (activity/asyncio): fire-and-forget best-effort
+            try:
+                asyncio.create_task(
+                    self._system_activities.relay_notify(exec_id, method, params or {})
+                )
+            except Exception:
+                pass
+            return True
 
     async def request(
         self, method: str, params: Dict[str, Any] | None = None
@@ -134,55 +168,56 @@ class SessionProxy(ServerSession):
         """Send a server->client request and return the client's response.
         The result is a plain JSON-serializable dict.
         """
-        self._ensure_identity()
-        exec_id = get_execution_id()
-        if not exec_id:
-            return {"error": "missing_execution_id"}
+        with self._scoped_context():
+            self._ensure_identity()
+            exec_id = get_execution_id()
+            if not exec_id:
+                return {"error": "missing_execution_id"}
 
-        if _in_workflow_runtime():
-            act = self._context.task_registry.get_activity("mcp_relay_request")
+            if _in_workflow_runtime():
+                act = self._context.task_registry.get_activity("mcp_relay_request")
 
-            execution_info = await self._executor.execute(
-                act,
-                True,  # Use the async APIs with signalling for response
+                execution_info = await self._executor.execute(
+                    act,
+                    True,  # Use the async APIs with signalling for response
+                    exec_id,
+                    method,
+                    params or {},
+                )
+
+                if execution_info.get("error"):
+                    return execution_info
+
+                signal_name = execution_info.get("signal_name", "")
+
+                if not signal_name:
+                    return {"error": "no_signal_name_returned_from_activity"}
+
+                # Wait for the response via workflow signal
+                info = _twf.info()
+                payload = await self._context.executor.wait_for_signal(  # type: ignore[attr-defined]
+                    signal_name,
+                    workflow_id=info.workflow_id,
+                    run_id=info.run_id,
+                    signal_description=f"Waiting for async response to {method}",
+                    # Timeout can be controlled by Temporal workflow/activity timeouts
+                )
+
+                pc = _twf.payload_converter()
+                # Support either a Temporal payload wrapper or a plain dict
+                if hasattr(payload, "payload"):
+                    return pc.from_payload(payload.payload, dict)
+                if isinstance(payload, dict):
+                    return payload
+                return pc.from_payload(payload, dict)
+
+            # Non-workflow (activity/asyncio): direct call and wait for result
+            return await self._system_activities.relay_request(
+                False,  # Do not use the async APIs, but the synchronous ones instead
                 exec_id,
                 method,
                 params or {},
             )
-
-            if execution_info.get("error"):
-                return execution_info
-
-            signal_name = execution_info.get("signal_name", "")
-
-            if not signal_name:
-                return {"error": "no_signal_name_returned_from_activity"}
-
-            # Wait for the response via workflow signal
-            info = _twf.info()
-            payload = await self._context.executor.wait_for_signal(  # type: ignore[attr-defined]
-                signal_name,
-                workflow_id=info.workflow_id,
-                run_id=info.run_id,
-                signal_description=f"Waiting for async response to {method}",
-                # Timeout can be controlled by Temporal workflow/activity timeouts
-            )
-
-            pc = _twf.payload_converter()
-            # Support either a Temporal payload wrapper or a plain dict
-            if hasattr(payload, "payload"):
-                return pc.from_payload(payload.payload, dict)
-            if isinstance(payload, dict):
-                return payload
-            return pc.from_payload(payload, dict)
-
-        # Non-workflow (activity/asyncio): direct call and wait for result
-        return await self._system_activities.relay_request(
-            False,  # Do not use the async APIs, but the synchronous ones instead
-            exec_id,
-            method,
-            params or {},
-        )
 
     async def send_notification(
         self,
@@ -202,8 +237,9 @@ class SessionProxy(ServerSession):
         if related_request_id is not None:
             params = dict(params or {})
             params["related_request_id"] = related_request_id
-        self._ensure_identity()
-        await self.notify(root.method, params)  # type: ignore[attr-defined]
+        with self._scoped_context():
+            self._ensure_identity()
+            await self.notify(root.method, params)  # type: ignore[attr-defined]
 
     async def send_request(
         self,
@@ -222,7 +258,8 @@ class SessionProxy(ServerSession):
             params = {}
         # Note: metadata (e.g., related_request_id) is handled server-side where applicable
         self._ensure_identity()
-        payload = await self.request(root.method, params)  # type: ignore[attr-defined]
+        with self._scoped_context():
+            payload = await self.request(root.method, params)  # type: ignore[attr-defined]
         # Attempt to validate into the requested result type
         try:
             return result_type.model_validate(payload)  # type: ignore[attr-defined]
@@ -237,35 +274,42 @@ class SessionProxy(ServerSession):
         related_request_id: types.RequestId | None = None,
     ) -> None:
         """Best-effort log forwarding to the client's UI."""
-        self._ensure_identity()
-        # Prefer activity-based forwarding inside workflow for determinism
-        exec_id = get_execution_id()
-        if _in_workflow_runtime() and exec_id:
-            try:
-                act = self._context.task_registry.get_activity("mcp_forward_log")
-                namespace = (
-                    (data or {}).get("namespace")
-                    if isinstance(data, dict)
-                    else (logger or "mcp_agent")
-                )
-                message = (data or {}).get("message") if isinstance(data, dict) else ""
-                await self._executor.execute(
-                    act,
-                    exec_id,
-                    str(level),
-                    namespace or (logger or "mcp_agent"),
-                    message or "",
-                    (data or {}),
-                )
-                return
-            except Exception:
-                # Fall back to notify path below
-                pass
+        with self._scoped_context():
+            self._ensure_identity()
+            # Prefer activity-based forwarding inside workflow for determinism
+            exec_id = get_execution_id()
+            if _in_workflow_runtime() and exec_id:
+                try:
+                    act = self._context.task_registry.get_activity("mcp_forward_log")
+                    namespace = (
+                        (data or {}).get("namespace")
+                        if isinstance(data, dict)
+                        else (logger or "mcp_agent")
+                    )
+                    message = (
+                        (data or {}).get("message") if isinstance(data, dict) else ""
+                    )
+                    await self._executor.execute(
+                        act,
+                        exec_id,
+                        str(level),
+                        namespace or (logger or "mcp_agent"),
+                        message or "",
+                        (data or {}),
+                    )
+                    return
+                except Exception:
+                    # Fall back to notify path below
+                    pass
 
-        params: Dict[str, Any] = {"level": str(level), "data": data, "logger": logger}
-        if related_request_id is not None:
-            params["related_request_id"] = related_request_id
-        await self.notify("notifications/message", params)
+            params: Dict[str, Any] = {
+                "level": str(level),
+                "data": data,
+                "logger": logger,
+            }
+            if related_request_id is not None:
+                params["related_request_id"] = related_request_id
+            await self.notify("notifications/message", params)
 
     async def send_progress_notification(
         self,
@@ -275,29 +319,34 @@ class SessionProxy(ServerSession):
         message: str | None = None,
         related_request_id: str | None = None,
     ) -> None:
-        params: Dict[str, Any] = {
-            "progressToken": progress_token,
-            "progress": progress,
-        }
-        if total is not None:
-            params["total"] = total
-        if message is not None:
-            params["message"] = message
-        if related_request_id is not None:
-            params["related_request_id"] = related_request_id
-        await self.notify("notifications/progress", params)
+        with self._scoped_context():
+            params: Dict[str, Any] = {
+                "progressToken": progress_token,
+                "progress": progress,
+            }
+            if total is not None:
+                params["total"] = total
+            if message is not None:
+                params["message"] = message
+            if related_request_id is not None:
+                params["related_request_id"] = related_request_id
+            await self.notify("notifications/progress", params)
 
     async def send_resource_updated(self, uri: types.AnyUrl) -> None:
-        await self.notify("notifications/resources/updated", {"uri": str(uri)})
+        with self._scoped_context():
+            await self.notify("notifications/resources/updated", {"uri": str(uri)})
 
     async def send_resource_list_changed(self) -> None:
-        await self.notify("notifications/resources/list_changed", {})
+        with self._scoped_context():
+            await self.notify("notifications/resources/list_changed", {})
 
     async def send_tool_list_changed(self) -> None:
-        await self.notify("notifications/tools/list_changed", {})
+        with self._scoped_context():
+            await self.notify("notifications/tools/list_changed", {})
 
     async def send_prompt_list_changed(self) -> None:
-        await self.notify("notifications/prompts/list_changed", {})
+        with self._scoped_context():
+            await self.notify("notifications/prompts/list_changed", {})
 
     async def send_ping(self) -> types.EmptyResult:
         result = await self.request("ping", {})

@@ -8,6 +8,15 @@ name: hello_world_agent
 # For temporal mode, see: https://github.com/lastmile-ai/mcp-agent/blob/main/examples/temporal/README.md
 execution_engine: asyncio
 
+# Optional: preload modules that register @workflow_task functions
+# workflow_task_modules:
+#   - my_project.custom_tasks
+
+# Optional: configure retry policies for workflow tasks / activities
+# workflow_task_retry_policies:
+#   my_project.custom_tasks.my_activity:
+#     maximum_attempts: 1
+
 logger:
   transports: [console, file]
   level: info

@@ -107,10 +107,12 @@ The `mcp_agent.config.yaml` file contains paths to executables. For Claude Deskt
    ```
 
 2. Edit `mcp_agent.secrets.yaml` to add your API keys:
-   ```yaml
-   openai:
-     api_key: "your-openai-api-key"
-   ```
+  ```yaml
+  openai:
+    api_key: "your-openai-api-key"
+  ```
+
+The included `mcp_agent.config.yaml` is wired for the local Temporal dev server. If you define extra `@workflow_task` functions in your own modules, uncomment the top-level `workflow_task_modules` list in that config and add your module paths so the worker pre-imports them when it starts.
 
 ## How to Run
 

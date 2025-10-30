@@ -64,7 +64,16 @@ mcp-agent supports both `asyncio` and `temporal` execution engines. While asynci
     Update your `mcp_agent.config.yaml`:
     ```yaml
     execution_engine: temporal
-    
+
+    # Optional: preload modules that register @workflow_task activities
+    workflow_task_modules:
+      - my_package.custom_temporal_tasks
+
+    # Optional: override retry behaviour for specific workflow tasks/activities
+    workflow_task_retry_policies:
+      my_package.custom_temporal_tasks.my_activity:
+        maximum_attempts: 1
+
     temporal:
       host: localhost
       port: 7233
@@ -72,6 +81,17 @@ mcp-agent supports both `asyncio` and `temporal` execution engines. While asynci
       task_queue: mcp-agent
       max_concurrent_activities: 10
     ```
+    `mcp-agent` preloads its built-in LLM providers automatically. Add extra modules
+    when you register custom `@workflow_task` activities outside the core packages so
+    the worker can discover them before starting. Entries are standard Python import paths.
+    The optional `workflow_task_retry_policies` mapping lets you tune Temporal retry
+    behaviour per activity (supports exact names, wildcards like `prefix*`, or `*`).
+    For provider SDKs, common non-retryable error types include:
+    - OpenAI/Azure OpenAI: `AuthenticationError`, `PermissionDeniedError`, `BadRequestError`, `NotFoundError`, `UnprocessableEntityError`.
+    - Anthropic: `AuthenticationError`, `PermissionDeniedError`, `BadRequestError`, `NotFoundError`, `UnprocessableEntityError`.
+    - Azure AI Inference: `HttpResponseError` (400/401/403/404/422).
+    - Google GenAI: `InvalidArgument`, `FailedPrecondition`, `PermissionDenied`, `NotFound`, `Unauthenticated`.
+    mcp-agent raises a `WorkflowApplicationError` for these cases so Temporal (or the asyncio executor) avoids retry loops even when the Temporal SDK is not installed locally.
   </Step>
   
   <Step title="Create Worker">

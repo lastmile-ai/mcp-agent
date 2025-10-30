@@ -30,7 +30,14 @@ from opentelemetry import trace
 
 from pydantic import BaseModel
 
-from openai import AsyncAzureOpenAI
+from openai import (
+    AsyncAzureOpenAI,
+    AuthenticationError as AzureOpenAIAuthenticationError,
+    BadRequestError as AzureOpenAIBadRequestError,
+    NotFoundError as AzureOpenAINotFoundError,
+    PermissionDeniedError as AzureOpenAIPermissionDeniedError,
+    UnprocessableEntityError as AzureOpenAIUnprocessableEntityError,
+)
 from openai.types.chat import ChatCompletion
 
 from mcp.types import (
@@ -65,6 +72,17 @@ from mcp_agent.workflows.llm.augmented_llm import (
 )
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.workflows.llm.multipart_converter_azure import AzureConverter
+from mcp_agent.executor.errors import to_application_error
+
+_NON_RETRYABLE_AZURE_STATUS_CODES = {400, 401, 403, 404, 422}
+
+_NON_RETRYABLE_AZURE_OPENAI_ERRORS = (
+    AzureOpenAIAuthenticationError,
+    AzureOpenAIPermissionDeniedError,
+    AzureOpenAIBadRequestError,
+    AzureOpenAINotFoundError,
+    AzureOpenAIUnprocessableEntityError,
+)
 
 MessageParam = Union[
     SystemMessage, UserMessage, AssistantMessage, ToolMessage, DeveloperMessage
@@ -538,9 +556,22 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
         return attrs
 
 
+def _raise_non_retryable_azure(
+    error: Exception, status_code: int | None = None
+) -> None:
+    message = str(error)
+    if status_code is not None:
+        message = f"{status_code}: {message}"
+    raise to_application_error(
+        error,
+        message=message,
+        non_retryable=True,
+    ) from error
+
+
 class AzureCompletionTasks:
     @staticmethod
-    @workflow_task
+    @workflow_task(retry_policy={"maximum_attempts": 3})
     async def request_completion_task(
         request: RequestCompletionRequest,
     ) -> ChatCompletions:
@@ -573,33 +604,33 @@ class AzureCompletionTasks:
         except HttpResponseError as e:
             logger = get_logger(__name__)
 
-            if e.status_code != 400:
-                logger.error(f"Azure API call failed: {e}")
-                raise
-
-            logger.warning(
-                f"Initial Azure API call failed: {e}. Retrying with fallback parameters."
-            )
-
-            # Create a new payload with fallback values for commonly problematic parameters
-            fallback_payload = {**payload, "max_tokens": None, "temperature": 1}
-
-            try:
-                response = await loop.run_in_executor(
-                    None, functools.partial(azure_client.complete, **fallback_payload)
+            if e.status_code == 400:
+                logger.warning(
+                    "Initial Azure API call failed with status 400; retrying with fallback parameters."
                 )
-            except Exception as retry_error:
-                # If retry also fails, raise a more informative error
-                raise RuntimeError(
-                    f"Azure API call failed even with fallback parameters. "
-                    f"Original error: {e}. Retry error: {retry_error}"
-                ) from retry_error
+                fallback_payload = {**payload, "max_tokens": None, "temperature": 1}
+                try:
+                    response = await loop.run_in_executor(
+                        None,
+                        functools.partial(azure_client.complete, **fallback_payload),
+                    )
+                except HttpResponseError as retry_error:
+                    if retry_error.status_code in _NON_RETRYABLE_AZURE_STATUS_CODES:
+                        _raise_non_retryable_azure(retry_error, retry_error.status_code)
+                    raise
+                except Exception as retry_error:
+                    _raise_non_retryable_azure(retry_error)
+            elif e.status_code in _NON_RETRYABLE_AZURE_STATUS_CODES:
+                _raise_non_retryable_azure(e, e.status_code)
+            else:
+                logger.error("Azure API call failed: %s", e)
+                raise
         return response
 
 
 class AzureOpenAICompletionTasks:
     @staticmethod
-    @workflow_task
+    @workflow_task(retry_policy={"maximum_attempts": 3})
     async def request_completion_task(
         request: RequestCompletionRequest,
     ) -> ChatCompletion:
@@ -655,8 +686,11 @@ class AzureOpenAICompletionTasks:
             # otherwise use the model name as deployment name
             deployment = request.config.azure_deployment or payload.get("model")
             payload["model"] = deployment
+            try:
+                response = await client.chat.completions.create(**payload)
+            except _NON_RETRYABLE_AZURE_OPENAI_ERRORS as exc:
+                _raise_non_retryable_azure(exc)
 
-            response = await client.chat.completions.create(**payload)
             return response
 
 

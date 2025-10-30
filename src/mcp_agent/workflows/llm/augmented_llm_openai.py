@@ -6,7 +6,14 @@ from typing import Any, Dict, Iterable, List, Type, cast
 from pydantic import BaseModel
 
 
-from openai import AsyncOpenAI
+from openai import (
+    AsyncOpenAI,
+    AuthenticationError,
+    BadRequestError,
+    NotFoundError,
+    PermissionDeniedError,
+    UnprocessableEntityError,
+)
 from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
     ChatCompletionContentPartParam,
@@ -63,6 +70,16 @@ from mcp_agent.workflows.llm.augmented_llm import (
 )
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.workflows.llm.multipart_converter_openai import OpenAIConverter
+from mcp_agent.executor.errors import to_application_error
+
+
+_NON_RETRYABLE_OPENAI_ERRORS = (
+    AuthenticationError,
+    PermissionDeniedError,
+    BadRequestError,
+    NotFoundError,
+    UnprocessableEntityError,
+)
 
 
 class RequestCompletionRequest(BaseModel):
@@ -78,6 +95,15 @@ class RequestStructuredCompletionRequest(BaseModel):
     model: str
     user: str | None = None
     strict: bool = False
+
+
+async def _execute_openai_request(
+    client: AsyncOpenAI, payload: Dict[str, Any]
+) -> ChatCompletion:
+    try:
+        return await client.chat.completions.create(**payload)
+    except _NON_RETRYABLE_OPENAI_ERRORS as exc:
+        raise to_application_error(exc, non_retryable=True) from exc
 
 
 class OpenAIAugmentedLLM(
@@ -928,7 +954,7 @@ class OpenAIAugmentedLLM(
 
 class OpenAICompletionTasks:
     @staticmethod
-    @workflow_task
+    @workflow_task(retry_policy={"maximum_attempts": 3})
     @telemetry.traced()
     async def request_completion_task(
         request: RequestCompletionRequest,
@@ -947,12 +973,12 @@ class OpenAICompletionTasks:
             else None,
         ) as async_openai_client:
             payload = request.payload
-            response = await async_openai_client.chat.completions.create(**payload)
+            response = await _execute_openai_request(async_openai_client, payload)
             response = ensure_serializable(response)
             return response
 
     @staticmethod
-    @workflow_task
+    @workflow_task(retry_policy={"maximum_attempts": 3})
     @telemetry.traced()
     async def request_structured_completion_task(
         request: RequestStructuredCompletionRequest,
@@ -999,7 +1025,7 @@ class OpenAICompletionTasks:
             if request.user:
                 payload["user"] = request.user
 
-            completion = await async_openai_client.chat.completions.create(**payload)
+            completion = await _execute_openai_request(async_openai_client, payload)
 
             if not completion.choices or completion.choices[0].message.content is None:
                 raise ValueError("No structured content returned by model")

@@ -184,3 +184,12 @@ This will launch the MCP Inspector UI where you can:
 - See all available tools
 - Test workflow execution
 - View request/response details
+
+Make sure Inspector is configured with the following settings:
+
+| Setting          | Value                                               |
+| ---------------- | --------------------------------------------------- |
+| _Transport Type_ | _SSE_                                               |
+| _SSE_            | _https://[server_id].deployments.mcp-agent.com/sse_ |
+| _Header Name_    | _Authorization_                                     |
+| _Bearer Token_   | _your-mcp-agent-cloud-api-token_                    |

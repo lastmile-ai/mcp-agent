@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 from mcp.server.fastmcp import FastMCP
 
+from mcp_agent.core.context import Context
 from mcp_agent.server import app_server
 from mcp_agent.oauth.identity import OAuthUserIdentity
 
@@ -27,13 +28,8 @@ class DummyMCPContext:
 
 def make_attached_app():
     fastmcp = FastMCP(name="test", instructions="test")
-    app_context = SimpleNamespace(
-        session_id="app-session",
-        upstream_session=None,
-        token_manager=None,
-        server_registry=None,
-        identity_registry={},
-    )
+    app_context = Context()
+    app_context.session_id = "app-session"
     app = SimpleNamespace(
         context=app_context,
         _session_id_override="app-default",
@@ -51,21 +47,27 @@ def test_set_upstream_updates_session_each_request():
 
     try:
         ctx1 = DummyMCPContext("session-one", fastmcp)
-        app_server._set_upstream_from_request_ctx_if_available(ctx1)
+        bound_ctx1, token1 = app_server._enter_request_context(ctx1)  # type: ignore[attr-defined]
 
+        assert bound_ctx1.upstream_session is ctx1.session
         assert app_context.upstream_session is ctx1.session
         assert "session-one" in app_context.identity_registry
         assert app_context.identity_registry["session-one"].subject == "session-one"
         assert app_context.session_id == "app-session"
+        app_server._exit_request_context(bound_ctx1, token1)
+        assert app_context.upstream_session is None
 
         ctx2 = DummyMCPContext("session-two", fastmcp)
-        app_server._set_upstream_from_request_ctx_if_available(ctx2)
+        bound_ctx2, token2 = app_server._enter_request_context(ctx2)  # type: ignore[attr-defined]
 
+        assert bound_ctx2.upstream_session is ctx2.session
         assert app_context.upstream_session is ctx2.session
         assert "session-two" in app_context.identity_registry
         assert app_context.identity_registry["session-two"].subject == "session-two"
         assert app_context.identity_registry["session-one"].subject == "session-one"
         assert app_context.session_id == "app-session"
+        app_server._exit_request_context(bound_ctx2, token2)
+        assert app_context.upstream_session is None
     finally:
         reset_identity()
 
@@ -73,7 +75,7 @@ def test_set_upstream_updates_session_each_request():
 def test_resolve_identity_prefers_request_session(monkeypatch):
     fastmcp, app, app_context = make_attached_app()
     ctx = DummyMCPContext("client-session", fastmcp)
-    app_server._set_upstream_from_request_ctx_if_available(ctx)
+    bound_ctx, token = app_server._enter_request_context(ctx)  # type: ignore[attr-defined]
     identity = app_server._resolve_identity_for_request(  # type: ignore[attr-defined]
         ctx=ctx,
         app_context=app_context,
@@ -81,3 +83,4 @@ def test_resolve_identity_prefers_request_session(monkeypatch):
     )
     assert isinstance(identity, OAuthUserIdentity)
     assert identity.subject == "client-session"
+    app_server._exit_request_context(bound_ctx, token)

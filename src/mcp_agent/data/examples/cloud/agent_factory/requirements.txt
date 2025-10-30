@@ -1,0 +1,6 @@
+# Core framework dependency
+mcp-agent @ file://../../../
+
+# LLM providers used in this demo
+openai
+anthropic

@@ -109,16 +109,16 @@ mcp-agent includes optional extras for different LLM providers. Install the ones
     ```
   </Step>
 
+  <Step title="Bootstrap your project">
+    ```bash
+    uvx mcp-agent init
+    ```
+  </Step>
+
   <Step title="Install dependencies">
     ```bash
     uv init
     uv add mcp-agent
-    ```
-  </Step>
-
-  <Step title="Smoke test">
-    ```bash
-    uv run python -c "import mcp_agent; print('mcp-agent installed successfully!')"
     ```
   </Step>
 </Steps>
@@ -129,6 +129,6 @@ mcp-agent includes optional extras for different LLM providers. Install the ones
 
 ## Next steps
 
-- [Quickstart](/get-started/quickstart) – create a finder agent and run it locally.
-- [Deploy to Cloud](/get-started/cloud) – publish your agent with `uvx mcp-agent deploy`.
-- [MCP Servers](/mcp-agent-sdk/mcp/overview) – learn how FastMCP and other servers plug into your agents.
+- [Quickstart](/get-started/quickstart) – create a basic agent and run it locally.
+- [Deploy to Cloud](/get-started/cloud) – deploy your agent with `uvx mcp-agent deploy` as a remote MCP server.
+- [MCP Servers](/mcp-agent-sdk/mcp/overview) – learn how `mcp-agent` supports various MCP capabilities natively.

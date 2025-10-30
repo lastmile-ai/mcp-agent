@@ -5,6 +5,13 @@ from pydantic import BaseModel
 
 from google.genai import Client
 from google.genai import types
+from mcp_agent.executor.errors import to_application_error
+
+try:
+    from google.api_core import exceptions as google_exceptions
+except Exception:  # pragma: no cover
+    google_exceptions = None
+
 from mcp.types import (
     CallToolRequestParams,
     CallToolRequest,
@@ -31,6 +38,17 @@ from mcp_agent.workflows.llm.augmented_llm import (
 )
 from mcp_agent.workflows.llm.multipart_converter_google import GoogleConverter
 from mcp_agent.tracing.token_tracking_decorator import track_tokens
+
+if google_exceptions:
+    _NON_RETRYABLE_GOOGLE_ERRORS = (
+        google_exceptions.InvalidArgument,
+        google_exceptions.FailedPrecondition,
+        google_exceptions.PermissionDenied,
+        google_exceptions.NotFound,
+        google_exceptions.Unauthenticated,
+    )
+else:  # pragma: no cover
+    _NON_RETRYABLE_GOOGLE_ERRORS = tuple()
 
 
 class GoogleAugmentedLLM(
@@ -370,7 +388,7 @@ class RequestStructuredCompletionRequest(BaseModel):
 
 class GoogleCompletionTasks:
     @staticmethod
-    @workflow_task
+    @workflow_task(retry_policy={"maximum_attempts": 3})
     async def request_completion_task(
         request: RequestCompletionRequest,
     ) -> types.GenerateContentResponse:
@@ -388,7 +406,12 @@ class GoogleCompletionTasks:
             google_client = Client(api_key=request.config.api_key)
 
         payload = request.payload
-        response = google_client.models.generate_content(**payload)
+
+        try:
+            response = google_client.models.generate_content(**payload)
+        except _NON_RETRYABLE_GOOGLE_ERRORS as exc:
+            raise to_application_error(exc, non_retryable=True) from exc
+
         return response
 
     @staticmethod

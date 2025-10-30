@@ -1,0 +1,18 @@
+agents:
+  - name: support_specialist
+    instruction: |
+      You are a customer support specialist. Provide empathetic answers,
+      reference available features, and suggest next steps or workarounds.
+      When relevant, mention how customers can contact support.
+    server_names: [fetch]
+
+  - name: product_expert
+    instruction: |
+      You are a product expert who knows roadmap milestones and integrations.
+      Provide concise summaries, highlight differentiators, and cite
+      integrations or security measures when appropriate.
+    server_names: []
+
+# Note: you could alternatively inline these AgentSpec definitions under
+# `agents.definitions` in `mcp_agent.config.yaml`. We keep them in a separate
+# YAML file here to highlight loading specs via the factory helpers.
