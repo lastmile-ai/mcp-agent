@@ -8,7 +8,7 @@ notifications from bleeding between concurrent MCP clients.
 1. Start the SSE server in one terminal:
 
    ```bash
-   uv run python examples/multi_client/context_isolation/server.py
+   uv run python examples/mcp_agent_server/context_isolation/server.py
    ```
 
    The server listens on `http://127.0.0.1:8000/sse` and exposes a single tool
@@ -19,7 +19,7 @@ notifications from bleeding between concurrent MCP clients.
    the tool.
 
    ```bash
-   uv run python examples/multi_client/context_isolation/clients.py
+   uv run python examples/mcp_agent_server/context_isolation/clients.py
    ```
 
    Each client prints the logs and `demo/echo` notifications it receives. Client

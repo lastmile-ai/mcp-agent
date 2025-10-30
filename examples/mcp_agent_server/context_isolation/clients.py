@@ -53,7 +53,9 @@ async def run_client(client_name: str, log_level: str, payload: str) -> None:
             async def _received_notification(self, notification):  # type: ignore[override]
                 method = getattr(getattr(notification, "root", None), "method", None)
                 if method and method != "notifications/message":
-                    print(f"[{client_name}] notify {method}: {notification.model_dump()}")
+                    print(
+                        f"[{client_name}] notify {method}: {notification.model_dump()}"
+                    )
                 return await super()._received_notification(notification)
 
         def make_session(
@@ -70,16 +72,16 @@ async def run_client(client_name: str, log_level: str, payload: str) -> None:
                 context=context,
             )
 
-    async with gen_client(
-        SERVER_NAME,
-        context.server_registry,
-        client_session_factory=make_session,
-    ) as server:
-        await server.set_logging_level(log_level)
-        result = await server.call_tool(
-            "emit_log",
-            arguments={"level": log_level, "message": payload},
-        )
+        async with gen_client(
+            SERVER_NAME,
+            context.server_registry,
+            client_session_factory=make_session,
+        ) as server:
+            await server.set_logging_level(log_level)
+            result = await server.call_tool(
+                "emit_log",
+                arguments={"level": log_level, "message": payload},
+            )
             print(f"[{client_name}] tool result: {result}")
             await asyncio.sleep(1)
 
