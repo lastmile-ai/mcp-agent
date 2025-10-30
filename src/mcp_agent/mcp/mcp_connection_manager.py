@@ -19,12 +19,8 @@ from anyio.abc import TaskGroup
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 
 from mcp import ClientSession
-from mcp.client.stdio import (
-    StdioServerParameters,
-    get_default_environment,
-)
+from mcp.client.stdio import StdioServerParameters, get_default_environment
 from mcp.client.sse import sse_client
-from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamablehttp_client, MCP_SESSION_ID
 from mcp.client.websocket import websocket_client
 from mcp.types import JSONRPCMessage, ServerCapabilities
@@ -35,6 +31,7 @@ from mcp_agent.core.exceptions import ServerInitializationError
 from mcp_agent.logging.event_progress import ProgressAction
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
+from mcp_agent.mcp.stdio_transport import filtered_stdio_client
 from mcp_agent.oauth.http import OAuthHttpxAuth
 
 if TYPE_CHECKING:
@@ -455,8 +452,10 @@ class MCPConnectionManager(ContextDependent):
                     env={**get_default_environment(), **(config.env or {})},
                     cwd=config.cwd or None,
                 )
-                # Create stdio client config with redirected stderr
-                return stdio_client(server=server_params)
+                # Create stdio client config with filtered stdout
+                return filtered_stdio_client(
+                    server_name=server_name, server=server_params
+                )
             elif config.transport in ["streamable_http", "streamable-http", "http"]:
                 if session_id:
                     headers = config.headers.copy() if config.headers else {}
