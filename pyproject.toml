@@ -1,6 +1,6 @@
 [project]
 name = "mcp-agent"
-version = "0.2.3"
+version = "0.2.4"
 description = "Build effective agents with Model Context Protocol (MCP) using simple, composable patterns."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -110,13 +110,15 @@ mcpc = "mcp_agent.cli.cloud.main:run"
 include = ["mcp-agent"]
 
 [tool.setuptools.package-data]
-mcp-agent = [ # TODO: should this be mcp_agent?
+mcp_agent = [
     "data/*.json",
+    "data/templates/**/*",
+    "data/examples/**/*",
     "resources/examples/**/*.py",
     "resources/examples/**/*.yaml",
     "resources/examples/**/*.yml",
     "resources/examples/**/*.csv",
-    "resources/examples/**/mount-point/*.csv"
+    "resources/examples/**/mount-point/*.csv",
 ]
 
 [tool.pytest.ini_options]

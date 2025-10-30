@@ -8,6 +8,7 @@ from httpx import URL
 from io import StringIO
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Set, Union
+from datetime import timedelta
 import threading
 import warnings
 
@@ -633,8 +634,61 @@ class TemporalSettings(BaseModel):
         "reject_duplicate",
         "terminate_if_running",
     ] = "allow_duplicate"
+    workflow_task_modules: List[str] = Field(default_factory=list)
+    """Additional module paths to import before creating a Temporal worker. Each should be importable."""
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
+
+class WorkflowTaskRetryPolicy(BaseModel):
+    """
+    Declarative retry policy for workflow tasks / activities (mirrors Temporal RetryPolicy fields).
+    Durations can be specified either as seconds (number) or ISO8601 timedelta strings; both are
+    coerced to datetime.timedelta instances.
+    """
+
+    maximum_attempts: int | None = None
+    initial_interval: timedelta | float | str | None = None
+    backoff_coefficient: float | None = None
+    maximum_interval: timedelta | float | str | None = None
+    non_retryable_error_types: List[str] | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("initial_interval", "maximum_interval", mode="before")
+    @classmethod
+    def _coerce_interval(cls, value):
+        if value is None:
+            return None
+        if isinstance(value, timedelta):
+            return value
+        if isinstance(value, (int, float)):
+            return timedelta(seconds=value)
+        if isinstance(value, str):
+            try:
+                seconds = float(value)
+                return timedelta(seconds=seconds)
+            except Exception:
+                raise TypeError(
+                    "Retry interval strings must be parseable as seconds."
+                ) from None
+        raise TypeError(
+            "Retry interval must be seconds (number or string) or a timedelta."
+        )
+
+    def to_temporal_kwargs(self) -> Dict[str, Any]:
+        data: Dict[str, Any] = {}
+        if self.maximum_attempts is not None:
+            data["maximum_attempts"] = self.maximum_attempts
+        if self.initial_interval is not None:
+            data["initial_interval"] = self.initial_interval
+        if self.backoff_coefficient is not None:
+            data["backoff_coefficient"] = self.backoff_coefficient
+        if self.maximum_interval is not None:
+            data["maximum_interval"] = self.maximum_interval
+        if self.non_retryable_error_types:
+            data["non_retryable_error_types"] = list(self.non_retryable_error_types)
+        return data
 
 
 class UsageTelemetrySettings(BaseModel):
@@ -1077,6 +1131,14 @@ class Settings(BaseSettings):
     openai: OpenAISettings | None = Field(default_factory=OpenAISettings)
     """Settings for using OpenAI models in the MCP Agent application"""
 
+    workflow_task_modules: List[str] = Field(default_factory=list)
+    """Optional list of modules to import at startup so workflow tasks register globally."""
+
+    workflow_task_retry_policies: Dict[str, WorkflowTaskRetryPolicy] = Field(
+        default_factory=dict
+    )
+    """Optional mapping of activity names (supports '*' and 'prefix*') to retry policies."""
+
     azure: AzureSettings | None = Field(default_factory=AzureSettings)
     """Settings for using Azure models in the MCP Agent application"""
 
@@ -1258,10 +1320,19 @@ def get_settings(config_path: str | None = None, set_global: bool = True) -> Set
                 key in merged
                 and isinstance(merged[key], list)
                 and isinstance(value, list)
-                and current_path == ("otel", "exporters")
+                and current_path
+                in {
+                    ("otel", "exporters"),
+                    ("workflow_task_modules",),
+                }
             ):
-                # Concatenate exporters lists from config and secrets
-                merged[key] = merged[key] + value
+                # Concatenate list-based settings while preserving order and removing duplicates
+                combined = merged[key] + value
+                deduped = []
+                for item in combined:
+                    if not any(existing == item for existing in deduped):
+                        deduped.append(item)
+                merged[key] = deduped
             else:
                 merged[key] = value
         return merged

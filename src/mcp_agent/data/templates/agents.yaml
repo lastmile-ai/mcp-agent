@@ -2,8 +2,7 @@
 # This file defines multiple specialized agents that can be dynamically selected
 
 # File system agent - searches and reads local files
-filesystem_agent:
-  name: filesystem_agent
+- name: filesystem_agent
   instruction: |
     You are a filesystem expert. Your role is to:
     - Search for files and directories
@@ -15,8 +14,7 @@ filesystem_agent:
     - filesystem
 
 # Web research agent - fetches and analyzes web content
-web_agent:
-  name: web_agent
+- name: web_agent
   instruction: |
     You are a web research specialist. Your role is to:
     - Fetch content from URLs
@@ -28,8 +26,7 @@ web_agent:
     - fetch
 
 # Code analysis agent - analyzes code structure and quality
-code_analyst:
-  name: code_analyst
+- name: code_analyst
   instruction: |
     You are a code analysis expert. Your role is to:
     - Review code for best practices
@@ -41,8 +38,7 @@ code_analyst:
     - filesystem
 
 # Documentation agent - generates and maintains documentation
-doc_writer:
-  name: doc_writer
+- name: doc_writer
   instruction: |
     You are a documentation specialist. Your role is to:
     - Write clear, concise documentation
@@ -54,8 +50,7 @@ doc_writer:
     - filesystem
 
 # General assistant - handles miscellaneous tasks
-general_assistant:
-  name: general_assistant
+- name: general_assistant
   instruction: |
     You are a helpful general assistant. Your role is to:
     - Answer questions

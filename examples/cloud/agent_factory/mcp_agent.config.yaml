@@ -1,0 +1,38 @@
+# Temporal configuration for the cloud agent factory demo
+$schema: ../../schema/mcp-agent.config.schema.json
+
+execution_engine: temporal
+
+workflow_task_modules:
+  - custom_tasks # module path relative to sys.path (here, alongside main.py)
+
+workflow_task_retry_policies:
+  cloud_agent_factory.knowledge_base_lookup:
+    maximum_attempts: 1
+
+# Temporal settings
+temporal:
+  host: "localhost:7233" # Default Temporal server address
+  namespace: "default" # Default Temporal namespace
+  task_queue: "mcp-agent" # Task queue for workflows and activities
+  max_concurrent_activities: 10 # Maximum number of concurrent activities
+  rpc_metadata:
+    X-Client-Name: "mcp-agent"
+
+logger:
+  transports: [console]
+  level: info
+
+mcp:
+  servers:
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+      description: "Fetch content from the web"
+    filesystem:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+      description: "Read local files"
+
+openai:
+  default_model: gpt-4o-mini

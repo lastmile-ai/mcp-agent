@@ -133,8 +133,7 @@ def init(
     scaffolding_templates = {
         "basic": "Simple agent with filesystem and fetch capabilities",
         "server": "MCP server with workflow and parallel agents",
-        # "token": "Token counting example with monitoring",
-        # "factory": "Agent factory with router-based selection",
+        "factory": "Agent factory with router-based selection",
         "minimal": "Minimal configuration files only",
     }
 
@@ -364,28 +363,11 @@ def init(
             if created:
                 files_created.append(created)
 
-    elif template == "token":
-        token_path = dir / "token_example.py"
-        token_content = _load_template("token_counter.py")
-        if token_content and _write(token_path, token_content, force):
-            files_created.append("token_example.py")
-            # Make executable
-            try:
-                token_path.chmod(token_path.stat().st_mode | 0o111)
-            except Exception:
-                pass
-
-        readme_content = _load_template("README_token.md")
-        if readme_content:
-            created = _write_readme(dir, readme_content, force)
-            if created:
-                files_created.append(created)
-
     elif template == "factory":
-        factory_path = dir / "factory.py"
+        factory_path = dir / "main.py"
         factory_content = _load_template("agent_factory.py")
         if factory_content and _write(factory_path, factory_content, force):
-            files_created.append("factory.py")
+            files_created.append("main.py")
             # Make executable
             try:
                 factory_path.chmod(factory_path.stat().st_mode | 0o111)
@@ -397,6 +379,15 @@ def init(
         agents_content = _load_template("agents.yaml")
         if agents_content and _write(agents_path, agents_content, force):
             files_created.append("agents.yaml")
+
+        run_worker_path = dir / "run_worker.py"
+        run_worker_content = _load_template("agent_factory_run_worker.py")
+        if run_worker_content and _write(run_worker_path, run_worker_content, force):
+            files_created.append("run_worker.py")
+            try:
+                run_worker_path.chmod(run_worker_path.stat().st_mode | 0o111)
+            except Exception:
+                pass
 
         readme_content = _load_template("README_factory.md")
         if readme_content:
@@ -425,12 +416,15 @@ def init(
             console.print(
                 "   Or serve: [cyan]mcp-agent dev serve --script main.py[/cyan]"
             )
-        elif template == "token":
-            console.print("3. Run the example: [cyan]uv run token_example.py[/cyan]")
-            console.print("   Watch token usage in real-time!")
         elif template == "factory":
             console.print("3. Customize agents in [cyan]agents.yaml[/cyan]")
-            console.print("4. Run the factory: [cyan]uv run factory.py[/cyan]")
+            console.print("4. Run the factory: [cyan]uv run main.py[/cyan]")
+            console.print(
+                "   Optional: to exercise Temporal locally, run [cyan]temporal server start-dev[/cyan]"
+            )
+            console.print(
+                "             in another terminal and start the worker with [cyan]uv run run_worker.py[/cyan]."
+            )
     elif template == "minimal":
         console.print("3. Create your agent script")
         console.print("   See examples: [cyan]mcp-agent init --list[/cyan]")
@@ -459,9 +453,8 @@ def interactive(
     templates = {
         "1": ("basic", "Simple agent with filesystem and fetch"),
         "2": ("server", "MCP server with workflows"),
-        "3": ("token", "Token counting with monitoring"),
-        "4": ("factory", "Agent factory with routing"),
-        "5": ("minimal", "Config files only"),
+        "3": ("factory", "Agent factory with routing"),
+        "4": ("minimal", "Config files only"),
     }
 
     console.print("\n[bold]Choose a template:[/bold]")
