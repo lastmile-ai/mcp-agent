@@ -819,40 +819,41 @@ class TokenManager:
             except Exception:
                 pass
 
-        session_id = None
-        if in_temporal:
-            session_id = getattr(context, "session_id", None)
+        session_id = getattr(context, "session_id", None)
+        if not session_id:
+            app = getattr(context, "app", None)
+            if app is not None:
+                session_id = getattr(app, "_session_id_override", None)
 
-        if session_id:
-            try:
-                from mcp_agent.server import app_server
-
-                identity = app_server.get_identity_for_session(session_id, context)
-                if identity is not None:
-                    logger.debug(
-                        "Resolved session identity from registry",
-                        data={
-                            "session_id": session_id,
-                            "identity": identity.cache_key,
-                        },
-                    )
-                    return identity
-            except Exception as exc:
-                logger.debug(
-                    "Failed to resolve session identity from registry",
-                    data={"session_id": session_id, "error": repr(exc)},
-                )
-            fallback = OAuthUserIdentity(
-                provider="mcp-session", subject=str(session_id)
-            )
+        if not session_id:
             logger.debug(
-                "Falling back to synthetic session identity",
-                data={"session_id": session_id, "identity": fallback.cache_key},
+                "TokenManager no session identity resolved",
+                data={"context_session_id": getattr(context, "session_id", None)},
             )
-            return fallback
+            return None
 
+        try:
+            from mcp_agent.server import app_server
+
+            identity = app_server.get_identity_for_session(session_id, context)
+            if identity is not None:
+                logger.debug(
+                    "Resolved session identity from registry",
+                    data={
+                        "session_id": session_id,
+                        "identity": identity.cache_key,
+                    },
+                )
+                return identity
+        except Exception as exc:
+            logger.debug(
+                "Failed to resolve session identity from registry",
+                data={"session_id": session_id, "error": repr(exc)},
+            )
+
+        fallback = OAuthUserIdentity(provider="mcp-session", subject=str(session_id))
         logger.debug(
-            "TokenManager no session identity resolved",
-            data={"context_session_id": getattr(context, "session_id", None)},
+            "Falling back to synthetic session identity",
+            data={"session_id": session_id, "identity": fallback.cache_key},
         )
-        return None
+        return fallback

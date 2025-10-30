@@ -1,0 +1,5 @@
+# Core framework dependency
+mcp-agent @ file://../../../  # Link to the local mcp-agent project root
+
+# Additional helper packages used by the client script
+anyio
