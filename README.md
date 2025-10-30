@@ -27,7 +27,7 @@
 
 ## Overview
 
-**`mcp-agent`** is a simple, composable framework to build agents using [Model Context Protocol](https://modelcontextprotocol.io/introduction).
+**`mcp-agent`** is a simple, composable framework to build effective agents using [Model Context Protocol](https://modelcontextprotocol.io/introduction).
 
 > [!Note]
 > mcp-agent's vision is that _MCP is all you need to build agents, and that simple patterns are more robust than complex architectures for shipping high-quality agents_.
