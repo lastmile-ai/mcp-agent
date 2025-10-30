@@ -1,7 +1,5 @@
 """Simple SSE server demonstrating per-client context isolation."""
 
-from __future__ import annotations
-
 import asyncio
 
 from mcp_agent.app import MCPApp

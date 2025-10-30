@@ -20,8 +20,14 @@ SERVER_NAME = "context-isolation-server"
 SERVER_URL = "http://127.0.0.1:8000/sse"
 
 
-async def run_client(client_name: str, log_level: str, payload: str) -> None:
-    """Connect to the server, set logging, and invoke the emit_log tool."""
+async def run_client(
+    client_name: str,
+    log_level: str,
+    payloads: list[str],
+    *,
+    delay_between_calls: float = 0.5,
+) -> None:
+    """Connect to the server, set logging, and invoke the emit_log tool for each payload."""
 
     settings = Settings(
         execution_engine="asyncio",
@@ -78,18 +84,19 @@ async def run_client(client_name: str, log_level: str, payload: str) -> None:
             client_session_factory=make_session,
         ) as server:
             await server.set_logging_level(log_level)
-            result = await server.call_tool(
-                "emit_log",
-                arguments={"level": log_level, "message": payload},
-            )
-            print(f"[{client_name}] tool result: {result}")
-            await asyncio.sleep(1)
+            for idx, payload in enumerate(payloads, start=1):
+                result = await server.call_tool(
+                    "emit_log",
+                    arguments={"level": log_level, "message": payload},
+                )
+                print(f"[{client_name}] call {idx} result: {result}")
+                await asyncio.sleep(delay_between_calls)
 
 
 async def main() -> None:
     await asyncio.gather(
-        run_client("A", "debug", "hello from A"),
-        run_client("B", "error", "hello from B"),
+        run_client("A", "debug", ["hello from A", "A second info"]),
+        run_client("B", "error", ["hello from B", "B second info"]),
     )
 
 

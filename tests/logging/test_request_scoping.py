@@ -176,3 +176,32 @@ def test_logging_config_session_level_helpers_roundtrip():
         assert LoggingConfig.get_session_min_level("session-x") is None
     finally:
         LoggingConfig._session_min_levels = original
+
+
+@pytest.mark.asyncio
+async def test_session_log_level_survives_run_unregistration():
+    session_id = "client-run-persist"
+    run_id = "run-persist"
+    execution_id = "exec-persist"
+
+    try:
+        LoggingConfig.set_session_min_level(session_id, "warning")
+
+        await app_server._register_session(
+            run_id=run_id,
+            execution_id=execution_id,
+            session=object(),
+            identity=None,
+            context=None,
+            session_id=session_id,
+        )
+
+        assert LoggingConfig.get_session_min_level(session_id) == "warning"
+
+        await app_server._unregister_session(run_id)
+
+        assert LoggingConfig.get_session_min_level(session_id) == "warning", (
+            "logging override should persist after workflow run completes"
+        )
+    finally:
+        LoggingConfig.clear_session_min_level(session_id)

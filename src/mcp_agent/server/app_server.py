@@ -130,12 +130,7 @@ async def _unregister_session(run_id: str) -> None:
             session = _RUN_SESSION_REGISTRY.pop(execution_id, None)
             _RUN_IDENTITY_REGISTRY.pop(execution_id, None)
             context_ref = _RUN_CONTEXT_REGISTRY.pop(execution_id, None)
-            session_id = _RUN_LOGGING_SESSION.pop(execution_id, None)
-            if session_id:
-                try:
-                    LoggingConfig.clear_session_min_level(session_id)
-                except Exception:
-                    pass
+            _RUN_LOGGING_SESSION.pop(execution_id, None)
             if context_ref is not None:
                 app_ref = getattr(context_ref, "app", None)
                 _clear_cached_session_refs(context_ref, session)
