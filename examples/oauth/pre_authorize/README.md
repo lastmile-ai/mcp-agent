@@ -16,8 +16,7 @@ workflow can access the downstream MCP server without further user interaction.
    Edit the copied file (or export matching environment variables) so the GitHub
    entry contains your OAuth app's client id and client secret.
 
-2. Obtain a GitHub access token (e.g., via the interactive example) and
-   export it before running the client:
+2. Obtain a GitHub access token (e.g., via the interactive example or from https://github.com/settings/personal-access-tokens) and export it before running the client:
 
    ```bash
    export GITHUB_ACCESS_TOKEN="github_pat_xxx"
@@ -41,18 +40,47 @@ workflow can access the downstream MCP server without further user interaction.
 
 ## Running
 
-1. Start the workflow server:
+Before running this example, you need to have a Temporal server running:
 
-   ```bash
-   python examples/oauth/pre_authorize/main.py
-   ```
+1. Install the Temporal CLI by following the instructions at: https://docs.temporal.io/cli/
 
-2. In another terminal, run the client to seed the token and execute the
+2. In a separate terminal, start a local Temporal server:
+
+```bash
+temporal server start-dev
+```
+
+This will start a Temporal server on `localhost:7233` (the default address configured in `mcp_agent.config.yaml`).
+
+You can use the Temporal Web UI to monitor your workflows by visiting `http://localhost:8233` in your browser.
+
+3. In a second terminal:
+
+Install the required dependencies:
+
+```bash
+cd examples/oauth/pre_authorize
+uv pip install -r requirements.txt
+```
+
+Start the temporal worker:
+
+```bash
+uv run worker.py
+```
+
+4. In a third terminal, start the workflow server:
+
+```bash
+python examples/oauth/pre_authorize/main.py
+```
+
+5. In another terminal, run the client to seed the token and execute the
    workflow:
 
-   ```bash
-   python examples/oauth/pre_authorize/client.py
-   ```
+```bash
+python examples/oauth/pre_authorize/client.py
+```
 
 The client first invokes `workflows-store-credentials` with the provided token and
 then calls the `github_org_search` workflow, which uses the cached token to
