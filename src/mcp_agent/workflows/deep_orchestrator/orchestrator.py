@@ -216,6 +216,8 @@ class DeepOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
             context=self.context,
             max_task_retries=self.config.execution.max_task_retries,
             enable_parallel=self.config.execution.enable_parallel,
+            knowledge_extraction_mode=self.config.execution.knowledge_extraction_mode,
+            lean_agent_design=self.config.execution.lean_agent_design,
         )
 
         # Set budget update callback
@@ -304,6 +306,47 @@ class DeepOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
         self.start_time = time.time()
         self.iteration = 0
         self.replan_count = 0
+
+        # Optional dynamic effort scaling inspired by Anthropic research heuristics
+        if getattr(self.config.execution, "dynamic_effort_scaling", False):
+            # Cheap LLM pass to assess complexity and suggest scaling
+            assessor = Agent(
+                name="EffortAssessor",
+                instruction=(
+                    "Assess objective complexity and recommend iteration/replan/context budgets."
+                ),
+                context=self.context,
+            )
+            llm = self.llm_factory(assessor)
+            try:
+                rec = await llm.generate_structured(  # type: ignore[arg-type]
+                    message=(
+                        f"<assess>Objective: {self.objective}\n"
+                        "Return JSON with keys: max_iterations, max_replans, task_context_budget.</assess>"
+                    ),
+                    response_model=dict,  # Loose schema to keep it cheap
+                    request_params=RequestParams(max_iterations=1, temperature=0.1),
+                )
+                mi = int(
+                    rec.get("max_iterations", self.config.execution.max_iterations)
+                )
+                mr = int(rec.get("max_replans", self.config.execution.max_replans))
+                tcb = int(
+                    rec.get(
+                        "task_context_budget", self.config.context.task_context_budget
+                    )
+                )
+                self.config.execution.max_iterations = max(
+                    self.config.execution.max_iterations, mi
+                )
+                self.config.execution.max_replans = max(
+                    self.config.execution.max_replans, mr
+                )
+                self.config.context.task_context_budget = max(
+                    self.config.context.task_context_budget, tcb
+                )
+            except Exception:
+                pass
 
         # Phase 1: Initial Planning
         span.add_event("phase_1_initial_planning")
@@ -405,6 +448,29 @@ class DeepOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
                 next_step, request_params, self.executor
             )
 
+            # If configured, extract knowledge in batch post-step to reduce token churn
+            if (
+                self.config.execution.knowledge_extraction_mode == "batch"
+                and self.memory.task_results
+            ):
+                # Gather results from this step only
+                step_task_names = {t.name for t in next_step.tasks}
+                step_results = [
+                    r
+                    for r in self.memory.task_results
+                    if r.task_name in step_task_names
+                ]
+                try:
+                    extracted = await self.knowledge_extractor.extract_batch(
+                        step_results,
+                        self.objective,
+                        max_concurrent=self.config.execution.knowledge_batch_max_concurrent,
+                    )
+                    for item in extracted:
+                        self.memory.add_knowledge(item)
+                except Exception as batch_err:
+                    logger.warning(f"Batch knowledge extraction failed: {batch_err}")
+
             # Complete the step
             self.queue.complete_step(next_step)
 
@@ -457,9 +523,19 @@ class DeepOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
         )
 
         llm = self.llm_factory(planner)
+        # Prefer intelligent model for planning
+        try:
+            rp = RequestParams(max_iterations=2)
+            rp.modelPreferences = getattr(
+                self.context, "planner_model_preferences", None
+            )
+        except Exception:
+            rp = RequestParams(max_iterations=2)
 
         # Try to create a valid plan with retries
-        max_verification_attempts = 10
+        max_verification_attempts = max(
+            1, getattr(self.config.execution, "max_plan_verification_attempts", 4)
+        )
         previous_plan: Plan = None
         previous_errors = None
 
@@ -502,7 +578,9 @@ class DeepOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
             # Get structured plan
             prompt = get_full_plan_prompt(context)
             plan: Plan = await retry_with_backoff(
-                lambda: llm.generate_structured(message=prompt, response_model=Plan),
+                lambda: llm.generate_structured(
+                    message=prompt, response_model=Plan, request_params=rp
+                ),
                 max_attempts=2,
             )
 
@@ -568,6 +646,14 @@ class DeepOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
         )
 
         llm = self.llm_factory(verifier)
+        # Prefer capable but cost-aware model
+        rp = RequestParams(max_iterations=1)
+        try:
+            rp.modelPreferences = getattr(
+                self.context, "verifier_model_preferences", None
+            )
+        except Exception:
+            pass
 
         # Build verification context
         context = get_verification_context(
@@ -662,9 +748,14 @@ class DeepOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
         async with synthesizer:
             llm = await synthesizer.attach_llm(self.llm_factory)
 
-            result = await llm.generate(
-                message=prompt, request_params=RequestParams(max_iterations=5)
-            )
+            rp = RequestParams(max_iterations=5)
+            try:
+                rp.modelPreferences = getattr(
+                    self.context, "synthesizer_model_preferences", None
+                )
+            except Exception:
+                pass
+            result = await llm.generate(message=prompt, request_params=rp)
 
             logger.info("Final synthesis completed")
             return result
