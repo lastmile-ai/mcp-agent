@@ -181,12 +181,10 @@ This will launch the MCP Inspector UI where you can:
 
 Make sure Inspector is configured with the following settings:
 
-| Setting                        | Value                                               |
-| ------------------------------ | --------------------------------------------------- |
-| _Transport Type_               | _SSE_                                               |
-| _SSE_                          | _https://[server_id].deployments.mcp-agent.com/sse_ |
-| _OAuth 2.0 Flow Client ID_     | Your Client ID from `registration.py`               |
-| _OAUth 2.0 Flow Client Secret_ | Your Client Secret from `registration.py`           |
+| Setting          | Value                                               |
+| ---------------- | --------------------------------------------------- |
+| _Transport Type_ | _SSE_                                               |
+| _SSE_            | _https://[server_id].deployments.mcp-agent.com/sse_ |
 
 > [!NOTE]
 > When connecting with MCP Inspector, you will be redirected to complete the OAuth authorization flow in your browser before being able to use the server.
