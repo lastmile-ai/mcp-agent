@@ -25,7 +25,7 @@ from mcp_agent.cli.core.constants import (
 from mcp_agent.cli.core.utils import run_async
 from mcp_agent.cli.exceptions import CLIError
 from mcp_agent.cli.mcp_app.api_client import MCPAppClient, MCPApp
-from mcp_agent.cli.secrets import processor as secrets_processor
+from mcp_agent.cli.secrets import SecretsClient, processor as secrets_processor
 from mcp_agent.cli.utils.retry import retry_async_with_exponential_backoff, RetryError
 from mcp_agent.cli.utils.ux import (
     console,
@@ -41,8 +41,9 @@ from mcp_agent.cli.utils.git_utils import (
     create_git_tag,
     sanitize_git_ref_component,
 )
-from mcp_agent.config import get_settings
 
+from ..utils import get_app_defaults_from_config
+from .materialize import materialize_deployment_artifacts
 from .wrangler_wrapper import wrangler_deploy
 
 
@@ -188,7 +189,7 @@ def deploy_config(
 
         config_dir = resolved_config_dir
         config_file, secrets_file, deployed_secrets_file = get_config_files(config_dir)
-        default_app_name, default_app_description = _get_app_info_from_config(
+        default_app_name, default_app_description = get_app_defaults_from_config(
             config_file
         )
 
@@ -323,6 +324,10 @@ def deploy_config(
             start_time = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
             print_info(f"[{start_time}] Beginning deployment...", highlight=False)
 
+        secrets_client = SecretsClient(
+            api_url=effective_api_url, api_key=effective_api_key
+        )
+
         if create_new_app:
             app = run_async(
                 mcp_app_client.create_app(
@@ -350,6 +355,7 @@ def deploy_config(
                 secrets_processor.process_config_secrets(
                     input_path=secrets_file,
                     output_path=secrets_transformed_path,
+                    client=secrets_client,
                     api_url=effective_api_url,
                     api_key=effective_api_key,
                     non_interactive=non_interactive,
@@ -360,9 +366,23 @@ def deploy_config(
             print_verbose(
                 f"Transformed secrets file written to {secrets_transformed_path}"
             )
+            deployed_secrets_file = secrets_transformed_path
 
         else:
             print_verbose("Skipping secrets processing...")
+
+        deployed_config_path, deployed_secrets_path = materialize_deployment_artifacts(
+            config_dir=config_dir,
+            app_id=app_id,
+            config_file=config_file,
+            deployed_secrets_path=config_dir / MCP_DEPLOYED_SECRETS_FILENAME,
+            secrets_client=secrets_client,
+            non_interactive=non_interactive,
+        )
+
+        print_verbose(
+            f"Materialized deployment config at {deployed_config_path} and secrets at {deployed_secrets_path}"
+        )
 
         # Optionally create a local git tag as a breadcrumb of this deployment
         if git_tag:
@@ -603,30 +623,3 @@ def get_config_files(config_dir: Path) -> tuple[Path, Optional[Path], Optional[P
         deployed_secrets_file = deployed_secrets_path
 
     return config_file, secrets_file, deployed_secrets_file
-
-
-def _get_app_info_from_config(config_file: Path) -> Optional[tuple[str, str]]:
-    """Return a default deployment name sourced from configuration if available."""
-
-    try:
-        loaded_settings = get_settings(
-            config_path=str(config_file),
-            set_global=False,
-        )
-    except Exception:
-        return None, None
-
-    app_name = (
-        loaded_settings.name
-        if isinstance(loaded_settings.name, str) and loaded_settings.name.strip()
-        else None
-    )
-
-    app_description = (
-        loaded_settings.description
-        if isinstance(loaded_settings.description, str)
-        and loaded_settings.description.strip()
-        else None
-    )
-
-    return app_name, app_description

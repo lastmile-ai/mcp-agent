@@ -243,10 +243,32 @@ class MCPApp:
 
         return self._logger
 
+    def _apply_environment_bindings(self) -> None:
+        """Populate os.environ with values declared in settings.env when the value is available."""
+        try:
+            specs = list(self._config.iter_env_specs())
+        except Exception:
+            return
+
+        for key, value in specs:
+            if not key:
+                continue
+            if os.environ.get(key):
+                continue
+            if value is None:
+                continue
+            str_value = str(value)
+            if str_value.startswith("mcpac_sc_"):
+                # Actual secret values are injected by the deployment environment; skip handles.
+                continue
+            os.environ[key] = str_value
+
     async def initialize(self):
         """Initialize the application."""
         if self._initialized:
             return
+
+        self._apply_environment_bindings()
 
         # Pass the session ID to initialize_context
         self._context = await initialize_context(

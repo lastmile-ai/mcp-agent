@@ -18,6 +18,7 @@ Every command honours the global flags `--verbose/-v`, `--quiet/-q`, `--format <
 | `init --quickstart` | Copy a curated quickstart example. | `uvx mcp-agent init --quickstart workflow --dir ./workflow-demo` |
 | `deploy <APP_NAME>` | Package the current directory and deploy it. | `uvx mcp-agent deploy research-agent --non-interactive` |
 | `cloud servers list` | List deployed or configured servers. | `uvx mcp-agent cloud servers list --filter prod --format json` |
+| `cloud secrets list` | Inspect deployment environment secrets. | `uvx mcp-agent cloud secrets list my-app` |
 | `install --client claude_code <URL>` | Register a deployed server with a local MCP client. | `uvx mcp-agent install https://srv_abc.deployments... --client claude_code` |
 
 ## Primary workflows
@@ -109,6 +110,21 @@ uvx mcp-agent deploy research-app \
 
 Use `--dry-run` for validation without uploading, and let the CLI guide you through classifying developer versus user secrets.
 
+When deployment completes you will see two new artefacts next to your source:
+
+- `mcp_agent.deployed.secrets.yaml` – transformed secrets file containing opaque handles plus an `env` section.
+- `mcp_agent.deployed.config.yaml` – the configuration snapshot that the control plane consumes (safe to commit).
+
+Add an `env` list to `mcp_agent.config.yaml` whenever you want to capture environment variables as deployment secrets:
+
+```yaml
+env:
+  - OPENAI_API_KEY              # value read from os.environ
+  - {SUPABASE_URL: https://db.example.com}  # fallback literal when the env var is absent
+```
+
+Keys are processed in order, pulling from `os.environ` first, then the optional fallback literal. Each value is stored as a secret handle under `env:` in `mcp_agent.deployed.secrets.yaml`.
+
 ### List deployed servers (`mcp-agent cloud servers list`)
 
 ```bash
@@ -198,6 +214,12 @@ This workflow lets you adopt a published server template, supply your credential
   - `--secrets-output-file/-o` chooses where prompted secrets are written (defaults to `mcp_agent.configured.secrets.yaml`).  
   - `--params` lists required secrets and exits.  
   - `--dry-run` validates using mock clients without persisting anything.  
+
+- **Secrets (`mcp-agent cloud secrets …`)** – manage environment secrets captured during deploy.  
+  - `secrets list [APP]` displays stored environment keys with masked handles.  
+  - `secrets add <KEY> <VALUE> [APP]` creates or updates the secret value (`apps/<app_id>/env/<KEY>`).  
+  - `secrets remove <KEY> [APP]` deletes the stored handle.  
+  - `secrets pull [APP] --output mcp_agent.cloud.secrets.yaml` downloads resolved values without touching `mcp_agent.secrets.yaml`.
   - `--api-url`, `--api-key` allow per-command overrides.
 
 - **Auth (`mcp-agent cloud auth …`)** – the same login, whoami, and logout commands exposed at the top level, handy for scripts.
