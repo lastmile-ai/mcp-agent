@@ -12,6 +12,7 @@ from enum import Enum
 MCP_CONFIG_FILENAME = "mcp_agent.config.yaml"
 MCP_CONFIGURED_SECRETS_FILENAME = "mcp_agent.configured.secrets.yaml"
 MCP_DEPLOYED_SECRETS_FILENAME = "mcp_agent.deployed.secrets.yaml"
+MCP_DEPLOYED_CONFIG_FILENAME = "mcp_agent.deployed.config.yaml"
 MCP_SECRETS_FILENAME = "mcp_agent.secrets.yaml"
 REQUIREMENTS_TXT_FILENAME = "requirements.txt"
 

@@ -1,7 +1,8 @@
 """Shared utilities for cloud commands."""
 
 from functools import wraps
-from typing import Union
+from pathlib import Path
+from typing import Tuple, Union
 
 from mcp_agent.cli.auth import load_api_key_credentials
 from mcp_agent.cli.config import settings
@@ -13,6 +14,7 @@ from mcp_agent.cli.mcp_app.api_client import (
     MCPAppClient,
     MCPAppConfiguration,
 )
+from mcp_agent.config import get_settings
 
 
 def setup_authenticated_client() -> MCPAppClient:
@@ -174,3 +176,28 @@ def clean_server_status(status: str) -> str:
         return "offline"
     else:
         return "unknown"
+
+
+def get_app_defaults_from_config(
+    config_file: Path | None,
+) -> Tuple[str | None, str | None]:
+    """Extract default app name/description from a config file."""
+    if not config_file or not config_file.exists():
+        return None, None
+
+    try:
+        loaded = get_settings(config_path=str(config_file), set_global=False)
+    except Exception:
+        return None, None
+
+    app_name = (
+        loaded.name if isinstance(loaded.name, str) and loaded.name.strip() else None
+    )
+
+    app_description = (
+        loaded.description
+        if isinstance(loaded.description, str) and loaded.description.strip()
+        else None
+    )
+
+    return app_name, app_description
