@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import importlib
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -104,19 +106,29 @@ def materialize_deployment_artifacts(
     if not config_file.exists():
         raise CLIError(f"Configuration file not found: {config_file}")
 
-    try:
-        settings = get_settings(config_path=str(config_file), set_global=False)
-    except Exception as exc:
-        typer.secho(
-            f"Skipping deployment materialization due to config error: {exc}",
-            fg=typer.colors.YELLOW,
-        )
-        if not deployed_secrets_path.exists():
-            deployed_secrets_path.write_text(
-                yaml.safe_dump({}, default_flow_style=False, sort_keys=False),
-                encoding="utf-8",
+    settings = _load_settings_from_app(config_dir)
+    settings_source = "main.py MCPApp"
+    if settings is None:
+        settings_source = str(config_file)
+        try:
+            settings = get_settings(config_path=str(config_file), set_global=False)
+        except Exception as exc:
+            typer.secho(
+                f"Skipping deployment materialization due to config error: {exc}",
+                fg=typer.colors.YELLOW,
             )
-        return config_file, deployed_secrets_path
+            if not deployed_secrets_path.exists():
+                deployed_secrets_path.write_text(
+                    yaml.safe_dump({}, default_flow_style=False, sort_keys=False),
+                    encoding="utf-8",
+                )
+            return config_file, deployed_secrets_path
+
+    typer.secho(
+        f"Materializing config from {settings_source}",
+        fg=typer.colors.BLUE,
+    )
+
     env_specs = _normalize_env_specs(settings)
 
     # Always materialize the user config into a deployed variant
@@ -190,3 +202,63 @@ def materialize_deployment_artifacts(
     _persist_deployed_secrets(deployed_secrets_path, secrets_data)
 
     return deployed_config_path, deployed_secrets_path
+
+
+def _load_settings_from_app(config_dir: Path) -> Settings | None:
+    module_name = "main"
+    project_root = config_dir.resolve()
+    module_path = str(project_root)
+    added_path = False
+    try:
+        if module_path not in sys.path:
+            sys.path.insert(0, module_path)
+            added_path = True
+
+        if module_name in sys.modules:
+            del sys.modules[module_name]
+
+        module = importlib.import_module(module_name)
+        module_file = Path(getattr(module, "__file__", "")).resolve()
+        if not module_file or project_root not in module_file.parents:
+            typer.secho(
+                f"Module 'main' resolved outside project directory ({module_file}); skipping MCPApp load.",
+                fg=typer.colors.YELLOW,
+            )
+            return None
+        from mcp_agent.app import MCPApp
+
+        apps = [
+            value for value in module.__dict__.values() if isinstance(value, MCPApp)
+        ]
+
+        if len(apps) != 1:
+            if not apps:
+                typer.secho(
+                    f"Module '{module_name}' does not export an MCPApp instance.",
+                    fg=typer.colors.YELLOW,
+                )
+            else:
+                typer.secho(
+                    f"Module '{module_name}' exports multiple MCPApp instances.",
+                    fg=typer.colors.YELLOW,
+                )
+            return None
+
+        return apps[0].config
+    except ModuleNotFoundError:
+        typer.secho(
+            "Unable to import 'main' module while materializing config.",
+            fg=typer.colors.YELLOW,
+        )
+    except Exception as exc:
+        typer.secho(
+            f"Failed to load MCPApp config from 'main': {exc}",
+            fg=typer.colors.YELLOW,
+        )
+    finally:
+        if added_path and module_path in sys.path:
+            try:
+                sys.path.remove(module_path)
+            except ValueError:
+                pass
+    return None

@@ -1,4 +1,5 @@
 from pathlib import Path
+import textwrap
 
 import pytest
 import yaml
@@ -117,7 +118,7 @@ def test_materialize_skips_invalid_config(tmp_path: Path):
 
     client = FakeSecretsClient()
 
-    config_out, secrets_out = materialize_deployment_artifacts(
+    deployed_config_path, secrets_out = materialize_deployment_artifacts(
         config_dir=tmp_path,
         app_id="app_invalid",
         config_file=cfg,
@@ -126,6 +127,43 @@ def test_materialize_skips_invalid_config(tmp_path: Path):
         non_interactive=True,
     )
 
-    assert config_out == cfg
+    assert deployed_config_path == cfg
     assert secrets_out.exists()
     assert yaml.safe_load(secrets_out.read_text(encoding="utf-8")) == {}
+
+
+def test_materialize_prefers_app_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    cfg = tmp_path / "mcp_agent.config.yaml"
+    cfg.write_text("name: from-config\n", encoding="utf-8")
+
+    module_name = "main"
+    main_path = tmp_path / f"{module_name}.py"
+    main_path.write_text(
+        textwrap.dedent(
+            """
+            from mcp_agent.app import MCPApp
+
+
+            app = MCPApp()
+            app.config.name = "from-app"
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    secrets_client = FakeSecretsClient()
+    deployed_secrets = tmp_path / "mcp_agent.deployed.secrets.yaml"
+
+    deployed_config_path, _ = materialize_deployment_artifacts(
+        config_dir=tmp_path,
+        app_id="app_appconfig",
+        config_file=cfg,
+        deployed_secrets_path=deployed_secrets,
+        secrets_client=secrets_client,
+        non_interactive=True,
+    )
+
+    realized = yaml.safe_load(deployed_config_path.read_text(encoding="utf-8"))
+    assert realized["name"] == "from-app"
