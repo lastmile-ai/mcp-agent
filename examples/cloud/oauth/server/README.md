@@ -102,7 +102,7 @@ uv run main.py
 3. Use [MCP Inspector](https://github.com/modelcontextprotocol/inspector) to test the OAuth-protected server:
 
 ```bash
-npx @modelcontextprotocol/inspector --transport sse --server-url http://127.0.0.1:8000/sse
+npx @modelcontextprotocol/inspector --transport sse --server-url http://localhost:8000/sse
 ```
 
 4. In MCP Inspector:
