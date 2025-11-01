@@ -513,6 +513,13 @@ class DeepOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
                     planning_usage = planning_node.aggregate_usage()
                     self.budget.update_tokens(planning_usage.total_tokens)
 
+            # Sanitize obvious issues (invalid servers/agents/dependencies) before verification
+            try:
+                plan = self._sanitize_plan(plan)
+            except Exception as _:
+                # Non-fatal; let verifier surface errors
+                pass
+
             # Verify the plan
             verification_result = self.plan_verifier.verify_plan(plan)
 
@@ -551,6 +558,54 @@ class DeepOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
 
         # Should not reach here
         raise RuntimeError("Failed to create a valid plan")
+
+    def _sanitize_plan(self, plan: Plan) -> Plan:
+        """Best-effort sanitization to improve plan validity before verification.
+
+        - Filters task.servers to only allowed servers
+        - Clears unknown agent names (sets to None)
+        - Drops invalid requires_context_from references (non-existent or same/later step)
+        """
+        allowed_servers = set(self.available_servers or [])
+        allowed_agents = set(self.agents.keys() if self.agents else [])
+
+        # Track tasks seen so far to validate dependencies
+        seen_tasks: set[str] = set()
+
+        for step_idx, step in enumerate(plan.steps):
+            # Filter each task
+            for task in step.tasks:
+                # Fix agent
+                if task.agent is not None and task.agent not in allowed_agents:
+                    task.agent = None
+
+                # Filter servers
+                if task.servers:
+                    filtered = [s for s in task.servers if s in allowed_servers]
+                    # Deduplicate while preserving order
+                    seen = set()
+                    deduped = []
+                    for s in filtered:
+                        if s not in seen:
+                            seen.add(s)
+                            deduped.append(s)
+                    task.servers = deduped
+
+                # Fix dependencies: only reference tasks from previous steps
+                if task.requires_context_from:
+                    valid_deps: list[str] = []
+                    for dep in task.requires_context_from:
+                        # Valid if already seen in earlier steps
+                        if dep in seen_tasks:
+                            valid_deps.append(dep)
+                    task.requires_context_from = valid_deps
+
+            # After processing this step, add its task names to seen set
+            for task in step.tasks:
+                if task.name:
+                    seen_tasks.add(task.name)
+
+        return plan
 
     async def _verify_completion(self) -> tuple[bool, float]:
         """
