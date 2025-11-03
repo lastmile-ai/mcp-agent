@@ -136,7 +136,7 @@ class AuthorizationFlowCoordinator:
         import urllib.parse
 
         authorize_url = httpx.URL(
-            str(auth_metadata.authorization_endpoint)
+            str(auth_metadata.authorization_endpoint).rstrip("/")
             + "?"
             + urllib.parse.urlencode(params)
         )
