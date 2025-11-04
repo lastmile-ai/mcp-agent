@@ -1,0 +1,70 @@
+.App {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Light theme (default) */
+.App.light {
+  background-color: #ffffff;
+  color: #333333;
+}
+
+.App.light .instruction-text {
+  color: #333333;
+}
+
+/* Dark theme */
+.App.dark {
+  background-color: #1a1a1a;
+  color: #e0e0e0;
+}
+
+.App.dark .instruction-text {
+  color: #e0e0e0;
+}
+
+.instruction-text {
+  font-size: 1.2rem;
+  margin-top: 1rem;
+  transition: color 0.3s ease;
+}
+
+.App-logo {
+  height: 40vmin;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .App-logo {
+    animation: App-logo-spin infinite 20s linear;
+  }
+}
+
+.App-header {
+  background-color: #282c34;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(10px + 2vmin);
+  color: white;
+}
+
+.App-link {
+  color: #61dafb;
+}
+
+@keyframes App-logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

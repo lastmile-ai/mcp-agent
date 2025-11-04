@@ -1,0 +1,143 @@
+.timer-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.5rem;
+}
+
+.timer-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.timer-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.timer-icon {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.timer-description {
+  text-align: center;
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.timer-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 0;
+  width: 100%;
+}
+
+.timer-grid {
+  display: grid;
+  width: 100%;
+  gap: 0.5rem;
+}
+
+.timer-labels {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  align-items: center;
+  justify-items: center;
+  gap: 1rem;
+}
+
+.timer-label {
+  text-align: center;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+}
+
+.timer-values {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  align-items: center;
+  justify-items: center;
+  gap: 1rem;
+}
+
+.timer-value {
+  text-align: center;
+  font-weight: bold;
+  font-size: 2rem;
+  color: #111827;
+}
+
+.timer-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.timer-buttons button {
+  width: 100%;
+}
+
+.timer-buttons button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+[data-theme="dark"] .timer-wrapper {
+  color: #f9fafb;
+}
+
+[data-theme="dark"] .timer-description {
+  color: #9ca3af;
+}
+
+[data-theme="dark"] .timer-label {
+  color: #d1d5db;
+}
+
+[data-theme="dark"] .timer-value {
+  color: #f9fafb;
+}
+
+/* Completed state styling */
+.timer-completed {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+.timer-value-completed {
+  color: #16a34a !important;
+  font-weight: 900;
+}
+
+.timer-completed .timer-description {
+  color: #16a34a;
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+[data-theme="dark"] .timer-value-completed {
+  color: #22c55e !important;
+}
+
+[data-theme="dark"] .timer-completed .timer-description {
+  color: #22c55e;
+}
