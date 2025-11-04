@@ -1,5 +1,7 @@
 # Timer App - ChatGPT App Example
 
+![timer-app](https://github.com/user-attachments/assets/7a526501-84c8-4ef5-b784-4b3948790db2)
+
 This example demonstrates how to create an MCP Agent application with interactive UI widgets for OpenAI's ChatGPT Apps platform. It shows how to build a countdown timer widget that renders interactive UI components directly in the ChatGPT interface.
 
 ## Motivation
