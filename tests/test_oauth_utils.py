@@ -2,6 +2,7 @@ import time
 import asyncio
 import pathlib
 import sys
+from typing import Any, Dict
 
 import pytest
 
@@ -258,13 +259,13 @@ async def test_authorization_url_construction_with_trailing_slash():
     )
 
     # Mock _send_auth_request to capture the request payload
-    captured_payload = None
+    captured_payload: Dict[str, Any] | None = None
 
-    async def mock_send_auth_request(ctx, payload):
+    async def mock_send_auth_request(_ctx, payload: Dict[str, Any]):
         nonlocal captured_payload
         captured_payload = payload
         # Simulate user declining to test the flow without needing real callback
-        raise Exception("test_exception")
+        raise ConnectionAbortedError("test_exception")
 
     with patch(
         "mcp_agent.oauth.flow._send_auth_request", side_effect=mock_send_auth_request
@@ -281,14 +282,17 @@ async def test_authorization_url_construction_with_trailing_slash():
                 auth_metadata=auth_metadata,
                 scopes=["read"],
             )
-        except Exception:
+        except ConnectionAbortedError:
             pass  # Expected to fail due to mock
 
     await http_client.aclose()
 
     # Verify the URL doesn't have double slashes before query params
-    assert captured_payload is not None
-    url = captured_payload["url"]
-    assert "authorize/?" not in url
-    assert "authorize?" in url
-    assert url.startswith("https://auth.example.com/authorize?")
+    assert captured_payload is not None, "captured_payload should have been set by mock"
+
+    # Type narrowing for Pylint
+    if captured_payload is not None:
+        url = captured_payload["url"]
+        assert "authorize/?" not in url
+        assert "authorize?" in url
+        assert url.startswith("https://auth.example.com/authorize?")
