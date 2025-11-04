@@ -243,7 +243,9 @@ class MCPAgentTokenVerifier(TokenVerifier):
             return False
 
         # RFC 9068: Token MUST contain at least one expected audience
-        valid_audiences = set(aud.rstrip("/") for aud in self._settings.expected_audiences)
+        valid_audiences = set(
+            aud.rstrip("/") for aud in self._settings.expected_audiences
+        )
         token_audience_set = set(aud.rstrip("/") for aud in token_audiences)
 
         if not valid_audiences.intersection(token_audience_set):

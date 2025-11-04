@@ -107,7 +107,11 @@ def test_select_authorization_server_with_serialized_config():
     )
 
     # Convert the reloaded config's authorization_server to string
-    preferred = str(reloaded_config.authorization_server) if reloaded_config.authorization_server else None
+    preferred = (
+        str(reloaded_config.authorization_server)
+        if reloaded_config.authorization_server
+        else None
+    )
 
     # Should match even if trailing slashes don't align perfectly
     selected = select_authorization_server(metadata, preferred)
@@ -130,7 +134,10 @@ def test_select_authorization_server_trailing_slash_mismatch():
     # Test case 2: preferred doesn't have trailing slash, candidates do
     metadata2 = ProtectedResourceMetadata(
         resource="https://api.example.com",
-        authorization_servers=["https://auth.example.com/", "https://other.example.com/"],
+        authorization_servers=[
+            "https://auth.example.com/",
+            "https://other.example.com/",
+        ],
     )
     selected2 = select_authorization_server(metadata2, "https://auth.example.com")
     assert selected2.rstrip("/") == "https://auth.example.com"
@@ -170,9 +177,7 @@ def test_oauth_callback_base_url_with_serialized_config():
     from mcp_agent.config import OAuthSettings
 
     # Create settings with callback_base_url
-    settings = OAuthSettings(
-        callback_base_url="https://callback.example.com"
-    )
+    settings = OAuthSettings(callback_base_url="https://callback.example.com")
 
     # Simulate json serialization which adds trailing slash
     dumped = settings.model_dump(mode="json")
@@ -212,8 +217,7 @@ async def test_authorization_url_construction_with_trailing_slash():
     from mcp_agent.config import OAuthSettings, MCPOAuthClientSettings
     from mcp_agent.core.context import Context
     from mcp.shared.auth import OAuthMetadata, ProtectedResourceMetadata
-    from mcp.server.session import ServerSession
-    from unittest.mock import AsyncMock, MagicMock, patch
+    from unittest.mock import MagicMock, patch
     import httpx
 
     # Create settings
@@ -224,6 +228,7 @@ async def test_authorization_url_construction_with_trailing_slash():
 
     # Create a mock user
     from mcp_agent.oauth.identity import OAuthUserIdentity
+
     user = OAuthUserIdentity(subject="user123", provider="test")
 
     # Create OAuth config
@@ -248,17 +253,22 @@ async def test_authorization_url_construction_with_trailing_slash():
 
     # Create flow coordinator
     http_client = httpx.AsyncClient()
-    flow = AuthorizationFlowCoordinator(http_client=http_client, settings=oauth_settings)
+    flow = AuthorizationFlowCoordinator(
+        http_client=http_client, settings=oauth_settings
+    )
 
     # Mock _send_auth_request to capture the request payload
     captured_payload = None
+
     async def mock_send_auth_request(ctx, payload):
         nonlocal captured_payload
         captured_payload = payload
         # Simulate user declining to test the flow without needing real callback
         raise Exception("test_exception")
 
-    with patch("mcp_agent.oauth.flow._send_auth_request", side_effect=mock_send_auth_request):
+    with patch(
+        "mcp_agent.oauth.flow._send_auth_request", side_effect=mock_send_auth_request
+    ):
         try:
             await flow.authorize(
                 context=context,
