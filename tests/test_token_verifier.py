@@ -892,10 +892,10 @@ async def test_issuer_comparison_with_trailing_slash_from_token():
     introspect_response.status_code = 200
     introspect_response.json.return_value = {
         "active": True,
-        "aud": "https://api.example.com",
+        "aud": "https://api.example.com/",
         "sub": "user123",
         "exp": 9999999999,
-        "iss": "https://auth.example.com",
+        "iss": "https://auth.example.com/",  # trailing slash
     }
 
     verifier._client.get = AsyncMock(return_value=metadata_response)
