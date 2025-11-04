@@ -865,7 +865,6 @@ async def test_issuer_comparison_with_trailing_slash_from_token():
     trailing slashes. This test ensures the issuer comparison in token_verifier.py:158
     handles this correctly.
     """
-    # Create settings and simulate json serialization (which adds trailing slash)
     settings = MCPAuthorizationServerSettings(
         enabled=True,
         issuer_url="https://auth.example.com",
@@ -873,13 +872,12 @@ async def test_issuer_comparison_with_trailing_slash_from_token():
         expected_audiences=["https://api.example.com"],
     )
 
-    # Dump with mode="json" and reload to simulate config loading
+    # Dump with mode="json" and reload to simulate config loading (with trailing slashes)
     dumped = settings.model_dump(mode="json")
     reloaded_settings = MCPAuthorizationServerSettings(**dumped)
 
     verifier = MCPAgentTokenVerifier(reloaded_settings)
 
-    # Mock well-known metadata
     metadata_response = Mock()
     metadata_response.status_code = 200
     metadata_response.json.return_value = {
@@ -890,8 +888,6 @@ async def test_issuer_comparison_with_trailing_slash_from_token():
         "response_types_supported": ["code"],
     }
 
-    # Mock introspection response where issuer has trailing slash
-    # (OAuth servers often add trailing slashes)
     introspect_response = Mock()
     introspect_response.status_code = 200
     introspect_response.json.return_value = {
@@ -899,7 +895,7 @@ async def test_issuer_comparison_with_trailing_slash_from_token():
         "aud": "https://api.example.com",
         "sub": "user123",
         "exp": 9999999999,
-        "iss": "https://auth.example.com/",  # Trailing slash from OAuth server
+        "iss": "https://auth.example.com",
     }
 
     verifier._client.get = AsyncMock(return_value=metadata_response)
@@ -907,7 +903,6 @@ async def test_issuer_comparison_with_trailing_slash_from_token():
 
     token = await verifier._introspect("test_token")
 
-    # Should succeed even with trailing slash mismatch
     assert token is not None
     assert token.subject == "user123"
 
@@ -917,7 +912,6 @@ async def test_issuer_comparison_with_trailing_slash_from_token():
 @pytest.mark.asyncio
 async def test_issuer_comparison_config_trailing_slash_token_without():
     """Test issuer comparison when config has trailing slash but token doesn't."""
-    # Create settings and simulate json serialization
     settings = MCPAuthorizationServerSettings(
         enabled=True,
         issuer_url="https://auth.example.com",
@@ -930,7 +924,6 @@ async def test_issuer_comparison_config_trailing_slash_token_without():
 
     verifier = MCPAgentTokenVerifier(reloaded_settings)
 
-    # Mock responses
     metadata_response = Mock()
     metadata_response.status_code = 200
     metadata_response.json.return_value = {
@@ -941,7 +934,6 @@ async def test_issuer_comparison_config_trailing_slash_token_without():
         "response_types_supported": ["code"],
     }
 
-    # Token issuer WITHOUT trailing slash
     introspect_response = Mock()
     introspect_response.status_code = 200
     introspect_response.json.return_value = {
@@ -957,7 +949,6 @@ async def test_issuer_comparison_config_trailing_slash_token_without():
 
     token = await verifier._introspect("test_token")
 
-    # Should succeed
     assert token is not None
     assert token.subject == "user123"
 

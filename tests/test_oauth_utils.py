@@ -81,11 +81,10 @@ def test_select_authorization_server_with_serialized_config():
 
     When MCPOAuthClientSettings is dumped with mode='json', the authorization_server
     AnyHttpUrl field gets a trailing slash. This test ensures select_authorization_server
-    (metadata.py:72) handles this correctly.
+    handles this correctly.
     """
     from mcp_agent.config import MCPOAuthClientSettings
 
-    # Create config with authorization_server
     oauth_config = MCPOAuthClientSettings(
         enabled=True,
         authorization_server="https://auth.example.com",
@@ -93,31 +92,23 @@ def test_select_authorization_server_with_serialized_config():
         client_id="test_client",
     )
 
-    # Simulate json serialization which adds trailing slash
-    dumped = oauth_config.model_dump(mode="json")
-    reloaded_config = MCPOAuthClientSettings(**dumped)
+    dumped_config = oauth_config.model_dump(mode="json")
+    reloaded_config = MCPOAuthClientSettings(**dumped_config)
 
-    # Create metadata where authorization servers have trailing slashes
-    # (Pydantic normalizes them)
     metadata = ProtectedResourceMetadata(
         resource="https://api.example.com",
         authorization_servers=[
-            "https://auth.example.com/",  # With trailing slash
-            "https://other-auth.example.com/",
+            "https://auth.example.com",
+            "https://other-auth.example.com",
         ],
     )
 
-    # Convert the reloaded config's authorization_server to string
-    preferred = (
-        str(reloaded_config.authorization_server)
-        if reloaded_config.authorization_server
-        else None
-    )
+    dumped_metadata = metadata.model_dump(mode="json")
+    reloaded_metadata = ProtectedResourceMetadata(**dumped_metadata)
 
-    # Should match even if trailing slashes don't align perfectly
-    selected = select_authorization_server(metadata, preferred)
+    preferred = str(reloaded_config.authorization_server)
+    selected = select_authorization_server(reloaded_metadata, preferred)
 
-    # Should select the preferred one
     assert selected.rstrip("/") == "https://auth.example.com"
 
 
@@ -128,7 +119,7 @@ def test_select_authorization_server_trailing_slash_mismatch():
         resource="https://api.example.com",
         authorization_servers=["https://auth.example.com", "https://other.example.com"],
     )
-    # Pydantic will add trailing slashes to the candidates, but let's test the logic
+
     selected1 = select_authorization_server(metadata1, "https://auth.example.com/")
     assert selected1.rstrip("/") == "https://auth.example.com"
 
@@ -172,29 +163,20 @@ def test_oauth_callback_base_url_with_serialized_config():
     """Test that callback_base_url works correctly after json serialization.
 
     When OAuthSettings is dumped with mode='json', the callback_base_url AnyHttpUrl
-    field gets a trailing slash. The code in flow.py:75 uses rstrip('/') to handle this,
-    and this test ensures it works correctly.
+    field gets a trailing slash.
     """
     from mcp_agent.config import OAuthSettings
 
-    # Create settings with callback_base_url
     settings = OAuthSettings(callback_base_url="https://callback.example.com")
-
-    # Simulate json serialization which adds trailing slash
     dumped = settings.model_dump(mode="json")
     reloaded = OAuthSettings(**dumped)
 
-    # The code in flow.py uses: f"{str(self._settings.callback_base_url).rstrip('/')}/internal/oauth/callback/{flow_id}"
-    # Let's verify the URL is constructed correctly
     flow_id = "test_flow_123"
     if reloaded.callback_base_url:
         constructed_url = f"{str(reloaded.callback_base_url).rstrip('/')}/internal/oauth/callback/{flow_id}"
 
-        # Should not have double slashes
         assert "//" not in constructed_url.replace("https://", "")
-        # Should end with the flow_id
         assert constructed_url.endswith(flow_id)
-        # Should have the correct base
         assert constructed_url.startswith("https://callback.example.com/")
 
 
@@ -221,18 +203,12 @@ async def test_authorization_url_construction_with_trailing_slash():
     from unittest.mock import MagicMock, patch
     import httpx
 
-    # Create settings
     oauth_settings = OAuthSettings()
-
-    # Create a mock context
     context = MagicMock(spec=Context)
-
-    # Create a mock user
     from mcp_agent.oauth.identity import OAuthUserIdentity
 
     user = OAuthUserIdentity(subject="user123", provider="test")
 
-    # Create OAuth config
     oauth_config = MCPOAuthClientSettings(
         enabled=True,
         client_id="test_client",
@@ -240,7 +216,6 @@ async def test_authorization_url_construction_with_trailing_slash():
         resource="https://api.example.com",
     )
 
-    # Create metadata with trailing slashes (simulating json serialization)
     resource_metadata = ProtectedResourceMetadata(
         resource="https://api.example.com/",
         authorization_servers=["https://auth.example.com/"],
@@ -252,13 +227,11 @@ async def test_authorization_url_construction_with_trailing_slash():
         token_endpoint="https://auth.example.com/token/",
     )
 
-    # Create flow coordinator
     http_client = httpx.AsyncClient()
     flow = AuthorizationFlowCoordinator(
         http_client=http_client, settings=oauth_settings
     )
 
-    # Mock _send_auth_request to capture the request payload
     captured_payload: Dict[str, Any] | None = None
 
     async def mock_send_auth_request(_ctx, payload: Dict[str, Any]):
@@ -286,8 +259,6 @@ async def test_authorization_url_construction_with_trailing_slash():
             pass  # Expected to fail due to mock
 
     await http_client.aclose()
-
-    # Verify the URL doesn't have double slashes before query params
     assert captured_payload is not None, "captured_payload should have been set by mock"
 
     # Type narrowing for Pylint
