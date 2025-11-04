@@ -4,19 +4,21 @@ The server exposes widget-backed tools that render the UI bundle within the
 client directory. Each handler returns the HTML shell via an MCP resource and
 returns structured content so the ChatGPT client can hydrate the widget."""
 
+from __future__ import annotations
+
 import asyncio
 from dataclasses import dataclass
-from pathlib import Path
 from random import choice
-from typing import Any, Dict
+from typing import Any, Dict, List
 
-import mcp.types as types
-import uvicorn
-from mcp.server.fastmcp import FastMCP
 from starlette.routing import Mount
 from starlette.staticfiles import StaticFiles
-
+import mcp.types as types
+from mcp.server.fastmcp import FastMCP
+import uvicorn
 from mcp_agent.app import MCPApp
+from pathlib import Path
+
 from mcp_agent.server.app_server import create_mcp_server_for_app
 
 
@@ -74,7 +76,7 @@ WIDGET = CoinFlipWidget(
     identifier="coin-flip",
     title="Flip a Coin",
     # OpenAI Apps heavily cache resource by URI, so use a date-based URI to bust the cache when updating the app.
-    template_uri="ui://widget/coin-flip-10-27-2025-16-34.html",
+    template_uri="ui://widget/coin-flip-10-22-2025-15-48.html",
     invoking="Preparing for coin flip",
     invoked="Flipping the coin...",
     html=INLINE_HTML_TEMPLATE,  # Use INLINE_HTML_TEMPLATE or DEPLOYED_HTML_TEMPLATE
@@ -97,6 +99,21 @@ def _resource_description() -> str:
     return "Coin flip widget markup"
 
 
+def _tool_meta() -> Dict[str, Any]:
+    return {
+        "openai/outputTemplate": WIDGET.template_uri,
+        "openai/toolInvocation/invoking": WIDGET.invoking,
+        "openai/toolInvocation/invoked": WIDGET.invoked,
+        "openai/widgetAccessible": True,
+        "openai/resultCanProduceWidget": True,
+        "annotations": {
+            "destructiveHint": False,
+            "openWorldHint": False,
+            "readOnlyHint": True,
+        },
+    }
+
+
 def _embedded_widget_resource() -> types.EmbeddedResource:
     return types.EmbeddedResource(
         type="resource",
@@ -109,9 +126,85 @@ def _embedded_widget_resource() -> types.EmbeddedResource:
     )
 
 
-def _tool_meta() -> Dict[str, Any]:
-    return {
-        "openai.com/widget": _embedded_widget_resource().model_dump(mode="json"),
+@mcp._mcp_server.list_tools()
+async def _list_tools() -> List[types.Tool]:
+    return [
+        types.Tool(
+            name=WIDGET.identifier,
+            title=WIDGET.title,
+            inputSchema={"type": "object", "properties": {}},
+            description=WIDGET.title,
+            _meta=_tool_meta(),
+        )
+    ]
+
+
+@mcp._mcp_server.list_resources()
+async def _list_resources() -> List[types.Resource]:
+    return [
+        types.Resource(
+            name=WIDGET.title,
+            title=WIDGET.title,
+            uri=WIDGET.template_uri,
+            description=_resource_description(),
+            mimeType=MIME_TYPE,
+            _meta=_tool_meta(),
+        )
+    ]
+
+
+@mcp._mcp_server.list_resource_templates()
+async def _list_resource_templates() -> List[types.ResourceTemplate]:
+    return [
+        types.ResourceTemplate(
+            name=WIDGET.title,
+            title=WIDGET.title,
+            uriTemplate=WIDGET.template_uri,
+            description=_resource_description(),
+            mimeType=MIME_TYPE,
+            _meta=_tool_meta(),
+        )
+    ]
+
+
+async def _handle_read_resource(req: types.ReadResourceRequest) -> types.ServerResult:
+    if str(req.params.uri) != WIDGET.template_uri:
+        return types.ServerResult(
+            types.ReadResourceResult(
+                contents=[],
+                _meta={"error": f"Unknown resource: {req.params.uri}"},
+            )
+        )
+
+    contents = [
+        types.TextResourceContents(
+            uri=WIDGET.template_uri,
+            mimeType=MIME_TYPE,
+            text=WIDGET.html,
+            _meta=_tool_meta(),
+        )
+    ]
+
+    return types.ServerResult(types.ReadResourceResult(contents=contents))
+
+
+async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
+    if req.params.name != WIDGET.identifier:
+        return types.ServerResult(
+            types.CallToolResult(
+                content=[
+                    types.TextContent(
+                        type="text",
+                        text=f"Unknown tool: {req.params.name}",
+                    )
+                ],
+                isError=True,
+            )
+        )
+
+    widget_resource = _embedded_widget_resource()
+    meta: Dict[str, Any] = {
+        "openai.com/widget": widget_resource.model_dump(mode="json"),
         "openai/outputTemplate": WIDGET.template_uri,
         "openai/toolInvocation/invoking": WIDGET.invoking,
         "openai/toolInvocation/invoked": WIDGET.invoked,
@@ -119,34 +212,24 @@ def _tool_meta() -> Dict[str, Any]:
         "openai/resultCanProduceWidget": True,
     }
 
-
-@app.tool(
-    name=WIDGET.identifier,
-    title=WIDGET.title,
-    description="Flip a coin and get heads or tails.",
-    annotations=types.ToolAnnotations(
-        destructiveHint=False,
-        openWorldHint=False,
-        readOnlyHint=True,
-    ),
-    structured_output=True,
-    meta=_tool_meta(),
-)
-async def flip_coin() -> Dict[str, str]:
-    """Flip a coin and get heads or tails."""
     flip_result = choice(["heads", "tails"])
-    return {"flipResult": flip_result}
+
+    return types.ServerResult(
+        types.CallToolResult(
+            content=[
+                types.TextContent(
+                    type="text",
+                    text=WIDGET.response_text,
+                )
+            ],
+            structuredContent={"flipResult": flip_result},
+            _meta=meta,
+        )
+    )
 
 
-@mcp.resource(
-    uri=WIDGET.template_uri,
-    title=WIDGET.title,
-    description=_resource_description(),
-    mime_type=MIME_TYPE,
-)
-def get_widget_html() -> str:
-    """Provide the HTML template for the coin flip widget."""
-    return WIDGET.html
+mcp._mcp_server.request_handlers[types.CallToolRequest] = _call_tool_request
+mcp._mcp_server.request_handlers[types.ReadResourceRequest] = _handle_read_resource
 
 
 # NOTE: This main function is for local testing; it spins up the MCP server (SSE) and

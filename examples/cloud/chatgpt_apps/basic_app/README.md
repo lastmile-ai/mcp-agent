@@ -64,7 +64,6 @@ References static files from a deployed server URL:
 - Better performance with caching
 - Requires initial deployment to get the server URL
 - Best for production use
-- NOTE: The deployed server will only serve static files from `web/build/static` or `web/dist/static`
 
 ## Prerequisites
 
@@ -83,7 +82,7 @@ yarn build
 cd ..
 ```
 
-This creates optimized production assets in `web/build/static` that the server will serve.
+This creates optimized production assets in `web/build/` that the server will serve.
 
 ## Test Locally
 
