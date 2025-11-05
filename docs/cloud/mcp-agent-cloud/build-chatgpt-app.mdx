@@ -1,0 +1,126 @@
+# Build a ChatGPT App with mcp-agent Cloud
+
+Building a ChatGPT App with **mcp-agent** involves three main phases:
+
+1. Design the end-user experience and the widget the app will render inside ChatGPT.
+2. Implement an MCP server that exposes the tools and resources ChatGPT needs to render your widget.
+3. Package and deploy the server to [mcp-agent Cloud](./overview.mdx) so that ChatGPT can reach it over the internet.
+
+This guide walks through those steps using the [coin flip example](../../../examples/cloud/chatgpt_apps/basic_app/README.md) and highlights the decisions you will make when adapting the sample to your own product. If you are new to mcp-agent Cloud, skim the [cloud overview](./overview.mdx) first.
+
+## 1. Plan the user experience
+
+Great ChatGPT Apps start with the workflow you want to deliver. Define:
+
+- **Use case** – What job does your app accomplish for the user?
+- **Data exchange** – What information does the user provide and what does the app return?
+- **Visual language** – How should the widget look and feel? Identify key controls, status states, and accessibility considerations.
+
+Create a simple storyboard of the conversation, similar to the way Apple encourages sketching screens before writing SwiftUI code. Break the flow into distinct steps and capture the data the MCP server needs to supply at each step.
+
+### Decide on widget behavior
+
+Each ChatGPT widget is defined by a combination of HTML, CSS, and JavaScript that is rendered inside ChatGPT. When adapting the coin flip example:
+
+- Replace the widget name, labels, and copy with terminology from your product.
+- Enumerate the events your widget needs to handle (button clicks, input validation, navigation between panels).
+- Identify the structured JSON your MCP tool will return so the widget can hydrate with the correct state.
+
+> [!TIP]
+> Keep your widget’s data schema small and versioned. ChatGPT caches widget templates aggressively, so evolve your schema by adding new optional fields rather than mutating existing ones.
+
+## 2. Implement the MCP server
+
+The [example project](../../../examples/cloud/chatgpt_apps/basic_app/README.md) ships with a FastMCP server (`main.py`) and a React client (`web/`). Use it as a starting point:
+
+1. **Clone the example directory** into your own project workspace.
+2. **Rename the tool** from `coin-flip` to something meaningful. Update the tool description and prompt responses to match your app.
+3. **Update widget metadata**:
+   - `openai/outputTemplate` should point to the URI for your widget HTML resource.
+   - `openai/toolInvocation/invoking` and `openai/toolInvocation/invoked` should describe your loading states.
+   - If your widget can operate without visual output, set `openai/widgetAccessible` to `false`.
+4. **Serve custom resources** – Replace the example HTML template, CSS, and JavaScript with your own build artifacts. The server exposes them via `EmbeddedResource` instances.
+5. **Return structured results** – Adapt the tool handler to produce the JSON payload the widget expects. Keep the shape consistent with your client-side TypeScript types.
+
+### Working with the web client
+
+The `web/` directory is a standard Vite/React app. Customize it by:
+
+- Editing `web/src` to implement your UI and data models.
+- Importing assets into `web/public` and referencing them with relative paths.
+- Running the build step to generate production assets:
+
+  ```bash
+  cd web
+  yarn install
+  yarn build
+  cd ..
+  ```
+
+The build output (`web/build/static`) is what the server will serve to ChatGPT when you switch to the deployed asset mode.
+
+### Local testing workflow
+
+Use `uv` to manage Python dependencies and run the server locally:
+
+```bash
+uv pip install -r requirements.txt
+uv run main.py
+```
+
+Visit `http://127.0.0.1:8000` to verify the widget renders, and connect the [MCP Inspector](https://github.com/modelcontextprotocol/inspector) via SSE at `http://127.0.0.1:8000/sse` to exercise your tools. Iterate until the inspector shows the correct tools, resources, and structured responses.
+
+## 3. Deploy to mcp-agent Cloud
+
+When your server behaves correctly locally, deploy it using the CLI bundled with the project:
+
+1. Authenticate with mcp-agent Cloud:
+
+   ```bash
+   uv run mcp-agent login
+   ```
+
+   Log in with Google or GitHub, then paste the generated API key back into the terminal prompt.
+
+2. Deploy the app:
+
+   ```bash
+   uv run mcp-agent deploy chatgpt-app --no-auth
+   ```
+
+   The `--no-auth` flag makes the deployment publicly accessible—omit it if your integration needs authentication. The CLI prints a deployment URL such as `https://<server_id>.deployments.mcp-agent.com`.
+
+3. Update your server code to reference the hosted asset URL. In the example this is the `SERVER_URL` constant in `main.py`. Bump the `template_uri` value (for example `ui://widget/coin-flip-2024-11-05.html`) to bust ChatGPT’s cache, then redeploy.
+
+4. Switch the HTML template to the deployed asset mode by referencing `DEPLOYED_HTML_TEMPLATE` (or your own equivalent) so the widget pulls JavaScript and CSS from the hosted static files.
+
+> [!NOTE]
+> Each deployment packages the Python server, `mcp_agent.config.yaml`, and any files referenced in that directory. Double-check that large build artifacts live under `web/build` to keep deployment bundles small.
+
+## 4. Register with OpenAI ChatGPT Apps
+
+With the cloud deployment URL in hand:
+
+1. Open the [OpenAI ChatGPT Apps dashboard](https://platform.openai.com/). Create a new ChatGPT App or edit an existing one.
+2. Add a server connection and paste the deployment URL with the `/sse` suffix (for example `https://<server_id>.deployments.mcp-agent.com/sse`).
+3. Verify that the `coin-flip` replacement tool appears under **Actions**.
+4. Trigger the tool and ensure the widget renders with the structured response you defined.
+
+Whenever you adjust metadata, static assets, or structured data shapes, redeploy the server and update the template URI to invalidate caches before retesting in ChatGPT.
+
+## 5. Production hardening checklist
+
+Before shipping broadly:
+
+- **Authentication** – Decide whether to require API keys or OAuth. Remove the `--no-auth` flag if you need to gate access.
+- **Logging & monitoring** – Instrument your server to emit request logs and error traces so you can debug issues reported by users.
+- **Versioning** – Maintain a changelog for widget template URIs, JSON schema revisions, and API contract changes.
+- **Accessibility** – Validate keyboard navigation and color contrast within your widget to match the polish expected in native app ecosystems like iOS.
+- **Resilience** – Handle retries gracefully; ChatGPT may replay tool calls when users re-open conversations.
+
+## Resources
+
+- [Coin flip sample README](../../../examples/cloud/chatgpt_apps/basic_app/README.md) – Step-by-step commands and reference implementation.
+- [mcp-agent Cloud overview](./overview.mdx) – Core concepts and platform capabilities.
+- [OpenAI Apps SDK documentation](https://developers.openai.com/apps-sdk/build/mcp-server) – Latest metadata reference.
+- [Apple Swift Fundamentals tutorial](https://developer.apple.com/tutorials/develop-in-swift/swift-fundamentals) – Inspiration for designing polished, user-first experiences.
