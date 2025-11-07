@@ -4,7 +4,7 @@
 
 This example demonstrates how to create an MCP Agent application with interactive UI widgets for OpenAI's ChatGPT Apps platform. It shows how to build a countdown timer widget that renders interactive UI components directly in the ChatGPT interface.
 
-**SSE Endpoint to try out! -**  `https://1bs7spincr4wvnl2aq2n9880tye30msv.deployments.mcp-agent.com/sse`
+**SSE Endpoint to try out! -**  `https://timer.demos.mcp-agent.com/sse`
 
 ## Motivation
 
