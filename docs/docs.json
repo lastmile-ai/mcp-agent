@@ -96,7 +96,6 @@
               {
                 "group": "mcp-c",
                 "pages": [
-                  "cloud/mcp-agent-cloud/architecture-overview",
                   "cloud/mcp-agent-cloud/long-running-tools",
                   "cloud/mcp-agent-cloud/manage-secrets",
                   "cloud/mcp-agent-cloud/deploy-mcp-server",
@@ -108,6 +107,7 @@
                 "pages": [
                   "cloud/use-cases/deploy-agents",
                   "cloud/use-cases/deploy-mcp-servers",
+                  "cloud/use-cases/build-chatgpt-apps",
                   "cloud/use-cases/deploy-chatgpt-apps"
                 ]
               },
