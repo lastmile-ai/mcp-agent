@@ -1,6 +1,6 @@
 ---
 title: "Deploying MCP Servers"
-description: "Ship FastMCP or custom MCP servers on mcp-agent cloud infrastructure"
+description: "Ship FastMCP or custom MCP servers on mcp-agent cloud"
 ---
 
 `mcp-agent cloud` is not limited to full agent workflows—you can deploy any MCP-compliant server (Python, Node, Rust, etc.) and let the platform handle hosting, auth, and observability. This is ideal for tool libraries, data access APIs, or bridge services that you want to publish without maintaining infrastructure.
@@ -45,22 +45,16 @@ Use this pattern when deploying simple MCP servers (tools and resources) without
 
 ```python
 # main.py
-from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 from mcp_agent.app import MCPApp
-
-# Configuration path
-CONFIG_PATH = (Path(__file__).parent / "mcp_agent.config.yaml").resolve()
 
 # FastMCP instance for tool definitions
 mcp = FastMCP("utilities")
 
-# MCPApp wrapper for cloud deployment
 app = MCPApp(
     name="utilities-server",
     description="Handy utility tools exposed over MCP",
-    settings=str(CONFIG_PATH),
-    mcp=mcp,
+    mcp=mcp
 )
 
 @mcp.tool()
@@ -94,16 +88,11 @@ Use this pattern when building agent applications that may later need workflows,
 
 ```python
 # main.py
-from pathlib import Path
 from mcp_agent.app import MCPApp
-
-# Configuration path
-CONFIG_PATH = (Path(__file__).parent / "mcp_agent.config.yaml").resolve()
 
 app = MCPApp(
     name="markdown-tools",
     description="Text processing tools",
-    settings=str(CONFIG_PATH),
 )
 
 @app.tool
@@ -126,7 +115,7 @@ logger:
   level: info
 ```
 
-This app behaves like a standard MCP server but you can add Temporal-backed workflows later (using `@app.async_tool` and `@app.workflow`) without changing the deployment process.
+This app behaves like a standard MCP server. When deploying to the cloud, you can add Temporal-backed workflows later (using `@app.async_tool` and `@app.workflow`) without changing the deployment command. For local testing with workflows, you'll need to update `execution_engine: temporal` in your config and run a Temporal server.
 
 ## Deploy the server
 
