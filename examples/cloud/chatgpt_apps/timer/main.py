@@ -89,7 +89,9 @@ mcp = FastMCP(
     stateless_http=True,
 )
 app = MCPApp(
-    name="timer", description="Timer widget for counting down within an OpenAI chat", mcp=mcp
+    name="timer",
+    description="Timer widget for counting down within an OpenAI chat",
+    mcp=mcp,
 )
 
 
@@ -137,29 +139,29 @@ async def _list_tools() -> List[types.Tool]:
                         "type": "integer",
                         "description": "Number of hours for the timer (0-23)",
                         "minimum": 0,
-                        "default": 0
+                        "default": 0,
                     },
                     "minutes": {
                         "type": "integer",
                         "description": "Number of minutes for the timer (0-59)",
                         "minimum": 0,
                         "maximum": 59,
-                        "default": 0
+                        "default": 0,
                     },
                     "seconds": {
                         "type": "integer",
                         "description": "Number of seconds for the timer (0-59)",
                         "minimum": 0,
                         "maximum": 59,
-                        "default": 0
+                        "default": 0,
                     },
                     "message": {
                         "type": "string",
                         "description": "Optional message to display under the timer (e.g., '🥚 Soft boil eggs', '☕️ Coffee brewing', '📗 Study time!'). If not provided, shows default countdown message.",
-                        "default": ""
-                    }
+                        "default": "",
+                    },
                 },
-                "required": []
+                "required": [],
             },
             description="Start a countdown timer with specified hours, minutes, and seconds",
             _meta=_tool_meta(),
@@ -277,7 +279,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                 "seconds": seconds,
                 "message": message,
                 "isRunning": False,
-                "isPaused": False
+                "isPaused": False,
             },
             _meta=meta,
         )
