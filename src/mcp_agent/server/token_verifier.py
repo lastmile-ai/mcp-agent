@@ -155,12 +155,14 @@ class MCPAgentTokenVerifier(TokenVerifier):
             return None
 
         if self._settings.issuer_url and payload.get("iss"):
-            if str(payload.get("iss")) != str(self._settings.issuer_url):
+            expected_issuer = str(self._settings.issuer_url).rstrip("/")
+            actual_issuer = str(payload.get("iss")).rstrip("/")
+            if actual_issuer != expected_issuer:
                 logger.warning(
                     "Token issuer mismatch",
                     data={
-                        "expected": str(self._settings.issuer_url),
-                        "actual": payload.get("iss"),
+                        "expected": expected_issuer,
+                        "actual": actual_issuer,
                     },
                 )
                 return None
@@ -241,8 +243,10 @@ class MCPAgentTokenVerifier(TokenVerifier):
             return False
 
         # RFC 9068: Token MUST contain at least one expected audience
-        valid_audiences = set(self._settings.expected_audiences)
-        token_audience_set = set(token_audiences)
+        valid_audiences = set(
+            aud.rstrip("/") for aud in self._settings.expected_audiences
+        )
+        token_audience_set = set(aud.rstrip("/") for aud in token_audiences)
 
         if not valid_audiences.intersection(token_audience_set):
             logger.warning(
