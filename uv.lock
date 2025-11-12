@@ -2242,6 +2242,11 @@ dev = [
 ]
 
 [[package]]
+name = "mcptest"
+version = "0.1.0"
+source = { virtual = "mcptest" }
+
+[[package]]
 name = "mdurl"
 version = "0.1.2"
 source = { registry = "https://pypi.org/simple" }
