@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+import copy
 import importlib
 import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+import httpx
 import typer
 import yaml
-
 from mcp_agent.cli.core.constants import MCP_DEPLOYED_CONFIG_FILENAME
 from mcp_agent.cli.core.utils import run_async
 from mcp_agent.cli.exceptions import CLIError
@@ -71,22 +72,77 @@ def _persist_deployed_secrets(path: Path, data: dict) -> None:
     path.write_text(content, encoding="utf-8")
 
 
-def _persist_deployed_config(
-    config_path: Path, settings: Settings, *, include_overrides: bool = False
-) -> None:
-    """Write the materialized config for deployments.
+def _load_raw_config(config_file: Path) -> dict:
+    if not config_file.exists():
+        return {}
+    try:
+        return yaml.safe_load(config_file.read_text(encoding="utf-8")) or {}
+    except Exception:
+        return {}
 
-    `include_overrides` is reserved for future server-side parity (temporal overrides, etc).
-    """
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    materialized = settings.model_dump(
-        mode="python",
-        exclude_none=True,
-        exclude_unset=True,
-        exclude_defaults=not include_overrides,
-    )
-    with open(config_path, "w", encoding="utf-8") as handle:
-        yaml.safe_dump(materialized, handle, default_flow_style=False, sort_keys=False)
+
+def _write_deployed_config(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as handle:
+        yaml.safe_dump(data, handle, default_flow_style=False, sort_keys=False)
+
+
+_REMOVE = object()
+
+
+def _redact_config_values(
+    current: object, secrets_overlay: object, raw_config: object
+) -> object:
+    """Return `current` with any nodes present in `secrets_overlay` removed or replaced with `raw_config` values."""
+
+    if secrets_overlay is None:
+        return current
+
+    if isinstance(secrets_overlay, dict) and isinstance(current, dict):
+        result: dict = copy.deepcopy(current)
+        raw_dict = raw_config if isinstance(raw_config, dict) else {}
+        for key, overlay_value in secrets_overlay.items():
+            if key not in result:
+                continue
+            base_value = raw_dict.get(key)
+            replacement = _redact_config_values(result[key], overlay_value, base_value)
+            if replacement is _REMOVE:
+                if base_value is not None:
+                    result[key] = copy.deepcopy(base_value)
+                else:
+                    result.pop(key, None)
+            else:
+                result[key] = replacement
+
+        if not result:
+            if raw_dict:
+                return copy.deepcopy(raw_dict)
+            return _REMOVE
+        return result
+
+    if isinstance(secrets_overlay, list) and isinstance(current, list):
+        raw_list = raw_config if isinstance(raw_config, list) else []
+        result_list = []
+        max_len = len(current)
+        for idx in range(max_len):
+            item = current[idx]
+            overlay_item = secrets_overlay[idx] if idx < len(secrets_overlay) else None
+            base_item = raw_list[idx] if idx < len(raw_list) else None
+            if overlay_item is None:
+                result_list.append(item)
+                continue
+            replacement = _redact_config_values(item, overlay_item, base_item)
+            if replacement is _REMOVE:
+                if base_item is not None:
+                    result_list.append(copy.deepcopy(base_item))
+            else:
+                result_list.append(replacement)
+        return result_list
+
+    # Scalar secret entry – fall back to raw config if present, otherwise drop.
+    if raw_config is not None:
+        return copy.deepcopy(raw_config)
+    return _REMOVE
 
 
 def materialize_deployment_artifacts(
@@ -130,10 +186,22 @@ def materialize_deployment_artifacts(
     )
 
     env_specs = _normalize_env_specs(settings)
+    secrets_data = _load_deployed_secrets(deployed_secrets_path)
 
-    # Always materialize the user config into a deployed variant
+    materialized_config = settings.model_dump(
+        mode="python",
+        exclude_none=True,
+        exclude_unset=True,
+        exclude_defaults=True,
+    )
+    raw_config = _load_raw_config(config_file)
+    sanitized_config = _redact_config_values(
+        copy.deepcopy(materialized_config),
+        copy.deepcopy(secrets_data),
+        raw_config,
+    )
     deployed_config_path = config_dir / MCP_DEPLOYED_CONFIG_FILENAME
-    _persist_deployed_config(deployed_config_path, settings)
+    _write_deployed_config(deployed_config_path, sanitized_config or {})
 
     if not env_specs:
         # Nothing further to do; ensure secrets file exists if previously created
@@ -146,7 +214,6 @@ def materialize_deployment_artifacts(
 
     secrets_path_parent = deployed_secrets_path.parent
     secrets_path_parent.mkdir(parents=True, exist_ok=True)
-    secrets_data = _load_deployed_secrets(deployed_secrets_path)
     existing_env_handles = _extract_existing_env_handles(secrets_data)
 
     normalized_env_entries: list[dict[str, str]] = []
@@ -178,9 +245,35 @@ def materialize_deployment_artifacts(
         handle = existing_env_handles.get(spec.key)
         secret_name = _secret_name_for_env(app_id, spec.key)
 
+        handle_reused = False
         if handle:
-            run_async(secrets_client.set_secret_value(handle, value))
-        else:
+            try:
+                success = run_async(secrets_client.set_secret_value(handle, value))
+                if success:
+                    handle_reused = True
+                else:
+                    typer.secho(
+                        f"Existing secret handle for '{spec.key}' is invalid; creating a new secret.",
+                        fg=typer.colors.YELLOW,
+                    )
+                    handle = None
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code == 404:
+                    typer.secho(
+                        f"Secret handle for '{spec.key}' no longer exists; creating a new secret.",
+                        fg=typer.colors.YELLOW,
+                    )
+                    handle = None
+                else:
+                    raise
+            except Exception as exc:
+                typer.secho(
+                    f"Failed to reuse secret handle for '{spec.key}': {exc}. Creating a new secret.",
+                    fg=typer.colors.YELLOW,
+                )
+                handle = None
+
+        if not handle:
             handle = run_async(
                 secrets_client.create_secret(
                     name=secret_name,
@@ -188,6 +281,10 @@ def materialize_deployment_artifacts(
                     value=value,
                 )
             )
+            handle_reused = False
+
+        if not handle_reused:
+            existing_env_handles[spec.key] = handle
 
         normalized_env_entries.append({spec.key: handle})
 

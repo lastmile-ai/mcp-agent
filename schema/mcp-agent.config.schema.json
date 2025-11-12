@@ -1636,6 +1636,14 @@
           ],
           "title": "Id Reuse Policy",
           "type": "string"
+        },
+        "workflow_task_modules": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Workflow Task Modules",
+          "type": "array",
+          "description": "Additional module paths to import before creating a Temporal worker. Each should be importable."
         }
       },
       "required": [
@@ -1690,6 +1698,91 @@
         }
       },
       "title": "UsageTelemetrySettings",
+      "type": "object"
+    },
+    "WorkflowTaskRetryPolicy": {
+      "additionalProperties": false,
+      "description": "Declarative retry policy for workflow tasks / activities (mirrors Temporal RetryPolicy fields).\nDurations can be specified either as seconds (number) or ISO8601 timedelta strings; both are\ncoerced to datetime.timedelta instances.",
+      "properties": {
+        "maximum_attempts": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Maximum Attempts"
+        },
+        "initial_interval": {
+          "anyOf": [
+            {
+              "format": "duration",
+              "type": "string"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Initial Interval"
+        },
+        "backoff_coefficient": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Backoff Coefficient"
+        },
+        "maximum_interval": {
+          "anyOf": [
+            {
+              "format": "duration",
+              "type": "string"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Maximum Interval"
+        },
+        "non_retryable_error_types": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Non Retryable Error Types"
+        }
+      },
+      "title": "WorkflowTaskRetryPolicy",
       "type": "object"
     }
   },
@@ -1798,6 +1891,21 @@
         }
       ],
       "description": "Settings for using OpenAI models in the MCP Agent application"
+    },
+    "workflow_task_modules": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Workflow Task Modules",
+      "type": "array",
+      "description": "Optional list of modules to import at startup so workflow tasks register globally."
+    },
+    "workflow_task_retry_policies": {
+      "additionalProperties": {
+        "$ref": "#/$defs/WorkflowTaskRetryPolicy"
+      },
+      "title": "Workflow Task Retry Policies",
+      "type": "object"
     },
     "azure": {
       "anyOf": [
@@ -1924,6 +2032,24 @@
         }
       ],
       "description": "Global OAuth client configuration (token store, delegated auth defaults)"
+    },
+    "env": {
+      "items": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          }
+        ]
+      },
+      "title": "Env",
+      "type": "array",
+      "description": "Environment variables to materialize for deployments."
     }
   },
   "title": "MCP Agent Configuration Schema",

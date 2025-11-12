@@ -20,6 +20,7 @@ from typing import (
 from datetime import timedelta
 from contextlib import asynccontextmanager
 
+from dotenv import load_dotenv
 from mcp import ServerSession
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations, Icon
@@ -169,6 +170,7 @@ class MCPApp:
         self._context: Optional[Context] = None
         self._initialized = False
         self._tracer_provider = None
+        self._dotenv_loaded = False
 
         try:
             # Set event loop policy for Windows
@@ -245,6 +247,9 @@ class MCPApp:
 
     def _apply_environment_bindings(self) -> None:
         """Populate os.environ with values declared in settings.env when the value is available."""
+
+        self._load_dotenv_files()
+
         try:
             specs = list(self._config.iter_env_specs())
         except Exception:
@@ -253,8 +258,6 @@ class MCPApp:
         for key, value in specs:
             if not key:
                 continue
-            if os.environ.get(key):
-                continue
             if value is None:
                 continue
             str_value = str(value)
@@ -262,6 +265,19 @@ class MCPApp:
                 # Actual secret values are injected by the deployment environment; skip handles.
                 continue
             os.environ[key] = str_value
+
+    def _load_dotenv_files(self) -> None:
+        if self._dotenv_loaded:
+            return
+        try:
+            load_dotenv(dotenv_path=".env", override=False)
+        except Exception:
+            pass
+        try:
+            load_dotenv(dotenv_path=".env.mcp-cloud", override=False)
+        except Exception:
+            pass
+        self._dotenv_loaded = True
 
     async def initialize(self):
         """Initialize the application."""
