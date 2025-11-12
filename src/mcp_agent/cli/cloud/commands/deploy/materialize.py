@@ -189,7 +189,7 @@ def materialize_deployment_artifacts(
     secrets_data = _load_deployed_secrets(deployed_secrets_path)
 
     materialized_config = settings.model_dump(
-        mode="python",
+        mode="json",
         exclude_none=True,
         exclude_unset=True,
         exclude_defaults=True,
