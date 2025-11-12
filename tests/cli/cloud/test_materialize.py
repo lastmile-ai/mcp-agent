@@ -376,3 +376,80 @@ def test_deployed_config_preserves_env_declarations(
         "OPENAI_API_KEY",
         {"SUPABASE_URL": "https://db.example.com"},
     ]
+
+
+def test_deployed_config_handles_anyhttpurl_fields(tmp_path: Path):
+    cfg = tmp_path / "mcp_agent.config.yaml"
+    cfg.write_text(
+        textwrap.dedent(
+            """
+            authorization:
+              enabled: true
+              issuer_url: https://idp.example.com/
+              resource_server_url: https://api.example.com/resource
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    secrets_client = FakeSecretsClient()
+    deployed_secrets = tmp_path / "mcp_agent.deployed.secrets.yaml"
+
+    deployed_config_path, _ = materialize_deployment_artifacts(
+        config_dir=tmp_path,
+        app_id="app_oauth",
+        config_file=cfg,
+        deployed_secrets_path=deployed_secrets,
+        secrets_client=secrets_client,
+        non_interactive=True,
+    )
+
+    realized = yaml.safe_load(deployed_config_path.read_text(encoding="utf-8"))
+    assert realized["authorization"]["issuer_url"] == "https://idp.example.com/"
+    assert (
+        realized["authorization"]["resource_server_url"]
+        == "https://api.example.com/resource"
+    )
+
+
+def test_materialize_uses_app_config_when_available(tmp_path: Path, monkeypatch):
+    cfg = tmp_path / "mcp_agent.config.yaml"
+    cfg.write_text("name: from-config\n", encoding="utf-8")
+
+    main_py = tmp_path / "main.py"
+    main_py.write_text(
+        textwrap.dedent(
+            """
+            from mcp_agent.app import MCPApp
+
+            app = MCPApp()
+            from mcp_agent.config import MCPAuthorizationServerSettings
+
+            app.config.authorization = MCPAuthorizationServerSettings(
+                enabled=True,
+                issuer_url="https://issuer.example.com",
+                resource_server_url="https://api.example.com",
+                expected_audiences=["example"],
+            )
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    secrets_client = FakeSecretsClient()
+    deployed_secrets = tmp_path / "mcp_agent.deployed.secrets.yaml"
+
+    deployed_config_path, _ = materialize_deployment_artifacts(
+        config_dir=tmp_path,
+        app_id="app_programmatic",
+        config_file=cfg,
+        deployed_secrets_path=deployed_secrets,
+        secrets_client=secrets_client,
+        non_interactive=True,
+    )
+
+    realized = yaml.safe_load(deployed_config_path.read_text(encoding="utf-8"))
+    assert (
+        realized["authorization"]["issuer_url"]
+        == "https://issuer.example.com/"
+    )
