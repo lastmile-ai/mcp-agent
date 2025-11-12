@@ -102,7 +102,7 @@ dev = [
 
 [project.scripts]
 silsila = "mcp_agent.cli.main:run"
-mcp-agent = "mcp_agent.cli.main:run"
+mcp-agent = "mcp_agent.cli.main_bootstrap:run"
 mcp-cloud = "mcp_agent.cli.cloud.main:run"
 mcpc = "mcp_agent.cli.cloud.main:run"
 

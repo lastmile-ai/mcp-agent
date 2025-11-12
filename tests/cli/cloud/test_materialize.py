@@ -449,7 +449,4 @@ def test_materialize_uses_app_config_when_available(tmp_path: Path, monkeypatch)
     )
 
     realized = yaml.safe_load(deployed_config_path.read_text(encoding="utf-8"))
-    assert (
-        realized["authorization"]["issuer_url"]
-        == "https://issuer.example.com/"
-    )
+    assert realized["authorization"]["issuer_url"] == "https://issuer.example.com/"
