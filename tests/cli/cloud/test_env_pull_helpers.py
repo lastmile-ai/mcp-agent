@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from mcp_agent.cli.cloud.commands.secrets.main import (
+from mcp_agent.cli.cloud.commands.env.main import (
     _format_env_value,
     _load_env_file_values,
     _write_env_file,

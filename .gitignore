@@ -125,8 +125,10 @@ celerybeat.pid
 .env
 .venv
 env/
+!src/mcp_agent/cli/cloud/commands/env/
 venv/
 ENV/
+!src/mcp_agent/cli/cloud/commands/env/
 env.bak/
 venv.bak/
 
