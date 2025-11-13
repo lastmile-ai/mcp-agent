@@ -31,6 +31,7 @@ from mcp_agent.logging.logger import LoggingConfig
 from mcp_agent.logging.transport import create_transport
 from mcp_agent.mcp.mcp_server_registry import ServerRegistry
 from mcp_agent.tracing.tracer import TracingConfig
+from mcp_agent.tracing.trace_store import TraceStore
 from mcp_agent.workflows.llm.llm_selector import ModelSelector
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.tracing.token_counter import TokenCounter
@@ -107,6 +108,9 @@ class Context(MCPContext):
     identity_registry: Dict[str, OAuthUserIdentity] = Field(default_factory=dict)
     request_session_id: str | None = None
     request_identity: OAuthUserIdentity | None = None
+
+    current_run_id: str | None = None
+    trace_store: Optional[TraceStore] = None
 
     model_config = ConfigDict(
         extra="allow",
@@ -485,10 +489,11 @@ async def initialize_context(
     # Initialize token counter with engine hint for fast path checks
     context.token_counter = TokenCounter(execution_engine=config.execution_engine)
 
-    # Configure logging and telemetry
+    # Configure logging, telemetry, and trace storage
     context.tracing_config = await configure_otel(config, context.session_id)
     await configure_logger(config, context.session_id, context.token_counter)
     await configure_usage_telemetry(config)
+    context.trace_store = TraceStore()
 
     context.task_registry = task_registry or ActivityRegistry()
 

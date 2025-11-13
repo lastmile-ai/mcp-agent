@@ -82,6 +82,8 @@ To run any of these examples, you'll need to:
    uv run parallel.py
    # OR
    uv run router.py
+   # OR
+   uv run planner_subagents_nonblocking.py
    ```
 
 ## Example Workflows
@@ -130,6 +132,15 @@ Demonstrates intelligent routing of requests to appropriate agents or functions:
 - Routes between agents, functions, and servers based on request content
 - Shows multiple routing approaches and capabilities
 - Demonstrates how to handle complex decision-making in workflows
+
+### Planner + Sub-agent Workflow (`planner_subagents_nonblocking.py`)
+
+Shows how to mix a lightweight planner with dynamically created sub-agents:
+
+- Planner agent produces a short list of steps for the objective
+- Each step spawns a research sub-agent that calls a long-running (simulated) CLI function tool
+- Function tools are executed as Temporal activities, so slow commands don’t block the workflow
+- Results from each step are summarized into a final answer the user can consume
 
 ## Project Structure
 

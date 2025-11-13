@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import timedelta
 from temporalio.common import WorkflowIDReusePolicy
+from mcp_agent.config import WorkflowTaskRetryPolicy
 from mcp_agent.executor.temporal import TemporalExecutor, TemporalExecutorConfig
 
 
@@ -175,6 +176,37 @@ async def test_start_workflow_with_both_custom_params(executor, mock_context):
         "value1",
         "value2",
     ]  # Multi-arg workflow packs into sequence
+
+
+@pytest.mark.asyncio
+async def test_start_workflow_applies_retry_policy(executor, mock_context):
+    """Ensure workflow-level retry policy gets passed to Temporal client."""
+
+    class DummyWorkflow:
+        @staticmethod
+        async def run():
+            return "ok"
+
+    mock_workflow = DummyWorkflow
+    mock_context.app.workflows.get.return_value = mock_workflow
+    executor.client.start_workflow = AsyncMock(return_value=AsyncMock())
+
+    policy = WorkflowTaskRetryPolicy(
+        maximum_attempts=3,
+        initial_interval=1,
+        backoff_coefficient=2.0,
+    )
+
+    await executor.start_workflow(
+        "test_workflow",
+        workflow_retry_policy=policy,
+        wait_for_result=False,
+    )
+
+    call_kwargs = executor.client.start_workflow.call_args.kwargs
+    retry_policy = call_kwargs["retry_policy"]
+    assert retry_policy.maximum_attempts == 3
+    assert retry_policy.backoff_coefficient == 2.0
 
 
 @pytest.mark.asyncio

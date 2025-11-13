@@ -289,6 +289,19 @@ class OpenAIAugmentedLLM(
 
                 self.logger.debug("Completion request arguments:", data=arguments)
                 self._log_chat_progress(chat_turn=len(messages) // 2, model=model)
+                request_copy = dict(arguments)
+                request_messages = request_copy.pop("messages", None)
+                self._emit_llm_event(
+                    "llm_request",
+                    {
+                        "turn": i,
+                        "model": model,
+                        "messages": request_messages,
+                        "request": request_copy,
+                    },
+                    span=span,
+                    sensitive_fields=("messages", "request"),
+                )
 
                 request = RequestCompletionRequest(
                     config=self.context.config.openai,
@@ -302,16 +315,54 @@ class OpenAIAugmentedLLM(
                     ensure_serializable(request),
                 )
 
-                self.logger.debug(
-                    "OpenAI ChatCompletion response:",
-                    data=response,
-                )
-
                 if isinstance(response, BaseException):
                     self.logger.error(f"Error: {response}")
                     span.record_exception(response)
                     span.set_status(trace.Status(trace.StatusCode.ERROR))
+                    self._emit_llm_event(
+                        "llm_response",
+                        {
+                            "turn": i,
+                            "model": model,
+                            "error": str(response),
+                        },
+                        span=span,
+                    )
                     break
+
+                self.logger.debug(
+                    "OpenAI ChatCompletion response:",
+                    data=response,
+                )
+                usage_summary = None
+                if getattr(response, "usage", None) is not None:
+                    usage = response.usage
+                    usage_summary = {
+                        "prompt_tokens": getattr(usage, "prompt_tokens", None),
+                        "completion_tokens": getattr(usage, "completion_tokens", None),
+                        "total_tokens": getattr(usage, "total_tokens", None),
+                    }
+
+                choice_summary = None
+                if response.choices:
+                    choice_summary = response.choices[0]
+
+                self._emit_llm_event(
+                    "llm_response",
+                    {
+                        "turn": i,
+                        "model": model,
+                        "finish_reason": choice_summary.finish_reason
+                        if choice_summary
+                        else None,
+                        "usage": usage_summary,
+                        "response": choice_summary.model_dump()
+                        if hasattr(choice_summary, "model_dump")
+                        else str(choice_summary),
+                    },
+                    span=span,
+                    sensitive_fields=("response",),
+                )
 
                 self._annotate_span_for_completion_response(span, response, i)
 

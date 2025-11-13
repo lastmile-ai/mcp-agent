@@ -637,6 +637,9 @@ class TemporalSettings(BaseModel):
     workflow_task_modules: List[str] = Field(default_factory=list)
     """Additional module paths to import before creating a Temporal worker. Each should be importable."""
 
+    workflow_retry_policy: Optional["WorkflowTaskRetryPolicy"] = None
+    """Optional retry policy applied to the entire workflow execution."""
+
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 
@@ -1087,6 +1090,18 @@ class LoggerSettings(BaseModel):
 
     http_timeout: float = 5.0
     """HTTP timeout seconds for event transport"""
+
+    include_llm_payloads: bool = True
+    """Whether structured LLM/tool events should include raw prompts/arguments."""
+
+    structured_payload_max_chars: int = 1024
+    """Maximum characters preserved per string when logging structured LLM/tool payloads."""
+
+    structured_payload_max_collection_items: int = 16
+    """Maximum list/dict/set items preserved per structured log payload before truncation."""
+
+    structured_payload_max_depth: int = 3
+    """Maximum nesting depth traversed while sanitizing structured logging payloads."""
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 

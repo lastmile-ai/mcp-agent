@@ -1,5 +1,6 @@
 import asyncio
 import pytest
+from mcp_agent.config import WorkflowTaskRetryPolicy
 from mcp_agent.executor.workflow import WorkflowState, WorkflowResult, Workflow
 from unittest.mock import MagicMock, AsyncMock
 
@@ -143,6 +144,26 @@ class TestWorkflowAsyncMethods:
         # wait for completion
         await workflow._run_task
         assert workflow.state.status == "completed"
+
+    @pytest.mark.asyncio
+    async def test_run_async_registers_trace_run(self, workflow, mock_context):
+        from unittest.mock import AsyncMock
+        import asyncio
+
+        workflow.context.config.execution_engine = "asyncio"
+        workflow.executor.uuid.return_value = "uuid-trace"
+        workflow.context.workflow_registry.register = AsyncMock()
+        workflow.context.trace_store = MagicMock()
+
+        async def never_return(*args, **kwargs):
+            await asyncio.Future()
+
+        workflow.executor.wait_for_signal = AsyncMock(side_effect=never_return)
+        workflow.run = AsyncMock(return_value=WorkflowResult(value="ok"))
+
+        await workflow.run_async()
+
+        workflow.context.trace_store.start_run.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_parallel_workflows_unique_ids(self, mock_context):
@@ -322,6 +343,7 @@ class TestWorkflowAsyncMethods:
         """Test that custom workflow_id and task_queue are passed to Temporal executor"""
         workflow = MockWorkflow(name="TestWorkflow", context=mock_context)
         workflow.context.config.execution_engine = "temporal"
+        workflow.context.config.temporal = None
 
         # Mock the workflow registry
         mock_context.workflow_registry.register = AsyncMock()
@@ -345,16 +367,47 @@ class TestWorkflowAsyncMethods:
         )
 
         # Verify start_workflow was called with correct parameters
-        workflow.executor.start_workflow.assert_called_once_with(
-            "TestWorkflow",
-            workflow_id=custom_workflow_id,
-            task_queue=custom_task_queue,
-            workflow_memo=None,
-        )
+        workflow.executor.start_workflow.assert_called_once()
+        call_args = workflow.executor.start_workflow.call_args
+        assert call_args.args[0] == "TestWorkflow"
+        assert call_args.kwargs["workflow_id"] == custom_workflow_id
+        assert call_args.kwargs["task_queue"] == custom_task_queue
+        assert call_args.kwargs["workflow_memo"] is None
+        assert call_args.kwargs["workflow_retry_policy"] is None
 
         # Verify execution uses the handle's ID
         assert execution.workflow_id == "temporal-workflow-id"
         assert execution.run_id == "temporal-run-id"
+
+    @pytest.mark.asyncio
+    async def test_run_async_temporal_uses_retry_policy(self, mock_context):
+        """Ensure workflow-level retry policy is forwarded to Temporal executor."""
+        workflow = MockWorkflow(name="TestWorkflow", context=mock_context)
+        workflow.context.config.execution_engine = "temporal"
+        workflow.context.config.temporal = MagicMock()
+        policy = WorkflowTaskRetryPolicy(maximum_attempts=4)
+        workflow.context.config.temporal.workflow_retry_policy = policy
+
+        mock_handle = MagicMock()
+        mock_handle.id = "wf-id"
+        mock_handle.run_id = "run-id"
+        mock_handle.result_run_id = "result-run-id"
+        mock_handle.result = AsyncMock(return_value=WorkflowResult(value="ok"))
+
+        workflow.executor.start_workflow = AsyncMock(return_value=mock_handle)
+        workflow.context.workflow_registry.register = AsyncMock()
+
+        execution = await workflow.run_async()
+
+        workflow.executor.start_workflow.assert_awaited_once()
+        assert (
+            workflow.executor.start_workflow.call_args.kwargs["workflow_retry_policy"]
+            is policy
+        )
+        assert execution.workflow_id == "wf-id"
+        assert execution.run_id == "result-run-id"
+
+        await workflow._run_task
 
     @pytest.mark.asyncio
     async def test_run_async_regular_params_not_affected(self, mock_context):

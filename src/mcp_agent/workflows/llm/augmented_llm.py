@@ -15,6 +15,10 @@ from typing import (
 )
 
 from opentelemetry import trace
+try:  # pragma: no cover - fallback for stripped-down runtimes
+    from unittest.mock import Mock  # type: ignore
+except Exception:  # noqa: BLE001
+    Mock = None  # type: ignore
 from pydantic import BaseModel, ConfigDict, Field
 
 from mcp.types import (
@@ -318,6 +322,30 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
 
         self.model_selector = self.context.model_selector
         self.type_converter = type_converter
+        logger_config = getattr(getattr(self.context, "config", None), "logger", None)
+        include_payloads = True
+        if logger_config is not None and hasattr(logger_config, "include_llm_payloads"):
+            include_payloads = bool(logger_config.include_llm_payloads)
+        self._structured_logging_include_payloads = include_payloads
+
+        self._structured_logging_max_chars = self._coerce_positive_int(
+            getattr(logger_config, "structured_payload_max_chars", None)
+            if logger_config is not None
+            else None,
+            1024,
+        )
+        self._structured_logging_max_collection_items = self._coerce_positive_int(
+            getattr(logger_config, "structured_payload_max_collection_items", None)
+            if logger_config is not None
+            else None,
+            16,
+        )
+        self._structured_logging_max_depth = self._coerce_positive_int(
+            getattr(logger_config, "structured_payload_max_depth", None)
+            if logger_config is not None
+            else None,
+            3,
+        )
 
     async def __aenter__(self):
         if self.agent:
@@ -518,8 +546,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
                     if not preprocess:
                         span.set_attribute("preprocess", False)
                         span.set_status(trace.Status(trace.StatusCode.ERROR))
-
-                        res = CallToolResult(
+                        error_result = CallToolResult(
                             isError=True,
                             content=[
                                 TextContent(
@@ -527,8 +554,28 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
                                 )
                             ],
                         )
-                        span.record_exception(Exception(res.content[0].text))
-                        return res
+                        span.record_exception(Exception(error_result.content[0].text))
+                        self._emit_tool_event(
+                            "tool_request",
+                            {
+                                "tool_name": request.params.name,
+                                "tool_call_id": tool_call_id,
+                                "arguments": request.params.arguments,
+                            },
+                            span=span,
+                            sensitive_fields=("arguments",),
+                        )
+                        self._emit_tool_event(
+                            "tool_result",
+                            {
+                                "tool_name": request.params.name,
+                                "tool_call_id": tool_call_id,
+                                "result": error_result,
+                            },
+                            span=span,
+                            sensitive_fields=("result",),
+                        )
+                        return error_result
                 else:
                     request = preprocess
 
@@ -539,7 +586,42 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
                 if self.context.tracing_enabled and tool_args:
                     record_attributes(span, tool_args, "processed.request.tool_args")
 
-                result = await self.agent.call_tool(tool_name, tool_args)
+                self._emit_tool_event(
+                    "tool_request",
+                    {
+                        "tool_name": tool_name,
+                        "tool_call_id": tool_call_id,
+                        "arguments": tool_args,
+                    },
+                    span=span,
+                    sensitive_fields=("arguments",),
+                )
+
+                try:
+                    result = await self.agent.call_tool(tool_name, tool_args)
+                except Exception as call_exc:
+                    span.record_exception(call_exc)
+                    span.set_status(trace.Status(trace.StatusCode.ERROR))
+                    error_result = CallToolResult(
+                        isError=True,
+                        content=[
+                            TextContent(
+                                text=f"Error calling tool '{tool_name}': {str(call_exc)}"
+                            )
+                        ],
+                    )
+                    self._emit_tool_event(
+                        "tool_result",
+                        {
+                            "tool_name": tool_name,
+                            "tool_call_id": tool_call_id,
+                            "result": error_result,
+                        },
+                        span=span,
+                        sensitive_fields=("result",),
+                    )
+                    return error_result
+
                 self._annotate_span_for_call_tool_result(span, result)
 
                 postprocess = await self.post_tool_call(
@@ -552,11 +634,22 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
                         span, result, processed=True
                     )
 
+                self._emit_tool_event(
+                    "tool_result",
+                    {
+                        "tool_name": tool_name,
+                        "tool_call_id": tool_call_id,
+                        "result": result,
+                    },
+                    span=span,
+                    sensitive_fields=("result",),
+                )
+
                 return result
             except Exception as e:
                 span.record_exception(e)
                 span.set_status(trace.Status(trace.StatusCode.ERROR))
-                return CallToolResult(
+                error_result = CallToolResult(
                     isError=True,
                     content=[
                         TextContent(
@@ -565,6 +658,17 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
                         )
                     ],
                 )
+                self._emit_tool_event(
+                    "tool_result",
+                    {
+                        "tool_name": request.params.name,
+                        "tool_call_id": tool_call_id,
+                        "result": error_result,
+                    },
+                    span=span,
+                    sensitive_fields=("result",),
+                )
+                return error_result
 
     async def list_tools(
         self,
@@ -611,6 +715,177 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
     def message_str(self, message: MessageT, content_only: bool = False) -> str:
         """Convert an output message to a string representation."""
         return str(message)
+
+    def _structured_event_base(self) -> dict[str, Any]:
+        base: dict[str, Any] = {"agent_name": self.name}
+        if getattr(self, "provider", None):
+            base["llm_provider"] = self.provider
+        context = getattr(self, "context", None)
+        if context is not None:
+            session_id = getattr(context, "session_id", None)
+            if session_id:
+                base["session_id"] = session_id
+        return base
+
+    @staticmethod
+    def _coerce_positive_int(value: Any, default: int) -> int:
+        if value is None:
+            return default
+        try:
+            if Mock is not None and isinstance(value, Mock):  # type: ignore[arg-type]
+                return default
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            coerced = int(value)
+        except Exception:
+            return default
+        if coerced <= 0:
+            return default
+        return coerced
+
+    def _truncate_string(self, value: str) -> str:
+        max_chars = getattr(self, "_structured_logging_max_chars", 1024)
+        if not isinstance(max_chars, int) or max_chars <= 0:
+            return value
+        if len(value) <= max_chars:
+            return value
+        truncated = len(value) - max_chars
+        return f"{value[:max_chars]}... [truncated {truncated} chars]"
+
+    def _sanitize_for_logging(self, value: Any, *, _depth: int = 0) -> Any:
+        if _depth >= getattr(self, "_structured_logging_max_depth", 3):
+            return "[truncated depth]"
+        if value is None:
+            return None
+        if isinstance(value, trace.Span):
+            return "[span]"
+        if isinstance(value, (int, float, bool)):
+            return value
+        if isinstance(value, (bytes, bytearray)):
+            try:
+                decoded = value.decode("utf-8", errors="replace")
+            except Exception:
+                decoded = str(value)
+            return self._truncate_string(decoded)
+        if isinstance(value, str):
+            return self._truncate_string(value)
+        if isinstance(value, dict):
+            max_items = getattr(self, "_structured_logging_max_collection_items", 16)
+            items = list(value.items())
+            truncated = False
+            if isinstance(max_items, int) and max_items > 0 and len(items) > max_items:
+                truncated = True
+                items = items[:max_items]
+            sanitized = {}
+            for k, v in items:
+                if isinstance(v, trace.Span):
+                    continue
+                sanitized[str(k)] = self._sanitize_for_logging(v, _depth=_depth + 1)
+            if truncated:
+                sanitized["__truncated__"] = (
+                    f"[omitted {len(value) - len(items)} additional fields]"
+                )
+            return sanitized
+        if isinstance(value, (list, tuple, set)):
+            sequence = list(value)
+            max_items = getattr(self, "_structured_logging_max_collection_items", 16)
+            prefix_note: list[Any] = []
+            if (
+                isinstance(max_items, int)
+                and max_items > 0
+                and len(sequence) > max_items
+            ):
+                omitted = len(sequence) - max_items
+                prefix_note.append(f"[omitted {omitted} earlier items]")
+                sequence = sequence[-max_items:]
+            sanitized_items = [
+                self._sanitize_for_logging(item, _depth=_depth + 1) for item in sequence
+            ]
+            return prefix_note + sanitized_items
+        if hasattr(value, "model_dump"):
+            try:
+                return self._sanitize_for_logging(value.model_dump(), _depth=_depth + 1)
+            except Exception:
+                return str(value)
+        dict_attr = getattr(value, "dict", None)
+        if callable(dict_attr):
+            try:
+                return self._sanitize_for_logging(
+                    dict_attr(), _depth=_depth + 1  # type: ignore[misc]
+                )
+            except Exception:
+                return str(value)
+        if hasattr(value, "__dict__"):
+            try:
+                return self._sanitize_for_logging(vars(value), _depth=_depth + 1)
+            except Exception:
+                return str(value)
+        return str(value)
+
+    def _emit_structured_event(
+        self,
+        event_type: str,
+        payload: dict[str, Any],
+        *,
+        span: trace.Span | None = None,
+        sensitive_fields: tuple[str, ...] = (),
+    ) -> None:
+        if not getattr(self, "logger", None):
+            return
+        event = self._structured_event_base()
+        event["event_type"] = event_type
+        sanitized = self._sanitize_for_logging(payload) or {}
+        if isinstance(sanitized, dict):
+            event.update(sanitized)
+        if not self._structured_logging_include_payloads:
+            for field in sensitive_fields:
+                if field in event:
+                    event[field] = "[omitted]"
+        try:
+            self.logger.info("structured_event", data=event)
+        except Exception:
+            pass
+        context = getattr(self, "context", None)
+        trace_store = getattr(context, "trace_store", None) if context else None
+        run_id = getattr(context, "current_run_id", None) if context else None
+        if trace_store and run_id:
+            trace_store.append_event(run_id, event_type, event)
+        if span is not None:
+            try:
+                span.add_event(event_type)
+            except Exception:
+                pass
+
+    def _emit_llm_event(
+        self,
+        event_type: str,
+        payload: dict[str, Any],
+        *,
+        span: trace.Span | None = None,
+        sensitive_fields: tuple[str, ...] = (),
+    ) -> None:
+        self._emit_structured_event(
+            event_type,
+            payload,
+            span=span,
+            sensitive_fields=sensitive_fields,
+        )
+
+    def _emit_tool_event(
+        self,
+        event_type: str,
+        payload: dict[str, Any],
+        *,
+        span: trace.Span | None = None,
+        sensitive_fields: tuple[str, ...] = (),
+    ) -> None:
+        self._emit_structured_event(
+            event_type,
+            payload,
+            span=span,
+            sensitive_fields=sensitive_fields,
+        )
 
     def _log_chat_progress(
         self, chat_turn: Optional[int] = None, model: str | None = None

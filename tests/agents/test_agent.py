@@ -5,11 +5,31 @@ from mcp.server.fastmcp.tools import Tool as FastTool
 from mcp.types import CallToolResult, TextContent, Tool
 
 from mcp_agent.agents.agent import Agent, HUMAN_INPUT_TOOL_NAME
-from mcp_agent.human_input.types import (
-    HumanInputRequest,
-    HumanInputResponse,
-)
+from mcp_agent.human_input.types import HumanInputRequest, HumanInputResponse
+from mcp_agent.agents.agent import InitAggregatorResponse, NamespacedTool
 from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
+
+
+def sample_tool_function(param1: str, param2: int = 0) -> str:
+    """A test function used for function tool fixtures."""
+    return f"Function called with {param1} and {param2}"
+
+
+class DummyApp:
+    """Simple stand-in for MCPApp to capture workflow_task registrations."""
+
+    def __init__(self):
+        self.registered = {}
+
+    def workflow_task(self, name: str | None = None):
+        def decorator(func):
+            activity_name = name or func.__name__
+            func.is_workflow_task = True
+            func.execution_metadata = {"activity_name": activity_name}
+            self.registered[activity_name] = func
+            return func
+
+        return decorator
 
 
 class TestAgent:
@@ -23,6 +43,8 @@ class TestAgent:
         context = Context()
         # Use an AsyncMock for executor to support 'await executor.execute(...)'
         context.executor = AsyncMock()
+        context.config = MagicMock()
+        context.config.execution_engine = "asyncio"
         context.human_input_handler = None
         context.server_registry = MagicMock()
         return context
@@ -64,19 +86,7 @@ class TestAgent:
     def test_function(self):
         """Test function for function tools."""
 
-        def function(param1: str, param2: int = 0) -> str:
-            """A test function.
-
-            Args:
-                param1: A string parameter
-                param2: An integer parameter with default 0
-
-            Returns:
-                A string result
-            """
-            return f"Function called with {param1} and {param2}"
-
-        return function
+        return sample_tool_function
 
     @pytest.fixture
     def agent_with_functions(self, mock_context, test_function):
@@ -379,7 +389,7 @@ class TestAgent:
     async def test_list_tools_parent_call(self, basic_agent):
         """Test that list_tools returns parent tool from internal state."""
         # Patch executor.execute to return InitAggregatorResponse with parent_tool
-        from mcp_agent.agents.agent import InitAggregatorResponse, NamespacedTool
+        from mcp_agent.agents.agent import InitAggregatorResponse
 
         parent_tool = Tool(
             name="parent_tool", description="A parent tool", inputSchema={}
@@ -407,7 +417,7 @@ class TestAgent:
     @pytest.mark.asyncio
     async def test_list_tools_with_functions(self, agent_with_functions, test_function):
         """Test that list_tools includes function tools."""
-        from mcp_agent.agents.agent import InitAggregatorResponse, NamespacedTool
+        from mcp_agent.agents.agent import InitAggregatorResponse
 
         parent_tool = Tool(
             name="parent_tool", description="A parent tool", inputSchema={}
@@ -439,7 +449,7 @@ class TestAgent:
     @pytest.mark.asyncio
     async def test_list_tools_with_human_input(self, agent_with_human_input):
         """Test that list_tools includes human input tool when callback is set."""
-        from mcp_agent.agents.agent import InitAggregatorResponse, NamespacedTool
+        from mcp_agent.agents.agent import InitAggregatorResponse
 
         parent_tool = Tool(
             name="parent_tool", description="A parent tool", inputSchema={}
@@ -476,7 +486,7 @@ class TestAgent:
     @pytest.mark.asyncio
     async def test_list_tools_without_human_input(self, basic_agent):
         """Test that list_tools doesn't include human input tool when callback is not set."""
-        from mcp_agent.agents.agent import InitAggregatorResponse, NamespacedTool
+        from mcp_agent.agents.agent import InitAggregatorResponse
 
         parent_tool = Tool(
             name="parent_tool", description="A parent tool", inputSchema={}
@@ -510,7 +520,7 @@ class TestAgent:
     @pytest.mark.asyncio
     async def test_call_tool_parent(self, basic_agent):
         """Test calling a parent tool."""
-        from mcp_agent.agents.agent import InitAggregatorResponse, NamespacedTool
+        from mcp_agent.agents.agent import InitAggregatorResponse
 
         tool_name = "parent_tool"
         arguments = {"arg1": "value1"}
@@ -550,7 +560,7 @@ class TestAgent:
     @pytest.mark.asyncio
     async def test_call_tool_function(self, agent_with_functions, test_function):
         """Test calling a function tool."""
-        from mcp_agent.agents.agent import InitAggregatorResponse, NamespacedTool
+        from mcp_agent.agents.agent import InitAggregatorResponse
 
         tool_name = test_function.__name__  # Should be "function" not "test_function"
         arguments = {"param1": "test", "param2": 42}
@@ -579,9 +589,110 @@ class TestAgent:
             assert "Function called with test and 42" in result.content[0].text
 
     @pytest.mark.asyncio
+    async def test_function_tool_asyncio_executes_inline(
+        self, agent_with_functions, test_function, mock_context
+    ):
+        """Ensure function tools execute locally when using the asyncio engine."""
+        tool_name = test_function.__name__
+        agent_with_functions.initialized = True
+        agent_with_functions._agent_tasks = MagicMock()
+        agent_with_functions.context.executor.execute.reset_mock()
+        agent_with_functions.context.config.execution_engine = "asyncio"
+
+        result = await agent_with_functions.call_tool(
+            tool_name, {"param1": "inline", "param2": 7}
+        )
+
+        assert isinstance(result, CallToolResult)
+        assert agent_with_functions.context.executor.execute.await_count == 0, (
+            "Local execution should not hit executor for function tools under asyncio."
+        )
+
+    @pytest.mark.asyncio
+    async def test_function_tool_temporal_uses_activity(
+        self, agent_with_functions, test_function, mock_context
+    ):
+        """Ensure function tools route through executor when using Temporal."""
+        tool_name = test_function.__name__
+        agent_with_functions.initialized = True
+        agent_with_functions.context.config.execution_engine = "temporal"
+        activity_callable = AsyncMock()
+        agent_with_functions._function_activity_map[tool_name] = activity_callable
+        agent_with_functions._ensure_function_tool_activities_registered = AsyncMock()
+
+        expected = CallToolResult(content=[TextContent(type="text", text="ok")])
+        agent_with_functions.context.executor.execute = AsyncMock(return_value=expected)
+
+        result = await agent_with_functions.call_tool(tool_name, {"param1": "remote"})
+
+        assert result is expected
+        agent_with_functions.context.executor.execute.assert_awaited_once()
+        call = agent_with_functions.context.executor.execute.await_args
+        assert call.args[0] is activity_callable
+        assert call.args[1] == {"param1": "remote"}
+        agent_with_functions._ensure_function_tool_activities_registered.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_initialize_registers_function_tool_activity(
+        self, agent_with_functions
+    ):
+        """Agent initialization should register function tools as Temporal activities."""
+        dummy_app = DummyApp()
+        agent_with_functions.context.app = dummy_app
+        agent_with_functions.context.config.execution_engine = "temporal"
+
+        agent_with_functions.context.executor.execute = AsyncMock(
+            return_value=InitAggregatorResponse(
+                initialized=True,
+                namespaced_tool_map={},
+                server_to_tool_map={},
+                namespaced_prompt_map={},
+                server_to_prompt_map={},
+                namespaced_resource_map={},
+                server_to_resource_map={},
+            )
+        )
+
+        await agent_with_functions.initialize(force=True)
+
+        tool_name = next(iter(agent_with_functions._function_tool_map.keys()))
+        activity_name = f"{agent_with_functions.name}.function_tool.{tool_name}"
+        assert activity_name in dummy_app.registered
+        assert tool_name in agent_with_functions._function_activity_map
+
+        activity = agent_with_functions._function_activity_map[tool_name]
+        result = await activity({"param1": "registered"})
+        assert isinstance(result, CallToolResult)
+        assert result.isError is False
+
+    @pytest.mark.asyncio
+    async def test_call_tool_temporal_registers_activity_on_demand(
+        self, agent_with_functions, test_function
+    ):
+        """call_tool should auto-register activities when running under Temporal."""
+        dummy_app = DummyApp()
+        agent_with_functions.context.app = dummy_app
+        agent_with_functions.context.config.execution_engine = "temporal"
+        agent_with_functions.initialized = True
+        agent_with_functions._agent_tasks = MagicMock()
+
+        async def _execute(activity_callable, arguments):
+            return await activity_callable(arguments)
+
+        agent_with_functions.context.executor.execute = AsyncMock(side_effect=_execute)
+
+        result = await agent_with_functions.call_tool(
+            test_function.__name__, {"param1": "auto"}
+        )
+
+        assert result.isError is False
+        assert test_function.__name__ in agent_with_functions._function_activity_map
+        agent_with_functions.context.executor.execute.assert_awaited_once()
+
+    @pytest.mark.asyncio
     async def test_call_tool_human_input(self, agent_with_human_input):
         """Test calling the human input tool."""
-        from mcp_agent.agents.agent import InitAggregatorResponse, NamespacedTool
+        from mcp_agent.agents.agent import InitAggregatorResponse
 
         tool_name = HUMAN_INPUT_TOOL_NAME
         arguments = {
@@ -620,7 +731,7 @@ class TestAgent:
     @pytest.mark.asyncio
     async def test_call_tool_human_input_timeout(self, agent_with_human_input):
         """Test calling the human input tool with timeout."""
-        from mcp_agent.agents.agent import InitAggregatorResponse, NamespacedTool
+        from mcp_agent.agents.agent import InitAggregatorResponse
 
         tool_name = HUMAN_INPUT_TOOL_NAME
         arguments = {
@@ -661,7 +772,7 @@ class TestAgent:
     @pytest.mark.asyncio
     async def test_call_tool_human_input_error(self, agent_with_human_input):
         """Test calling the human input tool with general error."""
-        from mcp_agent.agents.agent import InitAggregatorResponse, NamespacedTool
+        from mcp_agent.agents.agent import InitAggregatorResponse
 
         tool_name = HUMAN_INPUT_TOOL_NAME
         arguments = {

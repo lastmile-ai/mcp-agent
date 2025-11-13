@@ -1,3 +1,4 @@
+import inspect
 import json
 from unittest.mock import AsyncMock, MagicMock
 
@@ -69,16 +70,27 @@ class TestAzureAugmentedLLM:
         llm.azure_client = MagicMock()
         llm.azure_client.complete = AsyncMock()
 
-        # Mock executor.execute_many to return the tool results as expected
-        llm.executor.execute_many = AsyncMock(
-            side_effect=lambda tool_tasks: [  # tool_tasks is a list of coroutines
-                ToolMessage(tool_call_id="tool_123", content="Tool result")
-                if hasattr(task, "cr_code")
-                or hasattr(task, "__await__")  # crude check for coroutine
-                else task
-                for task in tool_tasks
-            ]
+        # Default call_tool stub so execute_tool_call doesn't hit real servers
+        llm.call_tool = AsyncMock(
+            return_value=CallToolResult(
+                content=[TextContent(type="text", text="Tool result")]
+            )
         )
+
+        async def _fake_execute_many(tool_tasks):
+            results = []
+            for task in tool_tasks:
+                value = task() if callable(task) else task
+                if inspect.isawaitable(value):
+                    try:
+                        value = await value
+                    except Exception as exc:
+                        value = exc
+                results.append(value)
+            return results
+
+        # Mock executor.execute_many to await tool tasks to avoid leaked coroutines
+        llm.executor.execute_many = AsyncMock(side_effect=_fake_execute_many)
 
         return llm
 

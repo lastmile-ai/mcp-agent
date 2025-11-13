@@ -31,7 +31,7 @@ from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.common import RetryPolicy, WorkflowIDReusePolicy
 from temporalio.worker import Worker
 
-from mcp_agent.config import TemporalSettings
+from mcp_agent.config import TemporalSettings, WorkflowTaskRetryPolicy
 from mcp_agent.executor.executor import Executor, ExecutorConfig, R
 
 from mcp_agent.executor.temporal.workflow_signal import TemporalSignalHandler
@@ -104,6 +104,23 @@ class TemporalExecutor(Executor):
             self._activity_semaphore = asyncio.Semaphore(
                 self.config.max_concurrent_activities
             )
+
+    @staticmethod
+    def _build_workflow_retry_policy(
+        policy: WorkflowTaskRetryPolicy | RetryPolicy | Dict[str, Any] | None,
+    ) -> RetryPolicy | None:
+        """Normalize workflow-level retry policy definitions into Temporal RetryPolicy objects."""
+        if policy is None:
+            return None
+        if isinstance(policy, RetryPolicy):
+            return policy
+        if isinstance(policy, WorkflowTaskRetryPolicy):
+            return RetryPolicy(**policy.to_temporal_kwargs())
+        if isinstance(policy, dict):
+            return RetryPolicy(**policy)
+        raise TypeError(
+            "workflow retry policy must be WorkflowTaskRetryPolicy, RetryPolicy, dict, or None"
+        )
 
     @staticmethod
     def wrap_as_activity(
@@ -329,6 +346,10 @@ class TemporalExecutor(Executor):
         workflow_id: str | None = None,
         task_queue: str | None = None,
         workflow_memo: Dict[str, Any] | None = None,
+        workflow_retry_policy: WorkflowTaskRetryPolicy
+        | RetryPolicy
+        | Dict[str, Any]
+        | None = None,
         **kwargs: Any,
     ) -> WorkflowHandle:
         """
@@ -411,6 +432,8 @@ class TemporalExecutor(Executor):
             "terminate_if_running": WorkflowIDReusePolicy.TERMINATE_IF_RUNNING,
         }.get(self.config.id_reuse_policy, WorkflowIDReusePolicy.ALLOW_DUPLICATE)
 
+        retry_policy_obj = self._build_workflow_retry_policy(workflow_retry_policy)
+
         # Start the workflow
         if input_arg is not None:
             handle: WorkflowHandle = await self.client.start_workflow(
@@ -421,6 +444,7 @@ class TemporalExecutor(Executor):
                 id_reuse_policy=id_reuse_policy,
                 rpc_metadata=self.config.rpc_metadata or {},
                 memo=workflow_memo or {},
+                retry_policy=retry_policy_obj,
             )
         else:
             handle: WorkflowHandle = await self.client.start_workflow(
@@ -430,6 +454,7 @@ class TemporalExecutor(Executor):
                 id_reuse_policy=id_reuse_policy,
                 rpc_metadata=self.config.rpc_metadata or {},
                 memo=workflow_memo or {},
+                retry_policy=retry_policy_obj,
             )
 
         # Wait for the result if requested

@@ -1,8 +1,8 @@
 import asyncio
 import json
 import uuid
-from typing import Callable, Dict, List, Optional, Set, TypeVar, TYPE_CHECKING, Any
 from contextlib import asynccontextmanager
+from typing import Any, Callable, Dict, List, Optional, Set, TypeVar, TYPE_CHECKING
 
 from opentelemetry import trace
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field, PrivateAttr
@@ -57,6 +57,24 @@ else:
 logger = get_logger(__name__)
 
 HUMAN_INPUT_TOOL_NAME = "__human_input__"
+
+
+def _normalize_function_tool_result(result: Any) -> CallToolResult:
+    """Coerce arbitrary function return values into a CallToolResult."""
+    if isinstance(result, CallToolResult):
+        return result
+
+    if isinstance(result, str):
+        text = result
+    elif isinstance(result, (dict, list)):
+        try:
+            text = json.dumps(result)
+        except Exception:
+            text = str(result)
+    else:
+        text = str(result)
+
+    return CallToolResult(content=[TextContent(type="text", text=text)])
 
 
 class Agent(BaseModel):
@@ -117,6 +135,9 @@ class Agent(BaseModel):
 
     # region Private attributes
     _function_tool_map: Dict[str, FastTool] = PrivateAttr(default_factory=dict)
+    _function_activity_map: Dict[str, Callable[..., Any]] = PrivateAttr(
+        default_factory=dict
+    )
 
     # Maps namespaced_tool_name -> namespaced tool info
     _namespaced_tool_map: Dict[str, NamespacedTool] = PrivateAttr(default_factory=dict)
@@ -150,9 +171,11 @@ class Agent(BaseModel):
 
     def model_post_init(self, __context) -> None:
         # Map function names to tools
-        self._function_tool_map = {
-            (tool := FastTool.from_function(fn)).name: tool for fn in self.functions
-        }
+        self._function_tool_map = {}
+        self._function_activity_map = {}
+        for fn in self.functions:
+            tool = FastTool.from_function(fn)
+            self._function_tool_map[tool.name] = tool
 
     async def attach_llm(
         self, llm_factory: Callable[..., LLM] | None = None, llm: LLM | None = None
@@ -328,6 +351,8 @@ class Agent(BaseModel):
 
                 self._server_to_resource_map.clear()
                 self._server_to_resource_map.update(result.server_to_resource_map)
+
+                await self._ensure_function_tool_activities_registered()
 
                 self.initialized = result.initialized
                 span.add_event("initialize_complete")
@@ -1080,6 +1105,7 @@ class Agent(BaseModel):
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.call_tool"
         ) as span:
+            executor = self.context.executor
             if self.context.tracing_enabled:
                 span.set_attribute(GEN_AI_AGENT_NAME, self.name)
                 span.set_attribute(GEN_AI_TOOL_NAME, name)
@@ -1102,16 +1128,33 @@ class Agent(BaseModel):
                 _annotate_span_for_result(result)
                 return result
             elif name in self._function_tool_map:
-                # Call local function and return the result as a text response
                 tool = self._function_tool_map[name]
-                result = await tool.run(arguments)
-                result = CallToolResult(
-                    content=[TextContent(type="text", text=str(result))]
-                )
+                if self._should_route_function_tool_via_activity():
+                    if name not in self._function_activity_map:
+                        await self._ensure_function_tool_activities_registered()
+                    activity_callable = self._function_activity_map.get(name)
+                    if activity_callable is None:
+                        return CallToolResult(
+                            isError=True,
+                            content=[
+                                TextContent(
+                                    type="text",
+                                    text=(
+                                        f"Function tool '{name}' is unavailable in Temporal mode. "
+                                        "Ensure it is defined at module scope and registered before execution."
+                                    ),
+                                )
+                            ],
+                        )
+                    result = await executor.execute(
+                        activity_callable,
+                        arguments or {},
+                    )
+                else:
+                    result = await self._execute_function_tool_locally(tool, arguments)
                 _annotate_span_for_result(result)
                 return result
             else:
-                executor = self.context.executor
                 result: CallToolResult = await executor.execute(
                     self._agent_tasks.call_tool_task,
                     CallToolRequest(
@@ -1159,6 +1202,44 @@ class Agent(BaseModel):
                     )
                 ],
             )
+
+    async def _ensure_function_tool_activities_registered(self) -> None:
+        """Register function tools as Temporal activities when an app context is available."""
+        if not self._function_tool_map:
+            return
+
+        context_app = getattr(self.context, "app", None)
+        if not context_app:
+            return
+
+        for tool_name, tool in self._function_tool_map.items():
+            if tool_name in self._function_activity_map:
+                continue
+
+            activity_name = f"{self.name}.function_tool.{tool_name}"
+
+            async def _activity(
+                arguments: dict | None = None, *, _tool: FastTool = tool
+            ) -> CallToolResult:
+                result = await _tool.run(arguments or {})
+                return _normalize_function_tool_result(result)
+
+            # Register activity with the app; this sets is_workflow_task metadata.
+            activity_callable = context_app.workflow_task(name=activity_name)(_activity)
+            self._function_activity_map[tool_name] = activity_callable
+
+    def _should_route_function_tool_via_activity(self) -> bool:
+        """Return True if function tools should be executed via Temporal activities."""
+        config = getattr(
+            getattr(self.context, "config", None), "execution_engine", None
+        )
+        return config == "temporal"
+
+    async def _execute_function_tool_locally(
+        self, tool: FastTool, arguments: dict | None
+    ) -> CallToolResult:
+        result = await tool.run(arguments or {})
+        return _normalize_function_tool_result(result)
 
 
 class InitAggregatorRequest(BaseModel):

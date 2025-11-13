@@ -15,6 +15,7 @@ from typing import (
 
 
 from pydantic import BaseModel, ConfigDict, Field
+from mcp_agent.config import WorkflowTaskRetryPolicy
 from mcp_agent.core.context_dependent import ContextDependent
 from mcp_agent.executor.workflow_signal import (
     Signal,
@@ -239,12 +240,14 @@ class Workflow(ABC, Generic[T], ContextDependent):
         elif self.context.config.execution_engine == "temporal":
             # For Temporal workflows, we'll start the workflow immediately
             executor: "TemporalExecutor" = self.executor
+            workflow_retry_policy = self._resolve_workflow_retry_policy()
             handle = await executor.start_workflow(
                 self.name,
                 *args,
                 workflow_id=provided_workflow_id,
                 task_queue=provided_task_queue,
                 workflow_memo=workflow_memo,
+                workflow_retry_policy=workflow_retry_policy,
                 **kwargs,
             )
             self._workflow_id = handle.id
@@ -258,11 +261,23 @@ class Workflow(ABC, Generic[T], ContextDependent):
             f"Workflow started with workflow ID: {self._workflow_id}, run ID: {self._run_id}"
         )
 
+        trace_store = getattr(self.context, "trace_store", None)
+        if trace_store and self._run_id:
+            trace_store.start_run(
+                run_id=self._run_id,
+                workflow_id=self._workflow_id,
+                workflow_name=self.name,
+                metadata={"workflow_class": self.__class__.__name__},
+            )
+
         # Define the workflow execution function
         async def _execute_workflow():
+            previous_run_id = getattr(self.context, "current_run_id", None)
+            pushed_token_context = False
             try:
+                if self._run_id and self.context:
+                    self.context.current_run_id = self._run_id
                 # Push token tracking context if available
-                pushed_token_context = False
                 if self.context and self.context.token_counter:
                     try:
                         await self.context.token_counter.push(
@@ -358,6 +373,13 @@ class Workflow(ABC, Generic[T], ContextDependent):
                     self._logger.error(
                         f"Error cleaning up workflow {self.name} (ID: {self._run_id}): {str(cleanup_error)}"
                     )
+                finally:
+                    if self.context:
+                        if previous_run_id is None:
+                            if hasattr(self.context, "current_run_id"):
+                                delattr(self.context, "current_run_id")
+                        else:
+                            self.context.current_run_id = previous_run_id
 
         self._run_task = asyncio.create_task(_execute_workflow())
 
@@ -583,6 +605,30 @@ class Workflow(ABC, Generic[T], ContextDependent):
 
             return summary
 
+    def _resolve_workflow_retry_policy(self) -> WorkflowTaskRetryPolicy | None:
+        """
+        Determine the workflow-level retry policy, preferring decorator overrides and
+        falling back to Temporal config defaults when available.
+        """
+        policy = getattr(self.__class__, "_workflow_retry_policy", None)
+        if policy is not None:
+            return policy
+
+        context = getattr(self, "context", None)
+        if context is None:
+            return None
+
+        config = getattr(context, "config", None)
+        temporal_settings = getattr(config, "temporal", None) if config else None
+        if temporal_settings:
+            configured_policy = getattr(
+                temporal_settings, "workflow_retry_policy", None
+            )
+            if configured_policy:
+                return configured_policy
+
+        return None
+
     async def get_status(self) -> Dict[str, Any]:
         """
         Get the current status of the workflow.
@@ -627,6 +673,15 @@ class Workflow(ABC, Generic[T], ContextDependent):
                 status["exception_type"] = type(e).__name__
 
         return status
+
+    def get_trace(self):
+        """Return the recorded execution trace for this workflow run, if available."""
+        if not self._run_id:
+            return None
+        trace_store = getattr(self.context, "trace_store", None)
+        if not trace_store:
+            return None
+        return trace_store.get_run(self._run_id)
 
     def update_status(self, status: str) -> None:
         """

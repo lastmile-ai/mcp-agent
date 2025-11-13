@@ -615,6 +615,30 @@
           "title": "Http Timeout",
           "type": "number",
           "description": "HTTP timeout seconds for event transport"
+        },
+        "include_llm_payloads": {
+          "default": true,
+          "title": "Include Llm Payloads",
+          "type": "boolean",
+          "description": "Whether structured LLM/tool events should include raw prompts/arguments."
+        },
+        "structured_payload_max_chars": {
+          "default": 1024,
+          "title": "Structured Payload Max Chars",
+          "type": "integer",
+          "description": "Maximum characters preserved per string when logging structured LLM/tool payloads."
+        },
+        "structured_payload_max_collection_items": {
+          "default": 16,
+          "title": "Structured Payload Max Collection Items",
+          "type": "integer",
+          "description": "Maximum list/dict items retained when logging structured payloads before truncation."
+        },
+        "structured_payload_max_depth": {
+          "default": 3,
+          "title": "Structured Payload Max Depth",
+          "type": "integer",
+          "description": "Maximum nesting depth traversed while sanitizing structured logging payloads."
         }
       },
       "title": "LoggerSettings",
@@ -1644,6 +1668,19 @@
           "title": "Workflow Task Modules",
           "type": "array",
           "description": "Additional module paths to import before creating a Temporal worker. Each should be importable."
+        },
+        "workflow_retry_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WorkflowTaskRetryPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional retry policy applied to the entire workflow execution.",
+          "title": "Workflow Retry Policy"
         }
       },
       "required": [

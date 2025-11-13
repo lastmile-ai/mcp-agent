@@ -147,6 +147,16 @@ class GoogleAugmentedLLM(
 
             self.logger.debug("Completion request arguments:", data=arguments)
             self._log_chat_progress(chat_turn=(len(messages) + 1) // 2, model=model)
+            self._emit_llm_event(
+                "llm_request",
+                {
+                    "turn": i,
+                    "model": model,
+                    "messages": messages,
+                    "request": arguments,
+                },
+                sensitive_fields=("messages", "request"),
+            )
 
             response: types.GenerateContentResponse = await self.executor.execute(
                 GoogleCompletionTasks.request_completion_task,
@@ -161,6 +171,23 @@ class GoogleAugmentedLLM(
                 break
 
             self.logger.debug(f"{model} response:", data=response)
+            candidate_payload = None
+            if response.candidates:
+                candidate_payload = response.candidates[0]
+            self._emit_llm_event(
+                "llm_response",
+                {
+                    "turn": i,
+                    "model": model,
+                    "finish_reason": getattr(candidate_payload, "finish_reason", None),
+                    "response": candidate_payload.to_dict()
+                    if candidate_payload and hasattr(candidate_payload, "to_dict")
+                    else str(candidate_payload)
+                    if candidate_payload
+                    else None,
+                },
+                sensitive_fields=("response",),
+            )
 
             if not response.candidates:
                 break

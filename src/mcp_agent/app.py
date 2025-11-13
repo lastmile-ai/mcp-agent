@@ -25,7 +25,7 @@ from mcp import ServerSession
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations, Icon
 from mcp_agent.core.context import Context, initialize_context, cleanup_context
-from mcp_agent.config import Settings, get_settings
+from mcp_agent.config import Settings, WorkflowTaskRetryPolicy, get_settings
 from mcp_agent.executor.signal_registry import SignalRegistry
 from mcp_agent.logging.event_progress import ProgressAction
 from mcp_agent.logging.logger import get_logger
@@ -587,7 +587,12 @@ class MCPApp:
                 await self.cleanup()
 
     def workflow(
-        self, cls: Type, *args, workflow_id: str | None = None, **kwargs
+        self,
+        cls: Type,
+        *args,
+        workflow_id: str | None = None,
+        retry_policy: WorkflowTaskRetryPolicy | Dict[str, Any] | None = None,
+        **kwargs,
     ) -> Type:
         """
         Decorator for a workflow class. By default it's a no-op,
@@ -599,6 +604,9 @@ class MCPApp:
             this decorator will wrap with temporal_workflow.defn.
         """
         cls._app = self
+        normalized_retry_policy = self._normalize_workflow_retry_policy(retry_policy)
+        if normalized_retry_policy is not None:
+            setattr(cls, "_workflow_retry_policy", normalized_retry_policy)
 
         workflow_id = workflow_id or cls.__name__
 
@@ -1051,6 +1059,18 @@ class MCPApp:
             return decorator(_fn)  # type: ignore[arg-type]
 
         return decorator
+
+    def _normalize_workflow_retry_policy(
+        self, retry_policy: WorkflowTaskRetryPolicy | Dict[str, Any] | None
+    ) -> WorkflowTaskRetryPolicy | None:
+        """Normalize workflow retry policies defined via decorator arguments."""
+        if retry_policy is None:
+            return None
+        if isinstance(retry_policy, WorkflowTaskRetryPolicy):
+            return retry_policy
+        if isinstance(retry_policy, dict):
+            return WorkflowTaskRetryPolicy(**retry_policy)
+        raise TypeError("workflow retry policy must be WorkflowTaskRetryPolicy or dict")
 
     @overload
     def async_tool(self, __fn: Callable[P, R]) -> Callable[P, R]: ...

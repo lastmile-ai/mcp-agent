@@ -263,6 +263,17 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
 
                 self.logger.debug("Completion request arguments:", data=arguments)
                 self._log_chat_progress(chat_turn=(len(messages) + 1) // 2, model=model)
+                self._emit_llm_event(
+                    "llm_request",
+                    {
+                        "turn": i,
+                        "model": model,
+                        "messages": messages,
+                        "request": arguments,
+                    },
+                    span=span,
+                    sensitive_fields=("messages", "request"),
+                )
 
                 request = RequestCompletionRequest(
                     config=config.anthropic,
@@ -285,6 +296,30 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                 self.logger.debug(
                     f"{model} response:",
                     data=response,
+                )
+                response_payload = (
+                    response.model_dump()
+                    if hasattr(response, "model_dump")
+                    else str(response)
+                )
+                self._emit_llm_event(
+                    "llm_response",
+                    {
+                        "turn": i,
+                        "model": model,
+                        "finish_reason": response.stop_reason,
+                        "usage": {
+                            "input_tokens": getattr(
+                                response.usage, "input_tokens", None
+                            ),
+                            "output_tokens": getattr(
+                                response.usage, "output_tokens", None
+                            ),
+                        },
+                        "response": response_payload,
+                    },
+                    span=span,
+                    sensitive_fields=("response",),
                 )
 
                 self._annotate_span_for_completion_response(span, response, i)
