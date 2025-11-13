@@ -1,4 +1,4 @@
-"""Secrets subcommands for mcp-agent cloud."""
+"""Environment management subcommands for mcp-agent cloud."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ from mcp_agent.cli.secrets import SecretType, SecretsClient
 from mcp_agent.cli.utils.ux import console, print_error, print_info, print_success
 
 app = typer.Typer(
-    help="Manage cloud secrets for MCP apps",
+    help="Manage cloud environment values for MCP apps",
     no_args_is_help=True,
 )
 

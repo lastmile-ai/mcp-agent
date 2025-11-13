@@ -18,7 +18,7 @@ Every command honours the global flags `--verbose/-v`, `--quiet/-q`, `--format <
 | `init --quickstart` | Copy a curated quickstart example. | `uvx mcp-agent init --quickstart workflow --dir ./workflow-demo` |
 | `deploy <APP_NAME>` | Package the current directory and deploy it. | `uvx mcp-agent deploy research-agent --non-interactive` |
 | `cloud servers list` | List deployed or configured servers. | `uvx mcp-agent cloud servers list --filter prod --format json` |
-| `cloud secrets list` | Inspect deployment environment secrets. | `uvx mcp-agent cloud secrets list my-app` |
+| `cloud env list` | Inspect deployment environment secrets. | `uvx mcp-agent cloud env list my-app` |
 | `install --client claude_code <URL>` | Register a deployed server with a local MCP client. | `uvx mcp-agent install https://srv_abc.deployments... --client claude_code` |
 
 ## Primary workflows
@@ -215,11 +215,11 @@ This workflow lets you adopt a published server template, supply your credential
   - `--params` lists required secrets and exits.  
   - `--dry-run` validates using mock clients without persisting anything.  
 
-- **Secrets (`mcp-agent cloud secrets …`)** – manage environment secrets captured during deploy.  
-  - `secrets list [APP]` displays stored environment keys with masked handles.  
-  - `secrets add <KEY> <VALUE> [APP]` (or `--from-env-file .env.local`) creates or updates secret values (`apps/<app_id>/env/<KEY>`).  
-  - `secrets remove <KEY> [APP]` deletes the stored handle.  
-  - `secrets pull [APP] --format env|yaml --output <FILE>` downloads resolved values as either a dotenv file (default `.env.mcp-cloud`) or a YAML file. `.env` is loaded first (developer overrides), followed by `.env.mcp-cloud`, before config-driven fallbacks are applied.
+- **Env (`mcp-agent cloud env …`)** – manage environment secrets captured during deploy.  
+  - `env list [APP]` displays stored environment keys with masked handles.  
+  - `env add <KEY> <VALUE> [APP]` (or `--from-env-file .env.local`) creates or updates secret values (`apps/<app_id>/env/<KEY>`).  
+  - `env remove <KEY> [APP]` deletes the stored handle.  
+  - `env pull [APP] --format env|yaml --output <FILE>` downloads resolved values as either a dotenv file (default `.env.mcp-cloud`) or a YAML file. `.env` is loaded first (developer overrides), followed by `.env.mcp-cloud`, before config-driven fallbacks are applied.
   - `--app/-a`, `--api-url`, `--api-key` allow per-command overrides (use `--app` when omitting positional arguments or when using `--from-env-file`).
 
 - **Auth (`mcp-agent cloud auth …`)** – the same login, whoami, and logout commands exposed at the top level, handy for scripts.
