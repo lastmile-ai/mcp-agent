@@ -10,7 +10,7 @@ from rich.console import Console
 
 
 def run() -> None:
-    """Display a spinner during only terminal bootstrap , then hand off to main.run()."""
+    """Display a spinner only during terminal bootstrap , then hand off to main.run()."""
     console = Console(stderr=True)
     if console.is_terminal:
         with console.status("[dim]Loading mcp-agent CLI...[/dim]", spinner="dots"):
