@@ -1,0 +1,1543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Log Viewer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/languages/json.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github.min.css">
+    <style>
+        :root {
+            --primary-color: #3498db;
+            --secondary-color: #2980b9;
+            --background-color: #f5f5f5;
+            --panel-color: #fff;
+            --text-color: #333;
+            --info-color: #3498db;
+            --debug-color: #9b59b6;
+            --warn-color: #f39c12;
+            --error-color: #e74c3c;
+            --border-color: #ddd;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--background-color);
+            color: var(--text-color);
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        header {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 5px 5px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        h1 {
+            margin: 0;
+            font-size: 1.5rem;
+        }
+        
+        .upload-area {
+            background-color: var(--panel-color);
+            border: 2px dashed var(--border-color);
+            border-radius: 5px;
+            padding: 30px;
+            text-align: center;
+            margin-bottom: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .upload-area:hover {
+            border-color: var(--primary-color);
+        }
+        
+        .upload-area p {
+            margin: 10px 0 0;
+            color: #777;
+        }
+        
+        .file-input {
+            display: none;
+        }
+        
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            background-color: var(--panel-color);
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .filter-group {
+            flex: 1;
+            min-width: 200px;
+        }
+        
+        .filter-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        select, input {
+            width: 100%;
+            padding: 8px 10px;
+            border-radius: 4px;
+            border: 1px solid var(--border-color);
+        }
+        
+        button {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        
+        button:hover {
+            background-color: var(--secondary-color);
+        }
+        
+        .checkbox-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            margin-right: 10px;
+        }
+        
+        .checkbox-item input {
+            width: auto;
+            margin-right: 5px;
+        }
+        
+        .stats {
+            background-color: var(--panel-color);
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        
+        .stat-item {
+            flex: 1;
+            min-width: 120px;
+            text-align: center;
+            padding: 10px;
+            border-radius: 5px;
+            background-color: rgba(52, 152, 219, 0.1);
+        }
+        
+        .stat-number {
+            font-size: 1.8rem;
+            font-weight: bold;
+            margin: 5px 0;
+        }
+        
+        .stat-label {
+            font-size: 0.9rem;
+            color: #777;
+        }
+        
+        .log-container {
+            background-color: var(--panel-color);
+            border-radius: 5px;
+            overflow: hidden;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .log-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            table-layout: fixed;
+        }
+        
+        .log-table th {
+            background-color: #f2f2f2;
+            padding: 10px;
+            text-align: left;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            position: relative;
+        }
+        
+        .log-table td {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            vertical-align: top;
+            overflow: hidden;
+            word-wrap: break-word;
+        }
+        
+        .log-table tr:hover {
+            background-color: #f9f9f9;
+        }
+        
+        .resizer {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 5px;
+            height: 100%;
+            background-color: #ddd;
+            cursor: col-resize;
+            user-select: none;
+            touch-action: none;
+        }
+        
+        .resizer:hover, .resizing {
+            background-color: #aaa;
+        }
+        
+        .message-container {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        .message-content {
+            font-weight: 500;
+        }
+        
+        .message-action {
+            font-size: 0.9rem;
+            color: #555;
+            padding: 3px 6px;
+            background-color: #f0f0f0;
+            border-radius: 3px;
+            display: inline-block;
+            margin-top: 3px;
+        }
+        
+        .json-summary {
+            margin-top: 5px;
+        }
+        
+        .ai-response {
+            margin: 8px 0;
+            padding: 8px;
+            background-color: #f5f5f5;
+            border-radius: 4px;
+            border-left: 3px solid #3498db;
+            white-space: pre-wrap;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 0.9rem;
+            line-height: 1.4;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .usage-stats {
+            font-size: 0.85rem;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        .openai-json .key { color: #2980b9; }
+        .openai-json .string { color: #27ae60; }
+        .openai-json .number { color: #e67e22; }
+        .openai-json .boolean { color: #8e44ad; }
+        .openai-json .null { color: #95a5a6; }
+        
+        .flow-view {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .flow-item {
+            background-color: white;
+            border-radius: 5px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            padding: 15px;
+            position: relative;
+        }
+        
+        .flow-connector {
+            position: absolute;
+            left: 30px;
+            top: -15px;
+            width: 2px;
+            height: 15px;
+            background-color: #ccc;
+        }
+        
+        .log-level {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 3px;
+            color: white;
+            font-weight: 500;
+            font-size: 0.8rem;
+            text-align: center;
+            min-width: 70px;
+        }
+        
+        .level-INFO {
+            background-color: var(--info-color);
+        }
+        
+        .level-DEBUG {
+            background-color: var(--debug-color);
+        }
+        
+        .level-WARN {
+            background-color: var(--warn-color);
+        }
+        
+        .level-ERROR {
+            background-color: var(--error-color);
+        }
+        
+        .timestamp {
+            font-family: monospace;
+            white-space: nowrap;
+        }
+        
+        .message {
+            max-width: 400px;
+            word-break: break-word;
+        }
+        
+        .namespace {
+            font-family: monospace;
+            font-size: 0.9rem;
+            color: #555;
+        }
+        
+        .expand-btn {
+            background-color: transparent;
+            border: 1px solid #ddd;
+            color: #333;
+            font-size: 0.8rem;
+            padding: 2px 5px;
+        }
+        
+        .expand-btn:hover {
+            background-color: #f5f5f5;
+        }
+        
+        .json-data {
+            display: none;
+            font-family: monospace;
+            white-space: pre-wrap;
+            background-color: #f9f9f9;
+            padding: 10px;
+            border-radius: 3px;
+            margin-top: 5px;
+            max-height: 300px;
+            overflow: auto;
+        }
+        
+        .no-logs {
+            text-align: center;
+            padding: 30px;
+            color: #777;
+        }
+        
+        .timeline {
+            height: 80px;
+            background-color: #f9f9f9;
+            margin-bottom: 20px;
+            position: relative;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        
+        .timeline-event {
+            position: absolute;
+            height: 100%;
+            width: 2px;
+            background-color: var(--primary-color);
+            opacity: 0.7;
+        }
+        
+        .timeline-event.level-INFO {
+            background-color: var(--info-color);
+        }
+        
+        .timeline-event.level-DEBUG {
+            background-color: var(--debug-color);
+        }
+        
+        .timeline-event.level-WARN {
+            background-color: var(--warn-color);
+        }
+        
+        .timeline-event.level-ERROR {
+            background-color: var(--error-color);
+        }
+        
+        .timeline-labels {
+            position: absolute;
+            bottom: 5px;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 10px;
+            font-size: 0.8rem;
+            color: #777;
+        }
+        
+        .pagination {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+            gap: 5px;
+        }
+        
+        .pagination button {
+            min-width: 40px;
+        }
+        
+        .pagination button.active {
+            background-color: var(--secondary-color);
+        }
+        
+        @media (max-width: 768px) {
+            .stats {
+                flex-direction: column;
+            }
+            
+            .log-table {
+                display: block;
+                overflow-x: auto;
+            }
+            
+            .controls {
+                flex-direction: column;
+            }
+        }
+        
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border-left-color: var(--primary-color);
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+            display: none;
+        }
+        
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+        
+        .workflow-view {
+            padding: 20px;
+            background-color: var(--panel-color);
+            border-radius: 5px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        
+        .workflow-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .workflow-step {
+            background-color: #f9f9f9;
+            border-radius: 5px;
+            padding: 15px;
+            border-left: 4px solid var(--primary-color);
+        }
+        
+        .step-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        
+        .step-tasks {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .step-task {
+            background-color: #fff;
+            border-radius: 4px;
+            padding: 10px;
+            border: 1px solid #eee;
+        }
+        
+        .step-result {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #f0f8ff;
+            border-radius: 4px;
+            white-space: pre-wrap;
+        }
+        
+        .toggle-view {
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Interactive Log Viewer</h1>
+            <div>
+                <button id="toggleView">Switch to Workflow View</button>
+            </div>
+        </header>
+        
+        <div class="upload-area" id="uploadArea">
+            <h3>Drop your log file here or click to browse</h3>
+            <p>Support for .jsonl log files</p>
+            <input type="file" id="fileInput" class="file-input" accept=".jsonl,.json,.txt">
+        </div>
+        
+        <div class="toggle-view">
+            <button id="showRawLogs" class="active">Raw Logs</button>
+            <button id="showWorkflow">Workflow View</button>
+            <button id="showMessageFlow">Message Flow View</button>
+        </div>
+        
+        <div class="controls">
+            <div class="filter-group">
+                <label for="levelFilter">Filter by Level:</label>
+                <div class="checkbox-group" id="levelFilter">
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="levelInfo" checked>
+                        <label for="levelInfo">INFO</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="levelDebug" checked>
+                        <label for="levelDebug">DEBUG</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="levelWarn" checked>
+                        <label for="levelWarn">WARN</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="levelError" checked>
+                        <label for="levelError">ERROR</label>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="filter-group">
+                <label for="namespaceFilter">Filter by Namespace:</label>
+                <select id="namespaceFilter">
+                    <option value="">All Namespaces</option>
+                </select>
+            </div>
+            
+            <div class="filter-group">
+                <label for="search">Search in Messages:</label>
+                <input type="text" id="search" placeholder="Type to search...">
+            </div>
+            
+            <div class="filter-group">
+                <label>&nbsp;</label>
+                <button id="clearFilters">Clear Filters</button>
+            </div>
+        </div>
+        
+        <div class="stats" id="stats">
+            <div class="stat-item">
+                <div class="stat-number" id="totalLogs">0</div>
+                <div class="stat-label">Total Logs</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number" id="infoLogs">0</div>
+                <div class="stat-label">INFO</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number" id="debugLogs">0</div>
+                <div class="stat-label">DEBUG</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number" id="warnLogs">0</div>
+                <div class="stat-label">WARN</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number" id="errorLogs">0</div>
+                <div class="stat-label">ERROR</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number" id="timeSpan">0s</div>
+                <div class="stat-label">Time Span</div>
+            </div>
+        </div>
+        
+        <div class="timeline" id="timeline">
+            <div class="timeline-labels" id="timelineLabels"></div>
+        </div>
+        
+        <div id="rawLogsView">
+            <div class="log-container">
+                <div class="spinner" id="spinner"></div>
+                <table class="log-table" id="logTable">
+                    <thead>
+                        <tr>
+                            <th width="5%">#</th>
+                            <th width="10%">Level</th>
+                            <th width="15%">Timestamp</th>
+                            <th width="20%">Namespace</th>
+                            <th width="40%">Message</th>
+                            <th width="10%">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logTableBody">
+                        <tr>
+                            <td colspan="6" class="no-logs">No logs to display. Upload a log file to get started.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="pagination" id="pagination"></div>
+        </div>
+        
+        <div id="workflowView" class="workflow-view">
+            <div class="workflow-container" id="workflowContainer"></div>
+        </div>
+        
+        <div id="messageFlowView" class="workflow-view">
+            <div class="flow-view" id="messageFlowContainer"></div>
+        </div>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const uploadArea = document.getElementById('uploadArea');
+            const fileInput = document.getElementById('fileInput');
+            const logTableBody = document.getElementById('logTableBody');
+            const namespaceFilter = document.getElementById('namespaceFilter');
+            const levelCheckboxes = document.querySelectorAll('#levelFilter input[type="checkbox"]');
+            const searchInput = document.getElementById('search');
+            const clearFiltersBtn = document.getElementById('clearFilters');
+            const spinner = document.getElementById('spinner');
+            const statTotalLogs = document.getElementById('totalLogs');
+            const statInfoLogs = document.getElementById('infoLogs');
+            const statDebugLogs = document.getElementById('debugLogs');
+            const statWarnLogs = document.getElementById('warnLogs');
+            const statErrorLogs = document.getElementById('errorLogs');
+            const statTimeSpan = document.getElementById('timeSpan');
+            const timeline = document.getElementById('timeline');
+            const timelineLabels = document.getElementById('timelineLabels');
+            const pagination = document.getElementById('pagination');
+            const workflowView = document.getElementById('workflowView');
+            const rawLogsView = document.getElementById('rawLogsView');
+            const messageFlowView = document.getElementById('messageFlowView');
+            const workflowContainer = document.getElementById('workflowContainer');
+            const messageFlowContainer = document.getElementById('messageFlowContainer');
+            const showRawLogsBtn = document.getElementById('showRawLogs');
+            const showWorkflowBtn = document.getElementById('showWorkflow');
+            const showMessageFlowBtn = document.getElementById('showMessageFlow');
+            
+            let allLogs = [];
+            let filteredLogs = [];
+            let currentPage = 1;
+            const logsPerPage = 50;
+            
+            // Event Listeners
+            uploadArea.addEventListener('click', () => fileInput.click());
+            uploadArea.addEventListener('dragover', handleDragOver);
+            uploadArea.addEventListener('drop', handleDrop);
+            fileInput.addEventListener('change', handleFileSelect);
+            
+            levelCheckboxes.forEach(checkbox => {
+                checkbox.addEventListener('change', applyFilters);
+            });
+            
+            namespaceFilter.addEventListener('change', applyFilters);
+            searchInput.addEventListener('input', _.debounce(applyFilters, 300));
+            clearFiltersBtn.addEventListener('click', clearFilters);
+            
+            showRawLogsBtn.addEventListener('click', () => {
+                rawLogsView.style.display = 'block';
+                workflowView.style.display = 'none';
+                messageFlowView.style.display = 'none';
+                showRawLogsBtn.classList.add('active');
+                showWorkflowBtn.classList.remove('active');
+                showMessageFlowBtn.classList.remove('active');
+            });
+            
+            showWorkflowBtn.addEventListener('click', () => {
+                workflowView.style.display = 'block';
+                rawLogsView.style.display = 'none';
+                messageFlowView.style.display = 'none';
+                showWorkflowBtn.classList.add('active');
+                showRawLogsBtn.classList.remove('active');
+                showMessageFlowBtn.classList.remove('active');
+                generateWorkflowView();
+            });
+            
+            showMessageFlowBtn.addEventListener('click', () => {
+                messageFlowView.style.display = 'block';
+                rawLogsView.style.display = 'none';
+                workflowView.style.display = 'none';
+                showMessageFlowBtn.classList.add('active');
+                showRawLogsBtn.classList.remove('active');
+                showWorkflowBtn.classList.remove('active');
+                generateMessageFlow();
+            });
+            
+            function handleDragOver(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                uploadArea.style.borderColor = 'var(--primary-color)';
+                uploadArea.style.backgroundColor = 'rgba(52, 152, 219, 0.1)';
+            }
+            
+            function handleDrop(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                uploadArea.style.borderColor = 'var(--border-color)';
+                uploadArea.style.backgroundColor = '';
+                
+                if (e.dataTransfer.files.length) {
+                    processFile(e.dataTransfer.files[0]);
+                }
+            }
+            
+            function handleFileSelect(e) {
+                if (e.target.files.length) {
+                    processFile(e.target.files[0]);
+                }
+            }
+            
+            function processFile(file) {
+                if (!file.name.endsWith('.jsonl') && !file.name.endsWith('.json') && !file.name.endsWith('.txt')) {
+                    alert('Please upload a .jsonl or .json file');
+                    return;
+                }
+                
+                spinner.style.display = 'block';
+                logTableBody.innerHTML = '';
+                allLogs = [];
+                
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    parseLogsWithWorker(e.target.result);
+                };
+                reader.readAsText(file);
+            }
+            
+            function parseLogsWithWorker(content) {
+                const lines = content.split('\n').filter(line => line.trim());
+                
+                const parsePromises = [];
+                for (const line of lines) {
+                    try {
+                        const log = JSON.parse(line);
+                        allLogs.push(log);
+                    } catch (error) {
+                        console.error('Error parsing line:', line, error);
+                    }
+                }
+                
+                processLogs();
+                
+                // Re-initialize resizable columns after loading the logs
+                reinitializeResizableColumns();
+            }
+            
+            function processLogs() {
+                // Update stats
+                statTotalLogs.textContent = allLogs.length;
+                statInfoLogs.textContent = allLogs.filter(log => log.level === 'INFO').length;
+                statDebugLogs.textContent = allLogs.filter(log => log.level === 'DEBUG').length;
+                statWarnLogs.textContent = allLogs.filter(log => log.level === 'WARN').length;
+                statErrorLogs.textContent = allLogs.filter(log => log.level === 'ERROR').length;
+                
+                // Sort logs by timestamp
+                allLogs.sort((a, b) => {
+                    return new Date(a.timestamp) - new Date(b.timestamp);
+                });
+                
+                // Calculate time span
+                if (allLogs.length > 0) {
+                    const firstTime = new Date(allLogs[0].timestamp);
+                    const lastTime = new Date(allLogs[allLogs.length - 1].timestamp);
+                    const diffMs = lastTime - firstTime;
+                    const diffSec = Math.round(diffMs / 1000);
+                    statTimeSpan.textContent = formatTimeSpan(diffSec);
+                    
+                    // Set timeline labels
+                    timelineLabels.innerHTML = `
+                        <span>${moment(firstTime).format('HH:mm:ss.SSS')}</span>
+                        <span>${moment(lastTime).format('HH:mm:ss.SSS')}</span>
+                    `;
+                    
+                    // Create timeline events
+                    timeline.innerHTML = '';
+                    timeline.appendChild(timelineLabels);
+                    allLogs.forEach(log => {
+                        const logTime = new Date(log.timestamp);
+                        const percentage = ((logTime - firstTime) / (lastTime - firstTime)) * 100;
+                        const event = document.createElement('div');
+                        event.className = `timeline-event level-${log.level}`;
+                        event.style.left = `${percentage}%`;
+                        timeline.appendChild(event);
+                    });
+                }
+                
+                // Populate namespaces dropdown
+                const namespaces = [...new Set(allLogs.map(log => log.namespace))].sort();
+                namespaceFilter.innerHTML = '<option value="">All Namespaces</option>';
+                namespaces.forEach(namespace => {
+                    const option = document.createElement('option');
+                    option.value = namespace;
+                    option.textContent = namespace;
+                    namespaceFilter.appendChild(option);
+                });
+                
+                applyFilters();
+                spinner.style.display = 'none';
+            }
+            
+            function applyFilters() {
+                // Get selected levels
+                const selectedLevels = Array.from(levelCheckboxes)
+                    .filter(cb => cb.checked)
+                    .map(cb => cb.id.replace('level', '').toUpperCase());
+                
+                // Get selected namespace
+                const selectedNamespace = namespaceFilter.value;
+                
+                // Get search term
+                const searchTerm = searchInput.value.toLowerCase();
+                
+                // Apply filters
+                filteredLogs = allLogs.filter(log => {
+                    const levelMatch = selectedLevels.includes(log.level);
+                    const namespaceMatch = !selectedNamespace || log.namespace === selectedNamespace;
+                    const searchMatch = !searchTerm || 
+                        log.message.toLowerCase().includes(searchTerm) || 
+                        (log.data && JSON.stringify(log.data).toLowerCase().includes(searchTerm));
+                    
+                    return levelMatch && namespaceMatch && searchMatch;
+                });
+                
+                // Update pagination
+                updatePagination();
+                
+                // Render logs
+                renderLogs();
+            }
+            
+            function clearFilters() {
+                // Reset level checkboxes
+                levelCheckboxes.forEach(cb => {
+                    cb.checked = true;
+                });
+                
+                // Reset namespace filter
+                namespaceFilter.value = '';
+                
+                // Reset search
+                searchInput.value = '';
+                
+                // Apply filters
+                applyFilters();
+            }
+            
+            function updatePagination() {
+                const totalPages = Math.ceil(filteredLogs.length / logsPerPage);
+                currentPage = Math.min(currentPage, totalPages) || 1;
+                
+                pagination.innerHTML = '';
+                
+                if (totalPages <= 1) {
+                    return;
+                }
+                
+                // Previous button
+                const prevBtn = document.createElement('button');
+                prevBtn.textContent = '«';
+                prevBtn.addEventListener('click', () => {
+                    if (currentPage > 1) {
+                        currentPage--;
+                        renderLogs();
+                        updatePagination();
+                    }
+                });
+                pagination.appendChild(prevBtn);
+                
+                // Page buttons
+                let startPage = Math.max(1, currentPage - 2);
+                let endPage = Math.min(totalPages, startPage + 4);
+                if (endPage - startPage < 4) {
+                    startPage = Math.max(1, endPage - 4);
+                }
+                
+                for (let i = startPage; i <= endPage; i++) {
+                    const pageBtn = document.createElement('button');
+                    pageBtn.textContent = i;
+                    if (i === currentPage) {
+                        pageBtn.classList.add('active');
+                    }
+                    pageBtn.addEventListener('click', () => {
+                        currentPage = i;
+                        renderLogs();
+                        updatePagination();
+                    });
+                    pagination.appendChild(pageBtn);
+                }
+                
+                // Next button
+                const nextBtn = document.createElement('button');
+                nextBtn.textContent = '»';
+                nextBtn.addEventListener('click', () => {
+                    if (currentPage < totalPages) {
+                        currentPage++;
+                        renderLogs();
+                        updatePagination();
+                    }
+                });
+                pagination.appendChild(nextBtn);
+            }
+            
+            function renderLogs() {
+                logTableBody.innerHTML = '';
+                
+                if (filteredLogs.length === 0) {
+                    const noLogsRow = document.createElement('tr');
+                    noLogsRow.innerHTML = '<td colspan="6" class="no-logs">No logs match the current filters.</td>';
+                    logTableBody.appendChild(noLogsRow);
+                    return;
+                }
+                
+                const startIndex = (currentPage - 1) * logsPerPage;
+                const endIndex = Math.min(startIndex + logsPerPage, filteredLogs.length);
+                const logsToShow = filteredLogs.slice(startIndex, endIndex);
+                
+                logsToShow.forEach((log, index) => {
+                    const row = document.createElement('tr');
+                    
+                    // Log number
+                    const logNumberCell = document.createElement('td');
+                    logNumberCell.textContent = startIndex + index + 1;
+                    row.appendChild(logNumberCell);
+                    
+                    // Log level
+                    const levelCell = document.createElement('td');
+                    const levelSpan = document.createElement('span');
+                    levelSpan.className = `log-level level-${log.level}`;
+                    levelSpan.textContent = log.level;
+                    levelCell.appendChild(levelSpan);
+                    row.appendChild(levelCell);
+                    
+                    // Timestamp
+                    const timeCell = document.createElement('td');
+                    timeCell.className = 'timestamp';
+                    const logTime = moment(log.timestamp);
+                    timeCell.textContent = logTime.format('HH:mm:ss.SSS');
+                    timeCell.title = logTime.format('YYYY-MM-DD HH:mm:ss.SSS');
+                    row.appendChild(timeCell);
+                    
+                    // Namespace
+                    const namespaceCell = document.createElement('td');
+                    namespaceCell.className = 'namespace';
+                    namespaceCell.textContent = log.namespace;
+                    row.appendChild(namespaceCell);
+                    
+                    // Message & Action
+                    const messageCell = document.createElement('td');
+                    messageCell.className = 'message';
+                    
+                    const messageContainer = document.createElement('div');
+                    messageContainer.className = 'message-container';
+                    
+                    const messageContent = document.createElement('div');
+                    messageContent.className = 'message-content';
+                    
+                    // Check if message looks like JSON or Python dict
+                    let isJson = false;
+                    let jsonContent = null;
+                    let rawMessage = log.message;
+                    
+                    // Try to detect JSON or Python dict in the message
+                    if ((log.message.trim().startsWith('{') && log.message.trim().endsWith('}')) ||
+                        (log.message.trim().startsWith("{'") && log.message.trim().includes("'}")) ||
+                        log.message.includes("{'model':")) {
+                        
+                        try {
+                            // First attempt - standard JSON
+                            jsonContent = JSON.parse(log.message);
+                            isJson = true;
+                        } catch (e) {
+                            // Second attempt - Python dict to JSON conversion
+                            try {
+                                // Basic Python dict to JSON conversion
+                                const fixedJson = log.message
+                                    .replace(/'/g, '"')             // Replace single quotes with double quotes
+                                    .replace(/\\n/g, '\\\\n')       // Fix newlines
+                                    .replace(/\\'/g, "\\'")         // Preserve escaped single quotes
+                                    .replace(/\\"/g, '\\\\"')       // Fix escaped quotes
+                                    .replace(/None/g, 'null')       // Replace Python None with null
+                                    .replace(/True/g, 'true')       // Replace Python True with true
+                                    .replace(/False/g, 'false');    // Replace Python False with false
+                                
+                                // Try parsing the converted string
+                                jsonContent = JSON.parse(fixedJson);
+                                isJson = true;
+                            } catch (e2) {
+                                // Fallback - if we can't parse, we'll display raw but scrollable
+                                isJson = false;
+                                console.log("Could not parse as JSON:", e2);
+                            }
+                        }
+                    }
+                    
+                    if (isJson && jsonContent) {
+                        // For OpenAI format JSON
+                        const jsonContainer = document.createElement('div');
+                        
+                        // Create collapsible JSON viewer
+                        const jsonToggle = document.createElement('button');
+                        jsonToggle.className = 'expand-btn';
+                        jsonToggle.textContent = 'View JSON Message';
+                        jsonToggle.style.marginBottom = '5px';
+                        
+                        const jsonPre = document.createElement('pre');
+                        jsonPre.className = 'json-data';
+                        jsonPre.style.display = 'none';
+                        jsonPre.innerHTML = syntaxHighlight(jsonContent);
+                        
+                        jsonToggle.addEventListener('click', function() {
+                            if (jsonPre.style.display === 'none') {
+                                jsonPre.style.display = 'block';
+                                jsonToggle.textContent = 'Hide JSON Message';
+                            } else {
+                                jsonPre.style.display = 'none';
+                                jsonToggle.textContent = 'View JSON Message';
+                            }
+                        });
+                        
+                        // Create a summary of the JSON for OpenAI format
+                        const summary = document.createElement('div');
+                        summary.className = 'json-summary';
+                        
+                        // Handle OpenAI API format
+                        if (jsonContent.model) {
+                            const modelSpan = document.createElement('span');
+                            modelSpan.className = 'message-tag';
+                            modelSpan.textContent = jsonContent.model;
+                            summary.appendChild(modelSpan);
+                        }
+                        
+                        // Extract messages from typical OpenAI format
+                        if (jsonContent.messages && Array.isArray(jsonContent.messages)) {
+                            // Show system message if present
+                            const systemMsg = jsonContent.messages.find(m => m.role === 'system');
+                            if (systemMsg) {
+                                const systemDiv = document.createElement('div');
+                                systemDiv.style.margin = '8px 0';
+                                systemDiv.style.fontSize = '0.85rem';
+                                systemDiv.innerHTML = `<strong>System:</strong> <span style="color:#666">${systemMsg.content.substring(0, 100)}${systemMsg.content.length > 100 ? '...' : ''}</span>`;
+                                summary.appendChild(systemDiv);
+                            }
+                            
+                            // Show user message
+                            const userMsg = jsonContent.messages.find(m => m.role === 'user');
+                            if (userMsg) {
+                                const userDiv = document.createElement('div');
+                                userDiv.className = 'ai-response';
+                                userDiv.style.borderLeft = '3px solid #e67e22';
+                                userDiv.innerHTML = `<strong>User Message:</strong><div>${userMsg.content.substring(0, 200)}${userMsg.content.length > 200 ? '...<span style="color:#666">[Click "View JSON Message" to see all]</span>' : ''}</div>`;
+                                summary.appendChild(userDiv);
+                            }
+                        }
+                        
+                        // Handle chat completion response format
+                        if (jsonContent.choices && jsonContent.choices.length > 0 && 
+                            jsonContent.choices[0].message && jsonContent.choices[0].message.content) {
+                            const contentDiv = document.createElement('div');
+                            contentDiv.className = 'ai-response';
+                            contentDiv.innerHTML = `<strong>Response:</strong><div>${jsonContent.choices[0].message.content}</div>`;
+                            summary.appendChild(contentDiv);
+                        }
+                        
+                        // Add usage stats if available
+                        if (jsonContent.usage) {
+                            const usageDiv = document.createElement('div');
+                            usageDiv.className = 'usage-stats';
+                            usageDiv.textContent = `Tokens: ${jsonContent.usage.total_tokens} (${jsonContent.usage.prompt_tokens} prompt, ${jsonContent.usage.completion_tokens} completion)`;
+                            summary.appendChild(usageDiv);
+                        }
+                        
+                        jsonContainer.appendChild(jsonToggle);
+                        jsonContainer.appendChild(summary);
+                        jsonContainer.appendChild(jsonPre);
+                        messageContent.appendChild(jsonContainer);
+                    } else {
+                        // Regular text message or unparseable JSON/dict
+                        if (log.message.length > 300 || (log.message.includes('{') && log.message.includes('}'))) {
+                            // Long message or potential JSON-like content - make scrollable
+                            const scrollContainer = document.createElement('div');
+                            scrollContainer.style.maxHeight = '200px';
+                            scrollContainer.style.overflow = 'auto';
+                            scrollContainer.style.border = '1px solid #eee';
+                            scrollContainer.style.borderRadius = '4px';
+                            scrollContainer.style.padding = '8px';
+                            scrollContainer.style.backgroundColor = '#f9f9f9';
+                            scrollContainer.style.fontFamily = 'monospace';
+                            scrollContainer.style.fontSize = '0.9rem';
+                            scrollContainer.style.whiteSpace = 'pre-wrap';
+                            scrollContainer.style.wordBreak = 'break-word';
+                            
+                            scrollContainer.textContent = log.message;
+                            messageContent.appendChild(scrollContainer);
+                        } else {
+                            // Short regular message
+                            messageContent.textContent = log.message;
+                        }
+                    }
+                    
+                    messageContainer.appendChild(messageContent);
+                    
+                    // Extract action from data if exists
+                    if (log.data && log.data.data && log.data.data.progress_action) {
+                        const actionDiv = document.createElement('div');
+                        actionDiv.className = 'message-action';
+                        actionDiv.textContent = `Action: ${log.data.data.progress_action}`;
+                        messageContainer.appendChild(actionDiv);
+                    }
+                    
+                    // Add agent name tag if exists
+                    if (log.data && log.data.data && log.data.data.agent_name) {
+                        const agentTag = document.createElement('span');
+                        agentTag.className = 'message-tag';
+                        agentTag.textContent = log.data.data.agent_name;
+                        messageContent.prepend(agentTag);
+                    }
+                    
+                    messageCell.appendChild(messageContainer);
+                    row.appendChild(messageCell);
+                    
+                    // Data
+                    const actionsCell = document.createElement('td');
+                    
+                    if (log.data) {
+                        const expandBtn = document.createElement('button');
+                        expandBtn.className = 'expand-btn';
+                        expandBtn.textContent = 'View Data';
+                        
+                        const jsonData = document.createElement('pre');
+                        jsonData.className = 'json-data';
+                        jsonData.innerHTML = syntaxHighlight(log.data);
+                        
+                        expandBtn.addEventListener('click', function() {
+                            if (jsonData.style.display === 'block') {
+                                jsonData.style.display = 'none';
+                                expandBtn.textContent = 'View Data';
+                            } else {
+                                jsonData.style.display = 'block';
+                                expandBtn.textContent = 'Hide Data';
+                                
+                                // Collapse all other expanded data
+                                document.querySelectorAll('.json-data').forEach(el => {
+                                    if (el !== jsonData && el.style.display === 'block') {
+                                        el.style.display = 'none';
+                                        el.previousElementSibling.textContent = 'View Data';
+                                    }
+                                });
+                            }
+                        });
+                        
+                        actionsCell.appendChild(expandBtn);
+                        actionsCell.appendChild(jsonData);
+                    }
+                    
+                    row.appendChild(actionsCell);
+                    logTableBody.appendChild(row);
+                });
+            }
+            
+            function syntaxHighlight(json) {
+                if (typeof json !== 'string') {
+                    try {
+                        json = JSON.stringify(json, null, 2);
+                    } catch (e) {
+                        console.error("Error stringifying JSON", e);
+                        return String(json);
+                    }
+                }
+                
+                json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
+                    let cls = 'number';
+                    if (/^"/.test(match)) {
+                        if (/:$/.test(match)) {
+                            cls = 'key';
+                        } else {
+                            cls = 'string';
+                        }
+                    } else if (/true|false/.test(match)) {
+                        cls = 'boolean';
+                    } else if (/null/.test(match)) {
+                        cls = 'null';
+                    }
+                    return '<span class="' + cls + '">' + match + '</span>';
+                });
+            }
+            
+            function formatTimeSpan(seconds) {
+                if (seconds < 60) {
+                    return `${seconds}s`;
+                } else if (seconds < 3600) {
+                    const mins = Math.floor(seconds / 60);
+                    const secs = seconds % 60;
+                    return `${mins}m ${secs}s`;
+                } else {
+                    const hours = Math.floor(seconds / 3600);
+                    const mins = Math.floor((seconds % 3600) / 60);
+                    const secs = seconds % 60;
+                    return `${hours}h ${mins}m ${secs}s`;
+                }
+            }
+            
+            function generateWorkflowView() {
+                if (allLogs.length === 0) return;
+                
+                workflowContainer.innerHTML = '';
+                
+                // Extract workflow data
+                const plannerLogs = allLogs.filter(log => 
+                    log.namespace.includes('Planner_Agent') && 
+                    log.message.includes('Azure OpenAI ChatCompletion response:')
+                );
+                
+                const answerLogs = allLogs.filter(log => 
+                    log.namespace.includes('Answer_Agent') && 
+                    log.message.includes('Azure OpenAI ChatCompletion response:')
+                );
+                
+                const orchestratorLogs = allLogs.filter(log => 
+                    log.namespace.includes('orchestrator') && 
+                    log.message.includes('Intermediate plan result:')
+                );
+                
+                // Extract steps and results
+                let workflow = null;
+                
+                if (orchestratorLogs.length > 0 && orchestratorLogs[0].data && orchestratorLogs[0].data.data) {
+                    workflow = orchestratorLogs[0].data.data;
+                }
+                
+                if (workflow) {
+                    // Create objective section
+                    const objectiveDiv = document.createElement('div');
+                    objectiveDiv.className = 'workflow-step';
+                    objectiveDiv.innerHTML = `
+                        <div class="step-header">Objective</div>
+                        <div>${workflow.objective}</div>
+                    `;
+                    workflowContainer.appendChild(objectiveDiv);
+                    
+                    // Create steps
+                    if (workflow.step_results && workflow.step_results.length > 0) {
+                        workflow.step_results.forEach((stepResult, index) => {
+                            const stepDiv = document.createElement('div');
+                            stepDiv.className = 'workflow-step';
+                            
+                            let stepContent = `
+                                <div class="step-header">
+                                    <span>Step ${index + 1}: ${stepResult.step.description}</span>
+                                </div>
+                            `;
+                            
+                            if (stepResult.task_results && stepResult.task_results.length > 0) {
+                                stepContent += '<div class="step-tasks">';
+                                
+                                stepResult.task_results.forEach(task => {
+                                    stepContent += `
+                                        <div class="step-task">
+                                            <div><strong>Task:</strong> ${task.description}</div>
+                                            <div><strong>Agent:</strong> ${task.agent}</div>
+                                        </div>
+                                    `;
+                                });
+                                
+                                stepContent += '</div>';
+                            }
+                            
+                            if (stepResult.result) {
+                                stepContent += `
+                                    <div class="step-result">
+                                        <strong>Result:</strong>
+                                        <div>${formatResult(stepResult.result)}</div>
+                                    </div>
+                                `;
+                            }
+                            
+                            stepDiv.innerHTML = stepContent;
+                            workflowContainer.appendChild(stepDiv);
+                        });
+                    }
+                    
+                    // Create final result section if available
+                    if (workflow.result) {
+                        const resultDiv = document.createElement('div');
+                        resultDiv.className = 'workflow-step';
+                        resultDiv.innerHTML = `
+                            <div class="step-header">Final Result</div>
+                            <div>${workflow.result}</div>
+                        `;
+                        workflowContainer.appendChild(resultDiv);
+                    }
+                } else {
+                    workflowContainer.innerHTML = '<div class="no-logs">No workflow data found in logs.</div>';
+                }
+            }
+            
+            function formatResult(result) {
+                // Replace \\ with \ and handle newlines for display
+                return result.replace(/\\n/g, '<br>').replace(/\\\\/g, '\\').replace(/\\\(/g, '(').replace(/\\\)/g, ')');
+            }
+            
+            function generateMessageFlow() {
+                if (allLogs.length === 0) return;
+                
+                messageFlowContainer.innerHTML = '';
+                
+                // Filter logs to focus on meaningful actions and messages
+                const relevantLogs = allLogs.filter(log => {
+                    // Include logs with progress actions
+                    if (log.data && log.data.data && log.data.data.progress_action) {
+                        return true;
+                    }
+                    
+                    // Include chat completion responses
+                    if (log.message && log.message.includes('ChatCompletion response')) {
+                        return true;
+                    }
+                    
+                    // Include plan results
+                    if (log.message && log.message.includes('plan result')) {
+                        return true;
+                    }
+                    
+                    return false;
+                });
+                
+                if (relevantLogs.length === 0) {
+                    messageFlowContainer.innerHTML = '<div class="no-logs">No relevant message flow data found in logs.</div>';
+                    return;
+                }
+                
+                // Group logs by agent
+                const agentLogs = {};
+                
+                relevantLogs.forEach(log => {
+                    let agentName = 'Unknown';
+                    
+                    if (log.data && log.data.data && log.data.data.agent_name) {
+                        agentName = log.data.data.agent_name;
+                    } else if (log.namespace) {
+                        // Extract agent name from namespace
+                        const match = log.namespace.match(/([A-Za-z_]+)$/);
+                        if (match) {
+                            agentName = match[1];
+                        }
+                    }
+                    
+                    if (!agentLogs[agentName]) {
+                        agentLogs[agentName] = [];
+                    }
+                    
+                    agentLogs[agentName].push(log);
+                });
+                
+                // Create a chronological flow of actions and messages
+                const agents = Object.keys(agentLogs);
+                
+                // Sort all logs by timestamp
+                const sortedLogs = relevantLogs.sort((a, b) => {
+                    return new Date(a.timestamp) - new Date(b.timestamp);
+                });
+                
+                // Generate the flow view
+                sortedLogs.forEach((log, index) => {
+                    const flowItem = document.createElement('div');
+                    flowItem.className = 'flow-item';
+                    
+                    if (index > 0) {
+                        const connector = document.createElement('div');
+                        connector.className = 'flow-connector';
+                        flowItem.appendChild(connector);
+                    }
+                    
+                    let agentName = 'Unknown';
+                    let action = '';
+                    let model = '';
+                    
+                    if (log.data && log.data.data) {
+                        if (log.data.data.agent_name) {
+                            agentName = log.data.data.agent_name;
+                        } else if (log.namespace) {
+                            // Extract agent name from namespace when agent_name is not available
+                            const namespaceParts = log.namespace.split('.');
+                            if (namespaceParts.length > 0) {
+                                // Get the last part of the namespace
+                                agentName = namespaceParts[namespaceParts.length - 1];
+                            }
+                        }
+                        
+                        if (log.data.data.progress_action) {
+                            action = log.data.data.progress_action;
+                        }
+                        
+                        if (log.data.data.model) {
+                            model = log.data.data.model;
+                        }
+                    } else if (log.namespace) {
+                        // If no data.data, still try to extract from namespace
+                        const namespaceParts = log.namespace.split('.');
+                        if (namespaceParts.length > 0) {
+                            agentName = namespaceParts[namespaceParts.length - 1];
+                        }
+                    }
+                    
+                    let content = `
+                        <div class="message-container">
+                            <div>
+                                <span class="message-tag">${agentName}</span>
+                                <span class="timestamp">${moment(log.timestamp).format('HH:mm:ss.SSS')}</span>
+                    `;
+                    
+                    if (action) {
+                        content += `<span class="message-action">${action}</span>`;
+                    }
+                    
+                    if (model) {
+                        content += `<span class="message-tag">${model}</span>`;
+                    }
+                    
+                    content += `</div><div class="message-content">${log.message}</div>`;
+                    
+                // For chat completions, extract and display the actual message content
+                    if (log.message && log.message.includes('ChatCompletion response') && log.data && log.data.data) {
+                        try {
+                            const responseData = log.data.data;
+                            if (responseData.choices && responseData.choices.length > 0) {
+                                const messageContent = responseData.choices[0].message.content;
+                                if (messageContent) {
+                                    content += `
+                                        <div class="ai-response">
+                                            <strong>Response:</strong>
+                                            <div>${messageContent}</div>
+                                        </div>
+                                    `;
+                                }
+                                
+                                if (responseData.usage) {
+                                    content += `
+                                        <div class="usage-stats">
+                                            Tokens: ${responseData.usage.total_tokens} (${responseData.usage.prompt_tokens} prompt, ${responseData.usage.completion_tokens} completion)
+                                        </div>
+                                    `;
+                                }
+                            }
+                        } catch (error) {
+                            console.error('Error parsing chat completion data:', error);
+                        }
+                    }
+                    
+                    // Also check if message itself contains JSON with single quotes
+                    if (log.message && (log.message.includes("{'") || log.message.includes('{"'))) {
+                        try {
+                            // Try to extract JSON from the message (support both single and double quote formats)
+                            const jsonMatch = log.message.match(/(\{['"].*['"]\})/s) || log.message.match(/(\{.*\})/s);
+                            if (jsonMatch && jsonMatch[1]) {
+                                // Convert Python style dict to valid JSON
+                                const fixedJson = jsonMatch[1]
+                                    .replace(/'/g, '"')          // Replace single quotes with double quotes
+                                    .replace(/\\n/g, '\\\\n')    // Fix newlines
+                                    .replace(/\\"/g, '\\\\"')    // Fix escaped quotes
+                                    .replace(/None/g, 'null')    // Replace Python None with null
+                                    .replace(/True/g, 'true')    // Replace Python True with true
+                                    .replace(/False/g, 'false'); // Replace Python False with false
+                                
+                                try {
+                                    const jsonContent = JSON.parse(fixedJson);
+                                    
+                                    // If this is OpenAI API format...
+                                    if (jsonContent.choices && jsonContent.choices.length > 0 && 
+                                        jsonContent.choices[0].message && jsonContent.choices[0].message.content) {
+                                        content += `
+                                            <div class="ai-response">
+                                                <strong>Message JSON Response:</strong>
+                                                <div>${jsonContent.choices[0].message.content}</div>
+                                            </div>
+                                        `;
+                                        
+                                        if (jsonContent.usage) {
+                                            content += `
+                                                <div class="usage-stats">
+                                                    Tokens: ${jsonContent.usage.total_tokens} (${jsonContent.usage.prompt_tokens} prompt, ${jsonContent.usage.completion_tokens} completion)
+                                                </div>
+                                            `;
+                                        }
+                                    }
+                                } catch (e) {
+                                    // Failed to parse, skip
+                                    console.log("Failed to parse JSON from message flow:", e);
+                                }
+                            }
+                        } catch (e) {
+                            // Not valid JSON, continue as normal
+                        }
+                    }
+                    
+                    content += `</div>`;
+                    
+                    flowItem.innerHTML = content;
+                    messageFlowContainer.appendChild(flowItem);
+                });
+            }
+        });
+    </script>
+</body>
+</html>                
