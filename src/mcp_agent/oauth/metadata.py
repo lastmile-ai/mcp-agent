@@ -69,14 +69,19 @@ def select_authorization_server(
             "Protected resource metadata did not include authorization servers"
         )
 
-    if preferred and preferred in candidates:
-        return preferred
-
     if preferred:
+        preferred_normalized = preferred.rstrip("/")
+        candidates_normalized = [c.rstrip("/") for c in candidates]
+
+        for i, candidate_normalized in enumerate(candidates_normalized):
+            if candidate_normalized == preferred_normalized:
+                return candidates[i]
+
         logger.warning(
             "Preferred authorization server not listed; falling back to first entry",
             data={"preferred": preferred, "candidates": candidates},
         )
+
     return candidates[0]
 
 

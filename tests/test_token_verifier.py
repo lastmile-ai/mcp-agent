@@ -855,3 +855,101 @@ async def test_audience_validation_failure_through_introspect():
     assert token is None
 
     await verifier.aclose()
+
+
+@pytest.mark.asyncio
+async def test_issuer_comparison_with_trailing_slash_from_token():
+    """Test that issuer comparison works when token has trailing slash.
+
+    When config is loaded/dumped with mode='json', AnyHttpUrl fields may gain
+    trailing slashes. This test ensures the issuer comparison in token_verifier.py:158
+    handles this correctly.
+    """
+    settings = MCPAuthorizationServerSettings(
+        enabled=True,
+        issuer_url="https://auth.example.com",
+        resource_server_url="https://api.example.com",
+        expected_audiences=["https://api.example.com"],
+    )
+
+    # Dump with mode="json" and reload to simulate config loading (with trailing slashes)
+    dumped = settings.model_dump(mode="json")
+    reloaded_settings = MCPAuthorizationServerSettings(**dumped)
+
+    verifier = MCPAgentTokenVerifier(reloaded_settings)
+
+    metadata_response = Mock()
+    metadata_response.status_code = 200
+    metadata_response.json.return_value = {
+        "issuer": "https://auth.example.com",
+        "authorization_endpoint": "https://auth.example.com/authorize",
+        "token_endpoint": "https://auth.example.com/token",
+        "introspection_endpoint": "https://auth.example.com/introspect",
+        "response_types_supported": ["code"],
+    }
+
+    introspect_response = Mock()
+    introspect_response.status_code = 200
+    introspect_response.json.return_value = {
+        "active": True,
+        "aud": "https://api.example.com/",
+        "sub": "user123",
+        "exp": 9999999999,
+        "iss": "https://auth.example.com/",  # trailing slash
+    }
+
+    verifier._client.get = AsyncMock(return_value=metadata_response)
+    verifier._client.post = AsyncMock(return_value=introspect_response)
+
+    token = await verifier._introspect("test_token")
+
+    assert token is not None
+    assert token.subject == "user123"
+
+    await verifier.aclose()
+
+
+@pytest.mark.asyncio
+async def test_issuer_comparison_config_trailing_slash_token_without():
+    """Test issuer comparison when config has trailing slash but token doesn't."""
+    settings = MCPAuthorizationServerSettings(
+        enabled=True,
+        issuer_url="https://auth.example.com",
+        resource_server_url="https://api.example.com",
+        expected_audiences=["https://api.example.com"],
+    )
+
+    dumped = settings.model_dump(mode="json")
+    reloaded_settings = MCPAuthorizationServerSettings(**dumped)
+
+    verifier = MCPAgentTokenVerifier(reloaded_settings)
+
+    metadata_response = Mock()
+    metadata_response.status_code = 200
+    metadata_response.json.return_value = {
+        "issuer": "https://auth.example.com",
+        "authorization_endpoint": "https://auth.example.com/authorize",
+        "token_endpoint": "https://auth.example.com/token",
+        "introspection_endpoint": "https://auth.example.com/introspect",
+        "response_types_supported": ["code"],
+    }
+
+    introspect_response = Mock()
+    introspect_response.status_code = 200
+    introspect_response.json.return_value = {
+        "active": True,
+        "aud": "https://api.example.com",
+        "sub": "user123",
+        "exp": 9999999999,
+        "iss": "https://auth.example.com",  # No trailing slash
+    }
+
+    verifier._client.get = AsyncMock(return_value=metadata_response)
+    verifier._client.post = AsyncMock(return_value=introspect_response)
+
+    token = await verifier._introspect("test_token")
+
+    assert token is not None
+    assert token.subject == "user123"
+
+    await verifier.aclose()

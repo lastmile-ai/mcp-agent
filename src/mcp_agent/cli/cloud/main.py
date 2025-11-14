@@ -28,6 +28,7 @@ from mcp_agent.cli.cloud.commands.servers import (
     describe_server,
     list_servers,
 )
+from mcp_agent.cli.cloud.commands.env import app as env_app
 from mcp_agent.cli.cloud.commands.workflows import (
     cancel_workflow,
     describe_workflow,
@@ -157,6 +158,7 @@ app_cmd_cloud_logger.command(
 app.add_typer(app_cmd_cloud_auth, name="auth", help="Authentication commands")
 app.add_typer(app_cmd_cloud_logger, name="logger", help="Logging and observability")
 app.add_typer(app_cmd_workflows, name="workflows", help="Workflow management commands")
+app.add_typer(env_app, name="env", help="Manage environment variables")
 # Top-level auth commands that map to cloud auth commands
 app.command(
     name="login",

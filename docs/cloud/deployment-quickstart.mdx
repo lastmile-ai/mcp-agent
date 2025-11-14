@@ -58,7 +58,7 @@ openai:
   default_model: gpt-4o
 ```
 
-If your app needs API keys, place them in `mcp_agent.secrets.yaml` (details in [Manage secrets](/cloud/mcp-agent-cloud/manage-secrets)).
+If your app needs API keys, either place them in `mcp_agent.secrets.yaml` or declare them in the `env` list inside `mcp_agent.config.yaml` so the CLI captures values from your shell. See [Manage secrets](/cloud/mcp-agent-cloud/manage-secrets) for full guidance.
 
 ## 3. Deploy
 
@@ -79,6 +79,8 @@ Redeploy with the same name to ship updates. Useful flags:
 - `--config-dir <path>` – deploy from another directory.
 - `--non-interactive` – reuse stored secrets (CI/CD).
 - `--dry-run` – validate without uploading.
+
+> Deployment emits both `mcp_agent.deployed.secrets.yaml` (secret handles and env references) and `mcp_agent.deployed.config.yaml` (materialized settings). Commit them if you want reproducible bundles.
 
 ## 4. Check status & logs
 
@@ -102,6 +104,8 @@ Then install the server into your favourite MCP client:
 - **Claude Desktop / Cursor / VS Code / ChatGPT** – `uvx mcp-agent install --client <client> https://app_abc123xyz.deployments.mcp-agent.com/sse`
 - **ChatGPT Apps** – deploy with `--no-auth` and register the SSE endpoint in the Apps dashboard.
 - **Python** – add the server endpoint to your MCP client config ([see guide](/cloud/mcp-agent-cloud/use-deployed-server)).
+
+To inspect or rotate deployment-time environment secrets later, use `uvx mcp-agent cloud env list|add|remove|pull`. These commands operate on the same handles created during deploy and are safe to run from CI.
 
 ## Going further
 

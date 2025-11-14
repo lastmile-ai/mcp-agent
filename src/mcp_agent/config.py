@@ -7,7 +7,7 @@ import sys
 from httpx import URL
 from io import StringIO
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Set, Union
+from typing import Any, Dict, Iterable, List, Literal, Optional, Set, Union
 from datetime import timedelta
 import threading
 import warnings
@@ -1163,6 +1163,9 @@ class Settings(BaseSettings):
     oauth: OAuthSettings | None = Field(default_factory=OAuthSettings)
     """Global OAuth client configuration (token store, delegated auth defaults)"""
 
+    env: list[str | dict[str, str]] = Field(default_factory=list)
+    """Environment variables to materialize for deployments."""
+
     def __eq__(self, other):  # type: ignore[override]
         if not isinstance(other, Settings):
             return NotImplemented
@@ -1219,6 +1222,52 @@ class Settings(BaseSettings):
             pass
 
         return None
+
+    @field_validator("env", mode="after")
+    @classmethod
+    def _validate_env(
+        cls, value: list[str | dict[str, str]]
+    ) -> list[str | dict[str, str]]:
+        validated: list[str | dict[str, str]] = []
+        for item in value or []:
+            if isinstance(item, str):
+                item = item.strip()
+                if not item:
+                    raise ValueError(
+                        "Environment variable names must be non-empty strings"
+                    )
+                validated.append(item)
+                continue
+
+            if isinstance(item, dict):
+                if len(item) != 1:
+                    raise ValueError(
+                        "Environment variable mappings must contain exactly one key-value pair"
+                    )
+                key, val = next(iter(item.items()))
+                key = key.strip()
+                if not key:
+                    raise ValueError(
+                        "Environment variable names must be non-empty strings"
+                    )
+                # Allow empty fallback values (treated as None)
+                validated.append({key: val})
+                continue
+
+            raise ValueError(
+                "Environment variables must be specified as strings or single-key mappings"
+            )
+        return validated
+
+    def iter_env_specs(self) -> Iterable[tuple[str, str | None]]:
+        """Yield normalized environment variable specifications preserving order."""
+        env_spec = self.env or []
+        for item in env_spec:
+            if isinstance(item, str):
+                yield item, None
+            elif isinstance(item, dict):
+                key, value = next(iter(item.items()))
+                yield key, value
 
 
 Settings.model_rebuild()
