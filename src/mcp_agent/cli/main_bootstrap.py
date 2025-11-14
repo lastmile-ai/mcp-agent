@@ -10,8 +10,13 @@ from rich.console import Console
 
 
 def run() -> None:
-    """Display a spinner during CLI bootstrap, then hand off to main.run()."""
+    """Display a spinner only during terminal bootstrap , then hand off to main.run()."""
     console = Console(stderr=True)
-    with console.status("[dim]Loading mcp-agent CLI...[/dim]", spinner="dots"):
-        from mcp_agent.cli.main import run as main_run  # heavy imports happen here
+    if console.is_terminal:
+        with console.status("[dim]Loading mcp-agent CLI...[/dim]", spinner="dots"):
+            from mcp_agent.cli.main import run as main_run  # heavy imports happen here
+    else:
+        from mcp_agent.cli.main import (
+            run as main_run,
+        )  # spinner not displayed in non-interactive environments
     main_run()
