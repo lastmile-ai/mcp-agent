@@ -100,7 +100,7 @@ async def finder_tool(
         input: The input string to prompt the agent.
 
     Returns:
-        The result of the agent call. This tool will be run syncronously and block until workflow completion.
+        The result of the agent call. This tool will be run synchronously and block until workflow completion.
         To create this as an async tool, use @app.async_tool instead, which will return the workflow ID and run ID.
     """
 
