@@ -39,6 +39,10 @@ from openai import (
     UnprocessableEntityError as AzureOpenAIUnprocessableEntityError,
 )
 from openai.types.chat import ChatCompletion
+from openai.types.shared_params.response_format_json_schema import (
+    JSONSchema,
+    ResponseFormatJSONSchema,
+)
 
 from mcp.types import (
     CallToolRequestParams,
@@ -643,6 +647,14 @@ class AzureOpenAICompletionTasks:
             return model and model.startswith(("gpt-5", "gpt-o1", "gpt-o3", "gpt-o4"))
 
         payload = request.payload.copy()
+
+        # We must properly serialize response_format with type param for the OpenAI client
+        response_format = payload.get("response_format")
+        if response_format and isinstance(response_format, JsonSchemaFormat):
+            payload["response_format"] = ResponseFormatJSONSchema(
+                json_schema=JSONSchema(**response_format),
+                type="json_schema",
+            )
 
         # Handle reasoning models
         if _openai_reasoning(payload.get("model")):
