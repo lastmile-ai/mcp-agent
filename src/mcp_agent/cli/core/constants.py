@@ -24,7 +24,7 @@ ENV_API_KEY = "MCP_API_KEY"
 ENV_VERBOSE = "MCP_VERBOSE"
 
 # API defaults
-DEFAULT_API_BASE_URL = "https://mcp-agent.com/api"
+DEFAULT_API_BASE_URL = "https://web-internal.mcp-agent.com/api"
 
 # Secret types (string constants)
 SECRET_TYPE_DEVELOPER = "dev"
