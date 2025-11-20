@@ -277,7 +277,8 @@ class OpenAIAugmentedLLM(
                         # DEPRECATED: https://platform.openai.com/docs/api-reference/chat/create#chat-create-max_tokens
                         # "max_tokens": params.maxTokens,
                         "max_completion_tokens": params.maxTokens,
-                        "reasoning_effort": self._reasoning_effort,
+                        "reasoning_effort": params.reasoning_effort
+                        or self._reasoning_effort,
                     }
                 else:
                     arguments = {**arguments, "max_tokens": params.maxTokens}
@@ -558,7 +559,9 @@ class OpenAIAugmentedLLM(
                 # DEPRECATED: https://platform.openai.com/docs/api-reference/chat/create#chat-create-max_tokens
                 # "max_tokens": params.maxTokens,
                 payload["max_completion_tokens"] = params.maxTokens
-                payload["reasoning_effort"] = self._reasoning_effort
+                payload["reasoning_effort"] = (
+                    params.reasoning_effort or self._reasoning_effort
+                )
             else:
                 payload["max_tokens"] = params.maxTokens
             user = params.user or getattr(self.context.config.openai, "user", None)

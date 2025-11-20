@@ -1331,6 +1331,7 @@
         "reasoning_effort": {
           "default": "medium",
           "enum": [
+            "none",
             "low",
             "medium",
             "high"

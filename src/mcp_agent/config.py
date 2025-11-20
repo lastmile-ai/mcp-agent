@@ -418,7 +418,7 @@ class OpenAISettings(BaseSettings):
         validation_alias=AliasChoices("api_key", "OPENAI_API_KEY", "openai__api_key"),
     )
 
-    reasoning_effort: Literal["low", "medium", "high"] = Field(
+    reasoning_effort: Literal["none", "low", "medium", "high"] = Field(
         default="medium",
         validation_alias=AliasChoices(
             "reasoning_effort", "OPENAI_REASONING_EFFORT", "openai__reasoning_effort"

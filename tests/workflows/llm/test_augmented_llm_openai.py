@@ -690,3 +690,149 @@ class TestOpenAIAugmentedLLM:
         # Check that the user field is present in the payload
         request_obj = mock_llm.executor.execute.call_args[0][1]
         assert request_obj.payload.get("user") == "config_user_id"
+
+    @pytest.mark.asyncio
+    async def test_reasoning_effort_in_payload(self, mock_llm, default_usage):
+        """
+        Tests that reasoning_effort from RequestParams is correctly passed to the API payload.
+        """
+        # Setup mock executor
+        mock_llm.executor.execute = AsyncMock(
+            return_value=self.create_text_response("Test response", usage=default_usage)
+        )
+
+        # IMPORTANT: Mock select_model to return a reasoning model
+        mock_llm.select_model = AsyncMock(return_value="gpt-5.1")
+
+        # Call LLM with custom reasoning_effort
+        await mock_llm.generate(
+            "Test query",
+            request_params=RequestParams(model="gpt-5.1", reasoning_effort="high"),
+        )
+
+        # Verify the payload contains reasoning_effort
+        request_obj = mock_llm.executor.execute.call_args[0][1]
+        assert request_obj.payload["reasoning_effort"] == "high"
+        assert request_obj.payload["model"] == "gpt-5.1"
+        # Should use max_completion_tokens for reasoning models
+        assert "max_completion_tokens" in request_obj.payload
+        assert "max_tokens" not in request_obj.payload
+
+    @pytest.mark.asyncio
+    async def test_reasoning_effort_fallback(self, mock_llm, default_usage):
+        """
+        Tests that reasoning_effort falls back to config default when not specified.
+        """
+        # Setup mock executor
+        mock_llm.executor.execute = AsyncMock(
+            return_value=self.create_text_response("Test response", usage=default_usage)
+        )
+
+        # Mock select_model to return a reasoning model
+        mock_llm.select_model = AsyncMock(return_value="gpt-5.1")
+
+        # Call LLM without specifying reasoning_effort (should use config default: "medium")
+        await mock_llm.generate(
+            "Test query", request_params=RequestParams(model="gpt-5.1")
+        )
+
+        # Verify the payload uses config default
+        request_obj = mock_llm.executor.execute.call_args[0][1]
+        assert request_obj.payload["reasoning_effort"] == "medium"
+
+    @pytest.mark.asyncio
+    async def test_reasoning_effort_values(self, mock_llm, default_usage):
+        """
+        Tests that different reasoning_effort values are correctly passed.
+        """
+        test_cases = ["none", "low", "medium", "high"]
+
+        for effort in test_cases:
+            # Setup mock executor
+            mock_llm.executor.execute = AsyncMock(
+                return_value=self.create_text_response(
+                    f"Response with {effort}", usage=default_usage
+                )
+            )
+
+            # Mock select_model to return a reasoning model
+            mock_llm.select_model = AsyncMock(return_value="gpt-5.1")
+
+            # Call LLM with specific reasoning_effort
+            await mock_llm.generate(
+                "Test query",
+                request_params=RequestParams(model="gpt-5.1", reasoning_effort=effort),
+            )
+
+            # Verify the payload contains correct reasoning_effort
+            request_obj = mock_llm.executor.execute.call_args[0][1]
+            assert request_obj.payload["reasoning_effort"] == effort
+
+    @pytest.mark.asyncio
+    async def test_reasoning_effort_not_applied_to_non_reasoning_model(
+        self, mock_llm, default_usage
+    ):
+        """
+        Tests that reasoning_effort is not applied to non-reasoning models.
+        """
+        # Setup mock executor
+        mock_llm.executor.execute = AsyncMock(
+            return_value=self.create_text_response("Test response", usage=default_usage)
+        )
+
+        # Mock select_model to return a NON-reasoning model
+        mock_llm.select_model = AsyncMock(return_value="gpt-4.1")
+
+        # Call LLM with non-reasoning model (even if reasoning_effort is specified)
+        await mock_llm.generate(
+            "Test query",
+            request_params=RequestParams(
+                model="gpt-4.1",
+                reasoning_effort="high",  # This should be ignored
+            ),
+        )
+
+        # Verify reasoning_effort is NOT in payload for non-reasoning models
+        request_obj = mock_llm.executor.execute.call_args[0][1]
+        assert "reasoning_effort" not in request_obj.payload
+        # Should use max_tokens instead of max_completion_tokens
+        assert "max_tokens" in request_obj.payload
+        assert "max_completion_tokens" not in request_obj.payload
+
+    @pytest.mark.asyncio
+    async def test_reasoning_models_detection(self, mock_llm, default_usage):
+        """
+        Tests that different reasoning model prefixes are correctly detected.
+        """
+        reasoning_models = [
+            "o1-preview",
+            "o1-mini",
+            "o3-mini",
+            "o4-preview",
+            "gpt-5",
+            "gpt-5.1",
+        ]
+
+        for model in reasoning_models:
+            # Setup mock executor
+            mock_llm.executor.execute = AsyncMock(
+                return_value=self.create_text_response(
+                    "Test response", usage=default_usage
+                )
+            )
+
+            # Mock select_model
+            mock_llm.select_model = AsyncMock(return_value=model)
+
+            # Call LLM
+            await mock_llm.generate(
+                "Test query",
+                request_params=RequestParams(model=model, reasoning_effort="low"),
+            )
+
+            # Verify reasoning_effort is applied
+            request_obj = mock_llm.executor.execute.call_args[0][1]
+            assert "reasoning_effort" in request_obj.payload, (
+                f"reasoning_effort should be applied for {model}"
+            )
+            assert request_obj.payload["reasoning_effort"] == "low"

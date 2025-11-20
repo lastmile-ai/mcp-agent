@@ -6,6 +6,7 @@ from mcp_agent.core.context import Context
 from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
+from mcp_agent.workflows.llm.augmented_llm import RequestParams
 
 
 def add_numbers(a: int, b: int) -> int:
@@ -44,6 +45,7 @@ async def calculate(expr: str, app_ctx: Optional[Context] = None) -> str:
         llm = await math_agent.attach_llm(OpenAIAugmentedLLM)
         result = await llm.generate_str(
             message=expr,
+            request_params=RequestParams(model="gpt-5.1", reasoning_effort="none"),
         )
 
         logger.info(f"Expert math result: {result}")
