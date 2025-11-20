@@ -189,7 +189,7 @@ andrew_lm@Mac sdk-cloud % uv run mcp-agent deploy basic_agent_server -c /Users/a
 │ Secrets file: /Users/andrew_lm/Documents/GitHub/mcp-agent/examples/mcp_agent_server/asyncio/mcp_agent.secrets.yaml │
 │ Mode: DEPLOY                                                                                                                │
 ╰──────────────────────────────────────────────────────── LastMile AI ────────────────────────────────────────────────────────╯
-INFO: Using API at https://mcp-agent.com/api
+INFO: Using API at https://web-internal.mcp-agent.com/api
 INFO: Checking for existing app ID for 'basic_agent_server'...
 SUCCESS: Found existing app with ID: app_dd3a033d-4f4b-4e33-b82c-aad9ec43c52f for name 'basic_agent_server'
 INFO: Processing secrets file...
