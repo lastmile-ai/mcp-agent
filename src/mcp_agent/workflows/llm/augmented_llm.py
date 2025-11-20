@@ -12,6 +12,7 @@ from typing import (
     TypeVar,
     Union,
     TYPE_CHECKING,
+    Literal,
 )
 
 from opentelemetry import trace
@@ -193,6 +194,13 @@ class RequestParams(CreateMessageRequestParams):
         - None - No filtering applied (default behavior)
 
     Tool names should match exactly as they appear in the server's tool list.
+    """
+
+    reasoning_effort: Optional[Literal["none", "low", "medium", "high"]] = None
+    """
+    (OpenAI only) Controls the reasoning effort for o1/o3/o4/gpt-5/gpt-5.1 models.
+    Valid values: 'none', 'low', 'medium', 'high'
+    Ignored by other providers.
     """
 
 
