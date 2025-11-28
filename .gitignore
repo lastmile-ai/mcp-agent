@@ -161,6 +161,10 @@ cython_debug/
 # but make sure example files are
 !examples/**/*.secrets.yaml.example
 
+# For our repo, ignore deployed configs (e.g. from examples)
+# For your own projects, you likely won't want to ignore these
+**/mcp_agent.deployed.config.yaml
+
 # Test data files
 examples/mcp/mcp_roots/test_data/*.png
 
