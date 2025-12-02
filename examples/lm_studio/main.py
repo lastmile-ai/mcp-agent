@@ -89,6 +89,8 @@ async def example_usage():
 async def structured_output_example():
     """
     Example showing structured outputs with LM Studio.
+    Important: Not all models are capable of structured output, particularly LLMs below 7B parameters.
+    Check the model card README if you are unsure if the model supports structured output.
     """
     from pydantic import BaseModel
     from typing import List

@@ -14,7 +14,7 @@ mcp:
   servers:
     filesystem:
       command: "npx"
-      args: ["-y", "@modelcontextprotocol/server-filesystem"]
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
 
 lm_studio:
   # base_url defaults to http://localhost:1234/v1
