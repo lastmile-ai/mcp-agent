@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import MagicMock
 
 from mcp_agent.config import LMStudioSettings
+from mcp_agent.workflows.llm.augmented_llm import RequestParams
 from mcp_agent.workflows.llm.augmented_llm_lm_studio import LMStudioAugmentedLLM
 
 
@@ -68,3 +69,71 @@ class TestLMStudioAugmentedLLM:
 
         assert hasattr(llm.context.config.lm_studio, "api_key")
         assert llm.context.config.lm_studio.api_key == "lm-studio"
+
+    @pytest.mark.asyncio
+    async def test_select_model_uses_config_default(self, mock_context):
+        """
+        Test that select_model returns the config's default_model when set.
+        """
+        mock_context.config.lm_studio = LMStudioSettings(
+            default_model="deepseek/deepseek-r1-distill-qwen-14b",
+            base_url="http://localhost:1234/v1",
+        )
+
+        llm = LMStudioAugmentedLLM(name="test", context=mock_context)
+
+        model = await llm.select_model()
+
+        assert model == "deepseek/deepseek-r1-distill-qwen-14b"
+
+    @pytest.mark.asyncio
+    async def test_select_model_request_params_override(self, mock_context):
+        """
+        Test that select_model prioritizes request_params.model over config.
+        """
+        mock_context.config.lm_studio = LMStudioSettings(
+            default_model="deepseek/deepseek-r1-distill-qwen-14b",
+            base_url="http://localhost:1234/v1",
+        )
+
+        llm = LMStudioAugmentedLLM(name="test", context=mock_context)
+
+        # Request params should override config
+        request_params = RequestParams(model="custom-model")
+        model = await llm.select_model(request_params)
+
+        assert model == "custom-model"
+
+    @pytest.mark.asyncio
+    async def test_select_model_no_config_default(self, mock_context):
+        """
+        Test that select_model falls back to parent when no config default_model.
+        """
+
+        mock_context.config.lm_studio = LMStudioSettings(
+            default_model=None,
+            base_url="http://localhost:1234/v1",
+        )
+
+        llm = LMStudioAugmentedLLM(name="test", context=mock_context)
+
+        # Mock the parent's select_model to verify fallback behavior
+        original_select = LMStudioAugmentedLLM.__bases__[0].select_model
+        parent_called = False
+
+        async def mock_parent_select(self, request_params=None):
+            nonlocal parent_called
+            parent_called = True
+            return "benchmark-model"
+
+        LMStudioAugmentedLLM.__bases__[0].select_model = mock_parent_select
+
+        try:
+            model = await llm.select_model()
+            assert parent_called, (
+                "Parent's select_model should be called when no config default"
+            )
+            assert model == "benchmark-model"
+        finally:
+            # Restore original
+            LMStudioAugmentedLLM.__bases__[0].select_model = original_select
