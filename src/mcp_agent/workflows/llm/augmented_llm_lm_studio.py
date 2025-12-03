@@ -18,6 +18,24 @@ class LMStudioAugmentedLLM(OpenAIAugmentedLLM):
         # Override provider name for logging and telemetry
         self.provider = "LM Studio"
 
+    async def select_model(
+        self, request_params: RequestParams | None = None
+    ) -> str | None:
+        """
+        Select model for LM Studio, prioritizing config default_model over benchmarks.
+        """
+        # Check request_params first
+        if request_params and request_params.model:
+            return request_params.model
+
+        # Check LM Studio config default_model
+        lm_studio_config = self.get_provider_config(self.context)
+        if lm_studio_config and lm_studio_config.default_model:
+            return lm_studio_config.default_model
+
+        # Fall back to parent's model selection (benchmarks)
+        return await super().select_model(request_params)
+
     async def generate_structured(
         self,
         message,
@@ -42,7 +60,6 @@ Information:
 
 Return ONLY valid JSON matching this exact structure. Do not include any explanation or additional text."""
 
-        # Use openai's native structured output
         result = await super().generate_structured(
             message=format_prompt,
             response_model=response_model,
