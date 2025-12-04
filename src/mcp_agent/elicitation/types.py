@@ -1,14 +1,28 @@
-from typing import Protocol
+from typing import Protocol, Union
 from mcp.types import (
-    ElicitRequestParams as MCPElicitRequestParams,
+    ElicitRequestFormParams as MCPElicitRequestFormParams,
+    ElicitRequestURLParams as MCPElicitRequestURLParams,
     ElicitResult,
     ErrorData,
 )
 
 
-class ElicitRequestParams(MCPElicitRequestParams):
+class ElicitRequestFormParams(MCPElicitRequestFormParams):
+    """Form mode elicitation request with additional metadata."""
+
     server_name: str | None = None
-    """Name of the MCP server making the elicitation request"""
+    """Name of the MCP server making the elicitation request."""
+
+
+class ElicitRequestURLParams(MCPElicitRequestURLParams):
+    """URL mode elicitation request with additional metadata."""
+
+    server_name: str | None = None
+    """Name of the MCP server making the elicitation request."""
+
+
+ElicitRequestParams = Union[ElicitRequestFormParams, ElicitRequestURLParams]
+"""Elicitation request parameters - either form or URL mode, with server_name."""
 
 
 class ElicitationCallback(Protocol):

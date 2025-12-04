@@ -45,6 +45,8 @@ from mcp.types import (
     RequestParams,
     Root,
     ElicitRequestParams as MCPElicitRequestParams,
+    ElicitRequestFormParams as MCPElicitRequestFormParams,
+    ElicitRequestURLParams as MCPElicitRequestURLParams,
     ElicitRequest,
     ElicitResult,
     PaginatedRequestParams,
@@ -52,6 +54,10 @@ from mcp.types import (
 
 from mcp_agent.config import MCPServerSettings
 from mcp_agent.core.context_dependent import ContextDependent
+from mcp_agent.elicitation.types import (
+    ElicitRequestFormParams as AgentElicitRequestFormParams,
+    ElicitRequestURLParams as AgentElicitRequestURLParams,
+)
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.tracing.semconv import (
     MCP_METHOD_NAME,
@@ -392,7 +398,25 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
             if hasattr(self, "server_config") and self.server_config:
                 server_name = getattr(self.server_config, "name", None)
 
-            elicitation_request = params.model_copy(update={"server_name": server_name})
+            # Convert MCP params to our subclass with server_name
+            elicitation_request: (
+                AgentElicitRequestFormParams | AgentElicitRequestURLParams
+            )
+            match params:
+                case MCPElicitRequestURLParams():
+                    elicitation_request = AgentElicitRequestURLParams(
+                        message=params.message,
+                        url=params.url,
+                        elicitationId=params.elicitationId,
+                        server_name=server_name,
+                    )
+                case MCPElicitRequestFormParams():
+                    elicitation_request = AgentElicitRequestFormParams(
+                        message=params.message,
+                        requestedSchema=params.requestedSchema,
+                        server_name=server_name,
+                    )
+
             elicitation_response = await self.context.elicitation_handler(
                 elicitation_request
             )

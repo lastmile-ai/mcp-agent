@@ -88,7 +88,8 @@ def _create_panel(request: ElicitRequestParams) -> Panel:
 
 async def _handle_elicitation_requested_schema(request: ElicitRequestParams) -> str:
     """Prompt for structured input based on requested schema."""
-    schema = request.requestedSchema
+    # requestedSchema is only available on form mode elicitation requests
+    schema = getattr(request, "requestedSchema", None)
     if not schema or "properties" not in schema:
         raise ValueError("Invalid schema: must contain 'properties'")
 
