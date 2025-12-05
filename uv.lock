@@ -2081,7 +2081,7 @@ wheels = [
 
 [[package]]
 name = "mcp"
-version = "1.19.0"
+version = "1.23.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -2090,20 +2090,23 @@ dependencies = [
     { name = "jsonschema" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "pyjwt", extra = ["crypto"] },
     { name = "python-multipart" },
     { name = "pywin32", marker = "sys_platform == 'win32'" },
     { name = "sse-starlette" },
     { name = "starlette" },
+    { name = "typing-extensions" },
+    { name = "typing-inspection" },
     { name = "uvicorn", marker = "sys_platform != 'emscripten'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/69/2b/916852a5668f45d8787378461eaa1244876d77575ffef024483c94c0649c/mcp-1.19.0.tar.gz", hash = "sha256:213de0d3cd63f71bc08ffe9cc8d4409cc87acffd383f6195d2ce0457c021b5c1", size = 444163, upload-time = "2025-10-24T01:11:15.839Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/12/42/10c0c09ca27aceacd8c428956cfabdd67e3d328fe55c4abc16589285d294/mcp-1.23.1.tar.gz", hash = "sha256:7403e053e8e2283b1e6ae631423cb54736933fea70b32422152e6064556cd298", size = 596519, upload-time = "2025-12-02T18:41:12.807Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ce/a3/3e71a875a08b6a830b88c40bc413bff01f1650f1efe8a054b5e90a9d4f56/mcp-1.19.0-py3-none-any.whl", hash = "sha256:f5907fe1c0167255f916718f376d05f09a830a215327a3ccdd5ec8a519f2e572", size = 170105, upload-time = "2025-10-24T01:11:14.151Z" },
+    { url = "https://files.pythonhosted.org/packages/9f/9e/26e1d2d2c6afe15dfba5ca6799eeeea7656dce625c22766e4c57305e9cc2/mcp-1.23.1-py3-none-any.whl", hash = "sha256:3ce897fcc20a41bd50b4c58d3aa88085f11f505dcc0eaed48930012d34c731d8", size = 231433, upload-time = "2025-12-02T18:41:11.195Z" },
 ]
 
 [[package]]
 name = "mcp-agent"
-version = "0.2.5"
+version = "0.2.6"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
@@ -2202,7 +2205,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "jsonref", specifier = ">=1.1.0" },
     { name = "langchain-core", marker = "extra == 'langchain'", specifier = ">=0.3.64" },
-    { name = "mcp", specifier = ">=1.19.0" },
+    { name = "mcp", specifier = ">=1.20.0" },
     { name = "numpy", specifier = ">=2.1.3" },
     { name = "openai", marker = "extra == 'openai'", specifier = ">=1.58.1" },
     { name = "opentelemetry-distro", specifier = ">=0.50b0" },
@@ -2240,11 +2243,6 @@ dev = [
     { name = "tomli", specifier = ">=2.2.1" },
     { name = "trio", specifier = ">=0.30.0" },
 ]
-
-[[package]]
-name = "mcptest"
-version = "0.1.0"
-source = { virtual = "mcptest" }
 
 [[package]]
 name = "mdurl"
