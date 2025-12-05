@@ -736,13 +736,13 @@ class MCPAzureTypeConverter(ProviderToMCPConverter[MessageParam, ResponseMessage
     @classmethod
     def from_mcp_message_param(cls, param: MCPMessageParam) -> MessageParam:
         if param.role == "assistant":
-            extras = param.model_dump(exclude={"role", "content"})
+            extras = param.model_dump(exclude={"role", "content", "meta"})
             return AssistantMessage(
                 content=mcp_content_to_azure_content([param.content]),
                 **extras,
             )
         elif param.role == "user":
-            extras = param.model_dump(exclude={"role", "content"})
+            extras = param.model_dump(exclude={"role", "content", "meta"})
             return UserMessage(
                 content=mcp_content_to_azure_content([param.content], str_only=False),
                 **extras,
