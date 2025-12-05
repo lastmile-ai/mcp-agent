@@ -292,7 +292,7 @@ class OpenAIAugmentedLLM(
                 self._log_chat_progress(chat_turn=len(messages) // 2, model=model)
 
                 request = RequestCompletionRequest(
-                    config=self.context.config.openai,
+                    config=self.get_provider_config(self.context),
                     payload=arguments,
                 )
 
@@ -575,7 +575,7 @@ class OpenAIAugmentedLLM(
             completion: ChatCompletion = await self.executor.execute(
                 OpenAICompletionTasks.request_completion_task,
                 RequestCompletionRequest(
-                    config=self.context.config.openai, payload=payload
+                    config=self.get_provider_config(self.context), payload=payload
                 ),
             )
 

@@ -458,6 +458,48 @@ class OpenAISettings(BaseSettings):
     )
 
 
+class LMStudioSettings(OpenAISettings):
+    """
+    Settings for using LM Studio local LLM server.
+
+    Extends OpenAISettings since LM Studio provides an OpenAI-compatible API.
+    Inherits all OpenAI fields (user, default_headers, reasoning_effort, etc.)
+    but overrides defaults for local usage.
+
+    Note: api_key is automatically set to "lm-studio" for compatibility.
+    """
+
+    api_key: str | None = Field(
+        default="lm-studio",
+        description="API key for OpenAI client compatibility (automatically set, no configuration needed)",
+        validation_alias=AliasChoices(
+            "api_key", "LM_STUDIO_API_KEY", "lm_studio__api_key"
+        ),
+    )
+
+    base_url: str | None = Field(
+        default="http://localhost:1234/v1",
+        validation_alias=AliasChoices(
+            "base_url", "LM_STUDIO_BASE_URL", "lm_studio__base_url"
+        ),
+    )
+
+    default_model: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "default_model", "LM_STUDIO_DEFAULT_MODEL", "lm_studio__default_model"
+        ),
+    )
+
+    model_config = SettingsConfigDict(
+        env_prefix="LM_STUDIO_",
+        extra="allow",
+        arbitrary_types_allowed=True,
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+
 class AzureSettings(BaseSettings):
     """
     Settings for using Azure models in the MCP Agent application.
@@ -1130,6 +1172,9 @@ class Settings(BaseSettings):
 
     openai: OpenAISettings | None = Field(default_factory=OpenAISettings)
     """Settings for using OpenAI models in the MCP Agent application"""
+
+    lm_studio: LMStudioSettings | None = Field(default_factory=LMStudioSettings)
+    """Settings for using LM Studio models in the MCP Agent application"""
 
     workflow_task_modules: List[str] = Field(default_factory=list)
     """Optional list of modules to import at startup so workflow tasks register globally."""
