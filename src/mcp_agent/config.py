@@ -637,6 +637,9 @@ class TemporalSettings(BaseModel):
     workflow_task_modules: List[str] = Field(default_factory=list)
     """Additional module paths to import before creating a Temporal worker. Each should be importable."""
 
+    default_maximum_attempts: int | None = 3
+    """Default maximum retry attempts for activities without explicit retry policy. Set to None for unlimited retries (Temporal default)."""
+
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 

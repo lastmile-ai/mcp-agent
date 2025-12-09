@@ -18,6 +18,7 @@ temporal:
   namespace: "default" # Default Temporal namespace
   task_queue: "mcp-agent" # Task queue for workflows and activities
   max_concurrent_activities: 10 # Maximum number of concurrent activities
+  default_maximum_attempts: 3 # Limit number of retries
 
 logger:
   transports: [console]
