@@ -31,6 +31,7 @@ from mcp.types import (
     SamplingMessage,
     TextContent,
     PromptMessage,
+    Tool,  # noqa: F401 - Required to resolve forward reference in CreateMessageRequestParams
 )
 
 from mcp_agent.core.context_dependent import ContextDependent

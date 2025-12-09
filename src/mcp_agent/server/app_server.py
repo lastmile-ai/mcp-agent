@@ -1023,7 +1023,8 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                 CreateMessageRequestParams,
                 CreateMessageResult,
                 ElicitRequest,
-                ElicitRequestParams,
+                ElicitRequestFormParams,
+                ElicitRequestURLParams,
                 ElicitResult,
                 ListRootsRequest,
                 ListRootsResult,
@@ -1046,10 +1047,16 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                     by_alias=True, mode="json", exclude_none=True
                 )
             elif method == "elicitation/create":
+                # Determine which elicitation mode to use based on params
+                mode = params.get("mode", "form")
+                if mode == "url":
+                    elicit_params = ElicitRequestURLParams(**params)
+                else:
+                    elicit_params = ElicitRequestFormParams(**params)
                 req = ServerRequest(
                     ElicitRequest(
                         method="elicitation/create",
-                        params=ElicitRequestParams(**params),
+                        params=elicit_params,
                     )
                 )
                 callback_data = await session.send_request(
@@ -1139,7 +1146,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         async def _perform_auth_flow(context, params, scopes, session):
             from mcp.types import (
                 ElicitRequest,
-                ElicitRequestParams,
+                ElicitRequestFormParams,
                 ElicitResult,
             )
 
@@ -1164,7 +1171,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             callback_future = await callback_registry.create_handle(flow_id)
             req = ElicitRequest(
                 method="elicitation/create",
-                params=ElicitRequestParams(
+                params=ElicitRequestFormParams(
                     message=params["message"] + "\n\n" + params["url"],
                     requestedSchema=AuthToken.model_json_schema(),
                 ),
