@@ -150,9 +150,28 @@ The same helper works on the asyncio executor via `app.context.executor.signal_b
 
 The Temporal server example also shows how durable workflows call nested MCP servers and trigger [MCP elicitation](https://modelcontextprotocol.io/specification/2025-06-18/client/elicitation) when a human response is required. Activities such as `call_nested_elicitation` log progress via `app.app.logger` so the request trace and Temporal history stay aligned.
 
-## Configure workflow-task modules and retry policies
+## Configure retry policies
 
-Add optional top-level overrides to preload custom workflow tasks and refine retry behaviour:
+By default, mcp-agent limits activity retries to **3 attempts** to prevent runaway executions. You can customize this behaviour at multiple levels:
+
+### Default retry limits
+
+The `temporal.default_maximum_attempts` setting controls the default retry limit for all activities without an explicit retry policy:
+
+```yaml
+execution_engine: temporal
+
+temporal:
+  host: "localhost:7233"
+  task_queue: "mcp-agent"
+  default_maximum_attempts: 3
+```
+
+Set `default_maximum_attempts: null` to restore Temporal's default unlimited retry behaviour (not recommended).
+
+### Per-activity retry policies
+
+For granular control, use `workflow_task_retry_policies` to override retry behaviour for specific activities:
 
 ```yaml
 execution_engine: temporal
