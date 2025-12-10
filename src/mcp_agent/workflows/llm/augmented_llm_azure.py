@@ -236,7 +236,11 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
                     arguments = {**arguments, **params.metadata}
 
                 self.logger.debug("Completion request arguments:", data=arguments)
-                self._log_chat_progress(chat_turn=(len(messages) + 1) // 2, model=model)
+                self._log_chat_progress(
+                    chat_turn=(len(messages) + 1) // 2,
+                    model=model,
+                    request_messages=messages,
+                )
 
                 request = RequestCompletionRequest(
                     config=self.context.config.azure,
@@ -332,7 +336,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
             if params.use_history:
                 self.history.set(messages)
 
-            self._log_chat_finished(model=model)
+            self._log_chat_finished(model=model, responses=responses)
 
             if self.context.tracing_enabled:
                 span.set_attribute(GEN_AI_USAGE_INPUT_TOKENS, total_input_tokens)

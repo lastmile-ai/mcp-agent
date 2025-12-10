@@ -160,7 +160,11 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
                 }
 
             self.logger.debug("Completion request arguments:", data=arguments)
-            self._log_chat_progress(chat_turn=(len(messages) + 1) // 2, model=model)
+            self._log_chat_progress(
+                chat_turn=(len(messages) + 1) // 2,
+                model=model,
+                request_messages=messages,
+            )
 
             response: ConverseResponseTypeDef = await self.executor.execute(
                 BedrockCompletionTasks.request_completion_task,
@@ -260,7 +264,7 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
         if params.use_history:
             self.history.set(messages)
 
-        self._log_chat_finished(model=model)
+        self._log_chat_finished(model=model, responses=responses)
 
         return responses
 

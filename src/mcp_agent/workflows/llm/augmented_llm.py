@@ -622,7 +622,10 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         return str(message)
 
     def _log_chat_progress(
-        self, chat_turn: Optional[int] = None, model: str | None = None
+        self,
+        chat_turn: Optional[int] = None,
+        model: str | None = None,
+        request_messages: List[Any] | None = None,
     ):
         """Log a chat progress event"""
         data = {
@@ -630,12 +633,22 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
             "model": model,
             "agent_name": self.name,
             "chat_turn": chat_turn if chat_turn is not None else None,
+            "request_messages": request_messages,
         }
         self.logger.debug("Chat in progress", data=data)
 
-    def _log_chat_finished(self, model: str | None = None):
+    def _log_chat_finished(
+        self,
+        model: str | None = None,
+        responses: List[Any] | None = None,
+    ):
         """Log a chat finished event"""
-        data = {"progress_action": "Finished", "model": model, "agent_name": self.name}
+        data = {
+            "progress_action": "Finished",
+            "model": model,
+            "agent_name": self.name,
+            "responses": responses,
+        }
         self.logger.debug("Chat finished", data=data)
 
     @staticmethod
