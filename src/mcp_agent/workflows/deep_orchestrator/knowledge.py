@@ -103,6 +103,16 @@ class KnowledgeExtractor:
                 else:
                     confidence = 0.8
 
+                # Attach provenance/citation if available from the calling LLM
+                citation = None
+                try:
+                    if hasattr(llm, "get_and_clear_tool_provenance"):
+                        prov = llm.get_and_clear_tool_provenance()
+                        if prov:
+                            citation = {"tools": prov[-3:]}  # last few tool calls
+                except Exception:
+                    citation = None
+
                 knowledge_items.append(
                     KnowledgeItem(
                         key=item.get("key", "Unknown"),
@@ -110,6 +120,7 @@ class KnowledgeExtractor:
                         source=task_result.task_name,
                         confidence=confidence,
                         category=item.get("category", "general"),
+                        citation=citation,
                     )
                 )
 

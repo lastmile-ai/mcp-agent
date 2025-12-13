@@ -293,6 +293,8 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         self.executor = self.context.executor
         self.name = self._gen_name(name or (agent.name if agent else None), prefix=None)
         self.instruction = instruction or (agent.instruction if agent else None)
+        # Track last tool call metadata for provenance
+        self._last_tool_calls: list[dict[str, Any]] = []
 
         if not self.name:
             raise ValueError(
@@ -493,6 +495,18 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         self, tool_call_id: str | None, request: CallToolRequest, result: CallToolResult
     ) -> CallToolResult:
         """Called after a tool execution. Can modify the result before it's returned."""
+        # Record minimal provenance for citations
+        try:
+            self._last_tool_calls.append(
+                {
+                    "tool": request.params.name,
+                    "arguments": request.params.arguments,
+                    "tool_call_id": tool_call_id,
+                    "isError": result.isError,
+                }
+            )
+        except Exception:
+            pass
         return result
 
     async def call_tool(
@@ -616,6 +630,12 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
     def message_param_str(self, message: MessageParamT) -> str:
         """Convert an input message to a string representation."""
         return str(message)
+
+    def get_and_clear_tool_provenance(self) -> list[dict[str, Any]]:
+        """Return and clear recorded tool call provenance."""
+        prov = self._last_tool_calls
+        self._last_tool_calls = []
+        return prov
 
     def message_str(self, message: MessageT, content_only: bool = False) -> str:
         """Convert an output message to a string representation."""

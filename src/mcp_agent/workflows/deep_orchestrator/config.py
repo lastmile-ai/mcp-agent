@@ -31,6 +31,29 @@ class ExecutionConfig(BaseModel):
     enable_filesystem: bool = True
     """Enable filesystem workspace for artifacts"""
 
+    # Efficiency and robustness controls
+    max_plan_verification_attempts: int = 4
+    """Maximum attempts to repair/verify a plan before proceeding"""
+
+    # Knowledge extraction strategy
+    knowledge_extraction_mode: str = "batch"
+    """Either 'per_task' or 'batch' (default) to extract knowledge after a step"""
+
+    knowledge_batch_max_concurrent: int = 3
+    """Max concurrent knowledge extraction tasks when in batch mode"""
+
+    # Token/cost optimization
+    lean_agent_design: bool = False
+    """If true, skip designer LLM call and create minimal agents for tasks"""
+
+    # Adaptive effort scaling based on objective complexity
+    dynamic_effort_scaling: bool = False
+    """If true, adjust execution/context budgets based on objective complexity"""
+
+    # Artifact persistence
+    save_task_outputs_to_artifacts: bool = True
+    """If true, persist each successful task's output into the workspace artifacts"""
+
 
 class ContextConfig(BaseModel):
     """Configuration for context management."""

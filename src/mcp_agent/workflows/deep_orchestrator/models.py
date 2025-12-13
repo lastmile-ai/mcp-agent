@@ -47,6 +47,8 @@ class KnowledgeItem:
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     confidence: float = 1.0
     category: str = "general"
+    # Added citation/provenance
+    citation: Dict[str, Any] | None = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation."""
@@ -72,6 +74,8 @@ class TaskResult:
     knowledge_extracted: List[KnowledgeItem] = field(default_factory=list)
     duration_seconds: float = 0.0
     retry_count: int = 0
+    # Optional provenance/citation information for outputs
+    citation: Dict[str, Any] | None = None
 
     @property
     def success(self) -> bool:
