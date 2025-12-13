@@ -11,11 +11,6 @@ mcp:
       command: "uvx"
       args: ["mcp-server-fetch"]
     
-    # Google Search MCP server
-    g-search:
-      command: "npx"
-      args: ["-y", "g-search-mcp"]
-    
     # Filesystem server for writing reports
     filesystem:
       command: "npx"
