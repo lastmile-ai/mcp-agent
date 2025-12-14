@@ -35,6 +35,7 @@ from mcp_agent.executor.decorator_registry import (
     register_asyncio_decorators,
     register_temporal_decorators,
 )
+from mcp_agent.authorization.registry import AuthorizationRegistry
 from mcp_agent.executor.task_registry import ActivityRegistry
 from mcp_agent.executor.workflow_signal import SignalWaitCallback
 from mcp_agent.executor.workflow_task import GlobalWorkflowTaskRegistry
@@ -142,6 +143,11 @@ class MCPApp:
         register_temporal_decorators(self._decorator_registry)
         self._registered_global_workflow_tasks = set()
 
+        # API Authorization related decorators will use this registry to perform
+        # authorization and filtering on the APIs based on various contexts available
+        # to the call.
+        self._authorization_registry = AuthorizationRegistry()
+
         self._human_input_callback = human_input_callback
         self._elicitation_callback = elicitation_callback
         self._signal_notification = signal_notification
@@ -244,6 +250,10 @@ class MCPApp:
                 self._logger._bound_context = self._context
 
         return self._logger
+
+    @property
+    def authorization_registry(self) -> AuthorizationRegistry:
+        return self._authorization_registry
 
     def _apply_environment_bindings(self) -> None:
         """Populate os.environ with values declared in settings.env when the value is available."""
