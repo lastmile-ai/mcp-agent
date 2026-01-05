@@ -106,6 +106,9 @@ def test_build_eval_prompt(mock_optimizer, mock_evaluator):
     assert "Original Request: What is the capital of France?" in prompt
     assert "Current Response (Iteration 1): Paris" in prompt
     assert "Provide your evaluation as a structured response" in prompt
+    # Verify that evaluator instruction is NOT duplicated in the prompt
+    # (it's already set as the system prompt of the evaluator_llm)
+    assert mock_evaluator.instruction not in prompt
 
 
 def test_build_refinement_prompt(mock_optimizer, mock_evaluator):

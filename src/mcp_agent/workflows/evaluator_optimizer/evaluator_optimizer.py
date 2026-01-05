@@ -434,10 +434,13 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
     def _build_eval_prompt(
         self, original_request: str, current_response: str, iteration: int
     ) -> str:
-        """Build the evaluation prompt for the evaluator"""
+        """Build the evaluation prompt for the evaluator.
+
+        Note: The evaluator's instruction is already set as the system prompt
+        of the evaluator_llm, so we don't include it here to avoid duplication.
+        """
         return f"""
-        Evaluate the following response based on these criteria:
-        {self.evaluator.instruction}
+        Evaluate the following response based on your evaluation criteria.
 
         Original Request: {original_request}
         Current Response (Iteration {iteration + 1}): {current_response}
