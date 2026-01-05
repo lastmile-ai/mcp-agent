@@ -132,7 +132,8 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
 
     def __init__(
         self,
-        llm_factory: Callable[[Agent], AugmentedLLM[MessageParamT, MessageT]],
+        llm_factory: Callable[[Agent], AugmentedLLM[MessageParamT, MessageT]]
+        | None = None,
         name: str | None = None,
         planner: Agent | AugmentedLLM | None = None,
         synthesizer: Agent | AugmentedLLM | None = None,
@@ -144,7 +145,9 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
     ):
         """
         Args:
-            llm_factory: Factory function to create an LLM for a given agent
+            llm_factory: Factory function to create an LLM for a given agent.
+                        Optional if planner, synthesizer, and all available_agents
+                        are provided as AugmentedLLM instances.
             planner: LLM to use for planning steps (if not provided, a default planner will be used)
             plan_type: "full" planning generates the full plan first, then executes. "iterative" plans the next step, and loops until success.
             available_agents: List of agents available to tasks executed by this orchestrator
@@ -178,10 +181,14 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
 
         if planner is not None:
             if isinstance(planner, Agent):
+                if not llm_factory:
+                    raise ValueError("llm_factory is required when planner is an Agent")
                 self.planner = llm_factory(planner)
             else:
                 self.planner = planner
         else:
+            if not llm_factory:
+                raise ValueError("llm_factory is required when planner is not provided")
             self.planner = llm_factory(
                 agent=Agent(
                     name="LLM Orchestration Planner",
@@ -191,6 +198,10 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
 
         if synthesizer is not None:
             if isinstance(synthesizer, Agent):
+                if not llm_factory:
+                    raise ValueError(
+                        "llm_factory is required when synthesizer is an Agent"
+                    )
                 self.synthesizer = llm_factory(synthesizer)
             else:
                 self.synthesizer = synthesizer
@@ -200,6 +211,10 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
                 or "You are an expert at synthesizing the results of a plan into a single coherent message."
             )
 
+            if not llm_factory:
+                raise ValueError(
+                    "llm_factory is required when synthesizer is not provided"
+                )
             self.synthesizer = llm_factory(
                 agent=Agent(
                     name="LLM Orchestration Synthesizer",
@@ -542,6 +557,11 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
                 elif isinstance(agent, AugmentedLLM):
                     llm = agent
                 else:
+                    if not self.llm_factory:
+                        raise ValueError(
+                            f"llm_factory is required when available_agents contains Agent instances. "
+                            f"Agent '{agent.name}' requires llm_factory to attach an LLM."
+                        )
                     ctx_agent = active_agents.get(agent.name)
                     if ctx_agent is None:
                         ctx_agent = await stack.enter_async_context(

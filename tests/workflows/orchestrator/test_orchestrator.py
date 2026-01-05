@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from mcp_agent.agents.agent import Agent
 from mcp_agent.workflows.llm.augmented_llm import RequestParams
 from mcp_agent.workflows.orchestrator.orchestrator import Orchestrator
 from mcp_agent.workflows.orchestrator.orchestrator_models import (
@@ -500,3 +501,92 @@ class TestOrchestratorMethods:
         # Check that generate raises an error
         with pytest.raises(NotImplementedError):
             await orchestrator.generate("Test objective", request_params=request_params)
+
+
+class TestOrchestratorOptionalLLMFactory:
+    """Tests for optional llm_factory parameter (Issue #213)"""
+
+    def test_init_without_llm_factory_requires_planner(self, mock_context):
+        """Test that missing llm_factory raises error when planner not provided"""
+        with pytest.raises(ValueError) as exc_info:
+            Orchestrator(context=mock_context)
+        assert "llm_factory is required when planner is not provided" in str(
+            exc_info.value
+        )
+
+    def test_init_without_llm_factory_requires_synthesizer(self, mock_context):
+        """Test that missing llm_factory raises error when synthesizer not provided"""
+        # Create a mock planner AugmentedLLM
+        from tests.workflows.orchestrator.conftest import MockAugmentedLLM
+
+        mock_planner = MockAugmentedLLM(context=mock_context)
+
+        with pytest.raises(ValueError) as exc_info:
+            Orchestrator(planner=mock_planner, context=mock_context)
+        assert "llm_factory is required when synthesizer is not provided" in str(
+            exc_info.value
+        )
+
+    def test_init_with_augmented_llm_planner_and_synthesizer_no_factory(
+        self, mock_context
+    ):
+        """Test that llm_factory is not required when planner and synthesizer are AugmentedLLM"""
+        from tests.workflows.orchestrator.conftest import MockAugmentedLLM
+
+        mock_planner = MockAugmentedLLM(name="TestPlanner", context=mock_context)
+        mock_synthesizer = MockAugmentedLLM(
+            name="TestSynthesizer", context=mock_context
+        )
+
+        # This should not raise an error
+        orchestrator = Orchestrator(
+            planner=mock_planner,
+            synthesizer=mock_synthesizer,
+            context=mock_context,
+        )
+
+        assert orchestrator.planner == mock_planner
+        assert orchestrator.synthesizer == mock_synthesizer
+        assert orchestrator.llm_factory is None
+
+    def test_init_with_agent_planner_requires_factory(self, mock_context):
+        """Test that llm_factory is required when planner is an Agent"""
+        from tests.workflows.orchestrator.conftest import MockAugmentedLLM
+
+        mock_synthesizer = MockAugmentedLLM(
+            name="TestSynthesizer", context=mock_context
+        )
+        agent_planner = Agent(
+            name="PlannerAgent",
+            instruction="Plan things",
+            server_names=[],
+        )
+
+        with pytest.raises(ValueError) as exc_info:
+            Orchestrator(
+                planner=agent_planner,
+                synthesizer=mock_synthesizer,
+                context=mock_context,
+            )
+        assert "llm_factory is required when planner is an Agent" in str(exc_info.value)
+
+    def test_init_with_agent_synthesizer_requires_factory(self, mock_context):
+        """Test that llm_factory is required when synthesizer is an Agent"""
+        from tests.workflows.orchestrator.conftest import MockAugmentedLLM
+
+        mock_planner = MockAugmentedLLM(name="TestPlanner", context=mock_context)
+        agent_synthesizer = Agent(
+            name="SynthesizerAgent",
+            instruction="Synthesize things",
+            server_names=[],
+        )
+
+        with pytest.raises(ValueError) as exc_info:
+            Orchestrator(
+                planner=mock_planner,
+                synthesizer=agent_synthesizer,
+                context=mock_context,
+            )
+        assert "llm_factory is required when synthesizer is an Agent" in str(
+            exc_info.value
+        )
