@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from mcp_agent.agents.agent import Agent
 from mcp_agent.workflows.llm.augmented_llm import RequestParams
 from mcp_agent.workflows.orchestrator.orchestrator import Orchestrator
 from mcp_agent.workflows.orchestrator.orchestrator_models import (
@@ -477,16 +478,43 @@ class TestOrchestratorMethods:
         assert "test_server" in result
 
     async def test_execute_step_with_missing_agent(
-        self, mock_llm_factory, mock_context, sample_step, sample_plan_result
+        self, mock_llm_factory, mock_context, sample_plan_result
     ):
-        """Test that _execute_step raises an error when an agent is missing"""
-        orchestrator = Orchestrator(llm_factory=mock_llm_factory, context=mock_context)
+        """Test that _execute_step raises an error with helpful message when an agent is missing"""
+        # Create an orchestrator with one agent
+        agent = Agent(
+            name="existing_agent",
+            instruction="Existing agent instruction",
+            server_names=["test_server"],
+        )
+        orchestrator = Orchestrator(
+            llm_factory=mock_llm_factory,
+            available_agents=[agent],
+            context=mock_context,
+        )
+
+        # Create a step that references a non-existent agent
+        step_with_missing_agent = Step(
+            description="Test Step",
+            tasks=[
+                AgentTask(
+                    description="Task for non-existent agent",
+                    agent="non_existent_agent",
+                ),
+            ],
+        )
 
         # Call _execute_step with a step that requires an agent that doesn't exist
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError) as exc_info:
             await orchestrator._execute_step(
-                step=sample_step, previous_result=sample_plan_result
+                step=step_with_missing_agent, previous_result=sample_plan_result
             )
+
+        # Verify the error message contains helpful information
+        error_message = str(exc_info.value)
+        assert "non_existent_agent" in error_message
+        assert "Task for non-existent agent" in error_message
+        assert "existing_agent" in error_message or "Available agents" in error_message
 
     async def test_generate_with_history(self, mock_llm_factory, mock_context):
         """Test that generate raises an error when history tracking is enabled"""

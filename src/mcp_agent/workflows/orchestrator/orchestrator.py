@@ -535,9 +535,13 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             for task in step.tasks:
                 agent = self.agents.get(task.agent)
                 if not agent:
-                    # TODO: saqadri - should we fail the entire workflow in this case?
+                    available_agent_names = list(self.agents.keys())
                     raise ValueError(
-                        f'The planner created a task to "{task.description}" but there isn\'t an agent suitable for the task, consider adding an agent.'
+                        f'The planner created a task to "{task.description}" '
+                        f'assigned to agent "{task.agent}", but no agent with that name exists. '
+                        f"Available agents: {available_agent_names}. "
+                        f"Consider adding an agent named '{task.agent}' or updating the planner prompt "
+                        f"to only use existing agents."
                     )
                 elif isinstance(agent, AugmentedLLM):
                     llm = agent

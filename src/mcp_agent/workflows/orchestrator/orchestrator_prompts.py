@@ -24,19 +24,21 @@ Objective: {objective}
 If the previous results achieve the objective, return is_complete=True.
 Otherwise, generate remaining steps needed.
 
-You have access to the following MCP Servers (which are collections of tools/functions),
-and Agents (which are collections of servers):
+You have access to the following Agents (which are collections of MCP servers/tools):
 
 Agents:
 {agents}
+
+IMPORTANT: You must ONLY use agent names from the list above. Do not invent or hallucinate agent names.
+If no suitable agent exists for a task, indicate this in the task description rather than using a non-existent agent name.
 
 Generate a plan with all remaining steps needed.
 Steps are sequential, but each Step can have parallel subtasks.
 For each Step, specify a description of the step and independent subtasks that can run in parallel.
 For each subtask specify:
-    1. Clear description of the task that an LLM can execute  
-    2. Name of 1 Agent (ONLY using the available agents specified) OR List of MCP server names to use for the task
-    
+    1. Clear description of the task that an LLM can execute
+    2. Name of exactly 1 Agent from the available agents list above
+
 Return your response in the following JSON structure:
     {{
         "steps": [
@@ -45,11 +47,11 @@ Return your response in the following JSON structure:
                 "tasks": [
                     {{
                         "description": "Description of task 1",
-                        "agent": "agent_name"  # For AgentTask
+                        "agent": "agent_name"  # Must be from available agents list
                     }},
                     {{
-                        "description": "Description of task 2", 
-                        "agent": "agent_name2"
+                        "description": "Description of task 2",
+                        "agent": "agent_name2"  # Must be from available agents list
                     }}
                 ]
             }}
@@ -61,7 +63,7 @@ You must respond with valid JSON only, with no triple backticks. No markdown for
 No extra text. Do not wrap in ```json code fences."""
 
 ITERATIVE_PLAN_PROMPT_TEMPLATE = """You are tasked with determining only the next step in a plan
-needed to complete an objective. You must analyze the current state and progress from previous steps 
+needed to complete an objective. You must analyze the current state and progress from previous steps
 to decide what to do next.
 
 A Step must be sequential in the plan, but can have independent parallel subtasks. Only return a single Step.
@@ -69,29 +71,31 @@ A Step must be sequential in the plan, but can have independent parallel subtask
 Objective: {objective}
 
 {plan_result}
-    
+
 If the previous results achieve the objective, return is_complete=True.
 Otherwise, generate the next Step.
 
-You have access to the following MCP Servers (which are collections of tools/functions),
-and Agents (which are collections of servers):
+You have access to the following Agents (which are collections of MCP servers/tools):
 
 Agents:
 {agents}
 
+IMPORTANT: You must ONLY use agent names from the list above. Do not invent or hallucinate agent names.
+If no suitable agent exists for a task, indicate this in the task description rather than using a non-existent agent name.
+
 Generate the next step, by specifying a description of the step and independent subtasks that can run in parallel:
 For each subtask specify:
-    1. Clear description of the task that an LLM can execute  
-    2. Name of 1 Agent (ONLY using the available agents specified) OR List of MCP server names to use for the task
+    1. Clear description of the task that an LLM can execute
+    2. Name of exactly 1 Agent from the available agents list above
 
 Return your response in the following JSON structure:
     {{
-    
+
         "description": "Description of step 1",
         "tasks": [
             {{
                 "description": "Description of task 1",
-                "agent": "agent_name"  # For AgentTask
+                "agent": "agent_name"  # Must be from available agents list
             }}
         ],
         "is_complete": false
