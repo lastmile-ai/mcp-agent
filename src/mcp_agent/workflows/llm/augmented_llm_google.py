@@ -146,7 +146,11 @@ class GoogleAugmentedLLM(
             }
 
             self.logger.debug("Completion request arguments:", data=arguments)
-            self._log_chat_progress(chat_turn=(len(messages) + 1) // 2, model=model)
+            self._log_chat_progress(
+                chat_turn=(len(messages) + 1) // 2,
+                model=model,
+                request_messages=messages,
+            )
 
             response: types.GenerateContentResponse = await self.executor.execute(
                 GoogleCompletionTasks.request_completion_task,
@@ -224,7 +228,7 @@ class GoogleAugmentedLLM(
         if params.use_history:
             self.history.set(messages)
 
-        self._log_chat_finished(model=model)
+        self._log_chat_finished(model=model, responses=responses)
 
         return responses
 
