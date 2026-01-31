@@ -210,15 +210,23 @@ class TemporalExecutor(Executor):
             schedule_to_close = timedelta(seconds=schedule_to_close)
 
         retry_policy = execution_metadata.get("retry_policy", None)
+        default_max_attempts = getattr(self.config, "default_maximum_attempts", None)
+
         if isinstance(retry_policy, dict):
+            # If empty dict and we have a default, apply the default maximum_attempts
+            if not retry_policy and default_max_attempts is not None:
+                retry_policy = {"maximum_attempts": default_max_attempts}
             try:
-                retry_policy = RetryPolicy(**retry_policy)
+                retry_policy = RetryPolicy(**retry_policy) if retry_policy else None
             except TypeError as exc:
                 logger.warning(
                     "Invalid retry policy configuration; falling back to default",
                     data={"activity": activity_name, "error": str(exc)},
                 )
                 retry_policy = None
+        elif retry_policy is None and default_max_attempts is not None:
+            # No policy specified at all, apply default
+            retry_policy = RetryPolicy(maximum_attempts=default_max_attempts)
 
         try:
             # Temporal's execute_activity accepts at most one positional arg;

@@ -328,3 +328,228 @@ async def test_metadata_timeout_used_when_no_config_timeout(
     call_args = mock_execute_activity.call_args
     assert call_args.kwargs["schedule_to_close_timeout"] == timedelta(seconds=60)
     assert result == "activity_result"
+
+
+# Tests for default_maximum_attempts feature
+
+
+@pytest.mark.asyncio
+@patch("temporalio.workflow._Runtime.current", return_value=MagicMock())
+@patch("temporalio.workflow.execute_activity")
+async def test_default_maximum_attempts_applied_when_no_retry_policy(
+    mock_execute_activity, mock_runtime, mock_context
+):
+    """Test that default_maximum_attempts is applied when no retry policy is specified"""
+    from temporalio.common import RetryPolicy
+
+    config = TemporalExecutorConfig(
+        host="localhost:7233",
+        namespace="test-namespace",
+        task_queue="test-queue",
+        default_maximum_attempts=5,
+    )
+    executor = TemporalExecutor(config=config, client=AsyncMock(), context=mock_context)
+
+    # Mock a workflow task with NO retry policy
+    def mock_task():
+        return "result"
+
+    mock_task.func = mock_task
+    mock_task.is_workflow_task = True
+    mock_task.execution_metadata = {
+        "activity_name": "test_activity",
+        "schedule_to_close_timeout": 60,
+        # No retry_policy specified
+    }
+
+    mock_activity = MagicMock()
+    mock_context.task_registry.get_activity.return_value = mock_activity
+    mock_execute_activity.return_value = "activity_result"
+
+    await executor._execute_task(mock_task)
+
+    # Verify retry_policy was created with default_maximum_attempts
+    mock_execute_activity.assert_called_once()
+    call_args = mock_execute_activity.call_args
+    retry_policy = call_args.kwargs["retry_policy"]
+    assert retry_policy is not None
+    assert isinstance(retry_policy, RetryPolicy)
+    assert retry_policy.maximum_attempts == 5
+
+
+@pytest.mark.asyncio
+@patch("temporalio.workflow._Runtime.current", return_value=MagicMock())
+@patch("temporalio.workflow.execute_activity")
+async def test_default_maximum_attempts_applied_when_empty_retry_policy(
+    mock_execute_activity, mock_runtime, mock_context
+):
+    """Test that default_maximum_attempts is applied when retry policy is empty dict"""
+    from temporalio.common import RetryPolicy
+
+    config = TemporalExecutorConfig(
+        host="localhost:7233",
+        namespace="test-namespace",
+        task_queue="test-queue",
+        default_maximum_attempts=3,
+    )
+    executor = TemporalExecutor(config=config, client=AsyncMock(), context=mock_context)
+
+    # Mock a workflow task with empty retry policy
+    def mock_task():
+        return "result"
+
+    mock_task.func = mock_task
+    mock_task.is_workflow_task = True
+    mock_task.execution_metadata = {
+        "activity_name": "test_activity",
+        "schedule_to_close_timeout": 60,
+        "retry_policy": {},  # Empty dict
+    }
+
+    mock_activity = MagicMock()
+    mock_context.task_registry.get_activity.return_value = mock_activity
+    mock_execute_activity.return_value = "activity_result"
+
+    await executor._execute_task(mock_task)
+
+    # Verify retry_policy was created with default_maximum_attempts
+    mock_execute_activity.assert_called_once()
+    call_args = mock_execute_activity.call_args
+    retry_policy = call_args.kwargs["retry_policy"]
+    assert retry_policy is not None
+    assert isinstance(retry_policy, RetryPolicy)
+    assert retry_policy.maximum_attempts == 3
+
+
+@pytest.mark.asyncio
+@patch("temporalio.workflow._Runtime.current", return_value=MagicMock())
+@patch("temporalio.workflow.execute_activity")
+async def test_explicit_retry_policy_overrides_default(
+    mock_execute_activity, mock_runtime, mock_context
+):
+    """Test that explicit retry policy overrides default_maximum_attempts"""
+    from temporalio.common import RetryPolicy
+
+    config = TemporalExecutorConfig(
+        host="localhost:7233",
+        namespace="test-namespace",
+        task_queue="test-queue",
+        default_maximum_attempts=3,  # Default is 3
+    )
+    executor = TemporalExecutor(config=config, client=AsyncMock(), context=mock_context)
+
+    # Mock a workflow task with explicit retry policy
+    def mock_task():
+        return "result"
+
+    mock_task.func = mock_task
+    mock_task.is_workflow_task = True
+    mock_task.execution_metadata = {
+        "activity_name": "test_activity",
+        "schedule_to_close_timeout": 60,
+        "retry_policy": {"maximum_attempts": 10},  # Explicit policy
+    }
+
+    mock_activity = MagicMock()
+    mock_context.task_registry.get_activity.return_value = mock_activity
+    mock_execute_activity.return_value = "activity_result"
+
+    await executor._execute_task(mock_task)
+
+    # Verify retry_policy uses the explicit value, not default
+    mock_execute_activity.assert_called_once()
+    call_args = mock_execute_activity.call_args
+    retry_policy = call_args.kwargs["retry_policy"]
+    assert retry_policy is not None
+    assert isinstance(retry_policy, RetryPolicy)
+    assert retry_policy.maximum_attempts == 10
+
+
+@pytest.mark.asyncio
+@patch("temporalio.workflow._Runtime.current", return_value=MagicMock())
+@patch("temporalio.workflow.execute_activity")
+async def test_default_maximum_attempts_null_allows_unlimited_retries(
+    mock_execute_activity, mock_runtime, mock_context
+):
+    """Test that default_maximum_attempts=None allows unlimited retries (Temporal default)"""
+    config = TemporalExecutorConfig(
+        host="localhost:7233",
+        namespace="test-namespace",
+        task_queue="test-queue",
+        default_maximum_attempts=None,  # Explicitly set to None for unlimited
+    )
+    executor = TemporalExecutor(config=config, client=AsyncMock(), context=mock_context)
+
+    # Mock a workflow task with no retry policy
+    def mock_task():
+        return "result"
+
+    mock_task.func = mock_task
+    mock_task.is_workflow_task = True
+    mock_task.execution_metadata = {
+        "activity_name": "test_activity",
+        "schedule_to_close_timeout": 60,
+        # No retry_policy specified
+    }
+
+    mock_activity = MagicMock()
+    mock_context.task_registry.get_activity.return_value = mock_activity
+    mock_execute_activity.return_value = "activity_result"
+
+    await executor._execute_task(mock_task)
+
+    # Verify retry_policy is None (Temporal's default unlimited retries)
+    mock_execute_activity.assert_called_once()
+    call_args = mock_execute_activity.call_args
+    retry_policy = call_args.kwargs["retry_policy"]
+    assert retry_policy is None
+
+
+@pytest.mark.asyncio
+@patch("temporalio.workflow._Runtime.current", return_value=MagicMock())
+@patch("temporalio.workflow.execute_activity")
+async def test_default_maximum_attempts_with_other_retry_params(
+    mock_execute_activity, mock_runtime, mock_context
+):
+    """Test that explicit retry params are preserved when default_maximum_attempts fills in max"""
+    from temporalio.common import RetryPolicy
+
+    config = TemporalExecutorConfig(
+        host="localhost:7233",
+        namespace="test-namespace",
+        task_queue="test-queue",
+        default_maximum_attempts=5,
+    )
+    executor = TemporalExecutor(config=config, client=AsyncMock(), context=mock_context)
+
+    # Mock a workflow task with partial retry policy (backoff but no max_attempts)
+    def mock_task():
+        return "result"
+
+    mock_task.func = mock_task
+    mock_task.is_workflow_task = True
+    mock_task.execution_metadata = {
+        "activity_name": "test_activity",
+        "schedule_to_close_timeout": 60,
+        "retry_policy": {
+            "backoff_coefficient": 2.0,
+            "initial_interval": timedelta(seconds=1),
+        },
+    }
+
+    mock_activity = MagicMock()
+    mock_context.task_registry.get_activity.return_value = mock_activity
+    mock_execute_activity.return_value = "activity_result"
+
+    await executor._execute_task(mock_task)
+
+    # Verify retry_policy preserves explicit params
+    mock_execute_activity.assert_called_once()
+    call_args = mock_execute_activity.call_args
+    retry_policy = call_args.kwargs["retry_policy"]
+    assert retry_policy is not None
+    assert isinstance(retry_policy, RetryPolicy)
+    # Explicit params should be preserved
+    assert retry_policy.backoff_coefficient == 2.0
+    assert retry_policy.initial_interval == timedelta(seconds=1)
+    # default_maximum_attempts should NOT be applied since retry_policy dict was non-empty
