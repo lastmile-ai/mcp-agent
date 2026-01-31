@@ -5,7 +5,13 @@ import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-from mcp.types import Tool
+from mcp.types import (
+    Tool,
+    ServerNotification,
+    ToolListChangedNotification,
+    PromptListChangedNotification,
+    ResourceListChangedNotification,
+)
 import src.mcp_agent.mcp.mcp_aggregator as mcp_aggregator_mod
 
 
@@ -578,6 +584,8 @@ async def test_mcp_aggregator_get_capabilities(monkeypatch):
     aggregator.initialized = True
 
     class DummyServerConn:
+        session = None
+
         @property
         def server_capabilities(self):
             return {"foo": "bar"}
@@ -1274,3 +1282,110 @@ async def test_tool_filtering_edge_case_exact_match():
     assert "tool_exact" in tool_names
     assert "tool_similar" not in tool_names
     assert "my_tool" not in tool_names
+
+
+@pytest.mark.asyncio
+async def test_tools_list_changed_notification_triggers_reload():
+    context = SimpleNamespace(
+        tracer=None,
+        tracing_enabled=False,
+        server_registry=None,
+        _mcp_connection_manager_lock=asyncio.Lock(),
+        _mcp_connection_manager_ref_count=0,
+    )
+
+    aggregator = mcp_aggregator_mod.MCPAggregator(
+        server_names=["test_server"],
+        connection_persistence=True,
+        context=context,
+        name="agent",
+    )
+    aggregator.initialized = True
+    aggregator._capability_list_changed_supported["tools"]["test_server"] = True
+
+    aggregator.load_server = AsyncMock()
+
+    notification = ServerNotification(
+        root=ToolListChangedNotification(method="notifications/tools/list_changed")
+    )
+
+    await aggregator._handle_incoming_server_message("test_server", notification)
+
+    task = aggregator._server_refresh_tasks.get("test_server")
+    assert task is not None
+
+    await task
+
+    aggregator.load_server.assert_awaited_once_with("test_server")
+
+
+@pytest.mark.asyncio
+async def test_prompts_list_changed_notification_triggers_reload():
+    context = SimpleNamespace(
+        tracer=None,
+        tracing_enabled=False,
+        server_registry=None,
+        _mcp_connection_manager_lock=asyncio.Lock(),
+        _mcp_connection_manager_ref_count=0,
+    )
+
+    aggregator = mcp_aggregator_mod.MCPAggregator(
+        server_names=["test_server"],
+        connection_persistence=True,
+        context=context,
+        name="agent",
+    )
+    aggregator.initialized = True
+    aggregator._capability_list_changed_supported["prompts"]["test_server"] = True
+
+    aggregator.load_server = AsyncMock()
+
+    notification = ServerNotification(
+        root=PromptListChangedNotification(method="notifications/prompts/list_changed")
+    )
+
+    await aggregator._handle_incoming_server_message("test_server", notification)
+
+    task = aggregator._server_refresh_tasks.get("test_server")
+    assert task is not None
+
+    await task
+
+    aggregator.load_server.assert_awaited_once_with("test_server")
+
+
+@pytest.mark.asyncio
+async def test_resources_list_changed_notification_triggers_reload():
+    context = SimpleNamespace(
+        tracer=None,
+        tracing_enabled=False,
+        server_registry=None,
+        _mcp_connection_manager_lock=asyncio.Lock(),
+        _mcp_connection_manager_ref_count=0,
+    )
+
+    aggregator = mcp_aggregator_mod.MCPAggregator(
+        server_names=["test_server"],
+        connection_persistence=True,
+        context=context,
+        name="agent",
+    )
+    aggregator.initialized = True
+    aggregator._capability_list_changed_supported["resources"]["test_server"] = True
+
+    aggregator.load_server = AsyncMock()
+
+    notification = ServerNotification(
+        root=ResourceListChangedNotification(
+            method="notifications/resources/list_changed"
+        )
+    )
+
+    await aggregator._handle_incoming_server_message("test_server", notification)
+
+    task = aggregator._server_refresh_tasks.get("test_server")
+    assert task is not None
+
+    await task
+
+    aggregator.load_server.assert_awaited_once_with("test_server")

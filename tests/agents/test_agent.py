@@ -531,12 +531,18 @@ class TestAgent:
             server_to_prompt_map={},
         )
 
-        # Patch executor.execute to return InitAggregatorResponse for initialization,
-        # and CallToolResult for the tool call
-        def execute_side_effect(*args, **kwargs):
-            if not basic_agent.initialized:
+        # Patch executor.execute to return InitAggregatorResponse for initialization
+        # and state sync, then CallToolResult for the tool invocation
+
+        async def execute_side_effect(task, *args, **kwargs):
+            task_name = getattr(task, "__name__", "")
+            if task_name == "initialize_aggregator_task":
                 return init_response
-            return mock_result
+            if task_name == "get_aggregator_state_task":
+                return init_response
+            if task_name == "call_tool_task":
+                return mock_result
+            return init_response
 
         with patch.object(
             basic_agent.context.executor,
