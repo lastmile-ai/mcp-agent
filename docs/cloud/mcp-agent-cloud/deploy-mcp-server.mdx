@@ -1,6 +1,6 @@
 ---
 title: "Deploying MCP Servers"
-description: "Ship FastMCP or custom MCP servers on mcp-agent cloud infrastructure"
+description: "Ship FastMCP or custom MCP servers on mcp-agent cloud"
 ---
 
 `mcp-agent cloud` is not limited to full agent workflows—you can deploy any MCP-compliant server (Python, Node, Rust, etc.) and let the platform handle hosting, auth, and observability. This is ideal for tool libraries, data access APIs, or bridge services that you want to publish without maintaining infrastructure.
@@ -24,13 +24,38 @@ description: "Ship FastMCP or custom MCP servers on mcp-agent cloud infrastructu
 | Observability | ✅ Logs + OTEL forwarding | ✅ All of the left, plus workflow history |
 | Client integration | ✅ SSE/HTTP endpoints | ✅ Same endpoints |
 
-## FastMCP example
+## Choosing your deployment pattern
+
+MCP Agent Cloud supports two deployment patterns depending on your use case:
+
+| Pattern | Use when | Decorator | Features |
+| --- | --- | --- | --- |
+| **FastMCP** | Deploying simple tool servers | `@mcp.tool` | Tools, resources, prompts via FastMCP interface |
+| **MCPApp** | Building agent apps with potential for workflows | `@app.tool` | App context, logging, upgrade path to workflows |
+
+**Key differences:**
+- `@mcp.tool` – Exposes tools through the FastMCP interface. Use for lightweight MCP servers.
+- `@app.tool` – Provides access to app context and logging. Use when you might add workflows later with `@app.async_tool` and `@app.workflow`.
+
+Both patterns require `MCPApp` for cloud deployment and produce the same SSE endpoints for clients.
+
+## Deploying a FastMCP server
+
+Use this pattern when deploying simple MCP servers (tools and resources) without workflows. The `@mcp.tool` decorator exposes tools via the FastMCP interface.
 
 ```python
 # main.py
-from fastmcp import FastMCP
+from mcp.server.fastmcp import FastMCP
+from mcp_agent.app import MCPApp
 
+# FastMCP instance for tool definitions
 mcp = FastMCP("utilities")
+
+app = MCPApp(
+    name="utilities-server",
+    description="Handy utility tools exposed over MCP",
+    mcp=mcp
+)
 
 @mcp.tool()
 async def hash_text(text: str, algorithm: str = "sha256") -> str:
@@ -40,28 +65,16 @@ async def hash_text(text: str, algorithm: str = "sha256") -> str:
     h.update(text.encode())
     return h.hexdigest()
 
-@mcp.resource("utils://algorithms")
-async def list_algorithms():
-    return {"algorithms": ["md5", "sha1", "sha256", "sha3_512"]}
-
-if __name__ == "__main__":
-    mcp.run()
+# Optional: expose resources (data endpoints) in addition to tools
+# @mcp.resource("utils://algorithms")
+# async def list_algorithms():
+#     return {"algorithms": ["md5", "sha1", "sha256", "sha3_512"]}
 ```
 
-Configuration (`mcp_agent.config.yaml`) only needs to reference the entrypoint:
+Configuration (`mcp_agent.config.yaml`):
 
 ```yaml
-name: utilities-server
-description: "Handy utility tools exposed over MCP"
-
-execution_engine: asyncio           # No workflows required
-
-mcp:
-  servers:
-    utilities:
-      command: "uvx"
-      args: ["python", "main.py"]
-
+execution_engine: asyncio
 logger:
   transports: [console]
   level: info
@@ -69,39 +82,40 @@ logger:
 
 `mcp_agent.secrets.yaml` remains optional unless your server calls external APIs.
 
-## MCPApp-only example (no workflows)
+## Deploying an MCPApp as a server
 
-If you prefer to stay inside the `mcp-agent` API surface (to reuse `context`, logging, etc.) you can create tools with decorators and skip workflow definitions.
+Use this pattern when building agent applications that may later need workflows, context, or advanced mcp-agent features. The `@app.tool` decorator provides access to app context and logging.
 
 ```python
+# main.py
 from mcp_agent.app import MCPApp
 
-app = MCPApp(name="markdown_tools")
+app = MCPApp(
+    name="markdown-tools",
+    description="Text processing tools",
+)
 
 @app.tool
 async def to_title_case(text: str) -> str:
+    """Convert text to title case."""
     return text.title()
 
 @app.tool
 async def count_words(text: str) -> int:
+    """Count words in text."""
     return len(text.split())
-
-if __name__ == "__main__":
-    import asyncio
-    asyncio.run(app.run())
 ```
 
-Config:
+Configuration (`mcp_agent.config.yaml`):
 
 ```yaml
-name: markdown-tools
 execution_engine: asyncio
 logger:
   transports: [console]
   level: info
 ```
 
-Because there are no workflows, the app behaves like a standard MCP server but you can add Temporal-backed workflows later without changing the deployment process.
+This app behaves like a standard MCP server. When deploying to the cloud, you can add Temporal-backed workflows later (using `@app.async_tool` and `@app.workflow`) without changing the deployment command. For local testing with workflows, you'll need to update `execution_engine: temporal` in your config and run a Temporal server.
 
 ## Deploy the server
 
