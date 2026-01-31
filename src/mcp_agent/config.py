@@ -1133,6 +1133,31 @@ class LoggerSettings(BaseModel):
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 
+AgentApiName = Literal[
+    "attach_llm",
+    "list_tools",
+    "list_resources",
+    "read_resource",
+    "create_prompt",
+    "list_prompts",
+    "get_prompt",
+    "call_tool",
+]
+
+
+class AgentAuthorizationEngineSettings(BaseModel):
+    """Authorization engine specific configuration for an Agent."""
+
+    # list of Agent's API for which an auth. engine can be specified.
+    api_engines: Dict[AgentApiName, str] = Field(default_factory=dict)
+
+
+class AuthorizationEngineSettings(BaseModel):
+    """Authorization engine specific configuration for a named Agent."""
+
+    agents: Dict[str, AgentAuthorizationEngineSettings] = Field(default_factory=dict)
+
+
 class Settings(BaseSettings):
     """
     Settings class for the MCP Agent application.
@@ -1207,6 +1232,11 @@ class Settings(BaseSettings):
 
     oauth: OAuthSettings | None = Field(default_factory=OAuthSettings)
     """Global OAuth client configuration (token store, delegated auth defaults)"""
+
+    authorization_engines: AuthorizationEngineSettings = Field(
+        default_factory=AuthorizationEngineSettings
+    )
+    """Setting for exposing configuration related to authorization engines."""
 
     env: list[str | dict[str, str]] = Field(default_factory=list)
     """Environment variables to materialize for deployments."""

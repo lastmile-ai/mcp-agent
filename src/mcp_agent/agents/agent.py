@@ -1,7 +1,9 @@
 import asyncio
 import json
 import uuid
-from typing import Callable, Dict, List, Optional, Set, TypeVar, TYPE_CHECKING, Any
+import functools
+
+from typing import Callable, Dict, List, Optional, Set, Awaitable, Any
 from contextlib import asynccontextmanager
 
 from opentelemetry import trace
@@ -21,6 +23,8 @@ from mcp.types import (
     PromptMessage,
     EmbeddedResource,
 )
+
+from mcp_agent.authorization.authorizer import AuthorizationEngine
 
 from mcp_agent.core.context import Context
 from mcp_agent.tracing.semconv import GEN_AI_AGENT_NAME, GEN_AI_TOOL_NAME
@@ -44,15 +48,9 @@ from mcp_agent.human_input.types import (
 
 from mcp_agent.logging.logger import get_logger
 
-if TYPE_CHECKING:
-    from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
+from mcp_agent.agents.types import LLM
 
-    # Define a TypeVar for AugmentedLLM and its subclasses that's only used at type checking time
-    LLM = TypeVar("LLM", bound="AugmentedLLM")
-else:
-    # Define a TypeVar without the bound for runtime
-    LLM = TypeVar("LLM")
-
+from mcp_agent.config import AgentApiName
 
 logger = get_logger(__name__)
 
@@ -154,6 +152,55 @@ class Agent(BaseModel):
             (tool := FastTool.from_function(fn)).name: tool for fn in self.functions
         }
 
+    def get_authorization_engine(
+        self, api_name: AgentApiName
+    ) -> AuthorizationEngine | None:
+        """
+        Returns the AuthorizationEngine configured for given API for an Agent, if any.
+        """
+        if self.context is None or getattr(self.context, "config", None) is None:
+            return None
+
+        if getattr(self.context, "app", None) is None:
+            return None
+
+        auth_cfg = getattr(self.context.config, "authorization_engines", None)
+        agents_cfg = getattr(auth_cfg, "agents", None) if auth_cfg is not None else None
+        if agents_cfg is not None:
+            agent_auth_cfg = self.context.config.authorization_engines.agents.get(
+                self.name
+            )
+            if agent_auth_cfg is not None and agent_auth_cfg.api_engines is not None:
+                engine_name = agent_auth_cfg.api_engines.get(api_name)
+                if engine_name is not None:
+                    # return the engine if one was registered
+                    registry = getattr(self.context.app, "authorization_registry", None)
+                    return (
+                        registry.get_authorization_engine(engine_name)
+                        if registry is not None
+                        else None
+                    )
+        return None
+
+    def attach_llm_authorize(fn) -> Callable[..., Awaitable[LLM]]:
+        """
+        Decorator for an Agent's 'attach_llm' method.  Different authorization engines
+        can use this to customize behavior for an Agent's 'attach_llm' execution.
+        """
+
+        @functools.wraps(fn)
+        async def wrapper(self, *args, **kwargs) -> LLM:
+            auth_engine = self.get_authorization_engine("attach_llm")
+
+            if auth_engine is None:
+                return await fn(self, *args, **kwargs)
+
+            # this will do the auth and call fn
+            return await auth_engine.attach_llm_authorize(self, fn, *args, **kwargs)
+
+        return wrapper
+
+    @attach_llm_authorize
     async def attach_llm(
         self, llm_factory: Callable[..., LLM] | None = None, llm: LLM | None = None
     ) -> LLM:
@@ -490,6 +537,25 @@ class Agent(BaseModel):
         # No non_namespaced_tools key and no wildcard - include by default (no filter for non-namespaced)
         return True, None
 
+    def list_tools_authorize(fn) -> Callable[..., Awaitable[ListToolsResult]]:
+        """
+        Decorator for an Agent's 'list_tools' method.  Different authorization engines
+        can use this to customize behavior for an Agent's 'list_tools' execution.
+        """
+
+        @functools.wraps(fn)
+        async def wrapper(self, *args, **kwargs) -> ListToolsResult:
+            auth_engine = self.get_authorization_engine("list_tools")
+
+            if auth_engine is None:
+                return await fn(self, *args, **kwargs)
+
+            # this will do the auth and call fn
+            return await auth_engine.list_tools_authorize(self, fn, *args, **kwargs)
+
+        return wrapper
+
+    @list_tools_authorize
     async def list_tools(
         self,
         server_name: str | None = None,
@@ -721,6 +787,25 @@ class Agent(BaseModel):
 
             return result
 
+    def list_resources_authorize(fn) -> Callable[..., Awaitable[ListResourcesResult]]:
+        """
+        Decorator for an Agent's 'list_resources' method.  Different authorization engines
+        can use this to customize behavior for an Agent's 'list_resources' execution.
+        """
+
+        @functools.wraps(fn)
+        async def wrapper(self, *args, **kwargs) -> ListResourcesResult:
+            auth_engine = self.get_authorization_engine("list_resources")
+
+            if auth_engine is None:
+                return await fn(self, *args, **kwargs)
+
+            # this will do the auth and call fn
+            return await auth_engine.list_resources_authorize(self, fn, *args, **kwargs)
+
+        return wrapper
+
+    @list_resources_authorize
     async def list_resources(
         self, server_name: str | None = None
     ) -> ListResourcesResult:
@@ -746,6 +831,25 @@ class Agent(BaseModel):
             )
             return result
 
+    def read_resource_authorize(fn) -> Callable[..., Awaitable[Any]]:
+        """
+        Decorator for an Agent's 'read_resource' method.  Different authorization engines
+        can use this to customize behavior for an Agent's 'read_resource' execution.
+        """
+
+        @functools.wraps(fn)
+        async def wrapper(self, *args, **kwargs) -> Any:
+            auth_engine = self.get_authorization_engine("read_resource")
+
+            if auth_engine is None:
+                return await fn(self, *args, **kwargs)
+
+            # this will do the auth and call fn
+            return await auth_engine.read_resource_authorize(self, fn, *args, **kwargs)
+
+        return wrapper
+
+    @read_resource_authorize
     async def read_resource(self, uri: str, server_name: str | None = None):
         """
         Read a resource from an MCP server.
@@ -772,6 +876,25 @@ class Agent(BaseModel):
             )
             return result
 
+    def create_prompt_authorize(fn) -> Callable[..., Awaitable[list[PromptMessage]]]:
+        """
+        Decorator for an Agent's 'create_prompt' method.  Different authorization engines
+        can use this to customize behavior for an Agent's 'create_prompt' execution.
+        """
+
+        @functools.wraps(fn)
+        async def wrapper(self, *args, **kwargs) -> list[PromptMessage]:
+            auth_engine = self.get_authorization_engine("create_prompt")
+
+            if auth_engine is None:
+                return await fn(self, *args, **kwargs)
+
+            # this will do the auth and call fn
+            return await auth_engine.create_prompt_authorize(self, fn, *args, **kwargs)
+
+        return wrapper
+
+    @create_prompt_authorize
     async def create_prompt(
         self,
         *,
@@ -865,6 +988,25 @@ class Agent(BaseModel):
 
         return messages
 
+    def list_prompts_authorize(fn) -> Callable[..., Awaitable[ListPromptsResult]]:
+        """
+        Decorator for an Agent's 'list_prompts' method.  Different authorization engines
+        can use this to customize behavior for an Agent's 'list_prompts' execution.
+        """
+
+        @functools.wraps(fn)
+        async def wrapper(self, *args, **kwargs) -> ListPromptsResult:
+            auth_engine = self.get_authorization_engine("list_prompts")
+
+            if auth_engine is None:
+                return await fn(self, *args, **kwargs)
+
+            # this will do the auth and call fn
+            return await auth_engine.list_prompts_authorize(self, fn, *args, **kwargs)
+
+        return wrapper
+
+    @list_prompts_authorize
     async def list_prompts(self, server_name: str | None = None) -> ListPromptsResult:
         # Check if the agent is initialized
         if not self.initialized:
@@ -909,6 +1051,25 @@ class Agent(BaseModel):
 
             return result
 
+    def get_prompt_authorize(fn) -> Callable[..., Awaitable[GetPromptResult]]:
+        """
+        Decorator for an Agent's 'get_prompt' method.  Different authorization engines
+        can use this to customize behavior for an Agent's 'get_prompt' execution.
+        """
+
+        @functools.wraps(fn)
+        async def wrapper(self, *args, **kwargs) -> GetPromptResult:
+            auth_engine = self.get_authorization_engine("get_prompt")
+
+            if auth_engine is None:
+                return await fn(self, *args, **kwargs)
+
+            # this will do the auth and call fn
+            return await auth_engine.get_prompt_authorize(self, fn, *args, **kwargs)
+
+        return wrapper
+
+    @get_prompt_authorize
     async def get_prompt(
         self,
         name: str,
@@ -1069,6 +1230,25 @@ class Agent(BaseModel):
             logger.debug("Received human input signal", data=result)
             return result
 
+    def call_tool_authorize(fn) -> Callable[..., Awaitable[CallToolResult]]:
+        """
+        Decorator for an Agent's 'call_tool' method.  Different authorization engines
+        can use this to customize behavior for an Agent's 'call_tool' execution.
+        """
+
+        @functools.wraps(fn)
+        async def wrapper(self, *args, **kwargs) -> CallToolResult:
+            auth_engine = self.get_authorization_engine("call_tool")
+
+            if auth_engine is None:
+                return await fn(self, *args, **kwargs)
+
+            # this will do the auth and call fn
+            return await auth_engine.call_tool_authorize(self, fn, *args, **kwargs)
+
+        return wrapper
+
+    @call_tool_authorize
     async def call_tool(
         self, name: str, arguments: dict | None = None, server_name: str | None = None
     ) -> CallToolResult:
