@@ -1,0 +1,32 @@
+$schema: ../../schema/mcp-agent.config.schema.json
+
+name: my_mcp_agent_oauth_server
+
+execution_engine: asyncio
+logger:
+  transports: [console]
+  level: debug
+
+oauth:
+  # Base URL for internal callbacks (used when `use_internal_callback` is true).
+  callback_base_url: http://127.0.0.1:8000
+  # Maximum number of seconds to wait for an authorization callback before timing out.
+  flow_timeout_seconds: 300
+  # Ports to use for local loopback callbacks when internal callbacks are unavailable.
+  loopback_ports: [33418, 33419, 33420]
+  token_store:
+    # Seconds before expiry when tokens should be refreshed.
+    refresh_leeway_seconds: 60
+
+mcp:
+  servers:
+    github:
+      transport: streamable_http
+      url: "https://api.githubcopilot.com/mcp/"
+      auth:
+        oauth:
+          enabled: true
+          scopes: ["read:org", "public_repo", "user:email"]
+          authorization_server: "https://github.com/login/oauth"
+          use_internal_callback: false
+          include_resource_parameter: false
