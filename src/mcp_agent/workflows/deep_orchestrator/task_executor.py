@@ -50,6 +50,8 @@ class TaskExecutor:
         context: Optional["Context"] = None,
         max_task_retries: int = 3,
         enable_parallel: bool = True,
+        knowledge_extraction_mode: str = "per_task",
+        lean_agent_design: bool = False,
     ):
         """
         Initialize the task executor.
@@ -76,6 +78,8 @@ class TaskExecutor:
         self.context = context
         self.max_task_retries = max_task_retries
         self.enable_parallel = enable_parallel
+        self.knowledge_extraction_mode = knowledge_extraction_mode
+        self.lean_agent_design = lean_agent_design
 
         # Budget update callback (will be set by orchestrator)
         self.update_budget_tokens = lambda tokens: None
@@ -228,23 +232,54 @@ class TaskExecutor:
 
             # Execute with agent
             if isinstance(agent, AugmentedLLM):
+                rp = request_params or RequestParams(max_iterations=10)
+                try:
+                    # Favor cheaper/faster models for executors unless overridden
+                    if not getattr(rp, "modelPreferences", None):
+                        rp.modelPreferences = getattr(
+                            self.context, "executor_model_preferences", None
+                        )
+                except Exception:
+                    pass
                 output = await agent.generate_str(
-                    message=task_context,
-                    request_params=request_params or RequestParams(max_iterations=10),
+                    message=task_context, request_params=rp
                 )
             else:
                 async with agent:
                     llm = await agent.attach_llm(self.llm_factory)
+                    rp = request_params or RequestParams(max_iterations=10)
+                    try:
+                        if not getattr(rp, "modelPreferences", None):
+                            rp.modelPreferences = getattr(
+                                self.context, "executor_model_preferences", None
+                            )
+                    except Exception:
+                        pass
                     output = await llm.generate_str(
-                        message=task_context,
-                        request_params=request_params
-                        or RequestParams(max_iterations=10),
+                        message=task_context, request_params=rp
                     )
 
             # Success
             result.status = TaskStatus.COMPLETED
             result.output = output
             result.duration_seconds = time.time() - start_time
+
+            # Persist artifact if enabled
+            try:
+                if getattr(
+                    getattr(self.context, "orchestrator_config", object()),
+                    "execution",
+                    object(),
+                ):
+                    cfg = self.context.orchestrator_config  # type: ignore[attr-defined]
+                    if getattr(cfg.execution, "save_task_outputs_to_artifacts", True):
+                        artifact_name = f"task_{task.name}.txt"
+                        self.memory.save_artifact(
+                            artifact_name, output, to_filesystem=True
+                        )
+                        result.artifacts[artifact_name] = output
+            except Exception:
+                pass
 
             # Extract artifacts if mentioned
             if any(
@@ -253,11 +288,12 @@ class TaskExecutor:
             ):
                 result.artifacts[f"task_{task.name}_output"] = output
 
-            # Extract knowledge
-            knowledge_items = await self.knowledge_extractor.extract_knowledge(
-                result, self.objective
-            )
-            result.knowledge_extracted = knowledge_items
+            # Extract knowledge (skip here if batch mode is enabled; orchestrator will run batch)
+            if self.knowledge_extraction_mode == "per_task":
+                knowledge_items = await self.knowledge_extractor.extract_knowledge(
+                    result, self.objective
+                )
+                result.knowledge_extracted = knowledge_items
 
             # Update task status
             task.status = TaskStatus.COMPLETED
@@ -274,7 +310,7 @@ class TaskExecutor:
             task.status = TaskStatus.FAILED
             logger.error(f"Task {task.name} failed: {e}")
 
-        # Record result
+            # Record result
         self.memory.add_task_result(result)
         return result
 
@@ -329,7 +365,36 @@ class TaskExecutor:
         """
         logger.debug(f"Creating dynamic agent for task: {task.description[:50]}...")
 
-        # Agent designer
+        # If lean mode, construct a minimal specialized agent without an extra LLM round-trip
+        if self.lean_agent_design:
+            minimal_instruction = build_agent_instruction(
+                {
+                    "instruction": (
+                        "You are a focused specialist. Complete the task precisely using the specified tools."
+                    ),
+                    "role": "Specialist executor",
+                    "key_behaviors": [
+                        "Use tools actively and verify results",
+                        "Be concise and avoid unnecessary token usage",
+                        "Stop when the deliverable is satisfied",
+                    ],
+                    "tool_usage_tips": [
+                        "Prefer authoritative sources where applicable",
+                        "Batch operations to reduce repeated tool calls",
+                    ],
+                }
+            )
+
+            agent = Agent(
+                name=f"Lean_{task.name}",
+                instruction=minimal_instruction,
+                server_names=task.servers,
+                context=self.context,
+            )
+            logger.debug(f"Created lean dynamic agent for task: {task.name}")
+            return agent
+
+        # Full agent design via LLM
         designer = Agent(
             name="AgentDesigner",
             instruction=AGENT_DESIGNER_INSTRUCTION,
@@ -338,7 +403,6 @@ class TaskExecutor:
 
         llm = self.llm_factory(designer)
 
-        # Design agent
         design_prompt = get_agent_design_prompt(
             task.description, task.servers, self.objective
         )
@@ -347,7 +411,6 @@ class TaskExecutor:
             message=design_prompt, response_model=AgentDesign
         )
 
-        # Build comprehensive instruction
         instruction = build_agent_instruction(design.model_dump())
 
         agent = Agent(
