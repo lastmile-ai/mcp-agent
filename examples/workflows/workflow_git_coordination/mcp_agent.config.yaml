@@ -1,0 +1,33 @@
+# MCP Agent Configuration for Git Coordination Example
+# This demo doesn't require MCP servers, but you can add them for enhanced functionality
+
+mcp:
+  servers:
+    # Uncomment to add filesystem access for real git operations
+    # filesystem:
+    #   command: npx
+    #   args:
+    #     - -y
+    #     - "@modelcontextprotocol/server-filesystem"
+    #   env: {}
+
+    # Uncomment to add git MCP server if available
+    # git:
+    #   command: uvx
+    #   args:
+    #     - mcp-server-git
+    #     - --repository
+    #     - /path/to/workspace-sync.git
+    #   env: {}
+
+# Model configuration (override in secrets)
+model:
+  provider: openai
+  name: gpt-4o-mini
+  temperature: 0.7
+  max_tokens: 4096
+
+# Logging
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
