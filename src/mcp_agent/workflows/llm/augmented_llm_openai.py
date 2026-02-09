@@ -647,10 +647,22 @@ class OpenAIAugmentedLLM(
 
             self._annotate_span_for_call_tool_result(span, result)
 
+            # Convert MCP content parts to OpenAI format
+            content_parts = [mcp_content_to_openai_content_part(c) for c in result.content]
+
+            # OpenAI API specification requires tool message content to be a
+            # string, not a list. Some LLM providers (e.g., DeepSeek) strictly
+            # enforce this and reject requests with list-type tool content.
+            if all(isinstance(p, dict) and p.get("type") == "text" for p in content_parts):
+                tool_content = "\n".join(p["text"] for p in content_parts)
+            else:
+                # Fallback for non-text content (e.g., images): serialize as JSON
+                tool_content = json.dumps(content_parts)
+
             return ChatCompletionToolMessageParam(
                 role="tool",
                 tool_call_id=tool_call_id,
-                content=[mcp_content_to_openai_content_part(c) for c in result.content],
+                content=tool_content,
             )
 
     def message_param_str(self, message: ChatCompletionMessageParam) -> str:
