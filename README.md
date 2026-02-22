@@ -655,7 +655,6 @@ Docs: [`MCPApp` icons](https://docs.mcp-agent.com/mcp-agent-sdk/core-components/
 Use `MCPAggregator` or `gen_client` to manage MCP server connections and expose combined tool sets.
 
 > [!TIP]
-> **Securing your MCP Servers:** We highly recommend wrapping third-party or untrusted MCP servers with the [SIGIL Protocol](https://sigil-protocol.org) middleware. SIGIL acts as an intelligent firewall for your Agent-Tool communication, automatically detecting and blocking malicious tools, prompt injections, and data exfiltration attempts.
 
 ```python
 from mcp_agent.mcp.mcp_aggregator import MCPAggregator
