@@ -83,7 +83,7 @@ if __name__ == "__main__":
       <h3>Build an Agent</h3>
       <p>Connect LLMs to MCP servers in simple, composable patterns like map-reduce, orchestrator, evaluator-optimizer, router & more.</p>
       <p>
-        <a href="https://docs.mcp-agent.com/get-started/overview">Quick Start ↗</a> | 
+        <a href="https://docs.mcp-agent.com/get-started/overview">Quick Start ↗</a> |
         <a href="https://docs.mcp-agent.com/mcp-agent-sdk/overview">Docs ↗</a>
       </p>
     </td>
@@ -91,8 +91,8 @@ if __name__ == "__main__":
       <h3>Create any kind of MCP Server</h3>
       <p>Create MCP servers with a FastMCP-compatible API. You can even expose agents as MCP servers.</p>
       <p>
-        <a href="https://docs.mcp-agent.com/mcp-agent-sdk/mcp/agent-as-mcp-server">MCP Agent Server ↗</a> | 
-        <a href="https://docs.mcp-agent.com/cloud/use-cases/deploy-chatgpt-apps">🎨 Build a ChatGPT App ↗</a> | 
+        <a href="https://docs.mcp-agent.com/mcp-agent-sdk/mcp/agent-as-mcp-server">MCP Agent Server ↗</a> |
+        <a href="https://docs.mcp-agent.com/cloud/use-cases/deploy-chatgpt-apps">🎨 Build a ChatGPT App ↗</a> |
         <a href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp_agent_server">Examples ↗</a>
       </p>
     </td>
@@ -103,7 +103,7 @@ if __name__ == "__main__":
       <p><b>Core:</b> Tools ✅ Resources ✅ Prompts ✅ Notifications ✅<br/>
       <b>Advanced</b>: OAuth ✅ Sampling ✅ Elicitation ✅ Roots ✅</p>
       <p>
-        <a href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp">Examples ↗</a> | 
+        <a href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp">Examples ↗</a> |
         <a href="https://modelcontextprotocol.io/docs/getting-started/intro">MCP Docs ↗</a>
       </p>
     </td>
@@ -111,7 +111,7 @@ if __name__ == "__main__":
       <h3>Durable Execution (Temporal)</h3>
       <p>Scales to production workloads using Temporal as the agent runtime backend <i>without any API changes</i>.</p>
       <p>
-        <a href="https://docs.mcp-agent.com/mcp-agent-sdk/advanced/durable-agents">Docs ↗</a> | 
+        <a href="https://docs.mcp-agent.com/mcp-agent-sdk/advanced/durable-agents">Docs ↗</a> |
         <a href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/temporal">Examples ↗</a>
       </p>
     </td>
@@ -122,7 +122,7 @@ if __name__ == "__main__":
       <p><b>Beta:</b> Deploy agents yourself, or use <b>mcp-c</b> for a managed agent runtime. All apps are deployed as MCP servers.</p>
       <p>
         <a href="https://www.youtube.com/watch?v=0C4VY-3IVNU">Demo ↗</a> |
-        <a href="https://docs.mcp-agent.com/get-started/cloud">Cloud Quickstart ↗</a> | 
+        <a href="https://docs.mcp-agent.com/get-started/cloud">Cloud Quickstart ↗</a> |
         <a href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples/cloud">Examples ↗</a>
       </p>
     </td>
@@ -654,10 +654,16 @@ Docs: [`MCPApp` icons](https://docs.mcp-agent.com/mcp-agent-sdk/core-components/
 
 Use `MCPAggregator` or `gen_client` to manage MCP server connections and expose combined tool sets.
 
+> [!TIP]
+> **Securing your MCP Servers:** We highly recommend wrapping third-party or untrusted MCP servers with the [SIGIL Protocol](https://sigil-protocol.org) middleware. SIGIL acts as an intelligent firewall for your Agent-Tool communication, automatically detecting and blocking malicious tools, prompt injections, and data exfiltration attempts.
+
 ```python
 from mcp_agent.mcp.mcp_aggregator import MCPAggregator
+from sigil_protocol.mcp_agent import SigilMiddleware
 
 async with MCPAggregator.create(server_names=["fetch", "filesystem"]) as aggregator:
+    # Add SIGIL as a security middleware to the aggregator
+    aggregator.add_middleware(SigilMiddleware())
     tools = await aggregator.list_tools()
 ```
 
@@ -714,7 +720,7 @@ You can use mcp-agent applications in a standalone fashion (i.e. they aren't par
 
 ### How do I deploy to Cloud?
 
-Run `uvx mcp-agent deploy <app-name>` after logging in with `uvx mcp-agent login`. The CLI packages your project, provisions secrets, and exposes an MCP endpoint backed by a durable Temporal runtime. See the [Cloud quickstart](https://docs.mcp-agent.com/get-started/
+Run `uvx mcp-agent deploy <app-name>` after logging in with `uvx mcp-agent login`. The CLI packages your project, provisions secrets, and exposes an MCP endpoint backed by a durable Temporal runtime. See the [Cloud quickstart](<https://docs.mcp-agent.com/get-started/>
 cloud) for step-by-step screenshots and CLI output.
 
 ### Where is the API reference?
