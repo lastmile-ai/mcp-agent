@@ -161,7 +161,15 @@ uvx mcp-agent login
 uvx mcp-agent deploy
 ```
 
-## Next steps
+:::tip After running `mcp-agent login`
+1. A web page opens to authenticate or create an account
+2. An API key is generated automatically for your account
+3. Copy the API key from the web page and use it with:
+   - `uvx mcp-agent deploy --api-key [YOUR_API_KEY]`
+   - Or set the `MCP_API_KEY` environment variable before deploying
+:::
+
+For more deployment options, see the [Cloud Deployment](/get-started/cloud) guide.
 
 - Check out the generated README (if you used the CLI) for tips on extending the agent.
 - Layer in more capabilities using the [Effective Patterns](/mcp-agent-sdk/effective-patterns/overview) guide.
