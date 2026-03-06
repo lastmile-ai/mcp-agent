@@ -650,7 +650,7 @@ class OpenAIAugmentedLLM(
             return ChatCompletionToolMessageParam(
                 role="tool",
                 tool_call_id=tool_call_id,
-                content=[mcp_content_to_openai_content_part(c) for c in result.content],
+                content=mcp_tool_result_to_str(result.content),
             )
 
     def message_param_str(self, message: ChatCompletionMessageParam) -> str:
@@ -1187,6 +1187,38 @@ def mcp_content_to_openai_content_part(
     else:
         # Last effort to convert the content to a string
         return ChatCompletionContentPartTextParam(type="text", text=str(content))
+
+
+def mcp_tool_result_to_str(
+    content: list[TextContent | ImageContent | EmbeddedResource],
+) -> str:
+    """Convert MCP tool result content to a plain string for tool messages.
+
+    OpenAI ChatCompletion tool messages require content to be a string
+    for maximum compatibility across providers (e.g. DeepSeek, local models).
+    Non-text content is represented as a descriptive placeholder since
+    tool messages only support text.
+    """
+    if not content:
+        return ""
+
+    text_parts: list[str] = []
+    for c in content:
+        if isinstance(c, TextContent):
+            text_parts.append(c.text)
+        elif isinstance(c, EmbeddedResource):
+            if isinstance(c.resource, TextResourceContents):
+                text_parts.append(c.resource.text)
+            else:
+                text_parts.append(
+                    f"[Embedded resource: {c.resource.mimeType or 'unknown type'}]"
+                )
+        elif isinstance(c, ImageContent):
+            text_parts.append(f"[Image: {c.mimeType or 'unknown type'}]")
+        else:
+            text_parts.append(str(c))
+
+    return "\n".join(text_parts)
 
 
 def openai_content_to_mcp_content(
