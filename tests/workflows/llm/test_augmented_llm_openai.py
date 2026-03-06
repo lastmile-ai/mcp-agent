@@ -11,13 +11,22 @@ from openai.types.chat import (
 )
 from pydantic import BaseModel
 
-from mcp.types import TextContent, SamplingMessage, PromptMessage
+from mcp.types import (
+    TextContent,
+    ImageContent,
+    EmbeddedResource,
+    TextResourceContents,
+    BlobResourceContents,
+    SamplingMessage,
+    PromptMessage,
+)
 
 from mcp_agent.config import OpenAISettings
 from mcp_agent.workflows.llm.augmented_llm_openai import (
     OpenAIAugmentedLLM,
     RequestParams,
     MCPOpenAITypeConverter,
+    mcp_tool_result_to_str,
 )
 
 
@@ -836,3 +845,108 @@ class TestOpenAIAugmentedLLM:
                 f"reasoning_effort should be applied for {model}"
             )
             assert request_obj.payload["reasoning_effort"] == "low"
+
+
+class TestMcpToolResultToStr:
+    """
+    Tests for mcp_tool_result_to_str — ensures tool message content is always
+    a plain string for maximum provider compatibility (fixes #25).
+    """
+
+    # Test 1: Single TextContent returns plain text
+    def test_single_text_content(self):
+        content = [TextContent(type="text", text="Tool executed successfully")]
+        result = mcp_tool_result_to_str(content)
+        assert result == "Tool executed successfully"
+        assert isinstance(result, str)
+
+    # Test 2: Multiple TextContent blocks joined with newlines
+    def test_multiple_text_content(self):
+        content = [
+            TextContent(type="text", text="Line one"),
+            TextContent(type="text", text="Line two"),
+            TextContent(type="text", text="Line three"),
+        ]
+        result = mcp_tool_result_to_str(content)
+        assert result == "Line one\nLine two\nLine three"
+
+    # Test 3: Empty content list returns empty string
+    def test_empty_content(self):
+        result = mcp_tool_result_to_str([])
+        assert result == ""
+
+    # Test 4: TextContent with JSON string preserves it exactly
+    def test_json_text_content(self):
+        json_str = '{"speech": {}, "response_type": "action_done", "data": {"success": [{"name": "DC3"}]}}'
+        content = [TextContent(type="text", text=json_str)]
+        result = mcp_tool_result_to_str(content)
+        assert result == json_str
+
+    # Test 5: ImageContent produces descriptive placeholder
+    def test_image_content(self):
+        content = [
+            ImageContent(type="image", data="base64encodeddata", mimeType="image/png")
+        ]
+        result = mcp_tool_result_to_str(content)
+        assert result == "[Image: image/png]"
+        assert isinstance(result, str)
+
+    # Test 6: EmbeddedResource with TextResourceContents extracts text
+    def test_embedded_text_resource(self):
+        content = [
+            EmbeddedResource(
+                type="resource",
+                resource=TextResourceContents(
+                    text="Embedded text content",
+                    mimeType="text/plain",
+                    uri="file://test.txt",
+                ),
+            )
+        ]
+        result = mcp_tool_result_to_str(content)
+        assert result == "Embedded text content"
+
+    # Test 7: EmbeddedResource with BlobResourceContents produces placeholder
+    def test_embedded_blob_resource(self):
+        content = [
+            EmbeddedResource(
+                type="resource",
+                resource=BlobResourceContents(
+                    blob="base64data",
+                    mimeType="application/pdf",
+                    uri="file://doc.pdf",
+                ),
+            )
+        ]
+        result = mcp_tool_result_to_str(content)
+        assert result == "[Embedded resource: application/pdf]"
+
+    # Test 8: Mixed text and non-text content
+    def test_mixed_content(self):
+        content = [
+            TextContent(type="text", text="Here is the result"),
+            ImageContent(type="image", data="base64data", mimeType="image/jpeg"),
+            TextContent(type="text", text="End of result"),
+        ]
+        result = mcp_tool_result_to_str(content)
+        assert result == "Here is the result\n[Image: image/jpeg]\nEnd of result"
+
+    # Test 9: TextContent with empty string
+    def test_empty_text_content(self):
+        content = [TextContent(type="text", text="")]
+        result = mcp_tool_result_to_str(content)
+        assert result == ""
+
+    # Test 10: EmbeddedResource with blob but no mimeType
+    def test_embedded_blob_no_mimetype(self):
+        content = [
+            EmbeddedResource(
+                type="resource",
+                resource=BlobResourceContents(
+                    blob="base64data",
+                    uri="file://unknown",
+                ),
+            )
+        ]
+        result = mcp_tool_result_to_str(content)
+        assert result == "[Embedded resource: unknown type]"
