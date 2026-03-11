@@ -1,0 +1,26 @@
+$schema: ../../../schema/mcp-agent.config.schema.json
+
+execution_engine: asyncio
+logger:
+  type: console
+  level: info
+  batch_size: 100
+  flush_interval: 2
+  max_queue_size: 2048
+  http_endpoint:
+  http_headers:
+  http_timeout: 5
+
+mcp:
+  servers:
+    vmware-aiops:
+      command: python
+      args:
+        - -m
+        - mcp_server
+      cwd: /path/to/VMware-AIops
+      env:
+        VMWARE_AIOPS_CONFIG: ~/.vmware-aiops/config.yaml
+
+anthropic:
+  api_key: ${ANTHROPIC_API_KEY}
