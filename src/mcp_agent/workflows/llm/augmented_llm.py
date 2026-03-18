@@ -378,7 +378,6 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
     ) -> ModelT:
         """Request a structured LLM generation and return the result as a Pydantic model."""
 
-    @abstractmethod
     async def generate_stream(
         self,
         message: MessageTypes,

@@ -65,6 +65,11 @@ class TestBedrockStreaming:
         """Creates a Bedrock content block stop event."""
         return {"contentBlockStop": {}}
 
+    @staticmethod
+    def create_metadata_event(input_tokens=100, output_tokens=50):
+        """Creates a Bedrock metadata event with usage information."""
+        return {"metadata": {"usage": {"inputTokens": input_tokens, "outputTokens": output_tokens}}}
+
     @pytest.mark.asyncio
     async def test_single_turn_text_streaming(self, mock_llm):
         """Test single-turn text generation with streaming."""
@@ -73,6 +78,7 @@ class TestBedrockStreaming:
         mock_events = [self.create_text_delta_event(delta) for delta in text_deltas]
         mock_events.append(self.create_content_block_stop_event())
         mock_events.append(self.create_message_stop_event("end_turn"))
+        mock_events.append(self.create_metadata_event(input_tokens=100, output_tokens=50))
 
         mock_stream_response = self.create_mock_stream_response(mock_events)
 
@@ -125,21 +131,33 @@ class TestBedrockStreaming:
     @pytest.mark.asyncio
     async def test_multi_iteration_with_tool_calls(self, mock_llm):
         """Test multi-iteration streaming with tool calls."""
-        # First iteration: tool use
+        # First iteration: tool use with populated input
         tool_use_events = [
             self.create_content_block_start_event(
                 {"name": "search", "toolUseId": "tool_1", "input": {"query": "test"}}
             ),
             self.create_content_block_stop_event(),
             self.create_message_stop_event("tool_use"),
+            self.create_metadata_event(input_tokens=50, output_tokens=20),
         ]
 
-        # Second iteration: final text
+        # Second iteration: tool use with empty input (no-arg tool)
+        empty_tool_events = [
+            self.create_content_block_start_event(
+                {"name": "ping", "toolUseId": "tool_empty"}
+            ),
+            self.create_content_block_stop_event(),
+            self.create_message_stop_event("tool_use"),
+            self.create_metadata_event(input_tokens=30, output_tokens=10),
+        ]
+
+        # Third iteration: final text
         text_events = [
             self.create_text_delta_event("Based"),
             self.create_text_delta_event(" on search"),
             self.create_content_block_stop_event(),
             self.create_message_stop_event("end_turn"),
+            self.create_metadata_event(input_tokens=80, output_tokens=10),
         ]
 
         # Mock tool execution
@@ -149,11 +167,17 @@ class TestBedrockStreaming:
         mock_llm.call_tool = AsyncMock(return_value=mock_tool_result)
 
         call_count = [0]
+        call_history = []
 
         def mock_converse_stream(**kwargs):
             call_count[0] += 1
+            # Deep-copy kwargs before storing to capture the exact request state
+            import copy
+            call_history.append(copy.deepcopy(kwargs))
             if call_count[0] == 1:
                 return self.create_mock_stream_response(tool_use_events)
+            elif call_count[0] == 2:
+                return self.create_mock_stream_response(empty_tool_events)
             else:
                 return self.create_mock_stream_response(text_events)
 
@@ -170,29 +194,78 @@ class TestBedrockStreaming:
             async for event in mock_llm.generate_stream("Search for something"):
                 events.append(event)
 
+            # Verify converse_stream was called three times (2 tool calls + 1 text)
+            assert call_count[0] == 3
+
+            # Verify the second call's payload contains a single role="user" tool-result message
+            assert len(call_history) == 3
+            second_call_kwargs = call_history[1]
+            assert "messages" in second_call_kwargs
+            second_call_messages = second_call_kwargs["messages"]
+
+            # Find the user message with tool results for the first tool
+            user_tool_result_messages = [
+                m for m in second_call_messages
+                if m.get("role") == "user" and any(c.get("toolResult") for c in m.get("content", []))
+            ]
+            assert len(user_tool_result_messages) == 1, "Expected exactly one user message with tool results"
+
+            # Verify the third call's payload contains tool result for the empty-input tool
+            # At this point, both tool results are accumulated in the messages
+            third_call_kwargs = call_history[2]
+            assert "messages" in third_call_kwargs
+            third_call_messages = third_call_kwargs["messages"]
+
+            # Find user messages with tool results (should have 2: one for each tool)
+            second_user_tool_result_messages = [
+                m for m in third_call_messages
+                if m.get("role") == "user" and any(c.get("toolResult") for c in m.get("content", []))
+            ]
+            assert len(second_user_tool_result_messages) == 2, "Expected two user messages with tool results (one for each tool)"
+
         # Verify we have multiple iterations
         iteration_start_events = [
             e for e in events if e.type == StreamEventType.ITERATION_START
         ]
-        assert len(iteration_start_events) == 2
+        assert len(iteration_start_events) == 3
 
         # Check tool events
         tool_use_start_events = [
             e for e in events if e.type == StreamEventType.TOOL_USE_START
         ]
-        assert len(tool_use_start_events) == 1
+        assert len(tool_use_start_events) == 2
+
+        # First tool: search with populated input
         assert tool_use_start_events[0].content is not None
         assert tool_use_start_events[0].content.get("name") == "search"
+
+        # Second tool: ping with empty input - should parse to {}
+        assert tool_use_start_events[1].content is not None
+        assert tool_use_start_events[1].content.get("name") == "ping"
+        assert tool_use_start_events[1].content.get("input") == {}
 
         tool_result_events = [
             e for e in events if e.type == StreamEventType.TOOL_RESULT
         ]
-        assert len(tool_result_events) == 1
+        assert len(tool_result_events) == 2
 
         tool_use_end_events = [
             e for e in events if e.type == StreamEventType.TOOL_USE_END
         ]
-        assert len(tool_use_end_events) == 1
+        assert len(tool_use_end_events) == 2
+
+        # Verify call_tool was invoked with correct arguments
+        assert mock_llm.call_tool.call_count == 2
+        first_call_args = mock_llm.call_tool.call_args_list[0]
+        second_call_args = mock_llm.call_tool.call_args_list[1]
+
+        # First tool call: search with populated input
+        assert first_call_args.kwargs["request"].params.name == "search"
+        assert first_call_args.kwargs["request"].params.arguments == {"query": "test"}
+
+        # Second tool call: ping with empty dict (no arguments)
+        assert second_call_args.kwargs["request"].params.name == "ping"
+        assert second_call_args.kwargs["request"].params.arguments == {}
 
         # Check final completion
         complete_events = [e for e in events if e.type == StreamEventType.COMPLETE]
@@ -208,6 +281,7 @@ class TestBedrockStreaming:
                 self.create_text_delta_event("Text"),
                 self.create_content_block_stop_event(),
                 self.create_message_stop_event(stop_reason),
+                self.create_metadata_event(),
             ]
             mock_stream_response = self.create_mock_stream_response(mock_events)
 
@@ -240,6 +314,7 @@ class TestBedrockStreaming:
             self.create_text_delta_event("third"),
             self.create_content_block_stop_event(),
             self.create_message_stop_event("end_turn"),
+            self.create_metadata_event(),
         ]
 
         mock_stream_response = self.create_mock_stream_response(mock_events)
@@ -293,6 +368,7 @@ class TestBedrockStreaming:
             self.create_text_delta_event("Response"),
             self.create_content_block_stop_event(),
             self.create_message_stop_event("end_turn"),
+            self.create_metadata_event(),
         ]
         mock_stream_response = self.create_mock_stream_response(mock_events)
 
@@ -316,6 +392,7 @@ class TestBedrockStreaming:
         mock_events = [self.create_text_delta_event(delta) for delta in text_deltas]
         mock_events.append(self.create_content_block_stop_event())
         mock_events.append(self.create_message_stop_event("end_turn"))
+        mock_events.append(self.create_metadata_event())
 
         mock_stream_response = self.create_mock_stream_response(mock_events)
 
@@ -348,6 +425,7 @@ class TestBedrockStreaming:
             ),
             self.create_content_block_stop_event(),
             self.create_message_stop_event("tool_use"),
+            self.create_metadata_event(input_tokens=30, output_tokens=15),
         ]
 
         # Mock tool execution
@@ -361,6 +439,7 @@ class TestBedrockStreaming:
             self.create_text_delta_event("The answer is 3"),
             self.create_content_block_stop_event(),
             self.create_message_stop_event("end_turn"),
+            self.create_metadata_event(input_tokens=50, output_tokens=10),
         ]
 
         call_count = [0]
@@ -391,3 +470,6 @@ class TestBedrockStreaming:
         assert len(tool_result_events) == 1
         assert tool_result_events[0].content is not None
         assert tool_result_events[0].content.get("is_error") is False
+        assert tool_result_events[0].content.get("result") is not None
+        assert isinstance(tool_result_events[0].content.get("result"), str)
+        assert tool_result_events[0].metadata.get("tool_id") == "calc_1"
