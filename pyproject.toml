@@ -80,6 +80,9 @@ redis = [
 crewai = [
     "crewai>=0.126.0",
 ]
+ag2 = [
+    "ag2>=0.11.0",
+]
 
 [build-system]
 requires = ["hatchling"]
