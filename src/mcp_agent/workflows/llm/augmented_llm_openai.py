@@ -647,10 +647,18 @@ class OpenAIAugmentedLLM(
 
             self._annotate_span_for_call_tool_result(span, result)
 
+            # OpenAI-compatible chat APIs expect tool message content to be plain text.
+            converted_result = OpenAIConverter.convert_tool_result_to_openai(
+                tool_result=result,
+                tool_call_id=tool_call_id,
+            )
+            if isinstance(converted_result, tuple):
+                converted_result = converted_result[0]
+
             return ChatCompletionToolMessageParam(
                 role="tool",
                 tool_call_id=tool_call_id,
-                content=[mcp_content_to_openai_content_part(c) for c in result.content],
+                content=converted_result["content"],
             )
 
     def message_param_str(self, message: ChatCompletionMessageParam) -> str:
