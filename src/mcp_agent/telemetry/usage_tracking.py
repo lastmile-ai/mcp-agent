@@ -15,4 +15,5 @@ def send_usage_data():
     # try:
     #     requests.post("https://telemetry.example.com/usage", json=data, timeout=2)
     # except:
+    # TODO: be more specific about exception type
     #     pass

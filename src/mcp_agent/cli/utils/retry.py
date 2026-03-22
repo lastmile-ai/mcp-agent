@@ -86,7 +86,7 @@ def retry_with_exponential_backoff(
                 f"Attempt {attempt}/{max_attempts} failed: {e}. Retrying in {delay:.1f}s..."
             )
 
-            time.sleep(delay)
+            asyncio.sleep(delay)
             delay = min(delay * backoff_multiplier, max_delay)
 
     if last_exception:
