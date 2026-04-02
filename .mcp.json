@@ -3,7 +3,8 @@
     "mcp-agent": {
       "command": "uvx",
       "args": [
-        "mcp-agent"
+        "mcp-agent",
+        "serve"
       ]
     }
   }
