@@ -1,0 +1,28 @@
+{
+  "name": "mcp-agent",
+  "version": "0.1.0",
+  "description": "Build effective agents using MCP and workflow patterns",
+  "author": {
+    "name": "lastmile-ai",
+    "url": "https://github.com/lastmile-ai/mcp-agent"
+  },
+  "homepage": "https://github.com/lastmile-ai/mcp-agent",
+  "repository": "https://github.com/lastmile-ai/mcp-agent",
+  "keywords": [
+    "mcp",
+    "codex"
+  ],
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "MCP Agent",
+    "shortDescription": "Build effective agents using MCP and workflow patterns",
+    "longDescription": "Build effective agents using Model Context Protocol and simple workflow patterns.",
+    "category": "Development",
+    "capabilities": [
+      "Read",
+      "Write",
+      "Interactive"
+    ],
+    "websiteURL": "https://github.com/lastmile-ai/mcp-agent"
+  }
+}
