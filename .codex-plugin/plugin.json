@@ -19,5 +19,6 @@
     "longDescription": "Build effective agents using Model Context Protocol and simple workflow patterns.",
     "category": "Development",
     "websiteURL": "https://github.com/lastmile-ai/mcp-agent"
-  }
+  },
+  "skills": "./skills/"
 }
