@@ -3,7 +3,7 @@ import pytest
 
 from types import SimpleNamespace
 
-from mcp.types import ListToolsResult
+from mcp.types import ListToolsResult, ServerCapabilities
 
 from mcp_agent.agents.agent import (
     AgentTasks,
@@ -31,6 +31,7 @@ class FakeAggregator:
         self._server_to_prompt_map = {}
         self._namespaced_resource_map = {}
         self._server_to_resource_map = {}
+        self.fail_capabilities_for: set[str] = set()
 
     def set_block(self, block: bool):
         self._block = block
@@ -50,6 +51,15 @@ class FakeAggregator:
         if self._block:
             await self._block_event.wait()
         return ListToolsResult(tools=[])
+
+    async def get_capabilities(
+        self, server_name: str | None = None
+    ) -> ServerCapabilities | None:
+        if server_name in self.fail_capabilities_for:
+            raise RuntimeError(f"{server_name} unavailable")
+        if server_name in getattr(self, "return_none_for", set()):
+            return None
+        return ServerCapabilities()
 
     async def close(self):
         self.closed = True
@@ -148,3 +158,68 @@ async def test_shutdown_deferred_until_inflight_complete(monkeypatch):
     await anyio.sleep(0)
     async with tasks.server_aggregators_for_agent_lock:
         assert agent_name not in tasks.server_aggregators_for_agent
+
+
+@pytest.mark.anyio
+async def test_get_capabilities_skips_failed_servers(monkeypatch):
+    from mcp_agent.agents import agent as agent_mod
+
+    monkeypatch.setattr(agent_mod, "MCPAggregator", FakeAggregator)
+
+    ctx = SimpleNamespace()
+    tasks = AgentTasks(context=ctx)
+
+    agent_name = "writer"
+    req = InitAggregatorRequest(
+        agent_name=agent_name,
+        server_names=["srv1", "srv2"],
+        connection_persistence=True,
+        force=False,
+    )
+
+    await tasks.initialize_aggregator_task(req)
+
+    agg = tasks.server_aggregators_for_agent[agent_name]
+    agg.fail_capabilities_for.add("srv2")
+
+    result = await tasks.get_capabilities_task(
+        agent_mod.GetCapabilitiesRequest(agent_name=agent_name, server_name=None)
+    )
+
+    assert list(result.keys()) == ["srv1"]
+    assert isinstance(result["srv1"], ServerCapabilities)
+
+
+@pytest.mark.anyio
+async def test_get_capabilities_skips_none_results(monkeypatch):
+    """MCPAggregator.get_capabilities can return None after logging a connection
+    or initialization error. The aggregator must treat that as a failed lookup
+    (same as a raised exception) instead of leaking {name: None} into the
+    capabilities dict."""
+    from mcp_agent.agents import agent as agent_mod
+
+    monkeypatch.setattr(agent_mod, "MCPAggregator", FakeAggregator)
+
+    ctx = SimpleNamespace()
+    tasks = AgentTasks(context=ctx)
+
+    agent_name = "writer"
+    req = InitAggregatorRequest(
+        agent_name=agent_name,
+        server_names=["srv1", "srv2"],
+        connection_persistence=True,
+        force=False,
+    )
+
+    await tasks.initialize_aggregator_task(req)
+
+    agg = tasks.server_aggregators_for_agent[agent_name]
+    agg.return_none_for = {"srv2"}
+
+    result = await tasks.get_capabilities_task(
+        agent_mod.GetCapabilitiesRequest(agent_name=agent_name, server_name=None)
+    )
+
+    assert list(result.keys()) == ["srv1"]
+    assert isinstance(result["srv1"], ServerCapabilities)
+    assert "srv2" not in result
