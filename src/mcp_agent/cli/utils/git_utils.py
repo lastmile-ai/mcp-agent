@@ -191,7 +191,7 @@ def sanitize_git_ref_component(name: str) -> str:
     """Sanitize a string to be safe as a single refname component.
 
     Rules (aligned with `git check-ref-format` constraints and our usage):
-    - Disallow spaces and special characters: ~ ^ : ? * [ \ (replace with '-')
+    - Disallow spaces and special characters: ~ ^ : ? * [ and backslash (replace with '-')
     - Replace '/' to avoid creating nested namespaces from user input
     - Collapse consecutive dots '..' into '-'
     - Remove leading dots '.' (cannot start with '.')
