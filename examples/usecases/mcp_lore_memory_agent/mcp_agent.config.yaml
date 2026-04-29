@@ -1,0 +1,25 @@
+$schema: ../../../schema/mcp-agent.config.schema.json
+
+execution_engine: asyncio
+logger:
+  type: console
+  level: info
+
+mcp:
+  servers:
+    lore:
+      command: "docker"
+      args:
+        [
+          "run",
+          "-i",
+          "--rm",
+          "--pull=always",
+          "ghcr.io/lore-context/lore-context-mcp:latest",
+        ]
+      env:
+        LORE_API_KEY: "${LORE_API_KEY}"
+
+openai:
+  # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored
+  default_model: gpt-4o
