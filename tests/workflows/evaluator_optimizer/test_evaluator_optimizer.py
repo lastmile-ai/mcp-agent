@@ -42,6 +42,10 @@ class DummyLLM(AugmentedLLM):
         # Minimal implementation for abstract method
         return "\n".join(self.message_str(r) for r in self._generate_return)
 
+    async def generate_stream(self, message, request_params=None):
+        raise NotImplementedError("Streaming not implemented for DummyLLM")
+        yield  # Make this a generator function
+
 
 class MockToolCallMessage:
     """Mock message that simulates a tool call message with no content"""

@@ -280,3 +280,12 @@ class ParallelLLM(AugmentedLLM[MessageParamT, MessageT]):
                     pass  # Just no-op, best-effort tracing
 
             return result
+
+    async def generate_stream(
+        self,
+        message,
+        request_params=None,
+    ):
+        """Streaming is not yet implemented for ParallelLLM."""
+        raise NotImplementedError("Streaming not yet implemented for ParallelLLM")
+        yield  # Make this a generator function

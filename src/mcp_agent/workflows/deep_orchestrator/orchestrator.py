@@ -795,3 +795,12 @@ class DeepOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
             response_model=response_model,
             request_params=RequestParams(max_iterations=1),
         )
+
+    async def generate_stream(
+        self,
+        message,
+        request_params=None,
+    ):
+        """Streaming is not yet implemented for DeepOrchestrator."""
+        raise NotImplementedError("Streaming not yet implemented for DeepOrchestrator")
+        yield  # Make this a generator function

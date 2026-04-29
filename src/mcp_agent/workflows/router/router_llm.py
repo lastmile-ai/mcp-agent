@@ -331,6 +331,15 @@ class LLMRouter(Router, AugmentedLLM[MessageParamT, MessageT]):
                 )
             )
 
+    async def generate_stream(
+        self,
+        message,
+        request_params=None,
+    ):
+        """Streaming is not yet implemented for LLMRouter."""
+        raise NotImplementedError("Streaming not yet implemented for LLMRouter")
+        yield  # Make this a generator function
+
     # endregion
 
     async def _route_with_llm(

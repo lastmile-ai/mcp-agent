@@ -359,6 +359,15 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
 
             return structured_result
 
+    async def generate_stream(
+        self,
+        message,
+        request_params=None,
+    ):
+        """Streaming is not yet implemented for Orchestrator."""
+        raise NotImplementedError("Streaming not yet implemented for Orchestrator")
+        yield  # Make this a generator function
+
     async def execute(
         self, objective: str, request_params: RequestParams | None = None
     ) -> PlanResult:

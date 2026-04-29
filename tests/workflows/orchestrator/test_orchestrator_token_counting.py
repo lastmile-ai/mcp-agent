@@ -120,6 +120,10 @@ class TestOrchestratorTokenCounting:
                     message, response_model, request_params
                 )
 
+            async def generate_stream(self, message, request_params=None):
+                raise NotImplementedError("Streaming not implemented for mock")
+                yield
+
         return MockAugmentedLLMWithTokens
 
     @pytest.fixture

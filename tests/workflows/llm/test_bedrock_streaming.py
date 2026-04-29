@@ -38,8 +38,11 @@ class TestBedrockStreaming:
         if usage is None:
             usage = {"inputTokens": 100, "outputTokens": 50}
 
+        # Append metadata event with usage (Bedrock sends this after messageStop)
+        events_with_metadata = list(events) + [{"metadata": {"usage": usage}}]
+
         return {
-            "stream": iter(events),
+            "stream": iter(events_with_metadata),
             "usage": usage,
         }
 

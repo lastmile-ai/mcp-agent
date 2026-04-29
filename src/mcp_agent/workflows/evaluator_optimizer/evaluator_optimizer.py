@@ -1,6 +1,6 @@
 import contextlib
 from enum import Enum
-from typing import Callable, List, Optional, Type, TYPE_CHECKING
+from typing import AsyncIterator, Callable, List, Optional, Type, TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from mcp_agent.tracing.semconv import GEN_AI_AGENT_NAME
@@ -15,6 +15,7 @@ from mcp_agent.workflows.llm.augmented_llm import (
 )
 from mcp_agent.agents.agent import Agent
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.workflows.llm.streaming_events import StreamEvent
 
 if TYPE_CHECKING:
     from mcp_agent.core.context import Context
@@ -430,6 +431,15 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
                     span.set_attribute("unstructured_response", response_str)
 
             return res
+
+    async def generate_stream(
+        self,
+        message,
+        request_params=None,
+    ) -> AsyncIterator[StreamEvent]:
+        """Streaming is not yet implemented for this provider."""
+        raise NotImplementedError("Streaming not yet implemented for this provider")
+        yield  # Make this a generator function
 
     def _build_eval_prompt(
         self, original_request: str, current_response: str, iteration: int

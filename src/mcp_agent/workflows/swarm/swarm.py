@@ -310,6 +310,15 @@ class Swarm(AugmentedLLM[MessageParamT, MessageT], Generic[MessageParamT, Messag
 
         return True
 
+    async def generate_stream(
+        self,
+        message,
+        request_params=None,
+    ):
+        """Streaming is not yet implemented for Swarm."""
+        raise NotImplementedError("Streaming not yet implemented for Swarm")
+        yield  # Make this a generator function
+
 
 class DoneAgent(SwarmAgent):
     """

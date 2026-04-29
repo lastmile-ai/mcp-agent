@@ -329,6 +329,15 @@ class GoogleAugmentedLLM(
         data = json.loads(text)
         return response_model.model_validate(data)
 
+    async def generate_stream(
+        self,
+        message,
+        request_params=None,
+    ):
+        """Streaming is not yet implemented for this provider."""
+        raise NotImplementedError("Streaming not yet implemented for this provider")
+        yield  # Make this a generator function
+
     @classmethod
     def convert_message_to_message_param(cls, message, **kwargs):
         """Convert a response object to an input parameter object to allow LLM calls to be chained."""

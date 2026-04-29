@@ -91,6 +91,10 @@ class TestRouterTokenCounting:
                     message, response_model, request_params
                 )
 
+            async def generate_stream(self, message, request_params=None):
+                raise NotImplementedError("Streaming not implemented for mock")
+                yield  # Make this a generator function
+
         return MockAugmentedLLMWithTokens
 
     @pytest.fixture

@@ -1,7 +1,7 @@
 import asyncio
 import functools
 import json
-from typing import Any, Iterable, Optional, Type, Union
+from typing import Any, AsyncIterator, Iterable, Optional, Type, Union
 from azure.core.exceptions import HttpResponseError
 from azure.ai.inference import ChatCompletionsClient
 from azure.ai.inference.models import (
@@ -76,6 +76,7 @@ from mcp_agent.workflows.llm.augmented_llm import (
 )
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.workflows.llm.multipart_converter_azure import AzureConverter
+from mcp_agent.workflows.llm.streaming_events import StreamEvent
 from mcp_agent.executor.errors import to_application_error
 
 _NON_RETRYABLE_AZURE_STATUS_CODES = {400, 401, 403, 404, 422}
@@ -405,6 +406,15 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
 
         structured_response = response_model.model_validate(json_data)
         return structured_response
+
+    async def generate_stream(
+        self,
+        message,
+        request_params=None,
+    ) -> AsyncIterator[StreamEvent]:
+        """Streaming is not yet implemented for this provider."""
+        raise NotImplementedError("Streaming not yet implemented for this provider")
+        yield  # Make this a generator function
 
     @classmethod
     def convert_message_to_message_param(

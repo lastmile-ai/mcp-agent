@@ -21,6 +21,13 @@ from mcp_agent.workflows.llm.augmented_llm_openai import (
 )
 
 
+# OpenAIAugmentedLLM does not implement the generate_stream abstract method yet,
+# so we need a concrete subclass for testing.
+class _TestableOpenAIAugmentedLLM(OpenAIAugmentedLLM):
+    async def generate_stream(self, message, request_params=None):
+        raise NotImplementedError("streaming not implemented")
+
+
 class TestOpenAIAugmentedLLM:
     """
     Tests for the OpenAIAugmentedLLM class.
@@ -41,7 +48,7 @@ class TestOpenAIAugmentedLLM:
         )
 
         # Create LLM instance
-        llm = OpenAIAugmentedLLM(name="test", context=mock_context)
+        llm = _TestableOpenAIAugmentedLLM(name="test", context=mock_context)
 
         # Apply common mocks
         llm.history = MagicMock()
@@ -836,3 +843,152 @@ class TestOpenAIAugmentedLLM:
                 f"reasoning_effort should be applied for {model}"
             )
             assert request_obj.payload["reasoning_effort"] == "low"
+
+    @pytest.mark.asyncio
+    async def test_gpt54_with_tools_skips_reasoning_effort(
+        self, mock_llm, default_usage
+    ):
+        """
+        Tests that reasoning_effort is NOT sent for gpt-5.4 models when function
+        tools are present, since /v1/chat/completions returns 400 for this combination.
+        """
+        for model in ["gpt-5.4", "gpt-5.4-mini"]:
+            # Setup mock executor with tool use then text response
+            call_count = 0
+
+            async def custom_side_effect(*args, **kwargs):
+                nonlocal call_count
+                call_count += 1
+                if call_count == 1:
+                    return self.create_tool_use_response(
+                        "test_tool",
+                        {"query": "test"},
+                        "tool_123",
+                        usage=default_usage,
+                    )
+                else:
+                    return self.create_text_response(
+                        "Final response", usage=default_usage
+                    )
+
+            mock_llm.executor.execute = AsyncMock(side_effect=custom_side_effect)
+            mock_llm.executor.execute_many = AsyncMock(return_value=[None])
+            mock_llm.call_tool = AsyncMock(
+                return_value=MagicMock(
+                    content=[TextContent(type="text", text="Tool result")],
+                    isError=False,
+                    tool_call_id="tool_123",
+                )
+            )
+            mock_llm.select_model = AsyncMock(return_value=model)
+
+            # Mock agent.list_tools to return a tool so available_tools is not None
+            mock_tool = MagicMock()
+            mock_tool.name = "test_tool"
+            mock_tool.description = "A test tool"
+            mock_tool.inputSchema = {"type": "object", "properties": {}}
+            mock_llm.agent.list_tools = AsyncMock(
+                return_value=MagicMock(tools=[mock_tool])
+            )
+
+            call_count = 0
+            await mock_llm.generate(
+                "Test query",
+                request_params=RequestParams(
+                    model=model, reasoning_effort="high"
+                ),
+            )
+
+            # First call should NOT have reasoning_effort (tools present + gpt-5.4)
+            first_request = mock_llm.executor.execute.call_args_list[0][0][1]
+            assert "reasoning_effort" not in first_request.payload, (
+                f"reasoning_effort should NOT be in payload for {model} with tools"
+            )
+            # Should still use max_completion_tokens (reasoning model)
+            assert "max_completion_tokens" in first_request.payload
+
+    @pytest.mark.asyncio
+    async def test_gpt54_without_tools_includes_reasoning_effort(
+        self, mock_llm, default_usage
+    ):
+        """
+        Tests that reasoning_effort IS sent for gpt-5.4 models when no function
+        tools are present.
+        """
+        for model in ["gpt-5.4", "gpt-5.4-mini"]:
+            mock_llm.executor.execute = AsyncMock(
+                return_value=self.create_text_response(
+                    "Test response", usage=default_usage
+                )
+            )
+            mock_llm.select_model = AsyncMock(return_value=model)
+
+            await mock_llm.generate(
+                "Test query",
+                request_params=RequestParams(
+                    model=model, reasoning_effort="high"
+                ),
+            )
+
+            request_obj = mock_llm.executor.execute.call_args[0][1]
+            assert request_obj.payload["reasoning_effort"] == "high", (
+                f"reasoning_effort should be present for {model} without tools"
+            )
+
+    @pytest.mark.asyncio
+    async def test_gpt52_with_tools_includes_reasoning_effort(
+        self, mock_llm, default_usage
+    ):
+        """
+        Tests that reasoning_effort IS sent for gpt-5.2 (pre-5.4) models even
+        when function tools are present, since these models support the combination.
+        """
+        call_count = 0
+
+        async def custom_side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return self.create_tool_use_response(
+                    "test_tool",
+                    {"query": "test"},
+                    "tool_123",
+                    usage=default_usage,
+                )
+            else:
+                return self.create_text_response(
+                    "Final response", usage=default_usage
+                )
+
+        mock_llm.executor.execute = AsyncMock(side_effect=custom_side_effect)
+        mock_llm.executor.execute_many = AsyncMock(return_value=[None])
+        mock_llm.call_tool = AsyncMock(
+            return_value=MagicMock(
+                content=[TextContent(type="text", text="Tool result")],
+                isError=False,
+                tool_call_id="tool_123",
+            )
+        )
+        mock_llm.select_model = AsyncMock(return_value="gpt-5.2")
+
+        # Mock agent.list_tools to return a tool so available_tools is not None
+        mock_tool = MagicMock()
+        mock_tool.name = "test_tool"
+        mock_tool.description = "A test tool"
+        mock_tool.inputSchema = {"type": "object", "properties": {}}
+        mock_llm.agent.list_tools = AsyncMock(
+            return_value=MagicMock(tools=[mock_tool])
+        )
+
+        await mock_llm.generate(
+            "Test query",
+            request_params=RequestParams(
+                model="gpt-5.2", reasoning_effort="medium"
+            ),
+        )
+
+        # gpt-5.2 should still have reasoning_effort even with tools
+        first_request = mock_llm.executor.execute.call_args_list[0][0][1]
+        assert first_request.payload["reasoning_effort"] == "medium", (
+            "reasoning_effort should be present for gpt-5.2 with tools"
+        )

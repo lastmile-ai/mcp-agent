@@ -69,6 +69,10 @@ class _DummyLLM(AugmentedLLM[str, str]):
     ):
         return response_model()
 
+    async def generate_stream(self, message, request_params=None):
+        raise NotImplementedError("Streaming not implemented for mock")
+        yield
+
 
 @pytest.mark.asyncio
 async def test_agent_convenience_and_disambiguation():

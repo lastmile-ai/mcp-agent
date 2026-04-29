@@ -1,7 +1,7 @@
 import json
 import re
 import functools
-from typing import Any, Dict, Iterable, List, Type, cast
+from typing import Any, AsyncIterator, Dict, Iterable, List, Type, cast
 
 from pydantic import BaseModel
 
@@ -68,6 +68,7 @@ from mcp_agent.workflows.llm.augmented_llm import (
     ProviderToMCPConverter,
     RequestParams,
 )
+from mcp_agent.workflows.llm.streaming_events import StreamEvent
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.workflows.llm.multipart_converter_openai import OpenAIConverter
 from mcp_agent.executor.errors import to_application_error
@@ -182,6 +183,15 @@ class OpenAIAugmentedLLM(
 
         return ChatCompletionAssistantMessageParam(**assistant_message_params)
 
+    async def generate_stream(
+        self,
+        message,
+        request_params: RequestParams | None = None,
+    ) -> AsyncIterator[StreamEvent]:
+        """Streaming is not yet implemented for OpenAI."""
+        raise NotImplementedError("Streaming not yet implemented for OpenAI provider")
+        yield  # Make this a generator function  # noqa: E501
+
     @track_tokens()
     async def generate(
         self,
@@ -277,9 +287,18 @@ class OpenAIAugmentedLLM(
                         # DEPRECATED: https://platform.openai.com/docs/api-reference/chat/create#chat-create-max_tokens
                         # "max_tokens": params.maxTokens,
                         "max_completion_tokens": params.maxTokens,
-                        "reasoning_effort": params.reasoning_effort
-                        or self._reasoning_effort,
                     }
+                    # gpt-5.4+ models (including gpt-5.5+) do not support
+                    # reasoning_effort with function tools on /v1/chat/completions
+                    # (400 error). Skip the parameter when tools are present.
+                    if not (
+                        available_tools
+                        and model
+                        and re.match(r"gpt-5\.[4-9]", model)
+                    ):
+                        arguments["reasoning_effort"] = (
+                            params.reasoning_effort or self._reasoning_effort
+                        )
                 else:
                     arguments = {**arguments, "max_tokens": params.maxTokens}
                     # if available_tools:
@@ -559,6 +578,9 @@ class OpenAIAugmentedLLM(
                 # DEPRECATED: https://platform.openai.com/docs/api-reference/chat/create#chat-create-max_tokens
                 # "max_tokens": params.maxTokens,
                 payload["max_completion_tokens"] = params.maxTokens
+                # gpt-5.4+ models do not support reasoning_effort with function
+                # tools on /v1/chat/completions (400 error). generate_structured
+                # does not use function tools, so always include reasoning_effort.
                 payload["reasoning_effort"] = (
                     params.reasoning_effort or self._reasoning_effort
                 )

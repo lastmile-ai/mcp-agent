@@ -70,6 +70,10 @@ class MockAugmentedLLM(AugmentedLLM):
             message, response_model, request_params
         )
 
+    async def generate_stream(self, message, request_params=None):
+        raise NotImplementedError("Streaming not implemented for mock")
+        yield
+
     def message_str(self, message, content_only=False):
         return self.message_str_mock(message, content_only)
 
