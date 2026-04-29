@@ -288,13 +288,13 @@ class OpenAIAugmentedLLM(
                         # "max_tokens": params.maxTokens,
                         "max_completion_tokens": params.maxTokens,
                     }
-                    # gpt-5.4+ models do not support reasoning_effort with function
-                    # tools on /v1/chat/completions (400 error). Skip the parameter
-                    # when tools are present for these models.
+                    # gpt-5.4+ models (including gpt-5.5+) do not support
+                    # reasoning_effort with function tools on /v1/chat/completions
+                    # (400 error). Skip the parameter when tools are present.
                     if not (
                         available_tools
                         and model
-                        and model.startswith("gpt-5.4")
+                        and re.match(r"gpt-5\.[4-9]", model)
                     ):
                         arguments["reasoning_effort"] = (
                             params.reasoning_effort or self._reasoning_effort
