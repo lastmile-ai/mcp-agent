@@ -647,11 +647,42 @@ class OpenAIAugmentedLLM(
 
             self._annotate_span_for_call_tool_result(span, result)
 
+            # Convert content parts to a string for tool messages.
+            # OpenAI's API accepts both string and list formats, but third-party
+            # providers (DeepSeek, etc.) only accept a plain string for tool messages.
+            tool_content = self._tool_result_to_string(result.content)
+
             return ChatCompletionToolMessageParam(
                 role="tool",
                 tool_call_id=tool_call_id,
-                content=[mcp_content_to_openai_content_part(c) for c in result.content],
+                content=tool_content,
             )
+
+    @staticmethod
+    def _tool_result_to_string(
+        content_parts: list[TextContent | ImageContent | EmbeddedResource],
+    ) -> str:
+        """Convert MCP content parts to a plain string for tool messages.
+
+        OpenAI's API accepts both string and list[ChatCompletionContentPartTextParam]
+        for tool message content, but third-party providers (DeepSeek, etc.) only
+        accept a plain string. This method extracts text from all content parts and
+        joins them, providing a provider-compatible representation.
+        """
+        from mcp.types import TextResourceContents
+
+        text_parts: list[str] = []
+        for part in content_parts:
+            if isinstance(part, TextContent):
+                text_parts.append(part.text)
+            elif isinstance(part, EmbeddedResource):
+                if isinstance(part.resource, TextResourceContents):
+                    text_parts.append(part.resource.text)
+                else:
+                    text_parts.append(f"[{part.resource.mimeType or 'binary'}]")
+            elif isinstance(part, ImageContent):
+                text_parts.append(f"[image: {part.mimeType}]")
+        return "\n".join(text_parts) if text_parts else ""
 
     def message_param_str(self, message: ChatCompletionMessageParam) -> str:
         """Convert an input message to a string representation."""
