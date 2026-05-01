@@ -1113,3 +1113,128 @@ class TestAnthropicTokenCounting:
         assert model_summary.usage.input_tokens == 300
         assert model_summary.usage.output_tokens == 150
         assert model_summary.provider == "anthropic"
+
+
+# ── Non-text block crash tests ───────────────────────────────────────────────
+from anthropic.types import ThinkingBlock, RedactedThinkingBlock
+
+
+class TestNonTextBlockHandling:
+    """Tests for correct handling of non-text content blocks (ThinkingBlock, ToolUseBlock, etc.)."""
+
+    def test_anthropic_content_to_mcp_content_text_block(self):
+        """TextBlock should convert to TextContent."""
+        from anthropic.types import TextBlock
+
+        content = [TextBlock(type="text", text="hello")]
+        result = anthropic_content_to_mcp_content(content)
+        assert len(result) == 1
+        assert result[0].type == "text"
+        assert result[0].text == "hello"
+
+    def test_anthropic_content_to_mcp_content_tool_use_block(self):
+        """ToolUseBlock should not crash — should convert to TextContent."""
+        content = [
+            ToolUseBlock(type="tool_use", name="search", input={"q": "test"}, id="t1")
+        ]
+        result = anthropic_content_to_mcp_content(content)
+        assert len(result) == 1
+        assert result[0].type == "text"
+
+    def test_anthropic_content_to_mcp_content_thinking_block(self):
+        """ThinkingBlock should not crash — was crashing with AttributeError."""
+        content = [
+            ThinkingBlock(
+                type="thinking",
+                thinking="Let me think...",
+                signature="sig123",
+            )
+        ]
+        result = anthropic_content_to_mcp_content(content)
+        assert len(result) == 1
+        assert result[0].type == "text"
+
+    def test_anthropic_content_to_mcp_content_redacted_thinking_block(self):
+        """RedactedThinkingBlock should not crash — was crashing with AttributeError."""
+        content = [
+            RedactedThinkingBlock(type="redacted_thinking", data="encrypted...")
+        ]
+        result = anthropic_content_to_mcp_content(content)
+        assert len(result) == 1
+        assert result[0].type == "text"
+
+    def test_anthropic_content_to_mcp_content_mixed_blocks(self):
+        """Mix of text and non-text blocks should all convert without crashing."""
+        content = [
+            TextBlock(type="text", text="Here's my answer"),
+            ToolUseBlock(type="tool_use", name="calc", input={"x": 1}, id="t1"),
+            ThinkingBlock(type="thinking", thinking="reasoning...", signature="sig"),
+            RedactedThinkingBlock(type="redacted_thinking", data="redacted"),
+        ]
+        result = anthropic_content_to_mcp_content(content)
+        assert len(result) == 4
+        assert all(r.type == "text" for r in result)
+
+    def test_anthropic_content_to_mcp_content_dict_tool_use(self):
+        """Dict-style tool_use block should not crash — was crashing with KeyError."""
+        content = [{"type": "tool_use", "name": "search", "input": {"q": "test"}, "id": "t1"}]
+        result = anthropic_content_to_mcp_content(content)
+        assert len(result) == 1
+        assert result[0].type == "text"
+
+    def test_anthropic_content_to_mcp_content_dict_thinking(self):
+        """Dict-style thinking block should not crash — was crashing with KeyError."""
+        content = [{"type": "thinking", "thinking": "reasoning...", "signature": "sig"}]
+        result = anthropic_content_to_mcp_content(content)
+        assert len(result) == 1
+        assert result[0].type == "text"
+
+    def test_message_str_with_thinking_block(self):
+        """message_str should not crash on ThinkingBlock — was crashing with AttributeError."""
+        llm = AnthropicAugmentedLLM.__new__(AnthropicAugmentedLLM)
+        msg = Message(
+            role="assistant",
+            content=[
+                TextBlock(type="text", text="Hello"),
+                ThinkingBlock(type="thinking", thinking="Let me think...", signature="sig"),
+            ],
+            model="claude-3-7-sonnet-latest",
+            stop_reason="end_turn",
+            id="test",
+            type="message",
+            usage=Usage(input_tokens=10, output_tokens=10),
+        )
+        result = llm.message_str(msg)
+        assert "Hello" in result
+
+    def test_message_str_with_tool_use_block(self):
+        """message_str should not crash on ToolUseBlock — was crashing with AttributeError."""
+        llm = AnthropicAugmentedLLM.__new__(AnthropicAugmentedLLM)
+        msg = Message(
+            role="assistant",
+            content=[
+                TextBlock(type="text", text="Using tool"),
+                ToolUseBlock(type="tool_use", name="search", input={"q": "test"}, id="t1"),
+            ],
+            model="claude-3-7-sonnet-latest",
+            stop_reason="tool_use",
+            id="test",
+            type="message",
+            usage=Usage(input_tokens=10, output_tokens=10),
+        )
+        result = llm.message_str(msg)
+        assert "Using tool" in result
+
+    def test_message_param_str_with_non_text_blocks(self):
+        """message_param_str should not crash on dict blocks without 'text' key."""
+        llm = AnthropicAugmentedLLM.__new__(AnthropicAugmentedLLM)
+        msg = {
+            "role": "assistant",
+            "content": [
+                {"type": "text", "text": "Hello"},
+                {"type": "tool_use", "name": "search", "input": {"q": "test"}, "id": "t1"},
+                {"type": "thinking", "thinking": "reasoning...", "signature": "sig"},
+            ],
+        }
+        result = llm.message_param_str(msg)
+        assert "Hello" in result

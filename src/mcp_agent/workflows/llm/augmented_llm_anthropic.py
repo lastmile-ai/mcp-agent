@@ -912,7 +912,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             else:
                 final_text: List[str] = []
                 for block in content:
-                    if block.text:
+                    if hasattr(block, "text") and block.text:
                         final_text.append(str(block.text))
                     else:
                         final_text.append(str(block))
@@ -929,7 +929,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             if isinstance(content, list):
                 final_text: List[str] = []
                 for block in content:
-                    if block.text:
+                    if hasattr(block, "text") and block.text:
                         final_text.append(str(block.text))
                     else:
                         final_text.append(str(block))
@@ -1375,10 +1375,10 @@ def anthropic_content_to_mcp_content(
             # Handle pydantic models (ContentBlock) and dict blocks
             if isinstance(block, BaseModel):
                 block_type = block.type
-                block_text = block.text
+                block_text = getattr(block, "text", None)
             else:
                 block_type = block["type"]
-                block_text = block["text"]
+                block_text = block.get("text") if isinstance(block, dict) else None
 
             if block_type == "text":
                 mcp_content.append(TextContent(type="text", text=block_text))
