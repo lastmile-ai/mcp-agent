@@ -11,7 +11,12 @@ from openai.types.chat import (
 )
 from pydantic import BaseModel
 
-from mcp.types import TextContent, SamplingMessage, PromptMessage
+from mcp.types import (
+    ImageContent,
+    PromptMessage,
+    SamplingMessage,
+    TextContent,
+)
 
 from mcp_agent.config import OpenAISettings
 from mcp_agent.workflows.llm.augmented_llm_openai import (
@@ -450,8 +455,18 @@ class TestOpenAIAugmentedLLM:
         )
         openai_param = MCPOpenAITypeConverter.from_mcp_message_param(mcp_message)
         assert openai_param["role"] == "user"
-        assert isinstance(openai_param["content"], list)
-        assert openai_param["content"][0]["text"] == "Test MCP content"
+        assert openai_param["content"] == "Test MCP content"
+
+        # Non-text content still uses OpenAI content parts.
+        image_message = SamplingMessage(
+            role="user",
+            content=ImageContent(type="image", data="imagedata", mimeType="image/png"),
+        )
+        openai_image_param = MCPOpenAITypeConverter.from_mcp_message_param(
+            image_message
+        )
+        assert isinstance(openai_image_param["content"], list)
+        assert openai_image_param["content"][0]["type"] == "image_url"
 
     # Test: Generate with String Input
     @pytest.mark.asyncio

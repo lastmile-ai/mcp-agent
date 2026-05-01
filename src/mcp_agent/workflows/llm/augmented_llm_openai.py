@@ -1,7 +1,7 @@
 import json
 import re
 import functools
-from typing import Any, Dict, Iterable, List, Type, cast
+from typing import Any, AsyncIterator, Dict, Iterable, List, Type, cast
 
 from pydantic import BaseModel
 
@@ -70,6 +70,7 @@ from mcp_agent.workflows.llm.augmented_llm import (
 )
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.workflows.llm.multipart_converter_openai import OpenAIConverter
+from mcp_agent.workflows.llm.streaming_events import StreamEvent, StreamEventType
 from mcp_agent.executor.errors import to_application_error
 
 
@@ -594,6 +595,29 @@ class OpenAIAugmentedLLM(
                 # Fallback to pydantic JSON parsing if already a JSON string-like
                 return response_model.model_validate_json(content)
 
+    async def generate_stream(
+        self,
+        message: MessageTypes,
+        request_params: RequestParams | None = None,
+    ) -> AsyncIterator[StreamEvent]:
+        """
+        Emit stream events using the non-streaming OpenAI generation path.
+
+        OpenAI-native token streaming is not implemented here yet, but this keeps
+        the provider concrete and gives callers a consistent event interface.
+        """
+        responses = await self.generate(message, request_params)
+
+        for response in responses:
+            content = self.message_str(response, content_only=True)
+            if content:
+                yield StreamEvent(type=StreamEventType.TEXT_DELTA, content=content)
+
+        yield StreamEvent(
+            type=StreamEventType.COMPLETE,
+            metadata={"response_count": len(responses)},
+        )
+
     async def pre_tool_call(self, tool_call_id: str | None, request: CallToolRequest):
         return request
 
@@ -1088,14 +1112,14 @@ class MCPOpenAITypeConverter(
             extras = param.model_dump(exclude={"role", "content"})
             return ChatCompletionAssistantMessageParam(
                 role="assistant",
-                content=[mcp_content_to_openai_content_part(param.content)],
+                content=mcp_content_to_openai_message_content(param.content),
                 **extras,
             )
         elif param.role == "user":
             extras = param.model_dump(exclude={"role", "content"})
             return ChatCompletionUserMessageParam(
                 role="user",
-                content=[mcp_content_to_openai_content_part(param.content)],
+                content=mcp_content_to_openai_message_content(param.content),
                 **extras,
             )
         else:
@@ -1187,6 +1211,16 @@ def mcp_content_to_openai_content_part(
     else:
         # Last effort to convert the content to a string
         return ChatCompletionContentPartTextParam(type="text", text=str(content))
+
+
+def mcp_content_to_openai_message_content(
+    content: TextContent | ImageContent | EmbeddedResource,
+) -> str | List[ChatCompletionContentPartParam]:
+    part = mcp_content_to_openai_content_part(content)
+    if part["type"] == "text":
+        return str(part["text"])
+
+    return [part]
 
 
 def openai_content_to_mcp_content(
