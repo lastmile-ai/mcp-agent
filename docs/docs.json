@@ -82,6 +82,7 @@
                   "mcp-agent-sdk/advanced/durable-agents",
                   "mcp-agent-sdk/advanced/observability",
                   "mcp-agent-sdk/advanced/logging",
+                  "mcp-agent-sdk/advanced/governance",
                   "mcp-agent-sdk/advanced/authentication",
                   "mcp-agent-sdk/advanced/pause-and-resume"
                 ]

@@ -1,0 +1,52 @@
+---
+title: Governance and audit trails
+description: Record reviewable policy decisions for agent tool calls.
+---
+
+Agents can call tools that read files, contact external services, create
+tickets, send messages, or mutate state. Enterprise deployments often need a
+reviewable record of each policy decision before those calls execute.
+
+`mcp-agent` includes a small, vendor-neutral audit record shape for this
+boundary:
+
+- `tool_name`: tool requested by the agent
+- `decision`: `allow`, `deny`, `modify`, or `needs_review`
+- `args_hash`: SHA-256 hash of canonicalized arguments
+- `modified_args_hash`: SHA-256 hash after argument rewriting, when applicable
+- `policy_id` and `policy_version`: policy evaluated for the decision
+- `reason`: required for denied calls and human-review routing
+- `redacted_fields`: argument fields intentionally omitted from the log
+- `metadata`: extra audit metadata that must not contain raw tool arguments
+
+The audit record is an evidence trail for policy enforcement. It does not
+certify legal, regulatory, or organizational compliance by itself.
+
+```python
+from mcp_agent.governance.tool_call_audit import (
+    ToolCallAuditRecord,
+    ToolCallDecision,
+    hash_tool_arguments,
+    validate_tool_call_audit_record,
+)
+
+record = ToolCallAuditRecord(
+    event_id="evt_001",
+    tool_name="web_search",
+    decision=ToolCallDecision.MODIFY,
+    args_hash=hash_tool_arguments({"query": "incident response", "limit": 1000}),
+    modified_args_hash=hash_tool_arguments({"query": "incident response", "limit": 10}),
+    policy_id="default-tool-policy",
+    policy_version="2026-05-07",
+    evaluated_at="2026-05-07T00:00:00Z",
+    reason="capped unbounded result limit",
+    redacted_fields=["arguments.query"],
+)
+
+validate_tool_call_audit_record(record)
+```
+
+Use this shape when building guardrails, approval flows, or audit sinks around
+tool calls. Store hashes, policy identifiers, decisions, reasons, and review
+metadata instead of raw prompts, raw tool arguments, credentials, or private
+payloads.
