@@ -3,10 +3,11 @@ import pytest
 
 from types import SimpleNamespace
 
-from mcp.types import ListToolsResult
+from mcp.types import ListToolsResult, ServerCapabilities
 
 from mcp_agent.agents.agent import (
     AgentTasks,
+    GetCapabilitiesRequest,
     InitAggregatorRequest,
     ListToolsRequest,
 )
@@ -22,6 +23,10 @@ class FakeAggregator:
         self.initialized_count = 0
         self.closed = False
         self.calls = 0
+        self.capabilities_by_server = {
+            server_name: ServerCapabilities() for server_name in server_names
+        }
+        self.capability_errors_by_server = {}
         self._block = False
         self._block_event = anyio.Event()
         # Mimic MCPAggregator internal maps expected by AgentTasks.initialize_aggregator_task
@@ -50,6 +55,11 @@ class FakeAggregator:
         if self._block:
             await self._block_event.wait()
         return ListToolsResult(tools=[])
+
+    async def get_capabilities(self, server_name: str) -> ServerCapabilities:
+        if server_name in self.capability_errors_by_server:
+            raise self.capability_errors_by_server[server_name]
+        return self.capabilities_by_server[server_name]
 
     async def close(self):
         self.closed = True
@@ -148,3 +158,34 @@ async def test_shutdown_deferred_until_inflight_complete(monkeypatch):
     await anyio.sleep(0)
     async with tasks.server_aggregators_for_agent_lock:
         assert agent_name not in tasks.server_aggregators_for_agent
+
+
+@pytest.mark.asyncio
+async def test_get_capabilities_filters_failed_servers(monkeypatch):
+    from mcp_agent.agents import agent as agent_mod
+
+    monkeypatch.setattr(agent_mod, "MCPAggregator", FakeAggregator)
+
+    ctx = SimpleNamespace()
+    tasks = AgentTasks(context=ctx)
+
+    agent_name = "writer"
+    await tasks.initialize_aggregator_task(
+        InitAggregatorRequest(
+            agent_name=agent_name,
+            server_names=["healthy", "unavailable"],
+            connection_persistence=True,
+            force=False,
+        )
+    )
+
+    aggregator = tasks.server_aggregators_for_agent[agent_name]
+    aggregator.capability_errors_by_server["unavailable"] = RuntimeError(
+        "server unavailable"
+    )
+
+    result = await tasks.get_capabilities_task(
+        GetCapabilitiesRequest(agent_name=agent_name, server_name=None)
+    )
+
+    assert result == {"healthy": aggregator.capabilities_by_server["healthy"]}

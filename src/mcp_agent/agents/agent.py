@@ -1538,11 +1538,20 @@ class AgentTasks:
             if not server_name:
                 # If no server name is provided, get capabilities for all servers
                 server_names: List[str] = aggregator.server_names
-                capabilities: List[ServerCapabilities] = await asyncio.gather(
+                capabilities: List[
+                    ServerCapabilities | BaseException
+                ] = await asyncio.gather(
                     *[aggregator.get_capabilities(server_name=n) for n in server_names],
                     return_exceptions=True,
                 )
-                server_capabilities = dict(zip(server_names, capabilities))
+                for name, capability in zip(server_names, capabilities):
+                    if isinstance(capability, BaseException):
+                        logger.warning(
+                            f"Failed to get capabilities for server '{name}': {capability}"
+                        )
+                        continue
+
+                    server_capabilities[name] = capability
             else:
                 # If a server name is provided, get capabilities for that server
                 server_capabilities[server_name] = await aggregator.get_capabilities(
