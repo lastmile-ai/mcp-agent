@@ -18,6 +18,7 @@ from mcp_agent.workflows.llm.augmented_llm_openai import (
     OpenAIAugmentedLLM,
     RequestParams,
     MCPOpenAITypeConverter,
+    mcp_contents_to_openai_tool_result,
 )
 
 
@@ -450,8 +451,33 @@ class TestOpenAIAugmentedLLM:
         )
         openai_param = MCPOpenAITypeConverter.from_mcp_message_param(mcp_message)
         assert openai_param["role"] == "user"
-        assert isinstance(openai_param["content"], list)
-        assert openai_param["content"][0]["text"] == "Test MCP content"
+        assert openai_param["content"] == "Test MCP content"
+
+    def test_assistant_type_conversion_uses_string_content(self):
+        """
+        Tests text-only MCP assistant messages are converted to string content.
+        """
+        mcp_message = SamplingMessage(
+            role="assistant", content=TextContent(type="text", text="Assistant text")
+        )
+
+        openai_param = MCPOpenAITypeConverter.from_mcp_message_param(mcp_message)
+
+        assert openai_param["role"] == "assistant"
+        assert openai_param["content"] == "Assistant text"
+
+    def test_tool_result_conversion_uses_string_content(self):
+        """
+        Tests tool call results are converted to string content for compatible APIs.
+        """
+        result = mcp_contents_to_openai_tool_result(
+            [
+                TextContent(type="text", text="First result"),
+                TextContent(type="text", text="Second result"),
+            ]
+        )
+
+        assert result == "First result\nSecond result"
 
     # Test: Generate with String Input
     @pytest.mark.asyncio

@@ -650,7 +650,7 @@ class OpenAIAugmentedLLM(
             return ChatCompletionToolMessageParam(
                 role="tool",
                 tool_call_id=tool_call_id,
-                content=[mcp_content_to_openai_content_part(c) for c in result.content],
+                content=mcp_contents_to_openai_tool_result(result.content),
             )
 
     def message_param_str(self, message: ChatCompletionMessageParam) -> str:
@@ -1088,14 +1088,14 @@ class MCPOpenAITypeConverter(
             extras = param.model_dump(exclude={"role", "content"})
             return ChatCompletionAssistantMessageParam(
                 role="assistant",
-                content=[mcp_content_to_openai_content_part(param.content)],
+                content=mcp_content_to_openai_message_content(param.content),
                 **extras,
             )
         elif param.role == "user":
             extras = param.model_dump(exclude={"role", "content"})
             return ChatCompletionUserMessageParam(
                 role="user",
-                content=[mcp_content_to_openai_content_part(param.content)],
+                content=mcp_content_to_openai_message_content(param.content),
                 **extras,
             )
         else:
@@ -1187,6 +1187,41 @@ def mcp_content_to_openai_content_part(
     else:
         # Last effort to convert the content to a string
         return ChatCompletionContentPartTextParam(type="text", text=str(content))
+
+
+def mcp_content_to_openai_message_content(
+    content: TextContent | ImageContent | EmbeddedResource,
+) -> str | list[ChatCompletionContentPartParam]:
+    """Convert a single MCP content item into OpenAI chat message content."""
+    if isinstance(content, TextContent):
+        return content.text
+    if isinstance(content, EmbeddedResource) and isinstance(
+        content.resource, TextResourceContents
+    ):
+        return content.resource.text
+    return [mcp_content_to_openai_content_part(content)]
+
+
+def mcp_contents_to_openai_tool_result(
+    contents: Iterable[TextContent | ImageContent | EmbeddedResource],
+) -> str:
+    """Convert MCP tool result content into the string payload OpenAI expects."""
+    parts: list[str] = []
+    for content in contents:
+        if isinstance(content, TextContent):
+            parts.append(content.text)
+        elif isinstance(content, EmbeddedResource) and isinstance(
+            content.resource, TextResourceContents
+        ):
+            parts.append(content.resource.text)
+        else:
+            converted = mcp_content_to_openai_content_part(content)
+            if converted["type"] == "text":
+                parts.append(converted["text"])
+            else:
+                parts.append(str(converted))
+
+    return "\n".join(parts)
 
 
 def openai_content_to_mcp_content(
