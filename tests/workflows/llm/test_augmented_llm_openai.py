@@ -18,7 +18,14 @@ from mcp_agent.workflows.llm.augmented_llm_openai import (
     OpenAIAugmentedLLM,
     RequestParams,
     MCPOpenAITypeConverter,
+    mcp_content_to_openai_tool_message_content,
 )
+
+
+class _OpenAITestLLM(OpenAIAugmentedLLM):
+    async def generate_stream(self, message, request_params=None):
+        return
+        yield
 
 
 class TestOpenAIAugmentedLLM:
@@ -41,7 +48,7 @@ class TestOpenAIAugmentedLLM:
         )
 
         # Create LLM instance
-        llm = OpenAIAugmentedLLM(name="test", context=mock_context)
+        llm = _OpenAITestLLM(name="test", context=mock_context)
 
         # Apply common mocks
         llm.history = MagicMock()
@@ -362,6 +369,43 @@ class TestOpenAIAugmentedLLM:
         # Assertions
         assert len(responses) == 2
         assert responses[1].content == "Response after tool error"
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_call_returns_string_content(self, mock_llm):
+        """
+        Tests execute_tool_call() returns a string tool message content for
+        OpenAI-compatible providers that reject content part arrays for tool messages.
+        """
+        tool_call = ChatCompletionMessageToolCall(
+            id="tool_123",
+            type="function",
+            function={
+                "name": "test_tool",
+                "arguments": json.dumps({"query": "test query"}),
+            },
+        )
+        mock_llm.call_tool = AsyncMock(
+            return_value=MagicMock(
+                content=[TextContent(type="text", text="Tool result")],
+                isError=False,
+            )
+        )
+
+        result = await mock_llm.execute_tool_call(tool_call)
+
+        assert result["tool_call_id"] == "tool_123"
+        assert result["content"] == "Tool result"
+        assert isinstance(result["content"], str)
+
+    def test_tool_message_content_conversion_joins_text_parts(self):
+        content = mcp_content_to_openai_tool_message_content(
+            [
+                TextContent(type="text", text="First result"),
+                TextContent(type="text", text="Second result"),
+            ]
+        )
+
+        assert content == "First result\nSecond result"
 
     # Test 8: API Error Handling
     @pytest.mark.asyncio

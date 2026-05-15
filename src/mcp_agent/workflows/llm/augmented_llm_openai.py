@@ -650,7 +650,7 @@ class OpenAIAugmentedLLM(
             return ChatCompletionToolMessageParam(
                 role="tool",
                 tool_call_id=tool_call_id,
-                content=[mcp_content_to_openai_content_part(c) for c in result.content],
+                content=mcp_content_to_openai_tool_message_content(result.content),
             )
 
     def message_param_str(self, message: ChatCompletionMessageParam) -> str:
@@ -1187,6 +1187,23 @@ def mcp_content_to_openai_content_part(
     else:
         # Last effort to convert the content to a string
         return ChatCompletionContentPartTextParam(type="text", text=str(content))
+
+
+def mcp_content_to_openai_tool_message_content(
+    content: Iterable[TextContent | ImageContent | EmbeddedResource],
+) -> str:
+    parts: list[str] = []
+    for item in content:
+        if isinstance(item, TextContent):
+            parts.append(item.text)
+        elif isinstance(item, EmbeddedResource) and isinstance(
+            item.resource, TextResourceContents
+        ):
+            parts.append(item.resource.text)
+        else:
+            parts.append(str(mcp_content_to_openai_content_part(item)))
+
+    return "\n".join(parts)
 
 
 def openai_content_to_mcp_content(
