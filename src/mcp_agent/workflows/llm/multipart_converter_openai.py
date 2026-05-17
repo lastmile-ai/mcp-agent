@@ -423,9 +423,6 @@ class OpenAIConverter:
         # Convert to OpenAI format
         user_message = OpenAIConverter.convert_to_openai(non_text_multipart)
 
-        # We need to add tool_call_id manually
-        user_message["tool_call_id"] = tool_call_id
-
         return (tool_message, [user_message])
 
     @staticmethod
