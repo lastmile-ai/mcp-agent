@@ -323,7 +323,7 @@ class TestOpenAIConverter:
 
         assert len(additional_messages) == 1
         assert additional_messages[0]["role"] == "user"
-        assert additional_messages[0]["tool_call_id"] == "call_123"
+        assert "tool_call_id" not in additional_messages[0]
 
     def test_convert_function_results_to_openai(self):
         content1 = [TextContent(type="text", text="Result 1")]
