@@ -583,10 +583,12 @@ class OpenAIAugmentedLLM(
             if isinstance(completion, BaseException):
                 raise completion
 
-            if not completion.choices or completion.choices[0].message.content is None:
+            if not completion.choices or completion.choices[0].message is None:
                 raise ValueError("No structured content returned by model")
 
             content = completion.choices[0].message.content
+            if content is None:
+                raise ValueError("No structured content returned by model")
             try:
                 data = json.loads(content)
                 return response_model.model_validate(data)
@@ -1030,10 +1032,12 @@ class OpenAICompletionTasks:
 
             completion = await _execute_openai_request(async_openai_client, payload)
 
-            if not completion.choices or completion.choices[0].message.content is None:
+            if not completion.choices or completion.choices[0].message is None:
                 raise ValueError("No structured content returned by model")
 
             content = completion.choices[0].message.content
+            if content is None:
+                raise ValueError("No structured content returned by model")
             # message.content is expected to be JSON string
             try:
                 data = json.loads(content)
