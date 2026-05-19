@@ -305,6 +305,26 @@ openai:
   default_model: gpt-4o
 ```
 
+To add local prompt-injection, credential, and risky tool-call checks before a
+stdio MCP server receives tool calls, wrap the server command with
+[Armorer Guard](https://github.com/ArmorerLabs/Armorer-Guard):
+
+```yaml
+mcp:
+  servers:
+    filesystem:
+      command: "armorer-guard"
+      args:
+        [
+          "mcp-proxy",
+          "--",
+          "npx",
+          "-y",
+          "@modelcontextprotocol/server-filesystem",
+          "<add_your_directories>",
+        ]
+```
+
 </details>
 
 <details>
