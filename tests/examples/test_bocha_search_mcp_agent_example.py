@@ -1,6 +1,8 @@
 from pathlib import Path
+import re
 
 import yaml
+import pytest
 
 
 EXAMPLE_DIR = Path("examples/usecases/bocha_search_mcp_agent")
@@ -52,3 +54,47 @@ def test_bocha_example_reads_server_config_from_process_env(monkeypatch):
         "bocha-search-mcp",
     ]
     assert env == {"BOCHA_API_KEY": "test-key"}
+
+
+def test_bocha_example_requires_api_key(monkeypatch, tmp_path):
+    from examples.usecases.bocha_search_mcp_agent.main import (
+        bocha_server_config_from_process,
+    )
+
+    monkeypatch.delenv("BOCHA_API_KEY", raising=False)
+    monkeypatch.setenv("BOCHA_SEARCH_MCP_DIR", str(tmp_path))
+
+    with pytest.raises(RuntimeError, match="BOCHA_API_KEY"):
+        bocha_server_config_from_process()
+
+
+def test_bocha_example_requires_server_dir(monkeypatch):
+    from examples.usecases.bocha_search_mcp_agent.main import (
+        bocha_server_config_from_process,
+    )
+
+    monkeypatch.setenv("BOCHA_API_KEY", "test-key")
+    monkeypatch.delenv("BOCHA_SEARCH_MCP_DIR", raising=False)
+
+    with pytest.raises(RuntimeError, match="BOCHA_SEARCH_MCP_DIR"):
+        bocha_server_config_from_process()
+
+
+def test_bocha_example_rejects_invalid_server_dir(monkeypatch, tmp_path):
+    from examples.usecases.bocha_search_mcp_agent.main import (
+        bocha_server_config_from_process,
+    )
+
+    missing_dir = tmp_path / "missing"
+    monkeypatch.setenv("BOCHA_API_KEY", "test-key")
+    monkeypatch.setenv("BOCHA_SEARCH_MCP_DIR", str(missing_dir))
+
+    with pytest.raises(RuntimeError, match=re.escape(str(missing_dir))):
+        bocha_server_config_from_process()
+
+
+def test_bocha_example_raises_when_search_tool_missing():
+    from examples.usecases.bocha_search_mcp_agent.main import find_bocha_search_tool
+
+    with pytest.raises(RuntimeError, match="available tools"):
+        find_bocha_search_tool(["bocha_bocha_ai_search"])

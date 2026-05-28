@@ -19,8 +19,15 @@ def bocha_server_config_from_process() -> tuple[list[str], dict[str, str]]:
     if not api_key:
         raise RuntimeError("BOCHA_API_KEY is required in the current shell")
 
+    server_path = Path(server_dir)
+    if not server_path.exists() or not server_path.is_dir():
+        raise RuntimeError(
+            "BOCHA_SEARCH_MCP_DIR does not exist or is not a directory: "
+            f"{server_dir}"
+        )
+
     return (
-        ["--directory", str(Path(server_dir)), "run", "bocha-search-mcp"],
+        ["--directory", str(server_path), "run", "bocha-search-mcp"],
         {"BOCHA_API_KEY": api_key},
     )
 
@@ -30,6 +37,18 @@ def raise_for_bocha_error(result: object) -> None:
         text = getattr(item, "text", "")
         if "API HTTP error occurred" in text or "Invalid API KEY" in text:
             raise RuntimeError(f"Bocha search failed: {text}")
+
+
+def find_bocha_search_tool(tool_names: list[str]) -> str:
+    search_tool = next(
+        (name for name in tool_names if name.endswith("bocha_web_search")),
+        None,
+    )
+    if not search_tool:
+        raise RuntimeError(
+            f"No 'bocha_web_search' tool found; available tools: {tool_names}"
+        )
+    return search_tool
 
 
 async def search_bocha(query: str = "Bocha Search MCP test") -> str:
@@ -49,9 +68,7 @@ async def search_bocha(query: str = "Bocha Search MCP test") -> str:
             tool_names = [tool.name for tool in tools.tools]
             print("[bold]Bocha MCP tools discovered:[/bold]", tool_names)
 
-            search_tool = next(
-                name for name in tool_names if name.endswith("bocha_web_search")
-            )
+            search_tool = find_bocha_search_tool(tool_names)
             result = await aggregator.call_tool(
                 name=search_tool,
                 arguments={
@@ -70,4 +87,3 @@ async def search_bocha(query: str = "Bocha Search MCP test") -> str:
 
 if __name__ == "__main__":
     asyncio.run(search_bocha())
-
