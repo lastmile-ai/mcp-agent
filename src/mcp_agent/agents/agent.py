@@ -1,11 +1,11 @@
 import asyncio
 import json
 import uuid
-from typing import Callable, Dict, List, Optional, Set, TypeVar, TYPE_CHECKING, Any
+from typing import Callable, Dict, List, Optional, Set, TypeVar, TYPE_CHECKING, Any, Union
 from contextlib import asynccontextmanager
 
 from opentelemetry import trace
-from pydantic import AnyUrl, BaseModel, ConfigDict, Field, PrivateAttr
+from pydantic import AnyUrl, BaseModel, ConfigDict, Field, PrivateAttr, field_validator
 
 from mcp.server.fastmcp.tools import Tool as FastTool
 from mcp.types import (
@@ -75,10 +75,34 @@ class Agent(BaseModel):
     on the context.
     """
 
-    server_names: List[str] = Field(default_factory=list)
+    server_names: Union[List[str], Dict[str, List[str]]] = Field(default_factory=list)
     """
-    List of MCP server names that the agent can access.
+    MCP servers the agent can access. Accepts two formats:
+
+    - ``List[str]``: Server names only (all tools from each server are exposed).
+      Example: ``["news-api", "weather-api"]``
+    - ``Dict[str, List[str]]``: Server names mapped to allowed tool names.
+      Only the listed tools are exposed from each server.
+      Example: ``{"news-api": ["search_articles"], "weather-api": ["get_forecast"]}``
+
+    The dict format enables fine-grained client-side tool allowlisting
+    for security-sensitive multi-server deployments.
     """
+
+    _server_tool_allowlist: Dict[str, Set[str]] = PrivateAttr(default_factory=dict)
+    """Per-server set of allowed tool names, populated from the dict format."""
+
+    @field_validator("server_names", mode="before")
+    @classmethod
+    def _normalize_server_names(cls, v):
+        """Normalize server_names to a flat list, extracting allowlist if dict."""
+        if isinstance(v, dict):
+            # Store allowlist mapping for use by the aggregator
+            object.__setattr__(cls, "_raw_server_dict", v)
+            return list(v.keys())
+        # Clear any stale dict state
+        object.__setattr__(cls, "_raw_server_dict", None)
+        return v
 
     functions: List[Callable] = Field(default_factory=list)
     """
