@@ -647,10 +647,15 @@ class OpenAIAugmentedLLM(
 
             self._annotate_span_for_call_tool_result(span, result)
 
+            converted = OpenAIConverter.convert_tool_result_to_openai(
+                result, tool_call_id=tool_call_id
+            )
+            tool_message = converted[0] if isinstance(converted, tuple) else converted
+
             return ChatCompletionToolMessageParam(
                 role="tool",
                 tool_call_id=tool_call_id,
-                content=[mcp_content_to_openai_content_part(c) for c in result.content],
+                content=tool_message["content"],
             )
 
     def message_param_str(self, message: ChatCompletionMessageParam) -> str:
