@@ -378,7 +378,10 @@ class OpenAIAugmentedLLM(
                             span.record_exception(result)
                             continue
                         if result is not None:
-                            messages.append(result)
+                            if isinstance(result, list):
+                                messages.extend(result)
+                            else:
+                                messages.append(result)
                 elif choice.finish_reason == "length":
                     # We have reached the max tokens limit
                     self.logger.debug(
@@ -605,10 +608,10 @@ class OpenAIAugmentedLLM(
     async def execute_tool_call(
         self,
         tool_call: ChatCompletionMessageToolCall,
-    ) -> ChatCompletionToolMessageParam:
+    ) -> ChatCompletionToolMessageParam | List[ChatCompletionMessageParam]:
         """
         Execute a single tool call and return the result message.
-        Returns a single ChatCompletionToolMessageParam object.
+        Returns a tool message and any additional context messages.
         """
         tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
@@ -647,11 +650,26 @@ class OpenAIAugmentedLLM(
 
             self._annotate_span_for_call_tool_result(span, result)
 
-            return ChatCompletionToolMessageParam(
-                role="tool",
-                tool_call_id=tool_call_id,
-                content=[mcp_content_to_openai_content_part(c) for c in result.content],
+            converted = OpenAIConverter.convert_tool_result_to_openai(
+                result, tool_call_id=tool_call_id
             )
+            if isinstance(converted, tuple):
+                tool_message, additional_messages = converted
+            else:
+                tool_message, additional_messages = converted, []
+
+            openai_messages: List[ChatCompletionMessageParam] = [
+                ChatCompletionToolMessageParam(
+                    role="tool",
+                    tool_call_id=tool_call_id,
+                    content=tool_message["content"],
+                )
+            ]
+            openai_messages.extend(
+                OpenAIConverter.convert_mixed_messages_to_openai(additional_messages)
+            )
+
+            return openai_messages
 
     def message_param_str(self, message: ChatCompletionMessageParam) -> str:
         """Convert an input message to a string representation."""

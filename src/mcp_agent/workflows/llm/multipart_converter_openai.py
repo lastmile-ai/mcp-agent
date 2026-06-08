@@ -1,3 +1,4 @@
+import json
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from mcp.types import (
@@ -349,6 +350,35 @@ class OpenAIConverter:
         )
 
     @staticmethod
+    def _normalize_tool_message_content(message: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Ensure OpenAI tool messages use string content.
+
+        OpenAI ChatCompletion tool messages only accept string content, but some
+        tool call paths produce content blocks. Convert those blocks to text
+        before the messages are passed through to the provider.
+        """
+        if message.get("role") != "tool":
+            return message
+
+        content = message.get("content")
+        if content is None or isinstance(content, str):
+            return message
+
+        normalized = dict(message)
+        if isinstance(content, list):
+            normalized["content"] = OpenAIConverter._extract_text_from_content_blocks(
+                content
+            )
+        else:
+            try:
+                normalized["content"] = json.dumps(content, ensure_ascii=False)
+            except TypeError:
+                normalized["content"] = str(content)
+
+        return normalized
+
+    @staticmethod
     def convert_tool_result_to_openai(
         tool_result: CallToolResult,
         tool_call_id: str,
@@ -492,8 +522,14 @@ class OpenAIConverter:
                     messages.append(
                         ChatCompletionUserMessageParam(role="user", content=m)
                     )
+                elif isinstance(m, dict):
+                    messages.append(
+                        OpenAIConverter._normalize_tool_message_content(m)
+                    )
                 else:
                     messages.append(m)
+        elif isinstance(message, dict):
+            messages.append(OpenAIConverter._normalize_tool_message_content(message))
         else:
             messages.append(message)
 

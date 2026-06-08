@@ -1,4 +1,6 @@
+import json
 from unittest.mock import Mock
+
 from mcp.types import (
     BlobResourceContents,
     CallToolResult,
@@ -359,3 +361,70 @@ class TestOpenAIConverter:
         assert len(messages) == 2
         assert messages[0]["role"] == "tool"
         assert messages[1]["role"] == "user"
+
+    def test_convert_mixed_messages_normalizes_tool_content_blocks(self):
+        tool_message = {
+            "role": "tool",
+            "tool_call_id": "call_123",
+            "content": [
+                {
+                    "type": "text",
+                    "text": '{"response_type": "action_done", "success": true}',
+                }
+            ],
+        }
+
+        messages = OpenAIConverter.convert_mixed_messages_to_openai([tool_message])
+
+        assert len(messages) == 1
+        assert messages[0]["role"] == "tool"
+        assert messages[0]["tool_call_id"] == "call_123"
+        assert messages[0]["content"] == (
+            '{"response_type": "action_done", "success": true}'
+        )
+        assert isinstance(messages[0]["content"], str)
+        assert isinstance(tool_message["content"], list)
+
+    def test_convert_mixed_messages_preserves_user_content_blocks(self):
+        content_blocks = [{"type": "text", "text": "Analyze this image"}]
+        user_message = {"role": "user", "content": content_blocks}
+
+        messages = OpenAIConverter.convert_mixed_messages_to_openai([user_message])
+
+        assert len(messages) == 1
+        assert messages[0]["role"] == "user"
+        assert messages[0]["content"] == content_blocks
+
+    def test_convert_mixed_messages_normalizes_multiple_tool_text_blocks(self):
+        tool_message = {
+            "role": "tool",
+            "tool_call_id": "call_456",
+            "content": [
+                {"type": "text", "text": "First block"},
+                {"type": "text", "text": "Second block"},
+            ],
+        }
+
+        messages = OpenAIConverter.convert_mixed_messages_to_openai([tool_message])
+
+        assert len(messages) == 1
+        assert messages[0]["role"] == "tool"
+        assert messages[0]["content"] == "First block Second block"
+        assert isinstance(messages[0]["content"], str)
+
+    def test_convert_mixed_messages_normalizes_tool_dict_content(self):
+        tool_message = {
+            "role": "tool",
+            "tool_call_id": "call_789",
+            "content": {"key": "value", "nested": {"data": 123}},
+        }
+
+        messages = OpenAIConverter.convert_mixed_messages_to_openai([tool_message])
+
+        assert len(messages) == 1
+        assert messages[0]["role"] == "tool"
+        assert isinstance(messages[0]["content"], str)
+        assert json.loads(messages[0]["content"]) == {
+            "key": "value",
+            "nested": {"data": 123},
+        }
