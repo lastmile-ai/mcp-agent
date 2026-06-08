@@ -97,11 +97,12 @@ class Agent(BaseModel):
     def _normalize_server_names(cls, v):
         """Normalize server_names to a flat list, extracting allowlist if dict."""
         if isinstance(v, dict):
-            # Store allowlist mapping for use by the aggregator
-            object.__setattr__(cls, "_raw_server_dict", v)
+            # Temporarily store the raw dict on the class so model_post_init
+            # can move it to the instance.  This is safe because Pydantic
+            # validation runs synchronously within a single model construction.
+            cls._server_names_raw_input = v  # type: ignore[attr-defined]
             return list(v.keys())
-        # Clear any stale dict state
-        object.__setattr__(cls, "_raw_server_dict", None)
+        cls._server_names_raw_input = None  # type: ignore[attr-defined]
         return v
 
     functions: List[Callable] = Field(default_factory=list)
@@ -173,6 +174,15 @@ class Agent(BaseModel):
     # endregion
 
     def model_post_init(self, __context) -> None:
+        # Consume the raw server_names dict (if any) from the validator
+        # and populate the per-instance allowlist.
+        raw = getattr(self.__class__, "_server_names_raw_input", None)
+        if raw is not None:
+            self._server_tool_allowlist = {k: set(v) for k, v in raw.items()}
+            # Clear class-level temp storage so it does not leak to the
+            # next Agent instance.
+            self.__class__._server_names_raw_input = None  # type: ignore[attr-defined]
+
         # Map function names to tools
         self._function_tool_map = {
             (tool := FastTool.from_function(fn)).name: tool for fn in self.functions
@@ -529,6 +539,22 @@ class Agent(BaseModel):
                         - "*": Wildcard filter for servers without explicit filters
                         - "non_namespaced_tools": Filter for non-namespaced tools (function tools, human input)
         """
+        # Merge the per-agent allowlist (from dict-format server_names) with
+        # any call-time tool_filter.  The agent-level allowlist acts as a
+        # baseline restriction; call-time filters can further narrow but
+        # cannot widen.
+        if self._server_tool_allowlist:
+            if tool_filter is None:
+                tool_filter = dict(self._server_tool_allowlist)
+            else:
+                merged: Dict[str, Set[str]] = dict(self._server_tool_allowlist)
+                for server, allowed in tool_filter.items():
+                    if server in merged:
+                        merged[server] = merged[server] & allowed
+                    else:
+                        merged[server] = set(allowed)
+                tool_filter = merged
+
         if not self.initialized:
             await self.initialize()
 
