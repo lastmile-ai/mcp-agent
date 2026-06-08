@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List
+from typing import Dict, List, Union
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -25,7 +25,7 @@ class AgentSpec(BaseModel):
     The instruction of the agent.
     """
 
-    server_names: List[str] = Field(default_factory=list)
+    server_names: Union[List[str], Dict[str, List[str]]] = Field(default_factory=list)
     """
     The names of MCP servers that the agent has access to.
     """
