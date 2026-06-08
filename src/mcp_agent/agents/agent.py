@@ -5,7 +5,7 @@ from typing import Callable, Dict, List, Optional, Set, TypeVar, TYPE_CHECKING, 
 from contextlib import asynccontextmanager
 
 from opentelemetry import trace
-from pydantic import AnyUrl, BaseModel, ConfigDict, Field, PrivateAttr, field_validator
+from pydantic import AnyUrl, BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
 
 from mcp.server.fastmcp.tools import Tool as FastTool
 from mcp.types import (
@@ -92,17 +92,28 @@ class Agent(BaseModel):
     _server_tool_allowlist: Dict[str, Set[str]] = PrivateAttr(default_factory=dict)
     """Per-server set of allowed tool names, populated from the dict format."""
 
+    @model_validator(mode="before")
+    @classmethod
+    def _extract_server_allowlist(cls, data: Any) -> Any:
+        """Extract allowlist from dict-format server_names before normalization.
+
+        When server_names is a dict, store the raw mapping as a temporary
+        extra field so model_post_init can populate _server_tool_allowlist
+        on the instance.  This avoids class-level shared state and is safe
+        under concurrent Agent construction.
+        """
+        if isinstance(data, dict):
+            sn = data.get("server_names")
+            if isinstance(sn, dict):
+                data = {**data, "_raw_server_dict": sn}
+        return data
+
     @field_validator("server_names", mode="before")
     @classmethod
     def _normalize_server_names(cls, v):
-        """Normalize server_names to a flat list, extracting allowlist if dict."""
+        """Normalize server_names to a flat list."""
         if isinstance(v, dict):
-            # Temporarily store the raw dict on the class so model_post_init
-            # can move it to the instance.  This is safe because Pydantic
-            # validation runs synchronously within a single model construction.
-            cls._server_names_raw_input = v  # type: ignore[attr-defined]
             return list(v.keys())
-        cls._server_names_raw_input = None  # type: ignore[attr-defined]
         return v
 
     functions: List[Callable] = Field(default_factory=list)
@@ -174,14 +185,15 @@ class Agent(BaseModel):
     # endregion
 
     def model_post_init(self, __context) -> None:
-        # Consume the raw server_names dict (if any) from the validator
-        # and populate the per-instance allowlist.
-        raw = getattr(self.__class__, "_server_names_raw_input", None)
+        # Consume the raw server_names dict (if any) that was stashed
+        # as an extra field by _extract_server_allowlist.  Using instance
+        # state (via model_validate + extra="allow") eliminates the
+        # class-level race condition.
+        raw = getattr(self, "_raw_server_dict", None)
         if raw is not None:
             self._server_tool_allowlist = {k: set(v) for k, v in raw.items()}
-            # Clear class-level temp storage so it does not leak to the
-            # next Agent instance.
-            self.__class__._server_names_raw_input = None  # type: ignore[attr-defined]
+            # Remove the temporary extra field so it does not persist.
+            object.__delattr__(self, "_raw_server_dict")
 
         # Map function names to tools
         self._function_tool_map = {
