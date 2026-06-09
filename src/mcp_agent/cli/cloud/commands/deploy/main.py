@@ -47,6 +47,21 @@ from .materialize import materialize_deployment_artifacts
 from .wrangler_wrapper import wrangler_deploy
 
 
+DISPLAY_API_KEY_PLACEHOLDER = "<YOUR_API_KEY>"
+
+
+def create_mcp_config_example(app_name: str, server_url: str) -> dict:
+    return {
+        "mcpServers": {
+            app_name: {
+                "url": f"{server_url}/sse",
+                "transport": "sse",
+                "headers": {"Authorization": f"Bearer {DISPLAY_API_KEY_PLACEHOLDER}"},
+            }
+        }
+    }
+
+
 def deploy_config(
     ctx: typer.Context,
     app_name: Optional[str] = typer.Argument(
@@ -456,18 +471,13 @@ def deploy_config(
                 print_info(f"Authentication: {auth_text}")
 
             print_info(
-                f"Use this app as an MCP server at {server_url}/sse\n\nMCP configuration example:"
+                f"Use this app as an MCP server at {server_url}/sse\n\n"
+                "MCP configuration example "
+                f"(replace {DISPLAY_API_KEY_PLACEHOLDER} with the API key "
+                "clients should use to access this MCP server):"
             )
 
-            mcp_config = {
-                "mcpServers": {
-                    app_name: {
-                        "url": f"{server_url}/sse",
-                        "transport": "sse",
-                        "headers": {"Authorization": f"Bearer {effective_api_key}"},
-                    }
-                }
-            }
+            mcp_config = create_mcp_config_example(app_name, server_url)
 
             console.print(
                 f"[bright_black]{json.dumps(mcp_config, indent=2)}[/bright_black]",

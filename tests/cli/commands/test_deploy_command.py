@@ -1,5 +1,6 @@
 """Tests for the deploy command functionality in the CLI."""
 
+import json
 import os
 import re
 import tempfile
@@ -9,6 +10,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from typer.testing import CliRunner
 
+from mcp_agent.cli.cloud.commands.deploy.main import (
+    DISPLAY_API_KEY_PLACEHOLDER,
+    create_mcp_config_example,
+)
 from mcp_agent.cli.cloud.main import app
 from mcp_agent.cli.core.constants import (
     MCP_CONFIG_FILENAME,
@@ -77,6 +82,88 @@ def test_deploy_command_help(runner):
     assert "--no-auth" in clean_text
     assert "--ignore-file" in clean_text
     assert "mcpacignore" in clean_text
+
+
+def test_create_mcp_config_example_uses_api_key_placeholder():
+    """The displayed MCP config example should never include a live API key."""
+    config = create_mcp_config_example(
+        app_name="test-app",
+        server_url="https://test-app.example.com",
+    )
+
+    assert config["mcpServers"]["test-app"]["headers"]["Authorization"] == (
+        f"Bearer {DISPLAY_API_KEY_PLACEHOLDER}"
+    )
+    assert "live-api-key" not in json.dumps(config)
+
+
+def test_deploy_command_redacts_api_key_in_mcp_config(runner, temp_config_dir):
+    """The CLI output should not print the live deployment API key."""
+    live_api_key = "live-api-key-123"
+    server_url = "https://test-app.example.com"
+    output_path = temp_config_dir / MCP_DEPLOYED_SECRETS_FILENAME
+
+    async def mock_process_secrets(*args, **kwargs):
+        with open(kwargs.get("output_path", output_path), "w", encoding="utf-8") as f:
+            f.write("# Transformed file\ntest: value\n")
+        return {
+            "deployment_secrets": [],
+            "user_secrets": [],
+            "reused_secrets": [],
+            "skipped_secrets": [],
+        }
+
+    mock_client = AsyncMock()
+    mock_client.get_app_by_name = AsyncMock(return_value=None)
+
+    mock_created_app = MagicMock()
+    mock_created_app.appId = MOCK_APP_ID
+    mock_client.create_app = AsyncMock(return_value=mock_created_app)
+
+    mock_deployed_app = MagicMock()
+    mock_deployed_app.appId = MOCK_APP_ID
+    mock_deployed_app.appServerInfo = MagicMock(
+        status="APP_SERVER_STATUS_ONLINE",
+        serverUrl=server_url,
+        unauthenticatedAccess=False,
+    )
+
+    async def mock_deploy_with_retry(*args, **kwargs):
+        return mock_deployed_app
+
+    with (
+        patch(
+            "mcp_agent.cli.secrets.processor.process_config_secrets",
+            side_effect=mock_process_secrets,
+        ),
+        patch(
+            "mcp_agent.cli.cloud.commands.deploy.main.MCPAppClient",
+            return_value=mock_client,
+        ),
+        patch(
+            "mcp_agent.cli.cloud.commands.deploy.main._deploy_with_retry",
+            side_effect=mock_deploy_with_retry,
+        ),
+    ):
+        result = runner.invoke(
+            app,
+            [
+                "deploy",
+                MOCK_APP_NAME,
+                "--config-dir",
+                temp_config_dir,
+                "--api-url",
+                "http://test-api.com",
+                "--api-key",
+                live_api_key,
+                "--non-interactive",
+            ],
+        )
+
+    assert result.exit_code == 0, result.stdout
+    assert live_api_key not in result.stdout
+    assert f"Bearer {DISPLAY_API_KEY_PLACEHOLDER}" in result.stdout
+    assert f"{server_url}/sse" in result.stdout
 
 
 def test_deploy_command_basic(runner, temp_config_dir):
