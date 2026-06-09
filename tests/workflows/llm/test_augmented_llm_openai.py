@@ -11,7 +11,14 @@ from openai.types.chat import (
 )
 from pydantic import BaseModel
 
-from mcp.types import TextContent, SamplingMessage, PromptMessage
+from mcp.types import (
+    EmbeddedResource,
+    ImageContent,
+    PromptMessage,
+    SamplingMessage,
+    TextContent,
+    TextResourceContents,
+)
 
 from mcp_agent.config import OpenAISettings
 from mcp_agent.workflows.llm.augmented_llm_openai import (
@@ -19,6 +26,12 @@ from mcp_agent.workflows.llm.augmented_llm_openai import (
     RequestParams,
     MCPOpenAITypeConverter,
 )
+
+
+class MockableOpenAIAugmentedLLM(OpenAIAugmentedLLM):
+    async def generate_stream(self, message, request_params=None):
+        if False:
+            yield message
 
 
 class TestOpenAIAugmentedLLM:
@@ -41,7 +54,7 @@ class TestOpenAIAugmentedLLM:
         )
 
         # Create LLM instance
-        llm = OpenAIAugmentedLLM(name="test", context=mock_context)
+        llm = MockableOpenAIAugmentedLLM(name="test", context=mock_context)
 
         # Apply common mocks
         llm.history = MagicMock()
@@ -362,6 +375,81 @@ class TestOpenAIAugmentedLLM:
         # Assertions
         assert len(responses) == 2
         assert responses[1].content == "Response after tool error"
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_call_returns_string_content(self, mock_llm):
+        """
+        Tests that OpenAI tool messages use string content for provider compatibility.
+        """
+        tool_call = ChatCompletionMessageToolCall(
+            id="tool_123",
+            type="function",
+            function={"name": "test_tool", "arguments": json.dumps({"query": "test"})},
+        )
+        mock_llm.call_tool = AsyncMock(
+            return_value=MagicMock(
+                content=[
+                    TextContent(type="text", text="first result"),
+                    TextContent(type="text", text="second result"),
+                ],
+                isError=False,
+            )
+        )
+
+        result = await mock_llm.execute_tool_call(tool_call)
+
+        assert result["role"] == "tool"
+        assert result["tool_call_id"] == "tool_123"
+        assert result["content"] == "first result\nsecond result"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("content", "expected_content"),
+        [
+            ([], "[No content in tool result]"),
+            ([TextContent(type="text", text="only text")], "only text"),
+            (
+                [
+                    TextContent(type="text", text="text result"),
+                    ImageContent(type="image", data="base64data", mimeType="image/png"),
+                ],
+                'text result\n{"type": "image_url", "image_url": {"url": "data:image/png;base64,base64data"}}',
+            ),
+            (
+                [
+                    EmbeddedResource(
+                        type="resource",
+                        resource=TextResourceContents(
+                            uri="file:///result.txt",
+                            text="resource result",
+                            mimeType="text/plain",
+                        ),
+                    )
+                ],
+                '{"type": "text", "text": "resource result"}',
+            ),
+        ],
+    )
+    async def test_execute_tool_call_handles_tool_result_content(
+        self, mock_llm, content, expected_content
+    ):
+        """
+        Tests OpenAI tool message content for empty, text, and non-text MCP results.
+        """
+        tool_call = ChatCompletionMessageToolCall(
+            id="tool_123",
+            type="function",
+            function={"name": "test_tool", "arguments": json.dumps({"query": "test"})},
+        )
+        mock_llm.call_tool = AsyncMock(
+            return_value=MagicMock(content=content, isError=False)
+        )
+
+        result = await mock_llm.execute_tool_call(tool_call)
+
+        assert result["role"] == "tool"
+        assert result["tool_call_id"] == "tool_123"
+        assert result["content"] == expected_content
 
     # Test 8: API Error Handling
     @pytest.mark.asyncio
