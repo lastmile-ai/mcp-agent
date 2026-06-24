@@ -11,7 +11,7 @@ from openai.types.chat import (
 )
 from pydantic import BaseModel
 
-from mcp.types import TextContent, SamplingMessage, PromptMessage
+from mcp.types import CallToolResult, ImageContent, TextContent, SamplingMessage, PromptMessage
 
 from mcp_agent.config import OpenAISettings
 from mcp_agent.workflows.llm.augmented_llm_openai import (
@@ -19,6 +19,11 @@ from mcp_agent.workflows.llm.augmented_llm_openai import (
     RequestParams,
     MCPOpenAITypeConverter,
 )
+
+
+class ConcreteOpenAIAugmentedLLM(OpenAIAugmentedLLM):
+    async def generate_stream(self, message, request_params=None):
+        raise NotImplementedError
 
 
 class TestOpenAIAugmentedLLM:
@@ -41,7 +46,7 @@ class TestOpenAIAugmentedLLM:
         )
 
         # Create LLM instance
-        llm = OpenAIAugmentedLLM(name="test", context=mock_context)
+        llm = ConcreteOpenAIAugmentedLLM(name="test", context=mock_context)
 
         # Apply common mocks
         llm.history = MagicMock()
@@ -106,6 +111,40 @@ class TestOpenAIAugmentedLLM:
                         "arguments": json.dumps(tool_args),
                     },
                 )
+            ],
+        )
+        choice = Choice(
+            finish_reason=finish_reason,
+            index=0,
+            message=message,
+        )
+        return ChatCompletion(
+            id="chatcmpl-123",
+            choices=[choice],
+            created=1677858242,
+            model="gpt-4o",
+            object="chat.completion",
+            usage=usage,
+        )
+
+    @staticmethod
+    def create_multi_tool_use_response(tool_calls, finish_reason="tool_calls", usage=None):
+        """
+        Creates a tool use response with multiple tool calls for testing.
+        """
+        message = ChatCompletionMessage(
+            role="assistant",
+            content=None,
+            tool_calls=[
+                ChatCompletionMessageToolCall(
+                    id=tool_call["id"],
+                    type="function",
+                    function={
+                        "name": tool_call["name"],
+                        "arguments": json.dumps(tool_call["arguments"]),
+                    },
+                )
+                for tool_call in tool_calls
             ],
         )
         choice = Choice(
@@ -362,6 +401,88 @@ class TestOpenAIAugmentedLLM:
         # Assertions
         assert len(responses) == 2
         assert responses[1].content == "Response after tool error"
+
+    @pytest.mark.asyncio
+    async def test_tool_results_are_sent_as_string_messages(
+        self, mock_llm, default_usage
+    ):
+        """
+        Tests that tool results sent back to OpenAI use string content instead of content-part lists.
+        """
+        call_count = 0
+
+        async def custom_side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+
+            if call_count == 1:
+                return self.create_multi_tool_use_response(
+                    [
+                        {
+                            "name": "test_tool",
+                            "arguments": {"query": "first query"},
+                            "id": "tool_123",
+                        },
+                        {
+                            "name": "test_tool",
+                            "arguments": {"query": "second query"},
+                            "id": "tool_456",
+                        },
+                    ],
+                    usage=default_usage,
+                )
+            elif call_count == 2:
+                return self.create_text_response(
+                    "Final response after tool use", usage=default_usage
+                )
+
+        async def execute_many_side_effect(tasks):
+            return [await task() for task in tasks]
+
+        mock_llm.executor.execute = AsyncMock(side_effect=custom_side_effect)
+        mock_llm.executor.execute_many = AsyncMock(side_effect=execute_many_side_effect)
+        mock_llm.call_tool = AsyncMock(
+            side_effect=[
+                CallToolResult(
+                    content=[TextContent(type="text", text="First tool result")],
+                    isError=False,
+                ),
+                CallToolResult(
+                    content=[
+                        TextContent(type="text", text="Second tool result"),
+                        ImageContent(
+                            type="image",
+                            data="YmFzZTY0ZGF0YQ==",
+                            mimeType="image/png",
+                        ),
+                    ],
+                    isError=False,
+                ),
+            ]
+        )
+
+        responses = await mock_llm.generate("Test query with tool")
+
+        assert len(responses) == 2
+
+        second_call_args = mock_llm.executor.execute.call_args_list[1][0]
+        request_obj = second_call_args[1]
+        result_messages = request_obj.payload["messages"][-3:]
+
+        assert [message["role"] for message in result_messages] == ["tool", "tool", "user"]
+
+        first_tool_message, second_tool_message, follow_up_message = result_messages
+
+        assert first_tool_message["tool_call_id"] == "tool_123"
+        assert first_tool_message["content"] == "First tool result"
+        assert not isinstance(first_tool_message["content"], list)
+
+        assert second_tool_message["tool_call_id"] == "tool_456"
+        assert second_tool_message["content"] == "Second tool result"
+        assert not isinstance(second_tool_message["content"], list)
+
+        assert follow_up_message["tool_call_id"] == "tool_456"
+        assert follow_up_message["role"] == "user"
 
     # Test 8: API Error Handling
     @pytest.mark.asyncio
