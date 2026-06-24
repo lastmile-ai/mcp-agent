@@ -436,8 +436,7 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
     ) -> str:
         """Build the evaluation prompt for the evaluator"""
         return f"""
-        Evaluate the following response based on these criteria:
-        {self.evaluator.instruction}
+        Evaluate the following response.
 
         Original Request: {original_request}
         Current Response (Iteration {iteration + 1}): {current_response}

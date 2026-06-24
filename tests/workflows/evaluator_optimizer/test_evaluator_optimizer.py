@@ -108,6 +108,21 @@ def test_build_eval_prompt(mock_optimizer, mock_evaluator):
     assert "Provide your evaluation as a structured response" in prompt
 
 
+
+def test_build_eval_prompt_does_not_repeat_evaluator_instruction(
+    mock_optimizer, mock_evaluator
+):
+    eo = EvaluatorOptimizerLLM(
+        optimizer=mock_optimizer,
+        evaluator=mock_evaluator,
+    )
+    prompt = eo._build_eval_prompt(
+        original_request="What is the capital of France?",
+        current_response="Paris",
+        iteration=0,
+    )
+    assert "Evaluate the following response." in prompt
+    assert "Evaluate this." not in prompt
 def test_build_refinement_prompt(mock_optimizer, mock_evaluator):
     eo = EvaluatorOptimizerLLM(
         optimizer=mock_optimizer,
