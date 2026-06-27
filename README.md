@@ -435,6 +435,10 @@ mcp:
     filesystem:
       command: "npx"
       args: ["-y", "@modelcontextprotocol/server-filesystem"]
+    # Optional: a local memory server so the agent can remember across runs.
+    # Vestige is a local-first MCP memory server (npm install -g vestige-mcp-server).
+    memory:
+      command: "vestige-mcp"
 openai:
   default_model: gpt-4o-mini
 
