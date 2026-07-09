@@ -1,0 +1,53 @@
+$schema: ../../../schema/mcp-agent.config.schema.json
+
+execution_engine: asyncio
+logger:
+  transports: [console, file]
+  level: debug
+  progress_display: true
+  path_settings:
+    path_pattern: "logs/mcp-agent-{unique_id}.jsonl"
+    unique_id: "timestamp" # Options: "timestamp" or "session_id"
+    timestamp_format: "%Y%m%d_%H%M%S"
+
+# Loopback ports the OAuth flow listens on for the browser redirect.
+oauth:
+  loopback_ports: [33418, 33419, 33420]
+
+mcp:
+  servers:
+    unstructured_transform:
+      name: "unstructured_transform"
+      description: >-
+        Unstructured's hosted Transform MCP server. Turns PDFs, DOCX, PPTX,
+        XLSX, HTML, EML, images, and 60+ file types in all into structured output
+        (markdown, Element JSON, HTML, or plain text). Tools: transform_files,
+        check_transform_status, get_transform_results, request_file_upload_url.
+      transport: "streamable_http"
+      # The root path is the MCP endpoint (there is no /mcp suffix).
+      url: "https://mcp.transform.unstructured.io/"
+      # Auth is browser-based OAuth -- NO API key needed. On first run a
+      # browser opens; sign in to (or sign up for) Unstructured and you're
+      # done. The server grants offline_access, so tokens are cached and
+      # refreshed and later runs are non-interactive.
+      #
+      # client_id below is a pre-registered PUBLIC client (PKCE, no secret),
+      # so it is safe to commit -- a new user needs zero auth setup. It was
+      # obtained once via the server's dynamic client registration endpoint
+      # (POST https://mcp.transform.unstructured.io/register). If you change
+      # oauth.loopback_ports above, register a client with matching
+      # http://127.0.0.1:<port>/callback redirect URIs and swap its id in here.
+      auth:
+        oauth:
+          enabled: true
+          client_id: "2882465c-6b92-4da1-a91b-07c51b3f8070"
+          scopes: ["email", "profile", "offline_access"]
+          authorization_server: "https://mcp.transform.unstructured.io/"
+          use_internal_callback: false
+
+openai:
+  # LLM provider key still goes in mcp_agent.secrets.yaml (the agent needs a
+  # model to reason with -- that's the only credential you supply by hand).
+  default_model: "gpt-4o-mini"
+anthropic:
+  default_model: claude-sonnet-4-20250514
