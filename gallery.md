@@ -44,6 +44,7 @@ This gallery collects runnable projects from `/examples` that correspond to sect
 ## MCP integration
 
 - **MCP clients** (`examples/mcp/`) — call external MCP servers, aggregate results, and reuse `gen_client`. Run `uv run main.py`. Docs: [MCP integration overview](https://docs.mcp-agent.com/mcp/overview).
+- **Unstructured Transform** (`examples/mcp/mcp_unstructured_transform/`) — a document-parsing agent that turns PDFs, DOCX, PPTX, images, and 60+ file types into clean markdown via Unstructured's hosted Transform MCP server. Keyless: authenticates over browser OAuth, no API key. Run `uv run main.py`. Docs: [MCP integration overview](https://docs.mcp-agent.com/mcp/overview).
 - **Model selector** (`examples/basic/mcp_model_selector/`) — customise provider/model choice dynamically. Run `uv run main.py`. Docs: [Augmented LLMs](https://docs.mcp-agent.com/concepts/augmented-llms#model-selection).
 
 ## Spotlight demos
