@@ -488,6 +488,30 @@ openai:
 ```
 </CodeGroup>
 
+### DaoXE
+
+[DaoXE](https://daoxe.com) is a multi-model multi-protocol API gateway. For mcp-agent, use the existing OpenAI Chat Completions client with DaoXE's OpenAI-compatible base URL. DaoXE also exposes other protocol surfaces (for example OpenAI Responses and Anthropic Messages) for other clients.
+
+Model IDs are **account-scoped** — pick a model from authenticated `GET https://daoxe.com/v1/models` for your API key rather than a fixed public list. DaoXE is **not available in mainland China**. Public starters: [seven7763/DaoXE-AI](https://github.com/seven7763/DaoXE-AI). Example: [`examples/model_providers/mcp_basic_daoxe_agent`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/model_providers/mcp_basic_daoxe_agent).
+
+<CodeGroup>
+```yaml Config File
+openai:
+  base_url: "https://daoxe.com/v1"
+  # Prefer a model ID from GET /v1/models for your key
+  # default_model: "your-account-scoped-model-id"
+```
+
+```yaml Secrets File
+openai:
+  api_key: "sk-..."  # DaoXE API key
+```
+</CodeGroup>
+
+<Note>
+  Set `OPENAI_API_KEY` (or `openai.api_key`) to your DaoXE key and `OPENAI_BASE_URL=https://daoxe.com/v1` if you prefer environment variables. See the [pricing / catalog](https://daoxe.com/pricing) page for current availability.
+</Note>
+
 ### Ollama
 
 Ollama provides local model inference with OpenAI-compatible endpoints:

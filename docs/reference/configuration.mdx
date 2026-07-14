@@ -274,8 +274,9 @@ openai:
   user: "research-team"
 ```
 
-- Override `base_url` to target OpenAI-compatible services such as Groq (`https://api.groq.com/openai/v1`), Together, or local Ollama (`http://localhost:11434/v1`). Provide a dummy `api_key` for services that do not check it.
+- Override `base_url` to target OpenAI-compatible services such as Groq (`https://api.groq.com/openai/v1`), Together, DaoXE (`https://daoxe.com/v1`), or local Ollama (`http://localhost:11434/v1`). Provide a dummy `api_key` for services that do not check it.
 - Use `default_headers` to inject custom headers when talking to proxies or gateways.
+- **DaoXE**: multi-model multi-protocol gateway at `https://daoxe.com/v1` (Chat Completions path for mcp-agent; also offers Responses / Anthropic Messages for other clients). Model IDs are account-scoped via authenticated `GET /v1/models`. Not available in mainland China. Example: `examples/model_providers/mcp_basic_daoxe_agent`.
 
 ### Anthropic
 

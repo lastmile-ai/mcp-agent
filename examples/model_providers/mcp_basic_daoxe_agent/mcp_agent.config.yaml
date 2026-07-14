@@ -1,0 +1,26 @@
+$schema: ../../../schema/mcp-agent.config.schema.json
+
+execution_engine: asyncio
+logger:
+  transports: [console, file]
+  level: info
+  path_settings:
+    path_pattern: "logs/mcp-agent-daoxe-{unique_id}.jsonl"
+    unique_id: "timestamp"
+    timestamp_format: "%Y%m%d_%H%M%S"
+
+mcp:
+  servers:
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+    filesystem:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-filesystem"]
+
+# DaoXE multi-protocol multi-model gateway (OpenAI Chat Completions path for mcp-agent).
+# Model IDs are account-scoped — set default_model to an ID from GET /v1/models for your key.
+openai:
+  base_url: "https://daoxe.com/v1"
+  # Prefer a model ID returned by authenticated GET https://daoxe.com/v1/models
+  # default_model: "your-account-scoped-model-id"
