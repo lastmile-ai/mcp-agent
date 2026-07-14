@@ -275,6 +275,26 @@ openai:
 ```
 
 - Override `base_url` to target OpenAI-compatible services such as Groq (`https://api.groq.com/openai/v1`), Together, or local Ollama (`http://localhost:11434/v1`). Provide a dummy `api_key` for services that do not check it.
+
+### Example: DaoXE multi-protocol gateway
+
+[DaoXE](https://daoxe.com) is a multi-model multi-protocol API gateway. Point the OpenAI provider at its Chat Completions base. Model IDs are account-scoped (use an exact ID from your DaoXE dashboard or `GET /v1/models`). Not available in mainland China.
+
+```yaml
+# mcp_agent.config.yaml
+openai:
+  default_model: YOUR_DAOXE_MODEL_ID
+  base_url: "https://daoxe.com/v1"
+```
+
+```yaml
+# mcp_agent.secrets.yaml
+openai:
+  api_key: "${DAOXE_API_KEY}"
+```
+
+DaoXE also exposes Anthropic Messages and other protocols for clients that speak those APIs; this path uses OpenAI-compatible Chat Completions.
+
 - Use `default_headers` to inject custom headers when talking to proxies or gateways.
 
 ### Anthropic
