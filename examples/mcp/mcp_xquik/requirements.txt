@@ -1,0 +1,5 @@
+# Core framework dependency
+-e ../../../
+
+# Additional dependencies specific to this example
+openai

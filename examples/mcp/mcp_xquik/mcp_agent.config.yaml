@@ -1,0 +1,25 @@
+$schema: ../../../schema/mcp-agent.config.schema.json
+
+execution_engine: asyncio
+logger:
+  transports: [console, file]
+  level: debug
+  show_progress: true
+  path_settings:
+    path_pattern: "logs/mcp-agent-{unique_id}.jsonl"
+    unique_id: "timestamp" # Options: "timestamp" or "session_id"
+    timestamp_format: "%Y%m%d_%H%M%S"
+
+mcp:
+  servers:
+    xquik:
+      name: "xquik"
+      description: "Xquik remote MCP server for X/Twitter data and actions"
+      transport: "streamable_http"
+      url: "https://xquik.com/mcp"
+      headers:
+        x-api-key: "${XQUIK_API_KEY}"
+
+openai:
+  # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file.
+  default_model: "gpt-4o-mini"
