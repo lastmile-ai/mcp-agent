@@ -29,6 +29,7 @@ from mcp_agent.logging.logger import get_logger
 from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
 from mcp_agent.mcp.mcp_connection_manager import MCPConnectionManager
 from mcp_agent.mcp.stdio_transport import filtered_stdio_client
+from mcp_agent.mcp.url_safety import validate_mcp_url
 from mcp_agent.oauth.http import OAuthHttpxAuth
 
 if TYPE_CHECKING:
@@ -146,6 +147,13 @@ class ServerRegistry:
             raise ValueError(f"Server '{server_name}' not found in registry.")
 
         config = self.registry[server_name]
+
+        # SSRF: reject private/loopback/metadata URLs for network transports (#721)
+        if config.transport != "stdio" and config.url:
+            validate_mcp_url(
+                config.url,
+                allow_private=bool(getattr(config, "allow_private_urls", False)),
+            )
 
         read_timeout_seconds = (
             timedelta(config.read_timeout_seconds)

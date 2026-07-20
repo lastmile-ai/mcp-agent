@@ -20,6 +20,7 @@ from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStre
 
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, get_default_environment
+from mcp_agent.mcp.url_safety import validate_mcp_url
 from mcp.client.sse import sse_client
 from mcp.client.streamable_http import streamablehttp_client, MCP_SESSION_ID
 from mcp.client.websocket import websocket_client
@@ -439,6 +440,12 @@ class MCPConnectionManager(ContextDependent):
         config = self.server_registry.registry.get(server_name)
         if not config:
             raise ValueError(f"Server '{server_name}' not found in registry.")
+
+        if config.transport != "stdio" and config.url:
+            validate_mcp_url(
+                config.url,
+                allow_private=bool(getattr(config, "allow_private_urls", False)),
+            )
 
         logger.debug(
             f"{server_name}: Found server configuration=", data=config.model_dump()
