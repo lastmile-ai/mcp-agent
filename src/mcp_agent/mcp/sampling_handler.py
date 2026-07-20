@@ -145,8 +145,9 @@ class SamplingHandler(ContextDependent):
     async def _human_approve_request(
         self, params: CreateMessageRequestParams
     ) -> tuple[CreateMessageRequestParams | None, str]:
-        if not self.context.human_input_handler:
-            return params, ""
+        # Fail closed: without a human handler, do not let MCP servers drive the LLM (#721).
+        if not self.context or not getattr(self.context, "human_input_handler", None):
+            return None, "sampling rejected: human approval handler is not configured"
 
         from mcp_agent.human_input.types import HumanInputRequest
 
@@ -174,8 +175,8 @@ class SamplingHandler(ContextDependent):
     async def _human_approve_response(
         self, result: CreateMessageResult
     ) -> tuple[CreateMessageResult | None, str]:
-        if not self.context.human_input_handler:
-            return result, ""
+        if not self.context or not getattr(self.context, "human_input_handler", None):
+            return None, "sampling rejected: human approval handler is not configured"
 
         from mcp_agent.human_input.types import HumanInputRequest
 
