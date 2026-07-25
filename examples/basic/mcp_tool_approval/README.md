@@ -1,19 +1,20 @@
-# MCP Tool Approval Gateway
+# Pre-tool Approval for MCP Calls
 
-This example uses the framework's `AugmentedLLM.pre_tool_call` hook to evaluate
-MCP tool calls immediately before dispatch. The example policy is deliberately
-small and fail-closed:
+This example uses `AugmentedLLM.pre_tool_call` to apply an application-provided
+decision function immediately before dispatch. Its filesystem policy uses exact
+tool names and fails closed:
 
 | Operation | Default decision |
 | --- | --- |
-| Allowlisted reads and read-only commands | Allow |
-| Workspace writes and package installation | Require approval |
-| Delete, push, unknown shell, and unknown tools | Block |
-| Force-push, sensitive paths, and suspected exfiltration | Block as critical |
+| Allowlisted filesystem reads | Allow |
+| Allowlisted filesystem changes | Require approval |
+| Delete, shell, package, Git, and unknown tools | Block |
+| Obvious sensitive paths | Block |
 
 Decisions are appended to `logs/policy-audit.jsonl`. Audit records contain an
-arguments digest rather than raw arguments. Replace the example rules, approval
-callback, and JSONL sink with controls appropriate for your deployment.
+arguments digest rather than raw arguments. Replace the decision function,
+approval callback, and JSONL sink with controls appropriate for your
+application.
 
 ## Run
 
@@ -23,14 +24,16 @@ cp mcp_agent.secrets.yaml.example mcp_agent.secrets.yaml
 uv run main.py
 ```
 
-The policy layer is an execution guard, not a sandbox. Use Docker, a VM, a dev
-container, or another OS isolation boundary when containment is required.
+The sensitive-path check is intentionally narrow and is not workspace
+confinement or a complete path-security implementation. Use an MCP server rooted
+at the intended workspace and Docker, a VM, a dev container, or another OS
+isolation boundary when containment is required.
 
 ## Enforcement boundary
 
 The `pre_tool_call` hook covers calls dispatched through this augmented LLM.
 Direct calls to `Agent.call_tool`, another LLM instance, or a client connected
-straight to the MCP server bypass this example gateway.
+straight to the MCP server bypass this example.
 
 Server-initiated MCP sampling (`sampling/createMessage`) is also a separate
 protocol path and does not pass through `pre_tool_call`. Apply an equivalent
@@ -38,9 +41,10 @@ policy in the sampling callback or client session before enabling sampling.
 
 ## Tests
 
-The focused tests use a fake approval callback and audit sink. They verify
-allowlisted reads, approved writes, blocked execution, critical classification,
-and redacted JSONL persistence without starting an MCP server or calling an LLM.
+The focused tests use fake approval and audit components. They verify hook
+return values, approval and rejection, exact-name fail-closed behavior,
+sensitive paths, and redacted JSONL persistence without starting an MCP server
+or calling an LLM.
 
 ```bash
 uv run pytest tests/examples/test_mcp_tool_approval.py

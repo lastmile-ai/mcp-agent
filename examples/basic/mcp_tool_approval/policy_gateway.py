@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-import re
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -12,13 +11,6 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from mcp.types import CallToolRequest
-
-
-class RiskLevel(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
 
 
 class PolicyAction(str, Enum):
@@ -37,9 +29,7 @@ class NormalizedOperation:
 @dataclass(frozen=True)
 class PolicyDecision:
     action: PolicyAction
-    risk: RiskLevel
     reason: str
-    rule_id: str
 
 
 @dataclass(frozen=True)
@@ -48,18 +38,44 @@ class AuditEvent:
     tool_call_id: str | None
     tool_name: str
     arguments_digest: str
-    risk: str
     action: str
     outcome: str
     reason: str
-    rule_id: str
 
 
 class AuditSink(Protocol):
     async def append(self, event: AuditEvent) -> None: ...
 
 
+DecisionFunction = Callable[[NormalizedOperation], PolicyDecision]
 ApprovalCallback = Callable[[NormalizedOperation, PolicyDecision], Awaitable[bool]]
+
+READ_ONLY_FILESYSTEM_TOOLS = frozenset(
+    {
+        "filesystem_directory_tree",
+        "filesystem_get_file_info",
+        "filesystem_list_allowed_directories",
+        "filesystem_list_directory",
+        "filesystem_list_directory_with_sizes",
+        "filesystem_read_file",
+        "filesystem_read_media_file",
+        "filesystem_read_multiple_files",
+        "filesystem_read_text_file",
+        "filesystem_search_files",
+    }
+)
+WRITING_FILESYSTEM_TOOLS = frozenset(
+    {
+        "filesystem_create_directory",
+        "filesystem_edit_file",
+        "filesystem_move_file",
+        "filesystem_write_file",
+    }
+)
+PATH_ARGUMENT_NAMES = frozenset({"destination", "path", "paths", "source"})
+SENSITIVE_PATH_PARTS = frozenset(
+    {".aws", ".ssh", "credentials", "id_ed25519", "id_rsa"}
+)
 
 
 def normalize_operation(request: CallToolRequest) -> NormalizedOperation:
@@ -77,111 +93,46 @@ def normalize_operation(request: CallToolRequest) -> NormalizedOperation:
     )
 
 
-class DefaultPolicy:
-    """Small fail-closed policy for demonstrating the approval hook."""
-
-    _READ_ONLY_COMMANDS = ("cat ", "git diff", "git status", "ls", "pwd")
-    _SENSITIVE = re.compile(
-        r"(?:^|[/\\\s\"'])(?:\.env(?:[./\\\s\"']|$)|\.ssh(?:[/\\\s\"']|$)|\.aws(?:[/\\\s\"']|$)|id_rsa|credentials)",
-        re.IGNORECASE,
-    )
-    _EXFILTRATION = re.compile(
-        r"\b(?:nc|netcat|scp)\b|\b(?:curl|wget)\b.*(?:--data|-d\s|--upload-file|@)",
-        re.IGNORECASE,
-    )
-
-    def evaluate(self, operation: NormalizedOperation) -> PolicyDecision:
-        tool_name = operation.tool_name.lower()
-        arguments = json.dumps(operation.arguments, sort_keys=True, default=str)
-        text = f"{tool_name} {arguments}".lower()
-
-        if "--force" in text and "push" in text:
-            return PolicyDecision(
-                PolicyAction.BLOCK,
-                RiskLevel.CRITICAL,
-                "Force-push is prohibited by policy.",
-                "critical.force_push",
-            )
-        if self._SENSITIVE.search(text):
-            return PolicyDecision(
-                PolicyAction.BLOCK,
-                RiskLevel.CRITICAL,
-                "Sensitive paths are prohibited by policy.",
-                "critical.sensitive_path",
-            )
-        if self._EXFILTRATION.search(text):
-            return PolicyDecision(
-                PolicyAction.BLOCK,
-                RiskLevel.CRITICAL,
-                "The command resembles data exfiltration.",
-                "critical.exfiltration",
-            )
-        if "sampling/createmessage" in text or "sampling_create_message" in text:
-            return PolicyDecision(
-                PolicyAction.BLOCK,
-                RiskLevel.HIGH,
-                "Sampling requires a separate, explicit approval path.",
-                "high.sampling",
-            )
-        if any(token in text for token in ("delete", "remove_file", "rm -rf")):
-            return PolicyDecision(
-                PolicyAction.BLOCK,
-                RiskLevel.HIGH,
-                "Delete operations are blocked by default.",
-                "high.delete",
-            )
-        if "push" in text:
-            return PolicyDecision(
-                PolicyAction.BLOCK,
-                RiskLevel.HIGH,
-                "Repository pushes are blocked by default.",
-                "high.push",
-            )
-        if any(
-            token in text
-            for token in ("npm install", "pnpm add", "pip install", "uv add")
-        ):
-            return PolicyDecision(
-                PolicyAction.REQUIRE_APPROVAL,
-                RiskLevel.MEDIUM,
-                "Package installation requires approval.",
-                "medium.package_install",
-            )
-        if any(token in tool_name for token in ("write", "edit", "create_file")):
-            return PolicyDecision(
-                PolicyAction.REQUIRE_APPROVAL,
-                RiskLevel.MEDIUM,
-                "Workspace writes require approval.",
-                "medium.write",
-            )
-        if any(token in tool_name for token in ("shell", "terminal", "run_command")):
-            command = str(operation.arguments.get("command", "")).strip().lower()
-            if command.startswith(self._READ_ONLY_COMMANDS):
-                return PolicyDecision(
-                    PolicyAction.ALLOW,
-                    RiskLevel.LOW,
-                    "Allowlisted read-only command.",
-                    "low.read_only_command",
-                )
-            return PolicyDecision(
-                PolicyAction.BLOCK,
-                RiskLevel.HIGH,
-                "Unknown shell commands are blocked by default.",
-                "high.unknown_shell",
-            )
-        if any(token in tool_name for token in ("read", "list", "search", "get")):
-            return PolicyDecision(
-                PolicyAction.ALLOW,
-                RiskLevel.LOW,
-                "Read-only tool is allowlisted.",
-                "low.read_only_tool",
-            )
+def filesystem_policy(operation: NormalizedOperation) -> PolicyDecision:
+    if _references_sensitive_path(operation.arguments):
         return PolicyDecision(
             PolicyAction.BLOCK,
-            RiskLevel.HIGH,
-            "Unknown tools are blocked by default.",
-            "high.unknown_tool",
+            "Sensitive paths are blocked by this example.",
         )
+    if operation.tool_name in READ_ONLY_FILESYSTEM_TOOLS:
+        return PolicyDecision(
+            PolicyAction.ALLOW,
+            "Exact allowlisted read-only filesystem tool.",
+        )
+    if operation.tool_name in WRITING_FILESYSTEM_TOOLS:
+        return PolicyDecision(
+            PolicyAction.REQUIRE_APPROVAL,
+            "Filesystem changes require approval.",
+        )
+    return PolicyDecision(
+        PolicyAction.BLOCK,
+        "Tool is not in the example's exact allowlist.",
+    )
+
+
+def _references_sensitive_path(arguments: Mapping[str, Any]) -> bool:
+    for name in PATH_ARGUMENT_NAMES:
+        value = arguments.get(name)
+        values = value if isinstance(value, list) else [value]
+        for candidate in values:
+            if not isinstance(candidate, str):
+                continue
+            parts = {
+                part.lower() for part in candidate.replace("\\", "/").split("/") if part
+            }
+            if any(
+                part in SENSITIVE_PATH_PARTS
+                or part == ".env"
+                or part.startswith(".env.")
+                for part in parts
+            ):
+                return True
+    return False
 
 
 class JsonlAuditSink:
@@ -197,14 +148,14 @@ class JsonlAuditSink:
             handle.write(json.dumps(asdict(event), sort_keys=True) + "\n")
 
 
-class PolicyGateway:
+class ApprovalGate:
     def __init__(
         self,
-        policy: DefaultPolicy,
+        decide: DecisionFunction,
         approval_callback: ApprovalCallback,
         audit_sink: AuditSink,
     ) -> None:
-        self.policy = policy
+        self.decide = decide
         self.approval_callback = approval_callback
         self.audit_sink = audit_sink
 
@@ -212,7 +163,7 @@ class PolicyGateway:
         self, request: CallToolRequest, tool_call_id: str | None = None
     ) -> bool:
         operation = normalize_operation(request)
-        decision = self.policy.evaluate(operation)
+        decision = self.decide(operation)
 
         approved = decision.action is PolicyAction.ALLOW
         outcome = "allowed" if approved else "blocked"
@@ -226,21 +177,30 @@ class PolicyGateway:
                 tool_call_id=tool_call_id,
                 tool_name=operation.tool_name,
                 arguments_digest=operation.arguments_digest,
-                risk=decision.risk.value,
                 action=decision.action.value,
                 outcome=outcome,
                 reason=decision.reason,
-                rule_id=decision.rule_id,
             )
         )
         return approved
+
+
+class ApprovalHook:
+    approval_gate: ApprovalGate
+
+    async def pre_tool_call(
+        self, tool_call_id: str | None, request: CallToolRequest
+    ) -> CallToolRequest | bool:
+        if await self.approval_gate.authorize(request, tool_call_id):
+            return request
+        return False
 
 
 async def console_approval(
     operation: NormalizedOperation, decision: PolicyDecision
 ) -> bool:
     prompt = (
-        f"Approve {operation.tool_name} ({decision.risk.value}): "
+        f"Approve {operation.tool_name}: "
         f"{json.dumps(operation.arguments, default=str)}? [y/N] "
     )
     response = await asyncio.to_thread(input, prompt)

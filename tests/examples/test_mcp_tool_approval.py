@@ -1,13 +1,16 @@
 import json
+import os
+from pathlib import Path
 
 import pytest
 from mcp.types import CallToolRequest, CallToolRequestParams
 
 from examples.basic.mcp_tool_approval.policy_gateway import (
+    ApprovalGate,
+    ApprovalHook,
     AuditEvent,
-    DefaultPolicy,
     JsonlAuditSink,
-    PolicyGateway,
+    filesystem_policy,
 )
 
 
@@ -27,8 +30,14 @@ def request(name: str, arguments: dict) -> CallToolRequest:
     )
 
 
+def hook_with_gate(gate: ApprovalGate) -> ApprovalHook:
+    hook = ApprovalHook()
+    hook.approval_gate = gate
+    return hook
+
+
 @pytest.mark.asyncio
-async def test_read_only_tool_is_allowed_without_approval() -> None:
+async def test_pre_tool_call_allows_exact_read_without_approval() -> None:
     approvals = 0
 
     async def approve(*_args) -> bool:
@@ -37,52 +46,55 @@ async def test_read_only_tool_is_allowed_without_approval() -> None:
         return True
 
     audit = MemoryAuditSink()
-    gateway = PolicyGateway(DefaultPolicy(), approve, audit)
+    hook = hook_with_gate(ApprovalGate(filesystem_policy, approve, audit))
+    tool_request = request("filesystem_read_file", {"path": "README.md"})
 
-    allowed = await gateway.authorize(
-        request("filesystem_read_file", {"path": "README.md"}), "call-1"
-    )
+    result = await hook.pre_tool_call("call-1", tool_request)
 
-    assert allowed is True
+    assert result is tool_request
     assert approvals == 0
     assert audit.events[0].outcome == "allowed"
-    assert audit.events[0].risk == "low"
-
-
-@pytest.mark.asyncio
-async def test_workspace_write_requires_approval() -> None:
-    async def approve(*_args) -> bool:
-        return True
-
-    audit = MemoryAuditSink()
-    gateway = PolicyGateway(DefaultPolicy(), approve, audit)
-
-    allowed = await gateway.authorize(
-        request(
-            "filesystem_write_file",
-            {"path": "src/example.py", "content": "print('ok')"},
-        )
-    )
-
-    assert allowed is True
-    assert audit.events[0].action == "require_approval"
-    assert audit.events[0].outcome == "approved"
+    assert audit.events[0].tool_call_id == "call-1"
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("tool_name", "arguments", "expected_rule"),
+    ("approval_result", "expected_result", "expected_outcome"),
+    [(True, "request", "approved"), (False, "blocked", "approval_declined")],
+)
+async def test_pre_tool_call_uses_approval_for_exact_write(
+    approval_result: bool, expected_result: str, expected_outcome: str
+) -> None:
+    async def approve(*_args) -> bool:
+        return approval_result
+
+    audit = MemoryAuditSink()
+    hook = hook_with_gate(ApprovalGate(filesystem_policy, approve, audit))
+    tool_request = request(
+        "filesystem_write_file",
+        {"path": "src/example.py", "content": "print('ok')"},
+    )
+
+    result = await hook.pre_tool_call(None, tool_request)
+
+    if expected_result == "request":
+        assert result is tool_request
+    else:
+        assert result is False
+    assert audit.events[0].outcome == expected_outcome
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool_name", "arguments"),
     [
-        ("filesystem_delete_file", {"path": "src/example.py"}, "high.delete"),
-        (
-            "terminal_run_command",
-            {"command": "git push --force origin main"},
-            "critical.force_push",
-        ),
+        ("filesystem_delete_file", {"path": "src/example.py"}),
+        ("filesystem_read_file_backup", {"path": "README.md"}),
+        ("terminal_run_command", {"command": "git status && git push"}),
     ],
 )
-async def test_blocked_operations_never_request_approval(
-    tool_name: str, arguments: dict, expected_rule: str
+async def test_pre_tool_call_blocks_unknown_tools_without_approval(
+    tool_name: str, arguments: dict
 ) -> None:
     approvals = 0
 
@@ -92,34 +104,44 @@ async def test_blocked_operations_never_request_approval(
         return True
 
     audit = MemoryAuditSink()
-    gateway = PolicyGateway(DefaultPolicy(), approve, audit)
+    hook = hook_with_gate(ApprovalGate(filesystem_policy, approve, audit))
 
-    allowed = await gateway.authorize(request(tool_name, arguments))
+    result = await hook.pre_tool_call(None, request(tool_name, arguments))
 
-    assert allowed is False
+    assert result is False
     assert approvals == 0
-    assert audit.events[0].rule_id == expected_rule
     assert audit.events[0].outcome == "blocked"
 
 
 @pytest.mark.asyncio
-async def test_jsonl_audit_persists_digest_without_raw_arguments(tmp_path) -> None:
+async def test_sensitive_path_is_blocked_and_audit_omits_arguments() -> None:
     async def approve(*_args) -> bool:
-        return False
+        return True
 
-    audit_path = tmp_path / "policy-audit.jsonl"
-    gateway = PolicyGateway(DefaultPolicy(), approve, JsonlAuditSink(audit_path))
-
-    await gateway.authorize(
-        request(
-            "filesystem_read_file",
-            {"path": ".env", "token": "sk-sensitive-example"},
-        )
+    audit_path = Path("logs") / f"policy-audit-test-{os.getpid()}.jsonl"
+    gate = ApprovalGate(
+        filesystem_policy,
+        approve,
+        JsonlAuditSink(audit_path),
     )
 
-    raw = audit_path.read_text(encoding="utf-8")
-    event = json.loads(raw)
-    assert event["rule_id"] == "critical.sensitive_path"
-    assert len(event["arguments_digest"]) == 64
-    assert ".env" not in raw
-    assert "sk-sensitive-example" not in raw
+    try:
+        allowed = await gate.authorize(
+            request(
+                "filesystem_read_multiple_files",
+                {
+                    "paths": ["README.md", ".env.local"],
+                    "token": "sk-sensitive-example",
+                },
+            )
+        )
+
+        raw = audit_path.read_text(encoding="utf-8")
+        event = json.loads(raw)
+        assert allowed is False
+        assert event["outcome"] == "blocked"
+        assert len(event["arguments_digest"]) == 64
+        assert ".env.local" not in raw
+        assert "sk-sensitive-example" not in raw
+    finally:
+        audit_path.unlink(missing_ok=True)
