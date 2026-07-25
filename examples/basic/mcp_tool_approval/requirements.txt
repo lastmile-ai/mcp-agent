@@ -1,2 +1,2 @@
-mcp-agent @ file://../../../
+-e ../../..
 openai

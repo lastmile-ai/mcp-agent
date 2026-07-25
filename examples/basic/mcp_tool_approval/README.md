@@ -18,6 +18,8 @@ application.
 
 ## Run
 
+Install Python and `uv`, plus Node.js/npm with `npx` available on `PATH`.
+
 ```bash
 cp mcp_agent.secrets.yaml.example mcp_agent.secrets.yaml
 # Add your provider key to the ignored secrets file.

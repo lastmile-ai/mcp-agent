@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import os
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -144,7 +145,10 @@ class JsonlAuditSink:
 
     def _append(self, event: AuditEvent) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.path.open("a", encoding="utf-8") as handle:
+        flags = os.O_APPEND | os.O_CREAT | os.O_WRONLY
+        fd = os.open(self.path, flags, 0o600)
+        with os.fdopen(fd, "a", encoding="utf-8") as handle:
+            os.chmod(self.path, 0o600)
             handle.write(json.dumps(asdict(event), sort_keys=True) + "\n")
 
 

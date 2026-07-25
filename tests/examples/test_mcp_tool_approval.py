@@ -1,5 +1,6 @@
 import json
 import os
+import stat
 from pathlib import Path
 
 import pytest
@@ -143,5 +144,30 @@ async def test_sensitive_path_is_blocked_and_audit_omits_arguments() -> None:
         assert len(event["arguments_digest"]) == 64
         assert ".env.local" not in raw
         assert "sk-sensitive-example" not in raw
+        if os.name != "nt":
+            assert stat.S_IMODE(audit_path.stat().st_mode) == 0o600
+    finally:
+        audit_path.unlink(missing_ok=True)
+
+
+@pytest.mark.asyncio
+async def test_audit_repairs_existing_file_permissions() -> None:
+    async def approve(*_args) -> bool:
+        return True
+
+    audit_path = Path("logs") / f"policy-audit-existing-{os.getpid()}.jsonl"
+    audit_path.touch()
+    os.chmod(audit_path, 0o644)
+    gate = ApprovalGate(
+        filesystem_policy,
+        approve,
+        JsonlAuditSink(audit_path),
+    )
+
+    try:
+        await gate.authorize(request("filesystem_read_file", {"path": "README.md"}))
+
+        if os.name != "nt":
+            assert stat.S_IMODE(audit_path.stat().st_mode) == 0o600
     finally:
         audit_path.unlink(missing_ok=True)

@@ -12,7 +12,7 @@ mcp:
   servers:
     filesystem:
       command: "npx"
-      args: ["-y", "@modelcontextprotocol/server-filesystem"]
+      args: ["-y", "@modelcontextprotocol/server-filesystem@2026.7.10"]
 
 openai:
   default_model: gpt-5
