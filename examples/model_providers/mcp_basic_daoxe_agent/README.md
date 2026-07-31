@@ -75,8 +75,6 @@ openai:
 ## `3` Run locally
 
 ```bash
-cd examples/model_providers/mcp_basic_daoxe_agent
-
 export DAOXE_MODEL="your-account-scoped-model-id"  # from GET /v1/models
 uv run main.py
 ```
