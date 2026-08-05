@@ -1,3 +1,5 @@
+[![MCP Toplist](https://mcptoplist.com/badge/mcp.so%2Fmcp-agent%2Flastmile-ai.svg)](https://mcptoplist.com/server/mcp.so%2Fmcp-agent%2Flastmile-ai)
+
 <p align="center">
   <a href="https://docs.mcp-agent.com"><img src="https://github.com/user-attachments/assets/c8d059e5-bd56-4ea2-a72d-807fb4897bde" alt="Logo" width="300" /></a>
 </p>
