@@ -1609,7 +1609,7 @@
               "type": "null"
             }
           ],
-          "default": 60,
+          "default": 600,
           "title": "Timeout Seconds"
         },
         "rpc_metadata": {

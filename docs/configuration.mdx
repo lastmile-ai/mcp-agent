@@ -518,7 +518,7 @@ temporal:
   namespace: "default"
   task_queue: "mcp-agent"
   max_concurrent_activities: 20
-  timeout_seconds: 60
+  timeout_seconds: 600  # Default activity / workflow-task schedule-to-close timeout (10 minutes)
   tls: false  # Enable TLS for production
   api_key: "${TEMPORAL_API_KEY}"  # Optional API key
   id_reuse_policy: "allow_duplicate"  # Options: allow_duplicate, allow_duplicate_failed_only, reject_duplicate, terminate_if_running

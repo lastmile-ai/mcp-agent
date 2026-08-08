@@ -150,6 +150,24 @@ The same helper works on the asyncio executor via `app.context.executor.signal_b
 
 The Temporal server example also shows how durable workflows call nested MCP servers and trigger [MCP elicitation](https://modelcontextprotocol.io/specification/2025-06-18/client/elicitation) when a human response is required. Activities such as `call_nested_elicitation` log progress via `app.app.logger` so the request trace and Temporal history stay aligned.
 
+## Activity / workflow-task timeouts
+
+Temporal activities time out after **10 minutes** by default (`temporal.timeout_seconds: 600`). Override globally in config, or per task on the decorator (per-task wins):
+
+```yaml
+execution_engine: temporal
+temporal:
+  host: "localhost:7233"
+  task_queue: "mcp-agent"
+  timeout_seconds: 900  # seconds; default is 600 (10 minutes)
+```
+
+```python
+@app.workflow_task(schedule_to_close_timeout=timedelta(minutes=30))
+async def long_running_research(...):
+    ...
+```
+
 ## Configure workflow-task modules and retry policies
 
 Add optional top-level overrides to preload custom workflow tasks and refine retry behaviour:

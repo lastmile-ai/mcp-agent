@@ -62,10 +62,12 @@ def workflow_task(
             raise TypeError(f"{func.__qualname__} must be async")
 
         activity_name = name or f"{func.__module__}.{func.__qualname__}"
+        # Leave timeout unset when not specified so TemporalExecutor can apply
+        # TemporalSettings.timeout_seconds (default 10 minutes). Explicit
+        # schedule_to_close_timeout on the decorator overrides the config.
         metadata = {
             "activity_name": activity_name,
-            "schedule_to_close_timeout": schedule_to_close_timeout
-            or timedelta(minutes=10),
+            "schedule_to_close_timeout": schedule_to_close_timeout,
             "retry_policy": retry_policy or {},
             **meta_kwargs,
         }
