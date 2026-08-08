@@ -71,6 +71,10 @@ MODULE_OPTIONAL_EXTRAS: dict[str, str] = {
 class TemporalExecutorConfig(ExecutorConfig, TemporalSettings):
     """Configuration for Temporal executors."""
 
+    # ExecutorConfig declares timeout_seconds=None (timedelta); re-declare so the
+    # TemporalSettings default of 10 minutes (seconds as int) wins for activities.
+    timeout_seconds: int | None = 600
+
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 
@@ -198,10 +202,11 @@ class TemporalExecutor(Executor):
         activity_registry = self.context.task_registry
         activity_task = activity_registry.get_activity(activity_name)
 
-        # Config timeout takes priority over metadata timeout (per tests).
-        schedule_to_close = self.config.timeout_seconds or execution_metadata.get(
-            "schedule_to_close_timeout"
-        )
+        # Prefer per-task schedule_to_close_timeout; fall back to config default
+        # (TemporalSettings.timeout_seconds, default 10 minutes).
+        schedule_to_close = execution_metadata.get("schedule_to_close_timeout")
+        if schedule_to_close is None:
+            schedule_to_close = self.config.timeout_seconds
 
         if schedule_to_close is not None and not isinstance(
             schedule_to_close, timedelta

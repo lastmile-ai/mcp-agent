@@ -668,7 +668,14 @@ class TemporalSettings(BaseModel):
     tls: bool = False
     task_queue: str
     max_concurrent_activities: int | None = None
-    timeout_seconds: int | None = 60
+    timeout_seconds: int | None = 600
+    """Default schedule-to-close timeout (seconds) for Temporal activities / workflow tasks.
+
+    Used when a task does not set ``schedule_to_close_timeout`` on
+    ``@app.workflow_task`` / ``@workflow_task``. Defaults to 10 minutes so
+    long-running LLM/tool activities are less likely to time out. Set to
+    ``null`` to require an explicit per-task timeout.
+    """
     rpc_metadata: Dict[str, str] | None = None
     id_reuse_policy: Literal[
         "allow_duplicate",
