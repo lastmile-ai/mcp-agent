@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import NoReturn
+
 try:  # Temporal optional dependency
     from temporalio.exceptions import ApplicationError as TemporalApplicationError
 
@@ -61,7 +63,7 @@ class WorkflowApplicationError(TemporalApplicationError):
             )
 
             if not hasattr(self, "non_retryable"):
-                setattr(self, "non_retryable", non_retryable)
+                self.non_retryable = non_retryable
         else:
             super().__init__(
                 message,
@@ -103,4 +105,54 @@ def to_application_error(
     return WorkflowApplicationError(msg, type=err_type, non_retryable=nr, details=det)
 
 
-__all__ = ["WorkflowApplicationError", "to_application_error"]
+def reraise_with_workflow_failure(
+    error: BaseException,
+    *,
+    instance: object | None = None,
+    non_retryable: bool = True,
+) -> NoReturn:
+    """Re-raise *error* so a Temporal workflow *run* fails (not only the task).
+
+    Temporal treats most non-:class:`~temporalio.exceptions.FailureError`
+    exceptions as **workflow task** failures (retried while the run stays
+    ``Running``). Converting to a non-retryable
+    :class:`WorkflowApplicationError` fails the workflow run and surfaces the
+    error (see https://github.com/lastmile-ai/mcp-agent/issues/503).
+
+    Already-raised Temporal ``FailureError`` subclasses (including
+    ``ApplicationError``) and :class:`WorkflowApplicationError` are preserved.
+    Best-effort: records the original error on ``instance.state`` when present.
+    """
+    if instance is not None:
+        try:
+            update_status = getattr(instance, "update_status", None)
+            if callable(update_status):
+                update_status("error")
+            state = getattr(instance, "state", None)
+            record_error = getattr(state, "record_error", None)
+            if callable(record_error) and isinstance(error, Exception):
+                record_error(error)
+        except Exception:
+            # Status recording must never mask the original failure.
+            pass
+
+    if isinstance(error, WorkflowApplicationError):
+        raise error
+
+    if _TEMPORAL_AVAILABLE:
+        try:
+            from temporalio.exceptions import FailureError
+
+            if isinstance(error, FailureError):
+                raise error
+        except ImportError:  # pragma: no cover
+            pass
+
+    raise to_application_error(error, non_retryable=non_retryable) from error
+
+
+__all__ = [
+    "WorkflowApplicationError",
+    "reraise_with_workflow_failure",
+    "to_application_error",
+]

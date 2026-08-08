@@ -677,9 +677,16 @@ class MCPApp:
         Decorator for a workflow's main 'run' method.
         Different executors can use this to customize behavior for workflow execution.
 
+        Exceptions raised from the wrapped run method are converted to a
+        non-retryable WorkflowApplicationError so Temporal marks the **run**
+        as failed (plain exceptions only fail the workflow task and leave the
+        run stuck in Running). See issue #503.
+
         Example:
             If Temporal is in use, this gets converted to @workflow.run.
         """
+        from mcp_agent.executor.errors import reraise_with_workflow_failure
+
         # Apply the engine-specific decorator if available
         engine_type = self.config.execution_engine
         run_decorator = self._decorator_registry.get_workflow_run_decorator(engine_type)
@@ -687,30 +694,37 @@ class MCPApp:
 
         @functools.wraps(fn)
         async def wrapper(*args, **kwargs):
-            if not args:
-                return await decorated_fn(*args, **kwargs)
+            instance = args[0] if args else None
+            try:
+                if not args:
+                    return await decorated_fn(*args, **kwargs)
 
-            # Get the workflow class instance from the first argument
-            instance = args[0]
+                # Ensure initialization happens
+                await instance.initialize()
 
-            # Ensure initialization happens
-            await instance.initialize()
+                workflow_cls = instance.__class__
+                method_name = fn.__name__
 
-            workflow_cls = instance.__class__
-            method_name = fn.__name__
+                # See if we need to store the decorated method on the class
+                # (we only need to do this once per class)
+                if run_decorator and not hasattr(
+                    workflow_cls, f"_decorated_{method_name}"
+                ):
+                    setattr(workflow_cls, f"_decorated_{method_name}", decorated_fn)
 
-            # See if we need to store the decorated method on the class
-            # (we only need to do this once per class)
-            if run_decorator and not hasattr(workflow_cls, f"_decorated_{method_name}"):
-                setattr(workflow_cls, f"_decorated_{method_name}", decorated_fn)
+                # Use the decorated method if available on the class
+                class_decorated = getattr(
+                    workflow_cls, f"_decorated_{method_name}", None
+                )
+                if class_decorated:
+                    return await class_decorated(*args, **kwargs)
 
-            # Use the decorated method if available on the class
-            class_decorated = getattr(workflow_cls, f"_decorated_{method_name}", None)
-            if class_decorated:
-                return await class_decorated(*args, **kwargs)
-
-            # Fall back to the original function
-            return await fn(*args, **kwargs)
+                # Fall back to the original function
+                return await fn(*args, **kwargs)
+            except Exception as e:
+                # Convert plain exceptions so Temporal fails the workflow run
+                # rather than only the workflow task (issue #503).
+                reraise_with_workflow_failure(e, instance=instance)
 
         # Ensure the wrapper shares the original function's globals so that
         # string annotations (from __future__ import annotations) continue to
@@ -878,8 +892,15 @@ class MCPApp:
 
         async def _run(self, *args, **kwargs):  # type: ignore[no-redef]
             # ensure initialization
-            await self.initialize()
-            return await _invoke_target(self, *args, **kwargs)
+            from mcp_agent.executor.errors import reraise_with_workflow_failure
+
+            try:
+                await self.initialize()
+                return await _invoke_target(self, *args, **kwargs)
+            except Exception as e:
+                # Same conversion as @app.workflow_run (issue #503): fail the
+                # Temporal workflow run, not only the workflow task.
+                reraise_with_workflow_failure(e, instance=self)
 
         # Decorate run with engine-specific decorator
         engine_type = self.config.execution_engine
