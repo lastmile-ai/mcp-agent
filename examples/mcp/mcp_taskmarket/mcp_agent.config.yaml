@@ -1,0 +1,12 @@
+$schema: https://raw.githubusercontent.com/lastmile-ai/mcp-agent/main/schema/mcp-agent.config.schema.json
+
+execution_engine: asyncio
+
+mcp:
+  servers:
+    taskmarket:
+      transport: sse
+      url: http://localhost:8000/sse
+
+openai:
+  api_key: your_openai_key_here
