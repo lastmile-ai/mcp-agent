@@ -110,17 +110,21 @@ def reraise_with_workflow_failure(
     *,
     instance: object | None = None,
     non_retryable: bool = True,
+    for_temporal: bool = False,
 ) -> NoReturn:
-    """Re-raise *error* so a Temporal workflow *run* fails (not only the task).
+    """Re-raise *error* from a workflow run, optionally wrapping for Temporal.
 
-    Temporal treats most non-:class:`~temporalio.exceptions.FailureError`
-    exceptions as **workflow task** failures (retried while the run stays
-    ``Running``). Converting to a non-retryable
-    :class:`WorkflowApplicationError` fails the workflow run and surfaces the
-    error (see https://github.com/lastmile-ai/mcp-agent/issues/503).
+    When ``for_temporal`` is True, plain exceptions are converted to a
+    non-retryable :class:`WorkflowApplicationError` so Temporal marks the
+    **run** as failed (plain exceptions only fail the workflow task and leave
+    the run stuck in Running). See issue #503.
+
+    When ``for_temporal`` is False (e.g. asyncio execution), the original
+    exception type is preserved after best-effort status recording.
 
     Already-raised Temporal ``FailureError`` subclasses (including
-    ``ApplicationError``) and :class:`WorkflowApplicationError` are preserved.
+    ``ApplicationError``) and :class:`WorkflowApplicationError` are preserved
+    when ``for_temporal`` is True.
     Best-effort: records the original error on ``instance.state`` when present.
     """
     if instance is not None:
@@ -135,6 +139,9 @@ def reraise_with_workflow_failure(
         except Exception:
             # Status recording must never mask the original failure.
             pass
+
+    if not for_temporal:
+        raise error
 
     if isinstance(error, WorkflowApplicationError):
         raise error

@@ -606,15 +606,62 @@ class TestMCPApp:
             assert asyncio.iscoroutinefunction(result)
 
     @pytest.mark.asyncio
-    async def test_workflow_run_converts_runtime_error(self, basic_app, mock_context):
-        """Raising RuntimeError in run fails the workflow run (issue #503)."""
+    async def test_workflow_run_preserves_runtime_error_for_asyncio(
+        self, basic_app, mock_context
+    ):
+        """Asyncio workflow_run re-raises the original exception type."""
+        from mcp_agent.executor.workflow import Workflow, WorkflowResult, WorkflowState
+
+        basic_app._context = mock_context
+        basic_app._initialized = True
+        basic_app._config.execution_engine = "asyncio"
+        mock_context.config.execution_engine = "asyncio"
+        mock_context.decorator_registry.get_workflow_run_decorator.return_value = None
+
+        try:
+
+            class FailingWorkflow(Workflow[str]):
+                @basic_app.workflow_run
+                async def run(self, message: str = "x") -> WorkflowResult[str]:
+                    raise RuntimeError("TEST")
+
+            wf = FailingWorkflow(name="FailingWorkflow", context=mock_context)
+            assert isinstance(wf.state, WorkflowState)
+
+            with pytest.raises(RuntimeError) as excinfo:
+                await wf.run()
+
+            assert str(excinfo.value) == "TEST"
+            assert wf.state.status == "error"
+            assert wf.state.error is not None
+            assert wf.state.error["type"] == "RuntimeError"
+            assert wf.state.error["message"] == "TEST"
+        finally:
+            basic_app._context = None
+            basic_app._initialized = False
+
+    @pytest.mark.asyncio
+    async def test_workflow_run_converts_runtime_error_for_temporal(
+        self, basic_app, mock_context
+    ):
+        """Temporal workflow_run wraps plain exceptions as WorkflowApplicationError."""
+        from mcp_agent.executor.decorator_registry import default_workflow_run
         from mcp_agent.executor.errors import WorkflowApplicationError
         from mcp_agent.executor.workflow import Workflow, WorkflowResult, WorkflowState
 
         basic_app._context = mock_context
         basic_app._initialized = True
-        mock_context.config.execution_engine = "asyncio"
-        mock_context.decorator_registry.get_workflow_run_decorator.return_value = None
+        basic_app._config.execution_engine = "temporal"
+        mock_context.config.execution_engine = "temporal"
+
+        original_get = basic_app._decorator_registry.get_workflow_run_decorator
+
+        def _get_run_decorator(engine_name: str):
+            if engine_name == "temporal":
+                return default_workflow_run
+            return original_get(engine_name)
+
+        basic_app._decorator_registry.get_workflow_run_decorator = _get_run_decorator
 
         try:
 
@@ -638,6 +685,7 @@ class TestMCPApp:
             assert wf.state.error["type"] == "RuntimeError"
             assert wf.state.error["message"] == "TEST"
         finally:
+            basic_app._decorator_registry.get_workflow_run_decorator = original_get
             basic_app._context = None
             basic_app._initialized = False
 
@@ -651,6 +699,7 @@ class TestMCPApp:
 
         basic_app._context = mock_context
         basic_app._initialized = True
+        basic_app._config.execution_engine = "asyncio"
         mock_context.config.execution_engine = "asyncio"
         mock_context.decorator_registry.get_workflow_run_decorator.return_value = None
 

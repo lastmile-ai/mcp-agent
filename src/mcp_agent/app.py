@@ -677,10 +677,11 @@ class MCPApp:
         Decorator for a workflow's main 'run' method.
         Different executors can use this to customize behavior for workflow execution.
 
-        Exceptions raised from the wrapped run method are converted to a
-        non-retryable WorkflowApplicationError so Temporal marks the **run**
-        as failed (plain exceptions only fail the workflow task and leave the
-        run stuck in Running). See issue #503.
+        For Temporal, exceptions raised from the wrapped run method are converted
+        to a non-retryable WorkflowApplicationError so the **run** fails (plain
+        exceptions only fail the workflow task and leave the run stuck in
+        Running). Asyncio and other engines re-raise the original exception.
+        See issue #503.
 
         Example:
             If Temporal is in use, this gets converted to @workflow.run.
@@ -722,9 +723,11 @@ class MCPApp:
                 # Fall back to the original function
                 return await fn(*args, **kwargs)
             except Exception as e:
-                # Convert plain exceptions so Temporal fails the workflow run
-                # rather than only the workflow task (issue #503).
-                reraise_with_workflow_failure(e, instance=instance)
+                reraise_with_workflow_failure(
+                    e,
+                    instance=instance,
+                    for_temporal=(engine_type == "temporal"),
+                )
 
         # Ensure the wrapper shares the original function's globals so that
         # string annotations (from __future__ import annotations) continue to
@@ -898,9 +901,11 @@ class MCPApp:
                 await self.initialize()
                 return await _invoke_target(self, *args, **kwargs)
             except Exception as e:
-                # Same conversion as @app.workflow_run (issue #503): fail the
-                # Temporal workflow run, not only the workflow task.
-                reraise_with_workflow_failure(e, instance=self)
+                reraise_with_workflow_failure(
+                    e,
+                    instance=self,
+                    for_temporal=(engine_type == "temporal"),
+                )
 
         # Decorate run with engine-specific decorator
         engine_type = self.config.execution_engine
