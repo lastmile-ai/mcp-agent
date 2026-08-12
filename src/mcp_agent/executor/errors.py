@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import NoReturn
+
 try:  # Temporal optional dependency
     from temporalio.exceptions import ApplicationError as TemporalApplicationError
 
@@ -61,7 +63,7 @@ class WorkflowApplicationError(TemporalApplicationError):
             )
 
             if not hasattr(self, "non_retryable"):
-                setattr(self, "non_retryable", non_retryable)
+                self.non_retryable = non_retryable
         else:
             super().__init__(
                 message,
@@ -103,4 +105,61 @@ def to_application_error(
     return WorkflowApplicationError(msg, type=err_type, non_retryable=nr, details=det)
 
 
-__all__ = ["WorkflowApplicationError", "to_application_error"]
+def reraise_with_workflow_failure(
+    error: BaseException,
+    *,
+    instance: object | None = None,
+    non_retryable: bool = True,
+    for_temporal: bool = False,
+) -> NoReturn:
+    """Re-raise *error* from a workflow run, optionally wrapping for Temporal.
+
+    When ``for_temporal`` is True, plain exceptions are converted to a
+    non-retryable :class:`WorkflowApplicationError` so Temporal marks the
+    **run** as failed (plain exceptions only fail the workflow task and leave
+    the run stuck in Running). See issue #503.
+
+    When ``for_temporal`` is False (e.g. asyncio execution), the original
+    exception type is preserved after best-effort status recording.
+
+    Already-raised Temporal ``FailureError`` subclasses (including
+    ``ApplicationError``) and :class:`WorkflowApplicationError` are preserved
+    when ``for_temporal`` is True.
+    Best-effort: records the original error on ``instance.state`` when present.
+    """
+    if instance is not None:
+        try:
+            update_status = getattr(instance, "update_status", None)
+            if callable(update_status):
+                update_status("error")
+            state = getattr(instance, "state", None)
+            record_error = getattr(state, "record_error", None)
+            if callable(record_error) and isinstance(error, Exception):
+                record_error(error)
+        except Exception:
+            # Status recording must never mask the original failure.
+            pass
+
+    if not for_temporal:
+        raise error
+
+    if isinstance(error, WorkflowApplicationError):
+        raise error
+
+    if _TEMPORAL_AVAILABLE:
+        try:
+            from temporalio.exceptions import FailureError
+
+            if isinstance(error, FailureError):
+                raise error
+        except ImportError:  # pragma: no cover
+            pass
+
+    raise to_application_error(error, non_retryable=non_retryable) from error
+
+
+__all__ = [
+    "WorkflowApplicationError",
+    "reraise_with_workflow_failure",
+    "to_application_error",
+]

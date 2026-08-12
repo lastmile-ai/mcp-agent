@@ -1,6 +1,13 @@
+from types import SimpleNamespace
+
 import pytest
 
-from mcp_agent.executor.errors import WorkflowApplicationError, to_application_error
+from mcp_agent.executor.errors import (
+    WorkflowApplicationError,
+    reraise_with_workflow_failure,
+    to_application_error,
+)
+from mcp_agent.executor.workflow import WorkflowState
 
 
 def test_workflow_application_error_attributes():
@@ -40,3 +47,72 @@ def test_to_application_error_from_exception():
     assert converted.type == "Custom"
     assert converted.non_retryable is True
     assert converted.workflow_details == ["detail"]
+
+
+def test_reraise_with_workflow_failure_converts_plain_exception():
+    """Plain exceptions become non-retryable ApplicationErrors (issue #503)."""
+    state = WorkflowState()
+    statuses: list[str] = []
+
+    instance = SimpleNamespace(
+        state=state,
+        update_status=lambda status: statuses.append(status),
+    )
+
+    with pytest.raises(WorkflowApplicationError) as excinfo:
+        reraise_with_workflow_failure(
+            RuntimeError("TEST"), instance=instance, for_temporal=True
+        )
+
+    err = excinfo.value
+    assert err.non_retryable is True
+    assert err.type == "RuntimeError"
+    assert "TEST" in str(err)
+    assert statuses == ["error"]
+    assert state.error is not None
+    assert state.error["type"] == "RuntimeError"
+    assert state.error["message"] == "TEST"
+
+
+def test_reraise_with_workflow_failure_preserves_plain_exception_for_asyncio():
+    """Non-Temporal engines must preserve the original exception type."""
+    state = WorkflowState()
+    statuses: list[str] = []
+
+    instance = SimpleNamespace(
+        state=state,
+        update_status=lambda status: statuses.append(status),
+    )
+
+    with pytest.raises(RuntimeError) as excinfo:
+        reraise_with_workflow_failure(
+            RuntimeError("TEST"), instance=instance, for_temporal=False
+        )
+
+    assert str(excinfo.value) == "TEST"
+    assert statuses == ["error"]
+    assert state.error is not None
+    assert state.error["type"] == "RuntimeError"
+    assert state.error["message"] == "TEST"
+
+
+def test_reraise_with_workflow_failure_preserves_application_error():
+    original = WorkflowApplicationError(
+        "already app error", type="SignalTimeout", non_retryable=True
+    )
+    with pytest.raises(WorkflowApplicationError) as excinfo:
+        reraise_with_workflow_failure(original, for_temporal=True)
+
+    assert excinfo.value is original
+
+
+def test_reraise_with_workflow_failure_preserves_temporal_failure_error():
+    pytest.importorskip("temporalio")
+    from temporalio.exceptions import ApplicationError
+
+    original = ApplicationError("temporal app err", type="Custom", non_retryable=False)
+    with pytest.raises(ApplicationError) as excinfo:
+        reraise_with_workflow_failure(original, for_temporal=True)
+
+    assert excinfo.value is original
+    assert excinfo.value.non_retryable is False
