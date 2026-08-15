@@ -25,7 +25,7 @@ or [on Discord](https://lmai.link/discord/mcp-agent).
 To build mcp-agent, you'll need the following installed:
 
 - Install [uv](https://docs.astral.sh/uv/), which we use for Python package management
-- Install [Python](https://www.python.org/) >= 3.10. (You may already it installed. To see your version, use `python -V` at the command line.)
+- Install [Python](https://www.python.org/) >= 3.10. (You may already have it installed. To see your version, use `python -V` at the command line.)
 
   If you don't, install it using `uv python install 3.10`
 
@@ -91,7 +91,7 @@ There are several useful scripts in the `scripts/` directory that can be invoked
 
 ### promptify.py
 
-**Generates prompt.md file for LLMs**. Very helpful in leverage LLMs to help develop `mcp-agent`.
+**Generates prompt.md file for LLMs**. Very helpful for leveraging LLMs to develop `mcp-agent`.
 
 You can use the Makefile command for a quick generation with sensible defaults:
 
