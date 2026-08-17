@@ -200,7 +200,8 @@ class Executor(ABC, ContextDependent):
 
         # Notify any callbacks that the workflow is about to be paused waiting for a signal
         if self.context.signal_notification:
-            self.context.signal_notification(
+            # Support both async and sync callbacks
+            notification = self.context.signal_notification(
                 signal_name=signal_name,
                 request_id=request_id,
                 workflow_id=workflow_id,
@@ -211,6 +212,8 @@ class Executor(ABC, ContextDependent):
                     "signal_type": signal_type,
                 },
             )
+            if asyncio.iscoroutine(notification):
+                await notification
 
         signal = Signal[signal_type](
             name=signal_name,
