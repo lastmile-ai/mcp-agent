@@ -10,8 +10,6 @@ import dataclasses
 import inspect
 import httpx
 
-from mcp_agent.logging import logger
-
 
 class JSONSerializer:
     """
@@ -80,6 +78,9 @@ class JSONSerializer:
         if obj_id in self._processed_objects:
             return str(obj)
         self._processed_objects.add(obj_id)
+
+        # Imported lazily to avoid a circular import with the logging transport
+        from mcp_agent.logging import logger
 
         # Try different serialization strategies in order
         try:
