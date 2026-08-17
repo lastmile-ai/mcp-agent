@@ -89,6 +89,11 @@ class Logger:
                 in_temporal_workflow = False
 
             if in_temporal_workflow:
+                # This branch bypasses the event bus transport and listeners, so the
+                # configured logger level has to be applied here as well.
+                if not LoggingConfig.allows_event(event):
+                    return
+
                 # Prefer forwarding via the upstream session proxy using a workflow task, if available.
                 try:
                     from mcp_agent.executor.temporal.temporal_context import (
@@ -523,6 +528,24 @@ class LoggingConfig:
     @classmethod
     def get_event_filter(cls) -> EventFilter | None:
         return cls._event_filter_ref
+
+    @classmethod
+    def allows_event(cls, event: Event) -> bool:
+        """
+        Whether an event passes any of the configured filters.
+
+        Both the local and upstream filters are considered, since a client can
+        raise the upstream level at runtime via logging/setLevel. Intended for
+        emit paths that cannot rely on the event bus to filter for them.
+        """
+        filters = [
+            event_filter
+            for event_filter in (cls._event_filter_ref, cls._upstream_event_filter_ref)
+            if event_filter is not None
+        ]
+        return not filters or any(
+            event_filter.matches(event) for event_filter in filters
+        )
 
     @classmethod
     def set_session_min_level(
