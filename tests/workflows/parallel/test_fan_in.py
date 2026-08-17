@@ -531,10 +531,26 @@ class TestFanIn:
 
         # Assert the result contains expected content
         assert "Aggregated responses from multiple sources" in result
-        # Inspect the actual output format to make the right assertions
-        assert "Message 1" in result
-        assert "Message 2" in result
-        assert "Message 3" in result
+        # Each message is attributed to the source it came from
+        assert "Source 1: Message 1" in result
+        assert "Source 1: Message 2" in result
+        assert "Source 2: Message 3" in result
+
+    @pytest.mark.asyncio
+    async def test_aggregate_message_lists_non_string_messages(self, fan_in_with_llm):
+        """
+        Tests the aggregate_message_lists helper method with non-string messages.
+        """
+        # Set up test data
+        messages = [[{"role": "user", "content": "Message 1"}], [42]]
+
+        # Call the method
+        result = await fan_in_with_llm.aggregate_message_lists(messages)
+
+        # Assert the result contains expected content
+        assert "Aggregated responses from multiple sources" in result
+        assert "Source 1: {'role': 'user', 'content': 'Message 1'}" in result
+        assert "Source 2: 42" in result
 
     @pytest.mark.asyncio
     async def test_aggregate_message_lists_empty(self, fan_in_with_llm):

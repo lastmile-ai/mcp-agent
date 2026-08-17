@@ -368,7 +368,7 @@ class FanIn(ContextDependent):
                     # Assume it's a MessageParamT or MessageT and add source attribution
                     source_message_strings.append(f"Source {i}: {str(msg)}")
 
-            aggregated_messages.append("\n".join(source_messages))
+            aggregated_messages.append("\n".join(source_message_strings))
 
         # Combine all messages with clear separation
         final_message = "\n\n".join(aggregated_messages)
