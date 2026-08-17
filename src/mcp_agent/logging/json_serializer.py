@@ -32,7 +32,7 @@ class JSONSerializer:
     }
 
     def __init__(self):
-        # Set of already processed objects to prevent infinite recursion
+        # Ids of the objects on the current recursion path, to detect reference cycles
         self._processed_objects: Set[int] = set()
         # Check if secrets should be logged in full
         self._log_secrets = os.getenv("LOG_SECRETS", "").upper() == "TRUE"
@@ -73,7 +73,7 @@ class JSONSerializer:
             )
             return str(obj)
 
-        # Prevent infinite recursion
+        # Prevent infinite recursion on cyclic references
         obj_id = id(obj)
         if obj_id in self._processed_objects:
             return str(obj)
@@ -164,6 +164,10 @@ class JSONSerializer:
         except Exception as e:
             # If all serialization attempts fail, return string representation
             return f"<unserializable: {type(obj).__name__}, error: {str(e)}>"
+        finally:
+            # Only objects still being serialized higher up the stack count as cycles,
+            # so an object reachable from several places is serialized every time.
+            self._processed_objects.discard(obj_id)
 
     def __call__(self, obj: Any) -> Any:
         """Make the serializer callable."""
