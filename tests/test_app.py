@@ -6,6 +6,7 @@ from datetime import timedelta
 from mcp_agent.app import MCPApp
 from mcp_agent.core.context import Context
 from mcp_agent.config import Settings
+from mcp_agent.executor.workflow_task import GlobalWorkflowTaskRegistry
 from mcp_agent.human_input.types import HumanInputResponse
 
 
@@ -746,3 +747,47 @@ class TestMCPApp:
 
             # Now should be a workflow task
             assert basic_app.is_workflow_task(decorated) is True
+
+    @pytest.mark.asyncio
+    async def test_register_global_workflow_tasks_keeps_bound_method_identity(self):
+        """Each globally registered bound method keeps its own function and instance."""
+        registry = GlobalWorkflowTaskRegistry()
+        original_tasks = registry.get_all_tasks()[:]
+        registry.clear()
+
+        class TaskHolder:
+            def __init__(self, value: str):
+                self.value = value
+
+            async def first(self):
+                return f"first:{self.value}"
+
+            async def second(self):
+                return f"second:{self.value}"
+
+        holder_a = TaskHolder("a")
+        holder_b = TaskHolder("b")
+
+        try:
+            registry.register_task(holder_a.first, {"activity_name": "activity_first"})
+            registry.register_task(
+                holder_b.second, {"activity_name": "activity_second"}
+            )
+
+            app = MCPApp(
+                name="test_app", settings=Settings(execution_engine="temporal")
+            )
+            app._decorator_registry.register_workflow_task_decorator(
+                "temporal", lambda fn, name=None: fn
+            )
+            app._register_global_workflow_tasks()
+
+            first_activity = app._task_registry.get_activity("activity_first")
+            second_activity = app._task_registry.get_activity("activity_second")
+
+            assert await first_activity() == "first:a"
+            assert await second_activity() == "second:b"
+        finally:
+            registry.clear()
+            for target, metadata in original_tasks:
+                registry.register_task(target, metadata)

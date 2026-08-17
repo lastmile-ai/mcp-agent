@@ -63,6 +63,24 @@ phetch = Icon(
 )
 
 
+def _make_bound_task_adapter(
+    func: Callable[..., Any], self_ref: Any
+) -> Callable[..., Any]:
+    """
+    Wrap a workflow task defined as a bound method so it can be registered as a
+    plain activity. The instance is captured in the factory's scope, which keeps
+    each adapter bound to its own function/instance pair when several tasks are
+    adapted in a loop.
+    """
+
+    @functools.wraps(func)
+    async def _bound_adapter(*args, **kwargs):
+        return await func(self_ref, *args, **kwargs)
+
+    _bound_adapter.__annotations__ = func.__annotations__.copy()
+    return _bound_adapter
+
+
 class MCPApp:
     """
     Main application class that manages global state and can host workflows.
@@ -1279,14 +1297,10 @@ class MCPApp:
                     )
                     task_callable = target
                 elif isinstance(target, MethodType):
-                    self_ref = target.__self__
-
-                    @functools.wraps(func)
-                    async def _bound_adapter(*a, **k):
-                        return await func(self_ref, *a, **k)
-
-                    _bound_adapter.__annotations__ = func.__annotations__.copy()
-                    task_callable = task_defn(_bound_adapter, name=activity_name)
+                    task_callable = task_defn(
+                        _make_bound_task_adapter(func, target.__self__),
+                        name=activity_name,
+                    )
                 else:
                     task_callable = task_defn(func, name=activity_name)
             else:
@@ -1358,14 +1372,10 @@ class MCPApp:
                     )
                     task_callable = target
                 elif isinstance(target, MethodType):
-                    self_ref = target.__self__
-
-                    @functools.wraps(func)
-                    async def _bound_adapter(*a, **k):
-                        return await func(self_ref, *a, **k)
-
-                    _bound_adapter.__annotations__ = func.__annotations__.copy()
-                    task_callable = task_defn(_bound_adapter, name=activity_name)
+                    task_callable = task_defn(
+                        _make_bound_task_adapter(func, target.__self__),
+                        name=activity_name,
+                    )
                 else:
                     task_callable = task_defn(func, name=activity_name)
             else:
