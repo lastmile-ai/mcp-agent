@@ -25,10 +25,13 @@ def parse_server_url(url: str) -> Tuple[str, Literal["http", "sse"], str]:
         raise ValueError(f"URL must include a hostname: {url}")
 
     transport: Literal["http", "sse"] = "http"
-    if parsed.path.endswith("/sse"):
+    # A trailing slash must not hide the suffix, otherwise ".../sse/" would be
+    # treated as a bare base URL and turned into ".../sse/mcp".
+    path = parsed.path.rstrip("/")
+    if path.endswith("/sse"):
         transport = "sse"
         normalized = url
-    elif parsed.path.endswith("/mcp"):
+    elif path.endswith("/mcp"):
         normalized = url
     else:
         base = url if url.endswith("/") else f"{url}/"
