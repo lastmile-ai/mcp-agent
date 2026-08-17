@@ -89,9 +89,14 @@ class Logger:
                 in_temporal_workflow = False
 
             if in_temporal_workflow:
-                # This branch bypasses the event bus transport and listeners, so the
-                # configured logger level has to be applied here as well.
-                if not LoggingConfig.allows_event(event):
+                # This branch bypasses the event bus transport and listeners, so
+                # every destination below has to apply the filter that would
+                # otherwise gate it: the upstream filter for MCP forwarding, the
+                # local one for stderr. They diverge once a client adjusts the
+                # upstream level via logging/setLevel.
+                forward_upstream = LoggingConfig.allows_upstream_event(event)
+                log_locally = LoggingConfig.allows_event(event)
+                if not forward_upstream and not log_locally:
                     return
 
                 # Prefer forwarding via the upstream session proxy using a workflow task, if available.
@@ -114,6 +119,11 @@ class Logger:
 
                     # Construct payload
                     async def _forward_via_proxy():
+                        if not forward_upstream:
+                            if log_locally:
+                                self.event_bus.emit_with_stderr_transport(event)
+                            return
+
                         # If we have an upstream session, use it first
                         if upstream is not None:
                             try:
@@ -182,7 +192,8 @@ class Logger:
                             pass
 
                         # If all else fails, fall back to stderr transport
-                        self.event_bus.emit_with_stderr_transport(event)
+                        if log_locally:
+                            self.event_bus.emit_with_stderr_transport(event)
 
                     try:
                         _wf.create_task(_forward_via_proxy())
@@ -195,7 +206,8 @@ class Logger:
                     pass
 
                 # As a last resort, log to stdout/stderr as a fallback
-                self.event_bus.emit_with_stderr_transport(event)
+                if log_locally:
+                    self.event_bus.emit_with_stderr_transport(event)
             else:
                 try:
                     loop.run_until_complete(self.event_bus.emit(event))
@@ -532,19 +544,23 @@ class LoggingConfig:
     @classmethod
     def allows_event(cls, event: Event) -> bool:
         """
-        Whether an event passes any of the configured filters.
+        Whether an event passes the local event filter.
 
-        Both the local and upstream filters are considered, since a client can
-        raise the upstream level at runtime via logging/setLevel. Intended for
-        emit paths that cannot rely on the event bus to filter for them.
+        Intended for emit paths that cannot rely on the event bus to filter for
+        them, such as logging from inside a Temporal workflow.
         """
-        filters = [
-            event_filter
-            for event_filter in (cls._event_filter_ref, cls._upstream_event_filter_ref)
-            if event_filter is not None
-        ]
-        return not filters or any(
-            event_filter.matches(event) for event_filter in filters
+        return cls._event_filter_ref is None or cls._event_filter_ref.matches(event)
+
+    @classmethod
+    def allows_upstream_event(cls, event: Event) -> bool:
+        """
+        Whether an event passes the upstream event filter.
+
+        Kept separate from the local filter because set_min_level, driven by a
+        client's logging/setLevel request, only moves the upstream one.
+        """
+        return cls._upstream_event_filter_ref is None or (
+            cls._upstream_event_filter_ref.matches(event)
         )
 
     @classmethod
