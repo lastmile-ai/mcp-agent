@@ -378,7 +378,6 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
     ) -> ModelT:
         """Request a structured LLM generation and return the result as a Pydantic model."""
 
-    @abstractmethod
     async def generate_stream(
         self,
         message: MessageTypes,
@@ -408,7 +407,13 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
                 elif event.type == StreamEventType.TOOL_USE_START:
                     print(f"\\n[Calling {event.content['name']}]")
         """
-        raise NotImplementedError("Streaming not implemented for this provider")
+        raise NotImplementedError(
+            f"Streaming is not implemented for {self.__class__.__name__}"
+        )
+        # Unreachable, but makes this an async generator like the provider
+        # implementations, so callers can `async for` over the returned object
+        # and get the error above instead of a confusing TypeError.
+        yield  # type: ignore[unreachable]
 
     async def generate_str_stream(
         self,
