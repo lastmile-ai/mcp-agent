@@ -339,6 +339,7 @@ class AsyncioExecutor(Executor):
                 *(
                     self._execute_task(
                         task,
+                        *args,
                         **kwargs,
                     )
                     for task in tasks
