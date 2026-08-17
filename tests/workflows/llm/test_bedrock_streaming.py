@@ -38,8 +38,10 @@ class TestBedrockStreaming:
         if usage is None:
             usage = {"inputTokens": 100, "outputTokens": 50}
 
+        # Bedrock reports token usage in a trailing metadata event, not on the
+        # response envelope.
         return {
-            "stream": iter(events),
+            "stream": iter([*events, {"metadata": {"usage": usage}}]),
             "usage": usage,
         }
 
@@ -106,7 +108,9 @@ class TestBedrockStreaming:
         # Check TEXT_DELTA events
         text_delta_events = [e for e in events if e.type == StreamEventType.TEXT_DELTA]
         assert len(text_delta_events) == 4
-        assert [e.content for e in text_delta_events if e.content is not None] == text_deltas
+        assert [
+            e.content for e in text_delta_events if e.content is not None
+        ] == text_deltas
 
         # Check ITERATION_END event
         iteration_end_events = [
