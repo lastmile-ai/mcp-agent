@@ -275,6 +275,9 @@ openai:
 ```
 
 - Override `base_url` to target OpenAI-compatible services such as Groq (`https://api.groq.com/openai/v1`), Together, or local Ollama (`http://localhost:11434/v1`). Provide a dummy `api_key` for services that do not check it.
+- Use the provider's `/v1` root for `base_url`, not a `/v1/chat/completions` endpoint.
+- `MCP_API_BASE_URL` configures the `mcp-agent` Cloud/CLI API, not your upstream model provider. Keep it separate from `OPENAI_BASE_URL`.
+- `default_model` should match the provider's catalog ID. Local LM Studio examples use IDs such as `openai/gpt-oss-20b`; hosted OpenAI-compatible providers often use their own IDs without the `openai/` prefix.
 - Use `default_headers` to inject custom headers when talking to proxies or gateways.
 
 ### Anthropic
