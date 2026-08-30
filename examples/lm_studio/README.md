@@ -77,6 +77,12 @@ lm_studio:
   default_model: "openai/gpt-oss-20b"
 ```
 
+LM Studio uses local catalog IDs such as `openai/gpt-oss-20b`. The `lm_studio:`
+block above is specific to `LMStudioAugmentedLLM`. To use a hosted
+OpenAI-compatible provider with `OpenAIAugmentedLLM`, configure a separate
+`openai:` block, keep `base_url` at that provider's `/v1` root, and use the
+provider's own catalog ID instead of reusing the LM Studio `openai/` prefix.
+
 **No API keys needed!** LM Studio runs locally and doesn't require authentication.
 
 ## Running the Example

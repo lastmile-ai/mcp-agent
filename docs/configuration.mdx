@@ -454,6 +454,12 @@ Configure Google Gemini with different authentication methods:
 
 Groq provides fast inference for open-source models through an OpenAI-compatible API:
 
+<Note>
+  For any OpenAI-compatible provider, set `openai.base_url` to the provider's
+  `/v1` root. Do not append `/chat/completions`. `MCP_API_BASE_URL` is only for
+  `mcp-agent` Cloud/CLI endpoints, not your model provider.
+</Note>
+
 <CodeGroup>
 ```yaml Config File
 openai:
