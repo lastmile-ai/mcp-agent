@@ -675,10 +675,15 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         return await self.agent.list_prompts(server_name=server_name)
 
     async def get_prompt(
-        self, name: str, server_name: str | None = None
+        self,
+        name: str,
+        server_name: str | None = None,
+        arguments: dict[str, str] | None = None,
     ) -> GetPromptResult:
         """Call the underlying agent's get_prompt method for a given server."""
-        return await self.agent.get_prompt(name=name, server_name=server_name)
+        return await self.agent.get_prompt(
+            name=name, arguments=arguments, server_name=server_name
+        )
 
     async def close(self):
         """Close underlying agent connections."""
