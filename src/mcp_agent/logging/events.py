@@ -100,6 +100,7 @@ class EventFilter(BaseModel):
             level_map: Dict[EventType, int] = {
                 "debug": logging.DEBUG,
                 "info": logging.INFO,
+                "progress": logging.INFO,
                 "warning": logging.WARNING,
                 "error": logging.ERROR,
             }

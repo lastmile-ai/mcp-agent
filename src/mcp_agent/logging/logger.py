@@ -89,6 +89,11 @@ class Logger:
                 in_temporal_workflow = False
 
             if in_temporal_workflow:
+                forward_upstream = LoggingConfig.allows_upstream_event(event)
+                log_locally = LoggingConfig.allows_event(event)
+                if not forward_upstream and not log_locally:
+                    return
+
                 # Prefer forwarding via the upstream session proxy using a workflow task, if available.
                 try:
                     from mcp_agent.executor.temporal.temporal_context import (
@@ -110,7 +115,7 @@ class Logger:
                     # Construct payload
                     async def _forward_via_proxy():
                         # If we have an upstream session, use it first
-                        if upstream is not None:
+                        if forward_upstream and upstream is not None:
                             try:
                                 level_map = {
                                     "debug": "debug",
@@ -149,35 +154,37 @@ class Logger:
                                 pass
 
                         # Fallback: use activity gateway directly if execution_id is available
-                        try:
-                            exec_id = _get_exec_id()
-                            if exec_id:
-                                level = {
-                                    "debug": "debug",
-                                    "info": "info",
-                                    "warning": "warning",
-                                    "error": "error",
-                                    "progress": "info",
-                                }.get(event.type, "info")
-                                ns = event.namespace
-                                msg = event.message
-                                data = event.data or {}
-                                # Call by activity name to align with worker registration
-                                await _wf.execute_activity(
-                                    "mcp_forward_log",
-                                    exec_id,
-                                    level,
-                                    ns,
-                                    msg,
-                                    data,
-                                    schedule_to_close_timeout=timedelta(seconds=5),
-                                )
-                                return
-                        except Exception:
-                            pass
+                        if forward_upstream:
+                            try:
+                                exec_id = _get_exec_id()
+                                if exec_id:
+                                    level = {
+                                        "debug": "debug",
+                                        "info": "info",
+                                        "warning": "warning",
+                                        "error": "error",
+                                        "progress": "info",
+                                    }.get(event.type, "info")
+                                    ns = event.namespace
+                                    msg = event.message
+                                    data = event.data or {}
+                                    # Call by activity name to align with worker registration
+                                    await _wf.execute_activity(
+                                        "mcp_forward_log",
+                                        exec_id,
+                                        level,
+                                        ns,
+                                        msg,
+                                        data,
+                                        schedule_to_close_timeout=timedelta(seconds=5),
+                                    )
+                                    return
+                            except Exception:
+                                pass
 
                         # If all else fails, fall back to stderr transport
-                        self.event_bus.emit_with_stderr_transport(event)
+                        if log_locally:
+                            self.event_bus.emit_with_stderr_transport(event)
 
                     try:
                         _wf.create_task(_forward_via_proxy())
@@ -190,7 +197,8 @@ class Logger:
                     pass
 
                 # As a last resort, log to stdout/stderr as a fallback
-                self.event_bus.emit_with_stderr_transport(event)
+                if log_locally:
+                    self.event_bus.emit_with_stderr_transport(event)
             else:
                 try:
                     loop.run_until_complete(self.event_bus.emit(event))
@@ -393,6 +401,13 @@ class LoggingConfig:
     _event_filter_ref: EventFilter | None = None
     _upstream_event_filter_ref: EventFilter | None = None
     _session_min_levels: Dict[str, EventType] = {}
+    _LEVEL_ORDER: Final[Dict[EventType, int]] = {
+        "debug": 10,
+        "info": 20,
+        "progress": 20,
+        "warning": 30,
+        "error": 40,
+    }
     _LEVEL_MAPPING: Final[Dict[str, EventType]] = {
         "debug": "debug",
         "info": "info",
@@ -523,6 +538,34 @@ class LoggingConfig:
     @classmethod
     def get_event_filter(cls) -> EventFilter | None:
         return cls._event_filter_ref
+
+    @classmethod
+    def allows_event(cls, event: Event) -> bool:
+        """Return whether the configured local filter accepts an event."""
+        return (
+            cls._initialized
+            and cls._event_filter_ref is not None
+            and cls._event_filter_ref.matches(event)
+        )
+
+    @classmethod
+    def allows_upstream_event(cls, event: Event) -> bool:
+        """Return whether the upstream and session filters accept an event."""
+        if (
+            not cls._initialized
+            or cls._upstream_event_filter_ref is None
+            or not cls._upstream_event_filter_ref.matches(event)
+        ):
+            return False
+
+        session_id = event.context.session_id if event.context is not None else None
+        session_min_level = cls.get_session_min_level(session_id)
+        if session_min_level is None:
+            return True
+
+        return cls._LEVEL_ORDER.get(event.type, 0) >= cls._LEVEL_ORDER.get(
+            session_min_level, 0
+        )
 
     @classmethod
     def set_session_min_level(
