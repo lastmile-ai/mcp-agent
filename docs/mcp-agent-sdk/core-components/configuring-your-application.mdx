@@ -155,6 +155,10 @@ Configure your LLM provider. Many examples follow this layout—for instance, th
     openai:
       api_key: "sk-..."
     ```
+
+    <Tip>
+    For OpenAI-compatible hosts (LM Studio, Groq, hosted Chat Completions APIs), set `openai.base_url` to the LLM `/v1` root — not `/v1/chat/completions`, and not `MCP_API_BASE_URL`. See [Configuration → OpenAI-compatible APIs](/reference/configuration#openai-compatible-apis).
+    </Tip>
   </Tab>
 
   <Tab title="Anthropic">

@@ -266,6 +266,8 @@ authorization:
 
 ### OpenAI-compatible APIs
 
+Hosted Chat Completions endpoints and local OpenAI-compatible servers (LM Studio, Ollama, Groq, Together, and similar) all use the `openai:` settings block with `OpenAIAugmentedLLM`.
+
 ```yaml
 openai:
   default_model: gpt-4o-mini
@@ -274,7 +276,52 @@ openai:
   user: "research-team"
 ```
 
-- Override `base_url` to target OpenAI-compatible services such as Groq (`https://api.groq.com/openai/v1`), Together, or local Ollama (`http://localhost:11434/v1`). Provide a dummy `api_key` for services that do not check it.
+Three details are easy to get wrong when pointing this block at a non-OpenAI host:
+
+1. **`openai.base_url` / `OPENAI_BASE_URL` is the LLM `/v1` root**, not the chat-completions path. Use `https://host/v1` (or `http://localhost:1234/v1` for LM Studio). Do **not** set it to `/v1/chat/completions`.
+2. **Do not set `MCP_API_BASE_URL` to the LLM host.** That environment variable is for [mcp-agent Cloud / CLI API access](/cloud/mcp-agent-cloud/manage-secrets), not for OpenAI-compatible inference. LLM traffic belongs under `openai.base_url` (or `OPENAI_BASE_URL`).
+3. **`default_model` is the catalog id the host advertises.** LM Studio local models often use an `openai/` prefix (see [`examples/lm_studio`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/lm_studio)); a hosted catalog id usually must **not** include that prefix. Confirm with the host’s `GET {base_url}/models` listing.
+
+<Warning>
+`MCP_API_BASE_URL` and `openai.base_url` are different knobs. Mixing them up silently sends Cloud CLI traffic to an LLM host (or leaves the LLM client on the default OpenAI endpoint).
+</Warning>
+
+Example for a hosted OpenAI-compatible Chat Completions API (PZERO-shaped):
+
+```yaml
+# mcp_agent.config.yaml
+openai:
+  base_url: https://api.pzero.studio/v1
+  default_model: deepseek-v4-flash
+```
+
+```yaml
+# mcp_agent.secrets.yaml
+openai:
+  api_key: pzero_…
+```
+
+Optional remote MCP from the same vendor is a **separate** server slot. Do not reuse the MCP URL as `openai.base_url`:
+
+```yaml
+# mcp_agent.config.yaml
+mcp:
+  servers:
+    pzero:
+      transport: streamable_http
+      url: https://mcp.pzero.studio/mcp
+```
+
+```yaml
+# mcp_agent.secrets.yaml — headers are passed through as-is (no ${ENV} expansion)
+mcp:
+  servers:
+    pzero:
+      headers:
+        Authorization: "Bearer pzero_…"
+```
+
+- Override `base_url` for other OpenAI-compatible services such as Groq (`https://api.groq.com/openai/v1`), Together, or local Ollama (`http://localhost:11434/v1`). Provide a dummy `api_key` for services that do not check it.
 - Use `default_headers` to inject custom headers when talking to proxies or gateways.
 
 ### Anthropic
