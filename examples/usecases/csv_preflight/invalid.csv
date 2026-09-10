@@ -1,0 +1,3 @@
+invoice_id,amount,invoice_date
+INV-001,19.95,2026-09-09
+INV-001,NaN,2026-02-30
