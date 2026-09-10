@@ -40,6 +40,7 @@ This gallery collects runnable projects from `/examples` that correspond to sect
 
 - **Tracing + token usage** (`examples/tracing/`) — export spans, stream structured logs, and summarise token usage. Run `uv run main.py`. Docs: [Observability](https://docs.mcp-agent.com/mcp-agent-sdk/advanced/observability).
 - **Tool filters** (`examples/basic/mcp_tool_filter/`) — guard which tools are exposed to the LLM via decorators. Run `uv run main.py`. Docs: [Workflows & decorators](https://docs.mcp-agent.com/mcp-agent-sdk/core-components/workflows#tool-filter).
+- **HOL Guard tool approval** (`examples/basic/hol_guard_tool_approval/`) — fail closed from `AugmentedLLM.pre_tool_call()` unless a local HOL Guard command explicitly allows the MCP tool call. Run `uv run main.py`. Docs: [Augmented LLMs](https://docs.mcp-agent.com/mcp-agent-sdk/core-components/augmented-llm).
 
 ## MCP integration
 

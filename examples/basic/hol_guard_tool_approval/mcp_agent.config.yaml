@@ -1,0 +1,13 @@
+execution_engine: asyncio
+logger:
+  transports: [console]
+  level: info
+
+mcp:
+  servers:
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+
+openai:
+  default_model: gpt-4o-mini
