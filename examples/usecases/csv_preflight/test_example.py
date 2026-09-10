@@ -18,12 +18,14 @@ HEADER = "invoice_id,amount,invoice_date\n"
 
 class ValidationTests(unittest.TestCase):
     def test_valid_fixture_and_credit(self):
+        """Accept the sample invoice and its negative credit amount."""
         report = validate_csv((EXAMPLE_DIR / "valid.csv").read_text())
         self.assertTrue(report["ok"])
         self.assertEqual(report["rows_read"], 2)
         self.assertEqual(report["errors"], [])
 
     def test_invalid_fixture_reports_all_three_problems(self):
+        """Report duplicate ID, invalid amount and invalid date on the same record."""
         report = validate_csv((EXAMPLE_DIR / "invalid.csv").read_text())
         self.assertFalse(report["ok"])
         self.assertEqual(
@@ -33,6 +35,7 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual({e["record"] for e in report["errors"]}, {3})
 
     def test_decimal_and_calendar_edges(self):
+        """Reject non-finite amounts and invalid dates without rounding decimals."""
         for amount in ("NaN", "sNaN", "Infinity", "-Infinity", "", "1.2.3"):
             with self.subTest(amount=amount):
                 self.assertFalse(
@@ -46,10 +49,12 @@ class ValidationTests(unittest.TestCase):
                 self.assertFalse(validate_csv(HEADER + f"a,1,{value}\n")["ok"])
 
     def test_id_whitespace_and_empty(self):
+        """Reject empty IDs and duplicates after surrounding whitespace is removed."""
         for rows in ("a,1,2026-01-01\n a ,2,2026-01-01\n", ",1,2026-01-01\n"):
             self.assertFalse(validate_csv(HEADER + rows)["ok"])
 
     def test_csv_contract(self):
+        """Pin header order, row shape, quoting, BOM and header-only behavior."""
         for text in (
             "",
             "amount,invoice_id,invoice_date\n",
@@ -64,6 +69,7 @@ class ValidationTests(unittest.TestCase):
         self.assertTrue(validate_csv(HEADER)["ok"])
 
     def test_report_is_bounded_and_omits_cell_contents(self):
+        """Count all errors while limiting retained details and omitting cell values."""
         report = validate_csv(HEADER + "PRIVATE-ID,NaN,2026-02-30\n" * 30)
         self.assertEqual(report["error_count"], 89)
         self.assertEqual(len(report["errors"]), 20)
@@ -75,6 +81,7 @@ class ValidationTests(unittest.TestCase):
 
 class CLIIntegrationTests(unittest.TestCase):
     def test_oversized_file_does_not_read_its_invalid_utf8_tail(self):
+        """Exercise the real CLI to prove oversized input stops before a distant tail."""
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "large.csv"
             path.write_bytes(b"x" * (MAX_CHARS * 2) + b"\xff")
@@ -97,6 +104,7 @@ class CLIIntegrationTests(unittest.TestCase):
 
 class MCPIntegrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_real_agent_round_trip(self):
+        """Match direct validation results through a real local stdio MCP server."""
         for fixture in ("valid.csv", "invalid.csv"):
             with self.subTest(fixture=fixture):
                 data = (EXAMPLE_DIR / fixture).read_text()
@@ -104,6 +112,7 @@ class MCPIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(report, validate_csv(data))
 
     async def test_discovery_and_invalid_tool_arguments(self):
+        """Discover the registered tool and reject a non-string argument through MCP."""
         async with (
             make_app().run() as app,
             Agent(name="test", server_names=["csv"], context=app.context) as agent,

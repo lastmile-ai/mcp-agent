@@ -19,6 +19,7 @@ def validate_csv(csv_text: str) -> dict[str, Any]:
     rows_read = 0
 
     def error(record: int, field: str, message: str) -> None:
+        """Count every error while retaining at most MAX_ERRORS redacted details."""
         nonlocal error_count
         error_count += 1
         if len(errors) < MAX_ERRORS:

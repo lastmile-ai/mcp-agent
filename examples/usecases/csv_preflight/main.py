@@ -25,6 +25,7 @@ EXAMPLE_DIR = Path(__file__).resolve().parent
 
 
 def make_app() -> MCPApp:
+    """Configure the local CSV server with logging and telemetry disabled."""
     return MCPApp(
         name="csv_preflight",
         settings=Settings(
@@ -45,6 +46,7 @@ def make_app() -> MCPApp:
 
 
 async def check_csv(csv_text: str) -> dict[str, Any]:
+    """Call the MCP tool and return its report, or raise on tool/protocol failure."""
     app = make_app()
     async with (
         app.run(),
@@ -69,6 +71,7 @@ async def check_csv(csv_text: str) -> dict[str, Any]:
 
 
 def main() -> int:
+    """Validate one UTF-8 file; return 0 for valid, 1 for invalid, or 2 on failure."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "csv_file", nargs="?", type=Path, default=EXAMPLE_DIR / "valid.csv"
