@@ -82,7 +82,9 @@ with the header as record 1. They are not physical line numbers when a quoted
 field spans multiple lines. Record 0 identifies a whole-input error, such as
 malformed quoting or the input size limit.
 
-The input is limited to 64,000 characters, and the report includes at most 20
+The input is limited to 64,000 characters. The CLI reads at most 64,001 characters
+so an oversized file can be rejected without loading the complete file.
+The report includes at most 20
 error details plus the total count and a truncation flag. It returns no cell
 values or transformed invoice records. A larger import workflow should use
 streaming or batches with an explicitly defined cross-batch uniqueness policy.
@@ -164,10 +166,11 @@ Six unit tests cover the CSV contract, decimal/date edges, ID normalization,
 report bounds, and fixtures. Two integration tests launch the actual local MCP
 server: they discover the tool, reject an incorrectly typed argument, and compare
 both fixture reports with the validator's direct result. No provider key or mock
-MCP transport is used.
+MCP transport is used. A CLI regression test checks that an oversized file is
+rejected by the size limit without reading an invalid UTF-8 tail beyond that limit.
 
 Validated on Python 3.12.4/macOS with mcp-agent source commit
-`f62d849350816588b1c6294e7914bbe4d8b84072` (0.2.6) and MCP SDK 1.30.0. All eight tests also pass in a fresh
+`f62d849350816588b1c6294e7914bbe4d8b84072` (0.2.6) and MCP SDK 1.30.0. All nine tests also pass in a fresh
 environment installed from this example’s requirements, using the published
 mcp-agent 0.2.6 package. The example
 requirements keep MCP below version 2 because this server uses the SDK 1.x

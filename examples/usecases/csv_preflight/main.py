@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from mcp.types import TextContent
+from validator import MAX_CHARS
 
 from mcp_agent.agents.agent import Agent
 from mcp_agent.app import MCPApp
@@ -74,7 +75,9 @@ def main() -> int:
     )
     args = parser.parse_args()
     try:
-        report = asyncio.run(check_csv(args.csv_file.read_text(encoding="utf-8")))
+        with args.csv_file.open(encoding="utf-8", newline="") as csv_file:
+            csv_text = csv_file.read(MAX_CHARS + 1)
+        report = asyncio.run(check_csv(csv_text))
     except Exception as exc:  # noqa: BLE001 -- CLI boundary also handles MCP ExceptionGroups.
         print(f"Unable to validate CSV: {exc}", file=sys.stderr)
         return 2

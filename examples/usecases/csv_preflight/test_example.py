@@ -1,7 +1,12 @@
 """Run with python -m unittest -v from this example directory."""
 
 import asyncio
+import json
+import subprocess
+import sys
+import tempfile
 import unittest
+from pathlib import Path
 
 from main import EXAMPLE_DIR, check_csv, make_app
 from validator import MAX_CHARS, validate_csv
@@ -66,6 +71,28 @@ class ValidationTests(unittest.TestCase):
         self.assertNotIn("PRIVATE-ID", str(report))
         self.assertNotIn("records", report)
         self.assertFalse(validate_csv("x" * (MAX_CHARS + 1))["ok"])
+
+
+class CLIIntegrationTests(unittest.TestCase):
+    def test_oversized_file_does_not_read_its_invalid_utf8_tail(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "large.csv"
+            path.write_bytes(b"x" * (MAX_CHARS * 2) + b"\xff")
+            result = subprocess.run(
+                [sys.executable, str(EXAMPLE_DIR / "main.py"), str(path)],
+                cwd=directory,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+        self.assertEqual(result.returncode, 1, result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["error_count"], 1)
+        self.assertEqual(report["rows_read"], 0)
+        self.assertEqual(
+            report["errors"][0]["message"], f"input exceeds {MAX_CHARS} characters"
+        )
 
 
 class MCPIntegrationTests(unittest.IsolatedAsyncioTestCase):
