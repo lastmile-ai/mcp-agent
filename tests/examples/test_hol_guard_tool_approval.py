@@ -1,4 +1,5 @@
 import importlib.util
+import sys
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,7 @@ _is_allowed = hol_guard_llm._is_allowed
 
 
 def call_tool_request() -> CallToolRequest:
+    """Build a representative tool call request for guard tests."""
     return CallToolRequest(
         method="tools/call",
         params=CallToolRequestParams(
@@ -41,6 +43,7 @@ def call_tool_request() -> CallToolRequest:
     ],
 )
 def test_hol_guard_allows_only_explicit_safe_results(decision):
+    """Accept only explicit allow-shaped HOL Guard decisions."""
     assert _is_allowed(decision)
 
 
@@ -54,11 +57,13 @@ def test_hol_guard_allows_only_explicit_safe_results(decision):
     ],
 )
 def test_hol_guard_fails_closed_for_non_allow_results(decision):
+    """Reject deny, review, false, and malformed HOL Guard decisions."""
     assert not _is_allowed(decision)
 
 
 @pytest.mark.asyncio
 async def test_pre_tool_call_returns_request_when_guard_allows():
+    """Return the original request when an injected guard runner allows it."""
     llm = object.__new__(HolGuardToolApprovalMixin)
     seen_payloads = []
 
@@ -83,6 +88,7 @@ async def test_pre_tool_call_returns_request_when_guard_allows():
 
 @pytest.mark.asyncio
 async def test_pre_tool_call_blocks_denied_tools():
+    """Block the tool call when the guard runner returns deny."""
     llm = object.__new__(HolGuardToolApprovalMixin)
     llm.guard_runner = lambda payload: {"decision": "deny"}
 
@@ -93,6 +99,7 @@ async def test_pre_tool_call_blocks_denied_tools():
 
 @pytest.mark.asyncio
 async def test_pre_tool_call_fails_closed_when_guard_errors():
+    """Block the tool call when the guard runner raises an exception."""
     llm = object.__new__(HolGuardToolApprovalMixin)
 
     def raise_guard_error(payload):
@@ -103,3 +110,21 @@ async def test_pre_tool_call_fails_closed_when_guard_errors():
     result = await llm.pre_tool_call("tool-call-3", call_tool_request())
 
     assert result is False
+
+
+@pytest.mark.asyncio
+async def test_pre_tool_call_uses_unbound_default_guard_runner(monkeypatch):
+    """Call the default guard runner without binding self as an argument."""
+    command = (
+        f'{sys.executable} -c "import json, sys; '
+        "json.load(sys.stdin); "
+        "print(json.dumps({'decision': 'allow'}))\""
+    )
+    monkeypatch.setenv("HOL_GUARD_COMMAND", command)
+    llm = object.__new__(HolGuardToolApprovalMixin)
+
+    request = call_tool_request()
+
+    result = await llm.pre_tool_call("tool-call-default", request)
+
+    assert result is request

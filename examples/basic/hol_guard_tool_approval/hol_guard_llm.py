@@ -64,11 +64,12 @@ def _is_allowed(decision: dict[str, Any]) -> bool:
 class HolGuardToolApprovalMixin:
     """Mixin that asks HOL Guard before each MCP tool call."""
 
-    guard_runner: GuardRunner = _default_hol_guard_runner
+    guard_runner: GuardRunner = staticmethod(_default_hol_guard_runner)
 
     async def pre_tool_call(  # pyright: ignore[reportIncompatibleMethodOverride]
         self, tool_call_id: str | None, request: CallToolRequest
     ) -> CallToolRequest | bool:
+        """Allow the tool call only when HOL Guard returns an allow decision."""
         payload = {
             "tool_call_id": tool_call_id,
             "tool_name": request.params.name,

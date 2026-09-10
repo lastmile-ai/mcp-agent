@@ -29,6 +29,14 @@ cp mcp_agent.secrets.yaml.example mcp_agent.secrets.yaml
 # Add OPENAI_API_KEY in the secrets file or environment.
 ```
 
+Install HOL Guard separately and verify that its command is available before
+running the example. If your installation uses a different executable name or
+wrapper, point `HOL_GUARD_COMMAND` at that command.
+
+```bash
+hol-guard --help
+```
+
 Configure HOL Guard if the executable is not named `hol-guard`:
 
 ```bash
