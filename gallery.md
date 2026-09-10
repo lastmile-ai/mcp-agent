@@ -43,6 +43,8 @@ This gallery collects runnable projects from `/examples` that correspond to sect
 
 ## MCP integration
 
+- **CSV preflight** ([`examples/usecases/csv_preflight/`](./examples/usecases/csv_preflight/)) — validate synthetic invoice CSVs through a local MCP server and an Agent, without an LLM API key. Run `python main.py` from the example directory after installing its requirements. Includes unit and real stdio integration tests.
+
 - **MCP clients** (`examples/mcp/`) — call external MCP servers, aggregate results, and reuse `gen_client`. Run `uv run main.py`. Docs: [MCP integration overview](https://docs.mcp-agent.com/mcp/overview).
 - **Model selector** (`examples/basic/mcp_model_selector/`) — customise provider/model choice dynamically. Run `uv run main.py`. Docs: [Augmented LLMs](https://docs.mcp-agent.com/concepts/augmented-llms#model-selection).
 
