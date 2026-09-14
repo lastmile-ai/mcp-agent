@@ -1,4 +1,6 @@
-from unittest.mock import AsyncMock, MagicMock
+import json
+from copy import deepcopy
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import BaseModel
@@ -7,6 +9,7 @@ from mcp_agent.config import AnthropicSettings
 from mcp.types import TextContent, SamplingMessage, PromptMessage
 from anthropic.types import Message, TextBlock, ToolUseBlock, Usage
 
+from mcp_agent.workflows.llm.augmented_llm import SimpleMemory
 from mcp_agent.workflows.llm.augmented_llm_anthropic import (
     AnthropicAugmentedLLM,
     RequestParams,
@@ -259,6 +262,118 @@ class TestAnthropicAugmentedLLM:
             assert isinstance(result, TestResponseModel)
             assert result.name == "Test"
             assert result.value == 42
+
+    # Test 3b: Generate Structured Output with History
+    @pytest.fixture
+    def structured_client(self):
+        """Mock the Anthropic client used by the non-streaming fallback."""
+        with patch(
+            "mcp_agent.workflows.llm.augmented_llm_anthropic.AsyncAnthropic"
+        ) as client_type:
+            client = client_type.return_value
+            client.__aenter__ = AsyncMock(return_value=client)
+            client.__aexit__ = AsyncMock(return_value=None)
+            client.messages.stream = None
+            client.messages.create = AsyncMock()
+            yield client
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("use_history", [True, False])
+    async def test_generate_structured_with_history(
+        self, mock_llm, default_usage, structured_client, use_history
+    ):
+        """Two structured calls reuse validated JSON text, without unmatched tool uses."""
+
+        class TestResponseModel(BaseModel):
+            name: str
+            value: int
+
+        tool_use_block = ToolUseBlock(
+            type="tool_use",
+            id="tool_123",
+            name="return_structured_output",
+            input={"name": "Test", "value": 42},
+        )
+        mock_message = Message(
+            type="message",
+            id="msg_123",
+            role="assistant",
+            content=[tool_use_block],
+            model="claude-3-7-sonnet-latest",
+            stop_reason="tool_use",
+            usage=default_usage,
+        )
+
+        requests = []
+
+        def capture_request(**kwargs):
+            requests.append(deepcopy(kwargs["messages"]))
+            return mock_message
+
+        structured_client.messages.create.side_effect = capture_request
+        mock_llm.history = SimpleMemory()
+        params = RequestParams(use_history=use_history)
+        first = await mock_llm.generate_structured(
+            "Test query", TestResponseModel, request_params=params
+        )
+        second = await mock_llm.generate_structured(
+            "Follow-up query", TestResponseModel, request_params=params
+        )
+
+        assert first == second == TestResponseModel(name="Test", value=42)
+        assert requests[0] == [{"role": "user", "content": "Test query"}]
+        if use_history:
+            assert [m["role"] for m in requests[1]] == ["user", "assistant", "user"]
+            assert json.loads(requests[1][1]["content"]) == first.model_dump()
+            assert [m["role"] for m in mock_llm.history.get()] == [
+                "user",
+                "assistant",
+                "user",
+                "assistant",
+            ]
+            assert (
+                json.loads(mock_llm.history.get()[-1]["content"]) == second.model_dump()
+            )
+        else:
+            assert requests[1] == [{"role": "user", "content": "Follow-up query"}]
+            assert mock_llm.history.get() == []
+
+    @pytest.mark.asyncio
+    async def test_generate_structured_invalid_response_preserves_history(
+        self, mock_llm, default_usage, structured_client
+    ):
+        """A failed validation leaves the existing conversation unchanged."""
+
+        class TestResponseModel(BaseModel):
+            value: int
+
+        structured_client.messages.create.return_value = Message(
+            type="message",
+            id="msg_invalid",
+            role="assistant",
+            content=[
+                ToolUseBlock(
+                    type="tool_use",
+                    id="tool_invalid",
+                    name="return_structured_output",
+                    input={"value": "not an integer"},
+                )
+            ],
+            model="claude-3-7-sonnet-latest",
+            stop_reason="tool_use",
+            usage=default_usage,
+        )
+        previous = [{"role": "user", "content": "Previous message"}]
+        mock_llm.history = SimpleMemory(history=previous.copy())
+
+        with pytest.raises(ValueError, match="Failed to obtain structured output"):
+            await mock_llm.generate_structured(
+                "Invalid response",
+                TestResponseModel,
+                request_params=RequestParams(use_history=True),
+            )
+
+        assert mock_llm.history.get() == previous
 
     # Test 4: With History
     @pytest.mark.asyncio

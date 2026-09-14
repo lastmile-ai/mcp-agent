@@ -447,6 +447,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                         for tool in list_tools_result.tools
                     ]
                     return available_tools
+
                 available_tools = await update_tools()
 
                 responses: List[Message] = []
@@ -870,11 +871,22 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                     data = getattr(block, "input", None)
                     try:
                         if isinstance(data, str):
-                            return response_model.model_validate(json.loads(data))
-                        return response_model.model_validate(data)
+                            data = json.loads(data)
+                        result = response_model.model_validate(data)
                     except Exception:
                         # Fallthrough to error
                         break
+
+                    if params.use_history:
+                        # The forced tool call only transports the structured value;
+                        # persisting it would leave an unmatched tool_use next turn.
+                        messages.append(
+                            MessageParam(
+                                role="assistant", content=result.model_dump_json()
+                            )
+                        )
+                        self.history.set(messages)
+                    return result
 
             raise ValueError(
                 "Failed to obtain structured output from Anthropic response"
