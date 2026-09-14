@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
+from mcp_agent.agents.agent import Agent
 from mcp_agent.workflows.evaluator_optimizer.evaluator_optimizer import (
     EvaluatorOptimizerLLM,
     EvaluationResult,
@@ -311,6 +312,52 @@ async def test_generate_stream_delegates_to_optimizer(mock_optimizer, mock_evalu
     mock_optimizer.generate_stream.assert_called_once_with(
         message="Stream this response", request_params=request_params
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("termination", ["complete", "error", "close"])
+async def test_generate_stream_cleans_up_optimizer_agent(
+    mock_optimizer, mock_evaluator, termination
+):
+    """Close the stream before the Agent on completion, failure, or explicit close."""
+    lifecycle = []
+    optimizer_agent = MagicMock(spec=Agent)
+    optimizer_agent.name = "StreamingOptimizer"
+    optimizer_agent.instruction = "Optimize this."
+    optimizer_agent.__aenter__.side_effect = lambda *args: lifecycle.append(
+        "agent_enter"
+    )
+    optimizer_agent.__aexit__.side_effect = lambda *args: lifecycle.append("agent_exit")
+
+    async def stream_response(message, request_params=None):
+        lifecycle.append("stream_started")
+        try:
+            yield "first event"
+            if termination == "error":
+                raise RuntimeError("stream failed")
+        finally:
+            lifecycle.append("stream_closed")
+
+    mock_optimizer.generate_stream = MagicMock(side_effect=stream_response)
+    eo = EvaluatorOptimizerLLM(
+        optimizer=optimizer_agent,
+        evaluator=mock_evaluator,
+        llm_factory=lambda agent: mock_optimizer,
+    )
+    stream = eo.generate_stream("Stream this response")
+
+    if termination == "error":
+        with pytest.raises(RuntimeError, match="stream failed"):
+            _ = [event async for event in stream]
+    elif termination == "close":
+        assert await anext(stream) == "first event"
+        await stream.aclose()
+    else:
+        assert [event async for event in stream] == ["first event"]
+
+    assert lifecycle == ["agent_enter", "stream_started", "stream_closed", "agent_exit"]
+    optimizer_agent.__aenter__.assert_awaited_once()
+    optimizer_agent.__aexit__.assert_awaited_once()
 
 
 @pytest.mark.asyncio

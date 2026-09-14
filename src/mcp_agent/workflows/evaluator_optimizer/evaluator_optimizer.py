@@ -394,15 +394,21 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
         request_params: RequestParams | None = None,
     ):
         """Stream optimizer events directly, without evaluation or refinement."""
-        if hasattr(self.optimizer_llm, "generate_stream"):
-            async for event in self.optimizer_llm.generate_stream(
-                message=message, request_params=request_params
-            ):
-                yield event
-        else:
+        if not hasattr(self.optimizer_llm, "generate_stream"):
             raise NotImplementedError(
                 f"{self.optimizer_llm.__class__.__name__} does not implement generate_stream"
             )
+
+        async with contextlib.AsyncExitStack() as stack:
+            if isinstance(self.optimizer, Agent):
+                await stack.enter_async_context(self.optimizer)
+            async with contextlib.aclosing(
+                self.optimizer_llm.generate_stream(
+                    message=message, request_params=request_params
+                )
+            ) as stream:
+                async for event in stream:
+                    yield event
 
     async def generate_structured(
         self,
