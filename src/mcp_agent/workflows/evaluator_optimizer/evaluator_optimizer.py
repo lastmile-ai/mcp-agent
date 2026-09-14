@@ -143,9 +143,9 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
                     "llm_factory is required when using a string evaluator"
                 )
 
-            self.evaluator_llm = llm_factory(
-                agent=Agent(name="Evaluator", instruction=evaluator)
-            )
+            evaluator_agent = Agent(name="Evaluator", instruction=evaluator)
+            self.evaluator = evaluator_agent
+            self.evaluator_llm = llm_factory(agent=evaluator_agent)
         else:
             raise ValueError(f"Unsupported evaluator type: {type(evaluator)}")
 
@@ -388,6 +388,21 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
             span.set_attribute("response", res)
             return res
 
+    async def generate_stream(
+        self,
+        message,
+        request_params = None,
+    ):
+        if hasattr(self.optimizer_llm, "generate_stream"):
+            async for event in self.optimizer_llm.generate_stream(
+                message=message, request_params=request_params
+            ):
+                yield event
+        else:
+            raise NotImplementedError(
+                f"{self.optimizer_llm.__class__.__name__} does not implement generate_stream"
+            )
+
     async def generate_structured(
         self,
         message: str | MessageParamT | List[MessageParamT],
@@ -435,10 +450,17 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
         self, original_request: str, current_response: str, iteration: int
     ) -> str:
         """Build the evaluation prompt for the evaluator"""
-        return f"""
-        Evaluate the following response based on these criteria:
-        {self.evaluator.instruction}
-
+        criteria = (
+            getattr(self.evaluator, "instruction", None)
+            if not getattr(self.evaluator_llm, "instruction", None)
+            else None
+        )
+        criteria_str = (
+            f"\n        Evaluate the following response based on these criteria:\n        {criteria}\n"
+            if criteria
+            else "\n        Evaluate the following response based on the evaluation criteria:\n"
+        )
+        return f"""{criteria_str}
         Original Request: {original_request}
         Current Response (Iteration {iteration + 1}): {current_response}
 

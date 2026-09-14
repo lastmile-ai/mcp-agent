@@ -42,6 +42,10 @@ class DummyLLM(AugmentedLLM):
         # Minimal implementation for abstract method
         return "\n".join(self.message_str(r) for r in self._generate_return)
 
+    async def generate_stream(self, message, request_params=None):
+        for item in self._generate_return:
+            yield item
+
 
 class MockToolCallMessage:
     """Mock message that simulates a tool call message with no content"""
@@ -106,6 +110,24 @@ def test_build_eval_prompt(mock_optimizer, mock_evaluator):
     assert "Original Request: What is the capital of France?" in prompt
     assert "Current Response (Iteration 1): Paris" in prompt
     assert "Provide your evaluation as a structured response" in prompt
+    # Instruction is already in evaluator LLM system prompt, so should not be duplicated in prompt body
+    assert mock_evaluator.instruction not in prompt
+
+
+def test_evaluator_as_string_initialization(mock_optimizer):
+    eval_criteria = "Check factual correctness and conciseness."
+    eo = EvaluatorOptimizerLLM(
+        optimizer=mock_optimizer,
+        evaluator=eval_criteria,
+        llm_factory=lambda agent: DummyLLM(name=agent.name, instruction=agent.instruction),
+    )
+    prompt = eo._build_eval_prompt(
+        original_request="Summarize article",
+        current_response="Summary text",
+        iteration=0,
+    )
+    assert "Evaluate the following response" in prompt
+    assert "Original Request: Summarize article" in prompt
 
 
 def test_build_refinement_prompt(mock_optimizer, mock_evaluator):
