@@ -8,7 +8,7 @@ from mcp_agent.workflows.evaluator_optimizer.evaluator_optimizer import (
 )
 
 
-from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
+from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM, RequestParams
 
 
 class DummyLLM(AugmentedLLM):
@@ -43,6 +43,7 @@ class DummyLLM(AugmentedLLM):
         return "\n".join(self.message_str(r) for r in self._generate_return)
 
     async def generate_stream(self, message, request_params=None):
+        """Yield the configured optimizer response as stream events."""
         for item in self._generate_return:
             yield item
 
@@ -119,7 +120,9 @@ def test_evaluator_as_string_initialization(mock_optimizer):
     eo = EvaluatorOptimizerLLM(
         optimizer=mock_optimizer,
         evaluator=eval_criteria,
-        llm_factory=lambda agent: DummyLLM(name=agent.name, instruction=agent.instruction),
+        llm_factory=lambda agent: DummyLLM(
+            name=agent.name, instruction=agent.instruction
+        ),
     )
     prompt = eo._build_eval_prompt(
         original_request="Summarize article",
@@ -284,6 +287,30 @@ async def test_generate_str_handles_all_empty_messages(mock_optimizer, mock_eval
 
     # Should return empty string when all messages are filtered out
     assert result == ""
+
+
+@pytest.mark.asyncio
+async def test_generate_stream_delegates_to_optimizer(mock_optimizer, mock_evaluator):
+    """Forward the message, request parameters, and every optimizer stream event."""
+    eo = EvaluatorOptimizerLLM(
+        optimizer=mock_optimizer,
+        evaluator=mock_evaluator,
+    )
+    mock_optimizer.set_generate_return(["first event", "second event"])
+    mock_optimizer.generate_stream = MagicMock(wraps=mock_optimizer.generate_stream)
+    request_params = RequestParams(maxTokens=42)
+
+    events = [
+        event
+        async for event in eo.generate_stream(
+            message="Stream this response", request_params=request_params
+        )
+    ]
+
+    assert events == ["first event", "second event"]
+    mock_optimizer.generate_stream.assert_called_once_with(
+        message="Stream this response", request_params=request_params
+    )
 
 
 @pytest.mark.asyncio

@@ -390,9 +390,10 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
 
     async def generate_stream(
         self,
-        message,
-        request_params = None,
+        message: str | MessageParamT | List[MessageParamT],
+        request_params: RequestParams | None = None,
     ):
+        """Stream optimizer events directly, without evaluation or refinement."""
         if hasattr(self.optimizer_llm, "generate_stream"):
             async for event in self.optimizer_llm.generate_stream(
                 message=message, request_params=request_params
