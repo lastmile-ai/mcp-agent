@@ -587,6 +587,15 @@ class OpenAIAugmentedLLM(
                 raise ValueError("No structured content returned by model")
 
             content = completion.choices[0].message.content
+            if params.use_history:
+                messages.append(
+                    ChatCompletionAssistantMessageParam(
+                        role="assistant",
+                        content=content,
+                    )
+                )
+                self.history.set(messages)
+
             try:
                 data = json.loads(content)
                 return response_model.model_validate(data)

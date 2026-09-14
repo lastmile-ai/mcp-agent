@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import BaseModel
@@ -259,6 +259,59 @@ class TestAnthropicAugmentedLLM:
             assert isinstance(result, TestResponseModel)
             assert result.name == "Test"
             assert result.value == 42
+
+    # Test 3b: Generate Structured Output with History
+    @pytest.mark.asyncio
+    async def test_generate_structured_with_history(self, mock_llm, default_usage):
+        """
+        Tests that generate_structured persists history when use_history=True for Anthropic.
+        """
+
+        class TestResponseModel(BaseModel):
+            name: str
+            value: int
+
+        tool_use_block = ToolUseBlock(
+            type="tool_use",
+            id="tool_123",
+            name="return_structured_output",
+            input={"name": "Test", "value": 42},
+        )
+        mock_message = Message(
+            type="message",
+            id="msg_123",
+            role="assistant",
+            content=[tool_use_block],
+            model="claude-3-7-sonnet-latest",
+            stop_reason="tool_use",
+            usage=default_usage,
+        )
+
+        with patch(
+            "mcp_agent.workflows.llm.augmented_llm_anthropic.AsyncAnthropic"
+        ) as MockAsyncAnthropic:
+            mock_client = MockAsyncAnthropic.return_value
+            mock_stream = AsyncMock()
+            mock_stream.get_final_message = AsyncMock(return_value=mock_message)
+            mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
+            mock_stream.__aexit__ = AsyncMock(return_value=None)
+            mock_client.messages.stream = MagicMock(return_value=mock_stream)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=None)
+            mock_llm.history.set = MagicMock()
+
+            params = RequestParams(use_history=True)
+            result = await AnthropicAugmentedLLM.generate_structured(
+                mock_llm, "Test query", TestResponseModel, request_params=params
+            )
+
+            assert isinstance(result, TestResponseModel)
+            assert mock_llm.history.set.called
+            saved_messages = mock_llm.history.set.call_args[0][0]
+            assert any(
+                isinstance(m, dict) and m.get("role") == "assistant"
+                for m in saved_messages
+            )
 
     # Test 4: With History
     @pytest.mark.asyncio

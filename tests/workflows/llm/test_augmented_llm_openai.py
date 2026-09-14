@@ -200,6 +200,38 @@ class TestOpenAIAugmentedLLM:
         assert result.name == "Test"
         assert result.value == 42
 
+    # Test 3b: Generate Structured Output with History
+    @pytest.mark.asyncio
+    async def test_generate_structured_with_history(self, mock_llm, default_usage):
+        """
+        Tests that generate_structured persists history when use_history=True.
+        """
+        import json
+
+        class TestResponseModel(BaseModel):
+            name: str
+            value: int
+
+        json_content = json.dumps({"name": "Test", "value": 42})
+        completion_response = self.create_text_response(
+            json_content, usage=default_usage
+        )
+        mock_llm.executor.execute = AsyncMock(return_value=completion_response)
+        mock_llm.history.set = MagicMock()
+
+        params = RequestParams(use_history=True)
+        result = await mock_llm.generate_structured(
+            "Test query", TestResponseModel, request_params=params
+        )
+
+        assert isinstance(result, TestResponseModel)
+        assert mock_llm.history.set.called
+        saved_messages = mock_llm.history.set.call_args[0][0]
+        assert any(
+            m.get("role") == "assistant" and m.get("content") == json_content
+            for m in saved_messages
+        )
+
     # Test 4: With History
     @pytest.mark.asyncio
     async def test_with_history(self, mock_llm, default_usage):

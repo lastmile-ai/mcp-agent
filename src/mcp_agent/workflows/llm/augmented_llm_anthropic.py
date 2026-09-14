@@ -447,6 +447,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                         for tool in list_tools_result.tools
                     ]
                     return available_tools
+
                 available_tools = await update_tools()
 
                 responses: List[Message] = []
@@ -860,6 +861,11 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                     # returns an async generator that is not an async context manager.
                     # Fallback to create() so the call succeeds while still emitting spans.
                     final = await client.messages.create(**args)
+
+            if params.use_history:
+                assistant_message = self.convert_message_to_message_param(final)
+                messages.append(assistant_message)
+                self.history.set(messages)
 
             # Extract tool_use input and validate
             for block in final.content:
