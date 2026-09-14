@@ -394,7 +394,11 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
         request_params: RequestParams | None = None,
     ):
         """Stream optimizer events directly, without evaluation or refinement."""
-        if not hasattr(self.optimizer_llm, "generate_stream"):
+        stream_method = getattr(self.optimizer_llm, "generate_stream", None)
+        if (
+            not callable(stream_method)
+            or getattr(stream_method, "__func__", None) is AugmentedLLM.generate_stream
+        ):
             raise NotImplementedError(
                 f"{self.optimizer_llm.__class__.__name__} does not implement generate_stream"
             )
@@ -402,13 +406,12 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
         async with contextlib.AsyncExitStack() as stack:
             if isinstance(self.optimizer, Agent):
                 await stack.enter_async_context(self.optimizer)
-            async with contextlib.aclosing(
-                self.optimizer_llm.generate_stream(
-                    message=message, request_params=request_params
-                )
-            ) as stream:
-                async for event in stream:
-                    yield event
+            stream = stream_method(message=message, request_params=request_params)
+            close_stream = getattr(stream, "aclose", None)
+            if callable(close_stream):
+                stack.push_async_callback(close_stream)
+            async for event in stream:
+                yield event
 
     async def generate_structured(
         self,
@@ -457,11 +460,9 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
         self, original_request: str, current_response: str, iteration: int
     ) -> str:
         """Build the evaluation prompt for the evaluator"""
-        criteria = (
-            getattr(self.evaluator, "instruction", None)
-            if not getattr(self.evaluator_llm, "instruction", None)
-            else None
-        )
+        criteria = getattr(self.evaluator, "instruction", None)
+        if criteria == getattr(self.evaluator_llm, "instruction", None):
+            criteria = None
         criteria_str = (
             f"\n        Evaluate the following response based on these criteria:\n        {criteria}\n"
             if criteria

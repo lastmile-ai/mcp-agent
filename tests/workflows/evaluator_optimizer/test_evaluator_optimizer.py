@@ -99,6 +99,7 @@ def test_initialization_with_augmented_llm(mock_optimizer, mock_evaluator):
 
 
 def test_build_eval_prompt(mock_optimizer, mock_evaluator):
+    """Keep request details while avoiding duplicate evaluator system instructions."""
     eo = EvaluatorOptimizerLLM(
         optimizer=mock_optimizer,
         evaluator=mock_evaluator,
@@ -117,6 +118,7 @@ def test_build_eval_prompt(mock_optimizer, mock_evaluator):
 
 
 def test_evaluator_as_string_initialization(mock_optimizer):
+    """Retain the Agent created for string criteria and build a usable prompt."""
     eval_criteria = "Check factual correctness and conciseness."
     eo = EvaluatorOptimizerLLM(
         optimizer=mock_optimizer,
@@ -132,6 +134,36 @@ def test_evaluator_as_string_initialization(mock_optimizer):
     )
     assert "Evaluate the following response" in prompt
     assert "Original Request: Summarize article" in prompt
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "llm_instruction", ["Check factual correctness.", "Use the supplied criteria.", ""]
+)
+async def test_generate_preserves_agent_evaluation_criteria(
+    mock_optimizer, mock_evaluator, llm_instruction
+):
+    """Retain Agent criteria unless the factory's LLM already carries the same text."""
+    evaluator_agent = MagicMock(spec=Agent)
+    evaluator_agent.name = "AgentEvaluator"
+    evaluator_agent.instruction = "Check factual correctness."
+    evaluator_agent.__aenter__.return_value = evaluator_agent
+    evaluator_agent.__aexit__.return_value = False
+    mock_evaluator.instruction = llm_instruction
+    mock_evaluator.generate_structured = AsyncMock(
+        return_value=mock_evaluator._generate_structured_return
+    )
+    eo = EvaluatorOptimizerLLM(
+        optimizer=mock_optimizer,
+        evaluator=evaluator_agent,
+        llm_factory=lambda agent: mock_evaluator,
+    )
+
+    assert await eo.generate("Answer the question") == ["optimized response"]
+
+    prompt = mock_evaluator.generate_structured.await_args.kwargs["message"]
+    expected_copies = 0 if llm_instruction == evaluator_agent.instruction else 1
+    assert prompt.count(evaluator_agent.instruction) == expected_copies
 
 
 def test_build_refinement_prompt(mock_optimizer, mock_evaluator):
@@ -330,6 +362,7 @@ async def test_generate_stream_cleans_up_optimizer_agent(
     optimizer_agent.__aexit__.side_effect = lambda *args: lifecycle.append("agent_exit")
 
     async def stream_response(message, request_params=None):
+        """Record stream lifetime and optionally fail after the first event."""
         lifecycle.append("stream_started")
         try:
             yield "first event"
@@ -358,6 +391,66 @@ async def test_generate_stream_cleans_up_optimizer_agent(
     assert lifecycle == ["agent_enter", "stream_started", "stream_closed", "agent_exit"]
     optimizer_agent.__aenter__.assert_awaited_once()
     optimizer_agent.__aexit__.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_generate_stream_rejects_inherited_implementation(
+    mock_optimizer, mock_evaluator
+):
+    """Reject the base coroutine before opening any optimizer Agent resources."""
+    optimizer_agent = MagicMock(spec=Agent)
+    optimizer_agent.name = "NonStreamingOptimizer"
+    optimizer_agent.instruction = "Optimize this."
+    mock_optimizer.generate_stream = AugmentedLLM.generate_stream.__get__(
+        mock_optimizer
+    )
+    eo = EvaluatorOptimizerLLM(
+        optimizer=optimizer_agent,
+        evaluator=mock_evaluator,
+        llm_factory=lambda agent: mock_optimizer,
+    )
+
+    with pytest.raises(NotImplementedError, match="does not implement generate_stream"):
+        _ = [event async for event in eo.generate_stream("Stream this response")]
+
+    optimizer_agent.__aenter__.assert_not_awaited()
+    optimizer_agent.__aexit__.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_generate_stream_accepts_iterator_without_aclose(
+    mock_optimizer, mock_evaluator
+):
+    """The AsyncIterator contract does not require the optional aclose method."""
+
+    class EventIterator:
+        """A minimal provider iterator without async-generator cleanup methods."""
+
+        def __init__(self):
+            """Prepare a finite sequence of provider events."""
+            self.events = iter(["first event", "second event"])
+
+        def __aiter__(self):
+            """Expose the async iteration protocol without aclose."""
+            return self
+
+        async def __anext__(self):
+            """Yield the next event or finish the asynchronous iteration."""
+            try:
+                return next(self.events)
+            except StopIteration:
+                raise StopAsyncIteration
+
+    mock_optimizer.generate_stream = MagicMock(return_value=EventIterator())
+    eo = EvaluatorOptimizerLLM(
+        optimizer=mock_optimizer,
+        evaluator=mock_evaluator,
+    )
+
+    assert [event async for event in eo.generate_stream("Stream this response")] == [
+        "first event",
+        "second event",
+    ]
 
 
 @pytest.mark.asyncio
