@@ -492,15 +492,15 @@ class OpenAIAugmentedLLM(
 
             # Prepare messages
             messages: List[ChatCompletionMessageParam] = []
+            if params.use_history:
+                messages.extend(self.history.get())
             system_prompt = self.instruction or params.systemPrompt
-            if system_prompt:
+            if system_prompt and not messages:
                 messages.append(
                     ChatCompletionSystemMessageParam(
                         role="system", content=system_prompt
                     )
                 )
-            if params.use_history:
-                messages.extend(self.history.get())
             messages.extend(OpenAIConverter.convert_mixed_messages_to_openai(message))
 
             # Build response_format
@@ -587,6 +587,13 @@ class OpenAIAugmentedLLM(
                 raise ValueError("No structured content returned by model")
 
             content = completion.choices[0].message.content
+            try:
+                data = json.loads(content)
+                result = response_model.model_validate(data)
+            except Exception:
+                # Fallback to pydantic JSON parsing if already a JSON string-like
+                result = response_model.model_validate_json(content)
+
             if params.use_history:
                 messages.append(
                     ChatCompletionAssistantMessageParam(
@@ -596,12 +603,7 @@ class OpenAIAugmentedLLM(
                 )
                 self.history.set(messages)
 
-            try:
-                data = json.loads(content)
-                return response_model.model_validate(data)
-            except Exception:
-                # Fallback to pydantic JSON parsing if already a JSON string-like
-                return response_model.model_validate_json(content)
+            return result
 
     async def pre_tool_call(self, tool_call_id: str | None, request: CallToolRequest):
         return request

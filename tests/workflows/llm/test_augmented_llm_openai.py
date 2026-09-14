@@ -1,4 +1,5 @@
 import json
+from copy import deepcopy
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -9,11 +10,12 @@ from openai.types.chat import (
     ChatCompletion,
     ChatCompletionMessage,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from mcp.types import TextContent, SamplingMessage, PromptMessage
 
 from mcp_agent.config import OpenAISettings
+from mcp_agent.workflows.llm.augmented_llm import SimpleMemory
 from mcp_agent.workflows.llm.augmented_llm_openai import (
     OpenAIAugmentedLLM,
     RequestParams,
@@ -202,11 +204,11 @@ class TestOpenAIAugmentedLLM:
 
     # Test 3b: Generate Structured Output with History
     @pytest.mark.asyncio
-    async def test_generate_structured_with_history(self, mock_llm, default_usage):
-        """
-        Tests that generate_structured persists history when use_history=True.
-        """
-        import json
+    @pytest.mark.parametrize("use_history", [True, False])
+    async def test_generate_structured_with_history(
+        self, mock_llm, default_usage, use_history
+    ):
+        """Repeated structured calls keep one system prompt and complete conversation turns."""
 
         class TestResponseModel(BaseModel):
             name: str
@@ -216,21 +218,73 @@ class TestOpenAIAugmentedLLM:
         completion_response = self.create_text_response(
             json_content, usage=default_usage
         )
-        mock_llm.executor.execute = AsyncMock(return_value=completion_response)
-        mock_llm.history.set = MagicMock()
+        requests = []
 
-        params = RequestParams(use_history=True)
-        result = await mock_llm.generate_structured(
+        def capture_request(task, request):
+            requests.append(deepcopy(request.payload["messages"]))
+            return completion_response
+
+        mock_llm.executor.execute = AsyncMock(side_effect=capture_request)
+        mock_llm.history = SimpleMemory()
+        mock_llm.instruction = "Return structured data."
+        params = RequestParams(use_history=use_history)
+        first = await mock_llm.generate_structured(
             "Test query", TestResponseModel, request_params=params
         )
-
-        assert isinstance(result, TestResponseModel)
-        assert mock_llm.history.set.called
-        saved_messages = mock_llm.history.set.call_args[0][0]
-        assert any(
-            m.get("role") == "assistant" and m.get("content") == json_content
-            for m in saved_messages
+        second = await mock_llm.generate_structured(
+            "Follow-up query", TestResponseModel, request_params=params
         )
+
+        assert first == second == TestResponseModel(name="Test", value=42)
+        assert requests[0] == [
+            {"role": "system", "content": "Return structured data."},
+            {"role": "user", "content": "Test query"},
+        ]
+        assert sum(m["role"] == "system" for m in requests[1]) == 1
+        assert requests[1][-1] == {"role": "user", "content": "Follow-up query"}
+        if use_history:
+            assert [m["role"] for m in requests[1]] == [
+                "system",
+                "user",
+                "assistant",
+                "user",
+            ]
+            assert json.loads(requests[1][2]["content"]) == first.model_dump()
+            assert [m["role"] for m in mock_llm.history.get()] == [
+                "system",
+                "user",
+                "assistant",
+                "user",
+                "assistant",
+            ]
+        else:
+            assert [m["role"] for m in requests[1]] == ["system", "user"]
+            assert mock_llm.history.get() == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("content", ["not JSON", '{"value": "not an integer"}'])
+    async def test_generate_structured_invalid_response_preserves_history(
+        self, mock_llm, default_usage, content
+    ):
+        """Invalid JSON or schema data cannot replace the existing conversation."""
+
+        class TestResponseModel(BaseModel):
+            value: int
+
+        mock_llm.executor.execute = AsyncMock(
+            return_value=self.create_text_response(content, usage=default_usage)
+        )
+        previous = [{"role": "user", "content": "Previous message"}]
+        mock_llm.history = SimpleMemory(history=previous.copy())
+
+        with pytest.raises(ValidationError):
+            await mock_llm.generate_structured(
+                "Invalid response",
+                TestResponseModel,
+                request_params=RequestParams(use_history=True),
+            )
+
+        assert mock_llm.history.get() == previous
 
     # Test 4: With History
     @pytest.mark.asyncio
