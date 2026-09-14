@@ -143,9 +143,9 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
                     "llm_factory is required when using a string evaluator"
                 )
 
-            self.evaluator_llm = llm_factory(
-                agent=Agent(name="Evaluator", instruction=evaluator)
-            )
+            evaluator_agent = Agent(name="Evaluator", instruction=evaluator)
+            self.evaluator = evaluator_agent
+            self.evaluator_llm = llm_factory(agent=evaluator_agent)
         else:
             raise ValueError(f"Unsupported evaluator type: {type(evaluator)}")
 
@@ -388,6 +388,31 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
             span.set_attribute("response", res)
             return res
 
+    async def generate_stream(
+        self,
+        message: str | MessageParamT | List[MessageParamT],
+        request_params: RequestParams | None = None,
+    ):
+        """Stream optimizer events directly, without evaluation or refinement."""
+        stream_method = getattr(self.optimizer_llm, "generate_stream", None)
+        if (
+            not callable(stream_method)
+            or getattr(stream_method, "__func__", None) is AugmentedLLM.generate_stream
+        ):
+            raise NotImplementedError(
+                f"{self.optimizer_llm.__class__.__name__} does not implement generate_stream"
+            )
+
+        async with contextlib.AsyncExitStack() as stack:
+            if isinstance(self.optimizer, Agent):
+                await stack.enter_async_context(self.optimizer)
+            stream = stream_method(message=message, request_params=request_params)
+            close_stream = getattr(stream, "aclose", None)
+            if callable(close_stream):
+                stack.push_async_callback(close_stream)
+            async for event in stream:
+                yield event
+
     async def generate_structured(
         self,
         message: str | MessageParamT | List[MessageParamT],
@@ -435,10 +460,15 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
         self, original_request: str, current_response: str, iteration: int
     ) -> str:
         """Build the evaluation prompt for the evaluator"""
-        return f"""
-        Evaluate the following response based on these criteria:
-        {self.evaluator.instruction}
-
+        criteria = getattr(self.evaluator, "instruction", None)
+        if criteria == getattr(self.evaluator_llm, "instruction", None):
+            criteria = None
+        criteria_str = (
+            f"\n        Evaluate the following response based on these criteria:\n        {criteria}\n"
+            if criteria
+            else "\n        Evaluate the following response based on the evaluation criteria:\n"
+        )
+        return f"""{criteria_str}
         Original Request: {original_request}
         Current Response (Iteration {iteration + 1}): {current_response}
 
