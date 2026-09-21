@@ -25,6 +25,7 @@ from pydantic import (
     ConfigDict,
     AliasPath,
     AliasChoices,
+    ValidationError,
 )
 
 import pytest
@@ -179,6 +180,37 @@ def test_basic_model():
     original = Location.model_json_schema()
     recon = LocationReconstructed.model_json_schema()
     assert original == recon
+
+
+@pytest.mark.parametrize(
+    "annotation, valid_values, invalid_value",
+    [
+        pytest.param(int | str, [42, "hello"], {}, id="pep604"),
+        pytest.param(Union[int, str], [42, "hello"], {}, id="typing-union"),
+        pytest.param(list[int | str], [[42, "hello"]], [{}], id="nested-pep604"),
+        pytest.param(
+            List[Union[int, str]], [[42, "hello"]], [{}], id="nested-typing-union"
+        ),
+    ],
+)
+def test_union_model_round_trip(annotation, valid_values, invalid_value):
+    class UnionModel(BaseModel):
+        value: annotation
+
+    ModelReconstructed = deserialize_model(serialize_model(UnionModel))
+
+    for value in valid_values:
+        assert (
+            ModelReconstructed(value=value).model_dump()
+            == UnionModel(value=value).model_dump()
+        )
+
+    with pytest.raises(ValidationError):
+        UnionModel(value=invalid_value)
+    with pytest.raises(ValidationError):
+        ModelReconstructed(value=invalid_value)
+
+    assert ModelReconstructed.model_json_schema() == UnionModel.model_json_schema()
 
 
 def test_enum_serialization():
