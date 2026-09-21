@@ -13,6 +13,7 @@ import re
 import enum
 import uuid
 import logging
+from types import UnionType
 from typing import (
     Any,
     Dict,
@@ -86,7 +87,7 @@ class PydanticTypeSerializer(BaseModel):
     @staticmethod
     def _get_type_origin_name(origin: Any) -> str:
         """Get a standardized name for a type origin."""
-        if origin is Union:
+        if origin is Union or origin is UnionType:
             return "Union"
         elif origin is list:
             return "List"
