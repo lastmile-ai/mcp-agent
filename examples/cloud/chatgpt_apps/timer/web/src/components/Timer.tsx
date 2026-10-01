@@ -3,6 +3,9 @@ import { Card, CardHeader, CardContent } from "./ui/card";
 import { Button } from "./ui/button";
 import "./Timer.css";
 
+const totalSecondsFor = (hours: number, minutes: number, seconds: number) =>
+  hours * 3600 + minutes * 60 + seconds;
+
 interface TimerProps {
   initialHours: number;
   initialMinutes: number;
@@ -12,12 +15,12 @@ interface TimerProps {
 }
 
 export function Timer({ initialHours, initialMinutes, initialSeconds, message = "", onTimerUpdate }: TimerProps) {
-  const [hours, setHours] = useState(initialHours);
-  const [minutes, setMinutes] = useState(initialMinutes);
-  const [seconds, setSeconds] = useState(initialSeconds);
+  const [remainingSeconds, setRemainingSeconds] = useState(() =>
+    totalSecondsFor(initialHours, initialMinutes, initialSeconds)
+  );
   const [isRunning, setIsRunning] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const completionNotifiedRef = useRef(false);
 
   // Store initial values for reset
   const initialTimeRef = useRef({
@@ -33,77 +36,61 @@ export function Timer({ initialHours, initialMinutes, initialSeconds, message = 
       minutes: initialMinutes,
       seconds: initialSeconds
     };
-    setHours(initialHours);
-    setMinutes(initialMinutes);
-    setSeconds(initialSeconds);
+    setRemainingSeconds(
+      totalSecondsFor(initialHours, initialMinutes, initialSeconds)
+    );
+    setIsRunning(false);
     setIsCompleted(false);
+    completionNotifiedRef.current = false;
   }, [initialHours, initialMinutes, initialSeconds]);
 
   useEffect(() => {
-    if (isRunning) {
-      intervalRef.current = setInterval(() => {
-        // Use a ref to get current values and calculate new time atomically
-        setHours((h) => {
-          setMinutes((m) => {
-            setSeconds((s) => {
-              // Calculate total seconds and decrement
-              let totalSeconds = h * 3600 + m * 60 + s - 1;
+    if (!isRunning) return;
 
-              // Check if timer completed
-              if (totalSeconds <= 0) {
-                setIsRunning(false);
-                setIsCompleted(true);
-                setHours(0);
-                setMinutes(0);
-                if (onTimerUpdate) {
-                  onTimerUpdate(0, 0, 0, false);
-                }
-                return 0;
-              }
-
-              // Calculate new time components
-              const newHours = Math.floor(totalSeconds / 3600);
-              const newMinutes = Math.floor((totalSeconds % 3600) / 60);
-              const newSeconds = totalSeconds % 60;
-
-              // Update states
-              setHours(newHours);
-              setMinutes(newMinutes);
-
-              return newSeconds;
-            });
-            return m;
-          });
-          return h;
-        });
-      }, 1000);
-    } else {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    }
+    const interval = setInterval(() => {
+      setRemainingSeconds((current) => Math.max(current - 1, 0));
+    }, 1000);
 
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
+      clearInterval(interval);
     };
-  }, [isRunning, onTimerUpdate]);
+  }, [isRunning]);
 
-  const handleStart = () => {
-    if (hours === 0 && minutes === 0 && seconds === 0) {
+  useEffect(() => {
+    if (remainingSeconds > 0) {
+      completionNotifiedRef.current = false;
       return;
     }
+
+    if (!isRunning || completionNotifiedRef.current) return;
+
+    completionNotifiedRef.current = true;
+    setIsRunning(false);
+    setIsCompleted(true);
+    onTimerUpdate?.(0, 0, 0, false);
+  }, [isRunning, onTimerUpdate, remainingSeconds]);
+
+  const hours = Math.floor(remainingSeconds / 3600);
+  const minutes = Math.floor((remainingSeconds % 3600) / 60);
+  const seconds = remainingSeconds % 60;
+
+  const handleStart = () => {
+    if (remainingSeconds === 0) return;
+    completionNotifiedRef.current = false;
     setIsRunning(true);
   };
 
   const handleReset = () => {
     setIsRunning(false);
     setIsCompleted(false);
-    setHours(initialTimeRef.current.hours);
-    setMinutes(initialTimeRef.current.minutes);
-    setSeconds(initialTimeRef.current.seconds);
+    completionNotifiedRef.current = false;
+    setRemainingSeconds(
+      totalSecondsFor(
+        initialTimeRef.current.hours,
+        initialTimeRef.current.minutes,
+        initialTimeRef.current.seconds
+      )
+    );
     if (onTimerUpdate) {
       onTimerUpdate(
         initialTimeRef.current.hours,
