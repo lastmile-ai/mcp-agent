@@ -42,9 +42,20 @@ ASSETS_DIR = BUILD_DIR / "static"
 # (2) is preferred since (1) can lead to large HTML templates and potential for string escaping issues.
 
 
-# Make sure these paths align with the build output paths (dynamic per build)
-JS_PATH = ASSETS_DIR / "js" / "main.50dd757e.js"
-CSS_PATH = ASSETS_DIR / "css" / "main.bf8e60c9.css"
+def _main_asset_path(asset_type: str) -> Path:
+    """Find the CRA main bundle without pinning its content hash in source."""
+    asset_dir = ASSETS_DIR / asset_type
+    matches = sorted(asset_dir.glob(f"main.*.{asset_type}"))
+    if len(matches) != 1:
+        raise FileNotFoundError(
+            f"Expected one main {asset_type} bundle in {asset_dir}, found {len(matches)}. "
+            "Build the web client with `yarn build` before running the server."
+        )
+    return matches[0]
+
+
+JS_PATH = _main_asset_path("js")
+CSS_PATH = _main_asset_path("css")
 
 
 # METHOD 1: Inline the JS and CSS into the HTML template
@@ -65,8 +76,8 @@ INLINE_HTML_TEMPLATE = f"""
 SERVER_URL = "https://<server_id>.deployments.mcp-agent.com"  # e.g. "https://15da9n6bk2nj3wiwf7ghxc2fy7sc6c8a.deployments.mcp-agent.com"
 DEPLOYED_HTML_TEMPLATE = (
     '<div id="timer-root"></div>\n'
-    f'<link rel="stylesheet" href="{SERVER_URL}/static/css/main.bf8e60c9.css">\n'
-    f'<script type="module" src="{SERVER_URL}/static/js/main.50dd757e.js"></script>'
+    f'<link rel="stylesheet" href="{SERVER_URL}/static/css/{CSS_PATH.name}">\n'
+    f'<script type="module" src="{SERVER_URL}/static/js/{JS_PATH.name}"></script>'
 )
 
 
