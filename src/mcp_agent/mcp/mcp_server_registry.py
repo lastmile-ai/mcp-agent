@@ -148,7 +148,7 @@ class ServerRegistry:
         config = self.registry[server_name]
 
         read_timeout_seconds = (
-            timedelta(config.read_timeout_seconds)
+            timedelta(seconds=config.read_timeout_seconds)
             if config.read_timeout_seconds
             else None
         )
