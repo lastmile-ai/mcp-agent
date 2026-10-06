@@ -1274,3 +1274,55 @@ async def test_tool_filtering_edge_case_exact_match():
     assert "tool_exact" in tool_names
     assert "tool_similar" not in tool_names
     assert "my_tool" not in tool_names
+
+
+@pytest.mark.asyncio
+async def test_call_tool_with_explicit_server_name():
+    """Test that MCPAggregator.call_tool routes to explicit server_name when provided."""
+    server_configs = {
+        "srv1": MockServerConfig(allowed_tools={"lookup"}),
+        "srv2": MockServerConfig(allowed_tools={"lookup"}),
+    }
+    context = DummyContextWithServerRegistry(server_configs)
+
+    aggregator = mcp_aggregator_mod.MCPAggregator(
+        server_names=["srv1", "srv2"],
+        connection_persistence=False,
+        context=context,
+        name="test_agent",
+    )
+
+    mock_tools_1 = [
+        Tool(name="lookup", description="srv1 lookup", inputSchema={"type": "object"})
+    ]
+    mock_tools_2 = [
+        Tool(name="lookup", description="srv2 lookup", inputSchema={"type": "object"})
+    ]
+
+    async def mock_fetch_capabilities(server_name):
+        if server_name == "srv1":
+            return (None, mock_tools_1, [], [])
+        return (None, mock_tools_2, [], [])
+
+    called_servers = []
+
+    class MockClient:
+        def __init__(self, srv):
+            self.srv = srv
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            pass
+        async def call_tool(self, name, arguments):
+            called_servers.append(self.srv)
+            return mcp_aggregator_mod.CallToolResult(content=[mcp_aggregator_mod.TextContent(type="text", text=f"ok from {self.srv}")])
+
+    def mock_gen_client(server_name, **kwargs):
+        return MockClient(server_name)
+
+    with patch.object(aggregator, "_fetch_capabilities", side_effect=mock_fetch_capabilities), \
+         patch("src.mcp_agent.mcp.mcp_aggregator.gen_client", side_effect=mock_gen_client):
+        await aggregator.load_servers()
+        res = await aggregator.call_tool(name="lookup", arguments={"q": 1}, server_name="srv2")
+        assert not res.isError
+        assert called_servers == ["srv2"]

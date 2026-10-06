@@ -846,7 +846,6 @@ class MCPAggregator(ContextDependent):
             if not self.initialized:
                 await self.load_servers()
 
-            server_name: str = None
             local_tool_name: str = None
 
             if server_name:
