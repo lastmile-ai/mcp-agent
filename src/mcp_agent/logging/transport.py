@@ -296,8 +296,14 @@ class AsyncEventBus:
     def init_queue(self):
         if self._running:
             return
+        previous_queue = getattr(self, "_queue", None)
         self._queue = asyncio.Queue()
         self._stop_event = asyncio.Event()
+        # Preserve events emitted while stopped when rebinding to another loop.
+        if previous_queue is not None:
+            while not previous_queue.empty():
+                self._queue.put_nowait(previous_queue.get_nowait())
+                previous_queue.task_done()
         # Store the loop we're created on
         try:
             self._loop = asyncio.get_running_loop()
@@ -341,8 +347,10 @@ class AsyncEventBus:
 
     async def start(self):
         """Start the event bus and all lifecycle-aware listeners."""
-        # Always ensure queue is initialized
-        if not hasattr(self, "_queue"):
+        # Asyncio primitives cannot be reused after switching event loops.
+        if not hasattr(self, "_queue") or (
+            not self._running and self._loop is not asyncio.get_running_loop()
+        ):
             self.init_queue()
 
         # Start each lifecycle-aware listener (even if already running)
@@ -384,9 +392,8 @@ class AsyncEventBus:
             except Exception as e:
                 print(f"Error during queue cleanup: {e}")
 
-        # Cancel and wait for task with timeout
+        # Let the stop signal finish processing before cancelling on timeout.
         if self._task and not self._task.done():
-            self._task.cancel()
             try:
                 # Wait for task to complete with timeout
                 await asyncio.wait_for(self._task, timeout=5.0)
@@ -466,7 +473,8 @@ class AsyncEventBus:
 
     async def _process_events(self):
         """Process events from the queue until stopped."""
-        while self._running:
+        stop_requested = False
+        while self._running and not stop_requested:
             event = None
             try:
                 # Use wait with both queue.get() and stop_event.wait() to avoid timeout delays
@@ -479,28 +487,25 @@ class AsyncEventBus:
                     queue_task = asyncio.create_task(self._queue.get())
                     stop_task = asyncio.create_task(self._stop_event.wait())
 
-                    done, pending = await asyncio.wait(
-                        [queue_task, stop_task], return_when=asyncio.FIRST_COMPLETED
-                    )
-
-                    # Cancel pending tasks
-                    for task in pending:
-                        task.cancel()
-                        try:
-                            await task
-                        except asyncio.CancelledError:
-                            pass
-
-                    # Check which task completed
-                    if stop_task in done:
-                        break
-
-                    if queue_task in done:
-                        event = queue_task.result()
-                    else:
-                        continue
+                    try:
+                        await asyncio.wait(
+                            [queue_task, stop_task], return_when=asyncio.FIRST_COMPLETED
+                        )
+                    finally:
+                        # Cancellation must not leave a queue getter behind.
+                        for task in (queue_task, stop_task):
+                            if not task.done():
+                                task.cancel()
+                        await asyncio.gather(
+                            queue_task, stop_task, return_exceptions=True
+                        )
                 except asyncio.CancelledError:
+                    stop_requested = True
+
+                # Deliver an event already dequeued, even if stop/cancel won the race.
+                if queue_task.cancelled():
                     break
+                event = queue_task.result()
 
                 # Process the event through all listeners
                 tasks = []
