@@ -240,10 +240,23 @@ async def monitored_execution():
 
 ## Planning Modes
 
+These snippets use the `Orchestrator` and `OpenAIAugmentedLLM` imports from the
+basic example above. Run them inside an initialized application context, with
+`agents` set to your list of worker `Agent` or `AugmentedLLM` instances.
+
+`llm_factory` is currently required, even when you supply a planner and workers.
+The factory creates the default planner and synthesizer, wraps an `Agent`
+supplied for either role, and attaches an LLM to worker `Agent` instances.
+Preconfigured `AugmentedLLM` instances are used directly for those roles.
+`generate_structured()` also uses the factory to create a separate structured-output
+LLM after generating the text result. Supplying a planner alone does not remove
+these other factory uses.
+
 ### Full Planning
 ```python
 orchestrator = Orchestrator(
-    worker_agents=agents,
+    llm_factory=OpenAIAugmentedLLM,
+    available_agents=agents,
     plan_type="full"  # Generate complete plan upfront
 )
 ```
@@ -251,7 +264,8 @@ orchestrator = Orchestrator(
 ### Iterative Planning
 ```python
 orchestrator = Orchestrator(
-    worker_agents=agents, 
+    llm_factory=OpenAIAugmentedLLM,
+    available_agents=agents,
     plan_type="iterative"  # Plan one step at a time
 )
 ```
