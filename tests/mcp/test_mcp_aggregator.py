@@ -379,6 +379,169 @@ async def test_mcp_aggregator_call_tool_errors(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_mcp_aggregator_call_tool_explicit_server_name_persistent():
+    """Explicit server_name must win even when another server exposes the same bare tool."""
+    aggregator = mcp_aggregator_mod.MCPAggregator(
+        server_names=["srv1", "srv2"],
+        connection_persistence=True,
+        context=DummyContext(),
+        name="test_agent",
+    )
+    aggregator.initialized = True
+
+    tool = SimpleNamespace()
+    tool.name = "lookup"
+    namespaced = SimpleNamespace(
+        tool=tool, server_name="srv1", namespaced_tool_name="srv1_lookup"
+    )
+    # Both servers expose "lookup"; without the fix, parse would always pick srv1.
+    aggregator._server_to_tool_map = {
+        "srv1": [namespaced],
+        "srv2": [
+            SimpleNamespace(
+                tool=tool, server_name="srv2", namespaced_tool_name="srv2_lookup"
+            )
+        ],
+    }
+    aggregator._namespaced_tool_map = {
+        "srv1_lookup": namespaced,
+        "srv2_lookup": SimpleNamespace(
+            tool=tool, server_name="srv2", namespaced_tool_name="srv2_lookup"
+        ),
+    }
+
+    parse_calls = []
+
+    async def mock_parse(name, cap):
+        parse_calls.append((name, cap))
+        # Would incorrectly prefer the first server that exposes the bare name.
+        return ("srv1", name)
+
+    aggregator._parse_capability_name = mock_parse
+
+    requested = {}
+
+    class DummySession:
+        async def call_tool(self, name, arguments=None):
+            requested["tool_name"] = name
+            requested["arguments"] = arguments
+            return SimpleNamespace(isError=False, content="called")
+
+    class DummyConnManager:
+        async def get_server(self, server_name, client_session_factory=None):
+            requested["server_name"] = server_name
+            return SimpleNamespace(session=DummySession())
+
+    aggregator._persistent_connection_manager = DummyConnManager()
+
+    result = await aggregator.call_tool(
+        "lookup", arguments={"query": "example"}, server_name="srv2"
+    )
+    assert result.isError is False
+    assert parse_calls == []
+    assert requested["server_name"] == "srv2"
+    assert requested["tool_name"] == "lookup"
+    assert requested["arguments"] == {"query": "example"}
+
+
+@pytest.mark.asyncio
+async def test_mcp_aggregator_call_tool_explicit_server_name_nonpersistent(monkeypatch):
+    """Same explicit-server routing must work without persistent connections."""
+    aggregator = mcp_aggregator_mod.MCPAggregator(
+        server_names=["srv1", "srv2"],
+        connection_persistence=False,
+        context=DummyContext(),
+        name="test_agent",
+    )
+    aggregator.initialized = True
+
+    tool = SimpleNamespace()
+    tool.name = "lookup"
+    aggregator._server_to_tool_map = {
+        "srv1": [
+            SimpleNamespace(
+                tool=tool, server_name="srv1", namespaced_tool_name="srv1_lookup"
+            )
+        ],
+        "srv2": [
+            SimpleNamespace(
+                tool=tool, server_name="srv2", namespaced_tool_name="srv2_lookup"
+            )
+        ],
+    }
+
+    parse_calls = []
+
+    async def mock_parse(name, cap):
+        parse_calls.append((name, cap))
+        return ("srv1", name)
+
+    aggregator._parse_capability_name = mock_parse
+
+    requested = {}
+
+    class DummyClient:
+        async def call_tool(self, name, arguments=None):
+            requested["tool_name"] = name
+            requested["arguments"] = arguments
+            return SimpleNamespace(isError=False, content="called_nonpersistent")
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+    def fake_gen_client(server_name, server_registry=None):
+        requested["server_name"] = server_name
+        return DummyClient()
+
+    monkeypatch.setattr(mcp_aggregator_mod, "gen_client", fake_gen_client)
+
+    result = await aggregator.call_tool(
+        "lookup", arguments={"query": "example"}, server_name="srv2"
+    )
+    assert result.isError is False
+    assert parse_calls == []
+    assert requested["server_name"] == "srv2"
+    assert requested["tool_name"] == "lookup"
+    assert requested["arguments"] == {"query": "example"}
+
+
+@pytest.mark.asyncio
+async def test_mcp_aggregator_call_tool_explicit_server_keeps_tool_name():
+    """When server_name is explicit, the tool name is not re-parsed (even with SEP)."""
+    aggregator = mcp_aggregator_mod.MCPAggregator(
+        server_names=["srv1"],
+        connection_persistence=True,
+        context=DummyContext(),
+        name="test_agent",
+    )
+    aggregator.initialized = True
+    aggregator._server_to_tool_map = {}
+
+    requested = {}
+
+    class DummySession:
+        async def call_tool(self, name, arguments=None):
+            requested["tool_name"] = name
+            return SimpleNamespace(isError=False, content="called")
+
+    class DummyConnManager:
+        async def get_server(self, server_name, client_session_factory=None):
+            requested["server_name"] = server_name
+            return SimpleNamespace(session=DummySession())
+
+    aggregator._persistent_connection_manager = DummyConnManager()
+
+    # Name contains the namespace separator; must still be used verbatim.
+    result = await aggregator.call_tool("my_tool", server_name="srv1")
+    assert result.isError is False
+    assert requested["server_name"] == "srv1"
+    assert requested["tool_name"] == "my_tool"
+
+
+@pytest.mark.asyncio
 async def test_mcp_aggregator_get_prompt(monkeypatch):
     # Setup aggregator with non-persistent connection
     aggregator = mcp_aggregator_mod.MCPAggregator(
