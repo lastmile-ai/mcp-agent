@@ -8,6 +8,7 @@ context management, and filesystem workspace support.
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from xml.sax.saxutils import escape, quoteattr
 
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.workflows.deep_orchestrator.models import KnowledgeItem, TaskResult
@@ -173,17 +174,17 @@ class WorkspaceMemory:
             by_category[item.category].append(item)
 
         for category, items in by_category.items():
-            lines.append(f'  <category name="{category}">')
+            lines.append(f"  <category name={quoteattr(category)}>")
             for item in items:
                 value_str = str(item.value)
                 if len(value_str) > 100:
                     value_str = value_str[:100] + "..."
                 lines.append(
                     f'    <item confidence="{item.confidence:.2f}" '
-                    f'source="{item.source}">'
+                    f"source={quoteattr(item.source)}>"
                 )
-                lines.append(f"      <key>{item.key}</key>")
-                lines.append(f"      <value>{value_str}</value>")
+                lines.append(f"      <key>{escape(item.key)}</key>")
+                lines.append(f"      <value>{escape(value_str)}</value>")
                 lines.append("    </item>")
             lines.append("  </category>")
 
