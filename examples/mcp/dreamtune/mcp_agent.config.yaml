@@ -1,0 +1,16 @@
+$schema: ../../../schema/mcp-agent.config.schema.json
+
+execution_engine: asyncio
+logger:
+  type: console
+  level: error
+  progress_display: false
+
+mcp:
+  servers:
+    dreamtune:
+      command: npx
+      args: ["-y", "--package", "@dreamtune/sdk@0.1.2", "dreamtune-mcp"]
+      env:
+        DREAMTUNE_API_ORIGIN: https://api.dreamtunelabs.com
+        DREAMTUNE_REQUEST_TIMEOUT_MS: "60000"
