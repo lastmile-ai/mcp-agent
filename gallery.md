@@ -43,6 +43,7 @@ This gallery collects runnable projects from `/examples` that correspond to sect
 
 ## MCP integration
 
+- **Dreamtune** ([`examples/mcp/dreamtune/`](./examples/mcp/dreamtune/)) — discover model, tool and compute operations through the published stdio server, then invoke tools explicitly. Run `uv run main.py` after configuring the workspace key; the default run only lists tool definitions.
 - **MCP clients** (`examples/mcp/`) — call external MCP servers, aggregate results, and reuse `gen_client`. Run `uv run main.py`. Docs: [MCP integration overview](https://docs.mcp-agent.com/mcp/overview).
 - **Model selector** (`examples/basic/mcp_model_selector/`) — customise provider/model choice dynamically. Run `uv run main.py`. Docs: [Augmented LLMs](https://docs.mcp-agent.com/concepts/augmented-llms#model-selection).
 
