@@ -50,7 +50,7 @@ class WorkspaceMemory:
 
         # Create filesystem workspace if enabled
         if self.use_filesystem:
-            self.workspace_dir.mkdir(exist_ok=True)
+            self.workspace_dir.mkdir(parents=True, exist_ok=True)
             (self.workspace_dir / "scratchpad").mkdir(exist_ok=True)
             (self.workspace_dir / "artifacts").mkdir(exist_ok=True)
 
@@ -75,7 +75,7 @@ class WorkspaceMemory:
 
         if to_filesystem and self.use_filesystem:
             artifact_path = self.workspace_dir / "artifacts" / name
-            with open(artifact_path, "w") as f:
+            with open(artifact_path, "w", encoding="utf-8") as f:
                 f.write(content)
             logger.debug(f"Also saved artifact '{name}' to filesystem")
 
