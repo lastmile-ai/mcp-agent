@@ -58,8 +58,9 @@ class AgentCache:
             Cached agent if found, None otherwise
         """
         agent = self.cache.get(key)
-        if agent:
+        if agent is not None:
             self.hits += 1
+            self.cache[key] = self.cache.pop(key)
         else:
             self.misses += 1
         return agent
@@ -72,8 +73,9 @@ class AgentCache:
             key: Cache key
             agent: Agent to cache
         """
+        self.cache.pop(key, None)
         if len(self.cache) >= self.max_size:
-            # Remove oldest (first) item
+            # The first entry is the least recently used.
             oldest_key = next(iter(self.cache))
             del self.cache[oldest_key]
             # logger.debug(f"Evicted agent from cache: {oldest_key}")
