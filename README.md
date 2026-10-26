@@ -14,6 +14,10 @@
 </p>
 
 <p align="center">
+  <b>English</b> · <a href="https://github.com/lastmile-ai/mcp-agent/blob/main/README.zh.md">简体中文</a>
+</p>
+
+<p align="center">
 <a href="https://docs.mcp-agent.com"><img src="https://img.shields.io/badge/docs-8F?style=flat&link=https%3A%2F%2Fdocs.mcp-agent.com%2F" /><a/>
 <a href="https://pypi.org/project/mcp-agent/"><img src="https://img.shields.io/pypi/v/mcp-agent?color=%2334D058&label=pypi" /></a>
 <img alt="Pepy Total Downloads" src="https://img.shields.io/pepy/dt/mcp-agent?label=pypi%20%7C%20downloads"/>
