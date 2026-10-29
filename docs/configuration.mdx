@@ -505,6 +505,28 @@ openai:
   Ollama runs locally and doesn't require a real API key. The framework includes specialized `OllamaAugmentedLLM` for better integration.
 </Note>
 
+### NVIDIA
+
+NVIDIA NIM serves NVIDIA-hosted models (or your own self-hosted NIM) through an OpenAI-compatible API. Use the dedicated `nvidia` section with `NvidiaAugmentedLLM` (or `create_llm(provider="nvidia")`):
+
+<CodeGroup>
+```yaml Config File
+nvidia:
+  # base_url defaults to https://integrate.api.nvidia.com/v1
+  default_model: nvidia/nemotron-3.5-super-vl-120b-a12b
+```
+
+```bash Environment
+export NVIDIA_API_KEY="<your-nvidia-api-key>"
+# Optional: point at a self-hosted NIM
+export NVIDIA_BASE_URL="http://localhost:8000/v1"
+```
+</CodeGroup>
+
+<Note>
+  Get an API key at [build.nvidia.com](https://build.nvidia.com). The key can also be set as `nvidia.api_key` in `mcp_agent.secrets.yaml`. Other models you can use include `nvidia/nemotron-3-ultra-550b-a55b` and `nvidia/nemotron-3.5-lightning-30b-a3b`.
+</Note>
+
 ## Advanced Configuration
 
 ### Temporal Configuration

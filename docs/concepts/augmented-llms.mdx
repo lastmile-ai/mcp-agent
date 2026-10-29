@@ -176,6 +176,22 @@ openai:
   default_model: "llama3.2"  # Or any model you have installed
 ```
 
+### NVIDIA
+
+```python
+from mcp_agent.workflows.llm.augmented_llm_nvidia import NvidiaAugmentedLLM
+
+# Create NVIDIA NIM-powered augmented LLM (uses OpenAI-compatible API)
+llm = await agent.attach_llm(NvidiaAugmentedLLM)
+```
+
+```yaml mcp_agent.config.yaml
+# Configuration for NVIDIA NIM (api_key is read from NVIDIA_API_KEY)
+nvidia:
+  # base_url defaults to https://integrate.api.nvidia.com/v1; set it for self-hosted NIM
+  default_model: "nvidia/nemotron-3.5-super-vl-120b-a12b"
+```
+
 ## Core Capabilities
 
 ### 1. Multi-Turn Conversations

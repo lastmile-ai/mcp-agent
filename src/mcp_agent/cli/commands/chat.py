@@ -60,6 +60,7 @@ async def _run_single_model(
                 "google",
                 "bedrock",
                 "ollama",
+                "nvidia",
             }:
                 provider = maybe_provider
         if model_id and ":" in model_id:
@@ -242,6 +243,7 @@ def chat(
                                 "google",
                                 "bedrock",
                                 "ollama",
+                                "nvidia",
                             }:
                                 provider = prov_guess
                         llm = create_llm(
@@ -436,6 +438,7 @@ def chat(
                             "google",
                             "bedrock",
                             "ollama",
+                            "nvidia",
                         }:
                             provider = maybe_provider
                     if model_id and ":" in model_id:

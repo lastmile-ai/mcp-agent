@@ -40,7 +40,7 @@ from mcp.types import ModelPreferences
 # TODO: saqadri - move this to agents/factory.py
 
 SupportedLLMProviders = Literal[
-    "openai", "anthropic", "azure", "google", "bedrock", "ollama"
+    "openai", "anthropic", "azure", "google", "bedrock", "ollama", "nvidia"
 ]
 SupportedRoutingProviders = Literal["openai", "anthropic"]
 SupportedEmbeddingProviders = Literal["openai", "cohere"]
@@ -986,6 +986,10 @@ def _get_provider_class(
         from mcp_agent.workflows.llm.augmented_llm_ollama import OllamaAugmentedLLM
 
         return OllamaAugmentedLLM
+    if p == "nvidia":
+        from mcp_agent.workflows.llm.augmented_llm_nvidia import NvidiaAugmentedLLM
+
+        return NvidiaAugmentedLLM
 
     raise ValueError(
         f"mcp-agent doesn't support provider: {provider}. To request support, please create an issue at https://github.com/lastmile-ai/mcp-agent/issues"

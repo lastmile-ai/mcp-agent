@@ -102,6 +102,7 @@ async def _run_agent(
                 "google",
                 "bedrock",
                 "ollama",
+                "nvidia",
             }:
                 provider = maybe_provider
         if model_id and ":" in model_id:

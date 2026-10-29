@@ -500,6 +500,46 @@ class LMStudioSettings(OpenAISettings):
     )
 
 
+class NvidiaSettings(OpenAISettings):
+    """
+    Settings for using NVIDIA NIM (hosted at build.nvidia.com or self-hosted).
+
+    Extends OpenAISettings since NVIDIA NIM provides an OpenAI-compatible API.
+    Inherits all OpenAI fields (user, default_headers, reasoning_effort, etc.)
+    but overrides defaults for the NVIDIA API catalog.
+
+    Note: api_key is read from NVIDIA_API_KEY. Override base_url to target a
+    self-hosted NIM endpoint.
+    """
+
+    api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("api_key", "NVIDIA_API_KEY", "nvidia__api_key"),
+    )
+
+    base_url: str | None = Field(
+        default="https://integrate.api.nvidia.com/v1",
+        validation_alias=AliasChoices(
+            "base_url", "NVIDIA_BASE_URL", "nvidia__base_url"
+        ),
+    )
+
+    default_model: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "default_model", "NVIDIA_DEFAULT_MODEL", "nvidia__default_model"
+        ),
+    )
+
+    model_config = SettingsConfigDict(
+        env_prefix="NVIDIA_",
+        extra="allow",
+        arbitrary_types_allowed=True,
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+
 class AzureSettings(BaseSettings):
     """
     Settings for using Azure models in the MCP Agent application.
@@ -1175,6 +1215,9 @@ class Settings(BaseSettings):
 
     lm_studio: LMStudioSettings | None = Field(default_factory=LMStudioSettings)
     """Settings for using LM Studio models in the MCP Agent application"""
+
+    nvidia: NvidiaSettings | None = Field(default_factory=NvidiaSettings)
+    """Settings for using NVIDIA NIM models in the MCP Agent application"""
 
     workflow_task_modules: List[str] = Field(default_factory=list)
     """Optional list of modules to import at startup so workflow tasks register globally."""
