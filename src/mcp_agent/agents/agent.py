@@ -1402,6 +1402,11 @@ class AgentTasks:
         agent_name = request.agent_name
         server_names = request.server_names
         connection_persistence = request.connection_persistence
+        requested_tool_filter = (
+            {server: set(tools) for server, tools in request.tool_filter.items()}
+            if request.tool_filter is not None
+            else None
+        )
 
         # Create or get the MCPAggregator for the agent
         async with self.server_aggregators_for_agent_lock:
@@ -1414,8 +1419,8 @@ class AgentTasks:
                     context=self.context,
                     name=request.agent_name,
                     **(
-                        {"tool_filter": request.tool_filter}
-                        if request.tool_filter is not None
+                        {"tool_filter": requested_tool_filter}
+                        if requested_tool_filter is not None
                         else {}
                     ),
                 )
@@ -1427,7 +1432,7 @@ class AgentTasks:
             self._agent_init_params[agent_name] = (
                 list(server_names) if isinstance(server_names, list) else [],
                 bool(connection_persistence),
-                request.tool_filter,
+                requested_tool_filter,
             )
             logger.debug(
                 f"Initialized aggregator for agent '{agent_name}'",
@@ -1440,8 +1445,10 @@ class AgentTasks:
 
         # Initialize the servers
         aggregator = self.server_aggregators_for_agent[agent_name]
-        filter_changed = getattr(aggregator, "tool_filter", None) != request.tool_filter
-        aggregator.tool_filter = request.tool_filter
+        filter_changed = (
+            getattr(aggregator, "tool_filter", None) != requested_tool_filter
+        )
+        aggregator.tool_filter = requested_tool_filter
         if aggregator.initialized and (request.force or filter_changed):
             await aggregator.load_servers(force=True)
         else:

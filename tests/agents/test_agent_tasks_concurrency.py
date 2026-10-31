@@ -163,6 +163,29 @@ async def test_retry_initialization_uses_updated_filter(monkeypatch, force):
 
 
 @pytest.mark.anyio
+async def test_reused_request_mutation_refreshes_tool_filter(monkeypatch):
+    from mcp_agent.agents import agent as agent_mod
+
+    monkeypatch.setattr(agent_mod, "MCPAggregator", FakeAggregator)
+    tasks = AgentTasks(context=SimpleNamespace())
+    request = InitAggregatorRequest(
+        agent_name="writer",
+        server_names=["srv1"],
+        tool_filter={"srv1": {"read", "write"}},
+    )
+    await tasks.initialize_aggregator_task(request)
+    aggregator = tasks.server_aggregators_for_agent["writer"]
+
+    request.tool_filter["srv1"].remove("write")
+    assert aggregator.tool_filter == {"srv1": {"read", "write"}}
+
+    await tasks.initialize_aggregator_task(request)
+
+    assert aggregator.tool_filter == {"srv1": {"read"}}
+    assert aggregator.reload_count == 1
+
+
+@pytest.mark.anyio
 async def test_shutdown_deferred_until_inflight_complete(monkeypatch):
     # Monkeypatch MCPAggregator to FakeAggregator
     from mcp_agent.agents import agent as agent_mod
