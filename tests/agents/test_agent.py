@@ -132,6 +132,25 @@ class TestAgent:
         assert agent.server_names == server_names
 
     @pytest.mark.asyncio
+    async def test_initialization_passes_tool_filter_to_aggregator(self, mock_context):
+        from mcp_agent.agents.agent import InitAggregatorResponse
+
+        mock_context.executor.execute.return_value = InitAggregatorResponse(
+            initialized=True
+        )
+        agent = Agent(
+            name="test_agent",
+            context=mock_context,
+            server_names=["server"],
+            tool_filter={"server": {"read"}},
+        )
+
+        await agent.initialize()
+
+        request = mock_context.executor.execute.call_args.args[1]
+        assert request.tool_filter == {"server": {"read"}}
+
+    @pytest.mark.asyncio
     async def test_initialization_with_functions(self, mock_context, test_function):
         """Test initialization with functions."""
         agent = Agent(

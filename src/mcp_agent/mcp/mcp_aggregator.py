@@ -1,5 +1,5 @@
 import asyncio
-from typing import List, Literal, Dict, Optional, TypeVar, TYPE_CHECKING
+from typing import List, Literal, Dict, Optional, Set, TypeVar, TYPE_CHECKING
 
 from opentelemetry import trace
 from pydantic import BaseModel
@@ -107,6 +107,7 @@ class MCPAggregator(ContextDependent):
         connection_persistence: bool = True,  # Default to True for better stability
         context: Optional["Context"] = None,
         name: str = None,
+        tool_filter: Dict[str, Set[str]] | None = None,
         **kwargs,
     ):
         """
@@ -122,6 +123,7 @@ class MCPAggregator(ContextDependent):
         self.server_names = server_names
         self.connection_persistence = connection_persistence
         self.agent_name = name
+        self.tool_filter = tool_filter
         self._persistent_connection_manager: MCPConnectionManager = None
 
         # Set up logger with agent name in namespace if available
@@ -358,12 +360,24 @@ class MCPAggregator(ContextDependent):
                             f"Allowed tool list is explicitly empty for server '{server_name}'"
                         )
 
+                agent_allowed_tools = None
+                if self.tool_filter is not None:
+                    agent_allowed_tools = self.tool_filter.get(
+                        server_name, self.tool_filter.get("*")
+                    )
+
                 for tool in tools:
                     # Apply tool filtering if configured - O(1) lookup with set
                     if allowed_tools is not None and tool.name not in allowed_tools:
                         logger.debug(
                             f"Filtering out tool '{tool.name}' from server '{server_name}' (not in allowed_tools)"
                         )
+                        disabled_tool_count += 1
+                        continue
+                    if (
+                        agent_allowed_tools is not None
+                        and tool.name not in agent_allowed_tools
+                    ):
                         disabled_tool_count += 1
                         continue
 
@@ -846,7 +860,6 @@ class MCPAggregator(ContextDependent):
             if not self.initialized:
                 await self.load_servers()
 
-            server_name: str = None
             local_tool_name: str = None
 
             if server_name:
@@ -859,7 +872,12 @@ class MCPAggregator(ContextDependent):
                 span.set_attribute("parsed_server_name", server_name)
                 span.set_attribute("parsed_tool_name", local_tool_name)
 
-            if server_name is None or local_tool_name is None:
+            namespaced_name = (
+                f"{server_name}{SEP}{local_tool_name}"
+                if server_name is not None and local_tool_name is not None
+                else None
+            )
+            if namespaced_name not in self._namespaced_tool_map:
                 logger.error(f"Error: Tool '{name}' not found")
                 span.set_status(trace.Status(trace.StatusCode.ERROR))
                 span.record_exception(ValueError(f"Tool '{name}' not found"))

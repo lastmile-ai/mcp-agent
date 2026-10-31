@@ -80,6 +80,9 @@ class Agent(BaseModel):
     List of MCP server names that the agent can access.
     """
 
+    tool_filter: Dict[str, Set[str]] | None = None
+    """Optional per-server allowlist of MCP tool names; '*' applies to other servers."""
+
     functions: List[Callable] = Field(default_factory=list)
     """
     List of local functions that the agent can call.
@@ -299,6 +302,7 @@ class Agent(BaseModel):
                     InitAggregatorRequest(
                         agent_name=self.name,
                         server_names=self.server_names,
+                        tool_filter=self.tool_filter,
                         connection_persistence=self.connection_persistence,
                         force=force,
                     ),
@@ -1168,6 +1172,7 @@ class InitAggregatorRequest(BaseModel):
 
     agent_name: str
     server_names: List[str]
+    tool_filter: Dict[str, Set[str]] | None = None
     connection_persistence: bool = True
     force: bool = False
 
@@ -1300,7 +1305,9 @@ class AgentTasks:
         # Track agents awaiting shutdown once in-flight tasks complete
         self.agent_shutdown_pending: set[str] = set()
         # Remember init params to allow lazy re-initialization if aggregator missing
-        self._agent_init_params: dict[str, tuple[List[str], bool]] = {}
+        self._agent_init_params: dict[
+            str, tuple[List[str], bool, Dict[str, Set[str]] | None]
+        ] = {}
 
     @asynccontextmanager
     async def _with_aggregator(self, agent_name: str):
@@ -1319,7 +1326,7 @@ class AgentTasks:
             if aggregator is None:
                 params = self._agent_init_params.get(agent_name)
                 if params is not None:
-                    server_names, connection_persistence = params
+                    server_names, connection_persistence, tool_filter = params
                     logger.debug(
                         f"Reinitializing aggregator for agent '{agent_name}'",
                         data={
@@ -1332,6 +1339,11 @@ class AgentTasks:
                         connection_persistence=connection_persistence,
                         context=self.context,
                         name=agent_name,
+                        **(
+                            {"tool_filter": tool_filter}
+                            if tool_filter is not None
+                            else {}
+                        ),
                     )
                     self.server_aggregators_for_agent[agent_name] = aggregator
                 else:
@@ -1401,6 +1413,11 @@ class AgentTasks:
                     connection_persistence=connection_persistence,
                     context=self.context,
                     name=request.agent_name,
+                    **(
+                        {"tool_filter": request.tool_filter}
+                        if request.tool_filter is not None
+                        else {}
+                    ),
                 )
                 self.server_aggregators_for_agent[request.agent_name] = aggregator
 
@@ -1410,6 +1427,7 @@ class AgentTasks:
             self._agent_init_params[agent_name] = (
                 list(server_names) if isinstance(server_names, list) else [],
                 bool(connection_persistence),
+                request.tool_filter,
             )
             logger.debug(
                 f"Initialized aggregator for agent '{agent_name}'",

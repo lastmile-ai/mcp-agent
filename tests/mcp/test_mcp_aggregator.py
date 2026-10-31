@@ -5,7 +5,7 @@ import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-from mcp.types import Tool
+from mcp.types import CallToolResult, TextContent, Tool
 import src.mcp_agent.mcp.mcp_aggregator as mcp_aggregator_mod
 
 
@@ -910,6 +910,57 @@ class DummyContextWithServerRegistry:
         self.server_registry = MockServerRegistry(self.server_configs)
         self._mcp_connection_manager_lock = asyncio.Lock()
         self._mcp_connection_manager_ref_count = 0
+
+
+@pytest.mark.asyncio
+async def test_agent_tool_filter_limits_listing_and_calls(monkeypatch):
+    context = DummyContextWithServerRegistry(
+        {"server": MockServerConfig(allowed_tools={"read", "write"})}
+    )
+    tools = [
+        Tool(name=name, inputSchema={"type": "object"})
+        for name in ("read", "write", "delete")
+    ]
+    aggregator = mcp_aggregator_mod.MCPAggregator(
+        server_names=["server"],
+        connection_persistence=False,
+        context=context,
+        tool_filter={"server": {"read"}},
+    )
+
+    async def fetch_capabilities(_server_name):
+        return (None, tools, [], [])
+
+    with patch.object(aggregator, "_fetch_capabilities", fetch_capabilities):
+        await aggregator.load_server("server")
+    aggregator.initialized = True
+
+    assert [tool.name for tool in (await aggregator.list_tools()).tools] == [
+        "server_read"
+    ]
+
+    calls = []
+
+    class Session:
+        async def call_tool(self, name, arguments=None):
+            calls.append(name)
+            return CallToolResult(content=[TextContent(type="text", text="ok")])
+
+    @asynccontextmanager
+    async def client(_server_name, server_registry=None):
+        yield Session()
+
+    monkeypatch.setattr(mcp_aggregator_mod, "gen_client", client)
+
+    for name, server_name in (("server_write", None), ("write", "server")):
+        result = await aggregator.call_tool(name, server_name=server_name)
+        assert result.isError is True
+        assert "not found" in result.content[0].text
+    assert calls == []
+
+    result = await aggregator.call_tool("read", server_name="server")
+    assert result.isError is False
+    assert calls == ["read"]
 
 
 @pytest.mark.asyncio

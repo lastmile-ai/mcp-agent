@@ -13,11 +13,14 @@ from mcp_agent.agents.agent import (
 
 
 class FakeAggregator:
-    def __init__(self, server_names, connection_persistence, context, name):
+    def __init__(
+        self, server_names, connection_persistence, context, name, tool_filter=None
+    ):
         self.server_names = server_names
         self.connection_persistence = connection_persistence
         self.context = context
         self.name = name
+        self.tool_filter = tool_filter
         self.initialized = False
         self.initialized_count = 0
         self.closed = False
@@ -69,6 +72,7 @@ async def test_lazy_reinitialize_missing_aggregator(monkeypatch):
     req = InitAggregatorRequest(
         agent_name=agent_name,
         server_names=["srv1"],
+        tool_filter={"srv1": {"read"}},
         connection_persistence=True,
         force=False,
     )
@@ -76,6 +80,9 @@ async def test_lazy_reinitialize_missing_aggregator(monkeypatch):
     # Initialize once
     await tasks.initialize_aggregator_task(req)
     assert agent_name in tasks.server_aggregators_for_agent
+    assert tasks.server_aggregators_for_agent[agent_name].tool_filter == {
+        "srv1": {"read"}
+    }
 
     # Simulate aggregator disappearing (e.g., concurrent shutdown)
     async with tasks.server_aggregators_for_agent_lock:
@@ -87,6 +94,9 @@ async def test_lazy_reinitialize_missing_aggregator(monkeypatch):
     )
     assert isinstance(res, ListToolsResult)
     assert agent_name in tasks.server_aggregators_for_agent
+    assert tasks.server_aggregators_for_agent[agent_name].tool_filter == {
+        "srv1": {"read"}
+    }
 
 
 @pytest.mark.anyio
