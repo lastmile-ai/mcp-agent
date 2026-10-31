@@ -113,6 +113,7 @@ class MCPAggregator(ContextDependent):
         """
         :param server_names: A list of server names to connect to.
         :param connection_persistence: Whether to maintain persistent connections to servers (default: True).
+        :param tool_filter: Optional per-server allowlist of tool names; '*' applies to other servers.
         Note: The server names must be resolvable by the gen_client function, and specified in the server registry.
         """
         super().__init__(
@@ -337,6 +338,12 @@ class MCPAggregator(ContextDependent):
 
             # Process tools
             async with self._tool_map_lock:
+                for old_tool in self._server_to_tool_map.get(server_name, []):
+                    if (
+                        self._namespaced_tool_map.get(old_tool.namespaced_tool_name)
+                        is old_tool
+                    ):
+                        del self._namespaced_tool_map[old_tool.namespaced_tool_name]
                 self._server_to_tool_map[server_name] = []
 
                 # Get server configuration to check for tool filtering
@@ -877,7 +884,12 @@ class MCPAggregator(ContextDependent):
                 if server_name is not None and local_tool_name is not None
                 else None
             )
-            if namespaced_name not in self._namespaced_tool_map:
+            indexed_tool = self._namespaced_tool_map.get(namespaced_name)
+            if (
+                indexed_tool is None
+                or indexed_tool.server_name != server_name
+                or indexed_tool.tool.name != local_tool_name
+            ):
                 logger.error(f"Error: Tool '{name}' not found")
                 span.set_status(trace.Status(trace.StatusCode.ERROR))
                 span.record_exception(ValueError(f"Tool '{name}' not found"))

@@ -1440,7 +1440,14 @@ class AgentTasks:
 
         # Initialize the servers
         aggregator = self.server_aggregators_for_agent[agent_name]
-        await aggregator.initialize(force=request.force)
+        if aggregator.initialized and (
+            request.force
+            or getattr(aggregator, "tool_filter", None) != request.tool_filter
+        ):
+            aggregator.tool_filter = request.tool_filter
+            await aggregator.load_servers(force=True)
+        else:
+            await aggregator.initialize(force=request.force)
 
         return InitAggregatorResponse(
             initialized=aggregator.initialized,

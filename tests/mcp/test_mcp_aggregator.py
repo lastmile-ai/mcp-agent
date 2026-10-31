@@ -964,6 +964,63 @@ async def test_agent_tool_filter_limits_listing_and_calls(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_refresh_removes_tools_revoked_by_agent_filter():
+    context = DummyContextWithServerRegistry()
+    aggregator = mcp_aggregator_mod.MCPAggregator(
+        server_names=["server"],
+        connection_persistence=False,
+        context=context,
+        tool_filter={"server": {"read", "write"}},
+    )
+
+    async def fetch_capabilities(_server_name):
+        return (
+            None,
+            [
+                Tool(name=name, inputSchema={"type": "object"})
+                for name in ("read", "write")
+            ],
+            [],
+            [],
+        )
+
+    with patch.object(aggregator, "_fetch_capabilities", fetch_capabilities):
+        await aggregator.load_server("server")
+        aggregator.initialized = True
+        aggregator.tool_filter = {"server": {"read"}}
+        await aggregator.refresh("server")
+
+    assert [tool.name for tool in (await aggregator.list_tools()).tools] == [
+        "server_read"
+    ]
+    result = await aggregator.call_tool("write", server_name="server")
+    assert result.isError is True
+    assert "not found" in result.content[0].text
+
+
+@pytest.mark.asyncio
+async def test_call_tool_rejects_namespaced_name_collision():
+    aggregator = mcp_aggregator_mod.MCPAggregator(
+        server_names=["public", "public_admin"],
+        connection_persistence=False,
+        context=DummyContextWithServerRegistry(),
+    )
+    aggregator.initialized = True
+    aggregator._namespaced_tool_map["public_admin_delete"] = (
+        mcp_aggregator_mod.NamespacedTool(
+            tool=Tool(name="delete", inputSchema={"type": "object"}),
+            server_name="public_admin",
+            namespaced_tool_name="public_admin_delete",
+        )
+    )
+
+    result = await aggregator.call_tool("admin_delete", server_name="public")
+
+    assert result.isError is True
+    assert "not found" in result.content[0].text
+
+
+@pytest.mark.asyncio
 async def test_tool_filtering_with_allowed_tools():
     """Test that tools are filtered correctly when allowed_tools is configured"""
     # Setup server config with allowed tools
