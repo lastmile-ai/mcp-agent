@@ -1,5 +1,5 @@
 import asyncio
-from typing import List, Literal, Dict, Optional, TypeVar, TYPE_CHECKING
+from typing import List, Literal, Dict, Optional, Set, TypeVar, TYPE_CHECKING
 
 from opentelemetry import trace
 from pydantic import BaseModel
@@ -107,11 +107,13 @@ class MCPAggregator(ContextDependent):
         connection_persistence: bool = True,  # Default to True for better stability
         context: Optional["Context"] = None,
         name: str = None,
+        tool_filter: Dict[str, Set[str]] | None = None,
         **kwargs,
     ):
         """
         :param server_names: A list of server names to connect to.
         :param connection_persistence: Whether to maintain persistent connections to servers (default: True).
+        :param tool_filter: Optional per-server allowlist of tool names; '*' applies to other servers.
         Note: The server names must be resolvable by the gen_client function, and specified in the server registry.
         """
         super().__init__(
@@ -122,6 +124,7 @@ class MCPAggregator(ContextDependent):
         self.server_names = server_names
         self.connection_persistence = connection_persistence
         self.agent_name = name
+        self.tool_filter = tool_filter
         self._persistent_connection_manager: MCPConnectionManager = None
 
         # Set up logger with agent name in namespace if available
@@ -335,6 +338,12 @@ class MCPAggregator(ContextDependent):
 
             # Process tools
             async with self._tool_map_lock:
+                for old_tool in self._server_to_tool_map.get(server_name, []):
+                    if (
+                        self._namespaced_tool_map.get(old_tool.namespaced_tool_name)
+                        is old_tool
+                    ):
+                        del self._namespaced_tool_map[old_tool.namespaced_tool_name]
                 self._server_to_tool_map[server_name] = []
 
                 # Get server configuration to check for tool filtering
@@ -358,12 +367,24 @@ class MCPAggregator(ContextDependent):
                             f"Allowed tool list is explicitly empty for server '{server_name}'"
                         )
 
+                agent_allowed_tools = None
+                if self.tool_filter is not None:
+                    agent_allowed_tools = self.tool_filter.get(
+                        server_name, self.tool_filter.get("*")
+                    )
+
                 for tool in tools:
                     # Apply tool filtering if configured - O(1) lookup with set
                     if allowed_tools is not None and tool.name not in allowed_tools:
                         logger.debug(
                             f"Filtering out tool '{tool.name}' from server '{server_name}' (not in allowed_tools)"
                         )
+                        disabled_tool_count += 1
+                        continue
+                    if (
+                        agent_allowed_tools is not None
+                        and tool.name not in agent_allowed_tools
+                    ):
                         disabled_tool_count += 1
                         continue
 
@@ -846,8 +867,8 @@ class MCPAggregator(ContextDependent):
             if not self.initialized:
                 await self.load_servers()
 
-            server_name: str = None
             local_tool_name: str = None
+            explicit_server = bool(server_name)
 
             if server_name:
                 span.set_attribute("server_name", server_name)
@@ -859,7 +880,27 @@ class MCPAggregator(ContextDependent):
                 span.set_attribute("parsed_server_name", server_name)
                 span.set_attribute("parsed_tool_name", local_tool_name)
 
-            if server_name is None or local_tool_name is None:
+            namespaced_name = (
+                f"{server_name}{SEP}{local_tool_name}"
+                if server_name is not None and local_tool_name is not None
+                else None
+            )
+            if explicit_server:
+                indexed_tool = next(
+                    (
+                        tool
+                        for tool in self._server_to_tool_map.get(server_name, [])
+                        if tool.tool.name == local_tool_name
+                    ),
+                    None,
+                )
+            else:
+                indexed_tool = self._namespaced_tool_map.get(namespaced_name)
+            if (
+                indexed_tool is None
+                or indexed_tool.server_name != server_name
+                or indexed_tool.tool.name != local_tool_name
+            ):
                 logger.error(f"Error: Tool '{name}' not found")
                 span.set_status(trace.Status(trace.StatusCode.ERROR))
                 span.record_exception(ValueError(f"Tool '{name}' not found"))

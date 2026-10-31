@@ -13,13 +13,17 @@ from mcp_agent.agents.agent import (
 
 
 class FakeAggregator:
-    def __init__(self, server_names, connection_persistence, context, name):
+    def __init__(
+        self, server_names, connection_persistence, context, name, tool_filter=None
+    ):
         self.server_names = server_names
         self.connection_persistence = connection_persistence
         self.context = context
         self.name = name
+        self.tool_filter = tool_filter
         self.initialized = False
         self.initialized_count = 0
+        self.reload_count = 0
         self.closed = False
         self.calls = 0
         self._block = False
@@ -45,6 +49,10 @@ class FakeAggregator:
         self.initialized = True
         self.initialized_count += 1
 
+    async def load_servers(self, force: bool = False):
+        assert force is True
+        self.reload_count += 1
+
     async def list_tools(self, server_name: str | None = None) -> ListToolsResult:
         self.calls += 1
         if self._block:
@@ -69,6 +77,7 @@ async def test_lazy_reinitialize_missing_aggregator(monkeypatch):
     req = InitAggregatorRequest(
         agent_name=agent_name,
         server_names=["srv1"],
+        tool_filter={"srv1": {"read"}},
         connection_persistence=True,
         force=False,
     )
@@ -76,6 +85,9 @@ async def test_lazy_reinitialize_missing_aggregator(monkeypatch):
     # Initialize once
     await tasks.initialize_aggregator_task(req)
     assert agent_name in tasks.server_aggregators_for_agent
+    assert tasks.server_aggregators_for_agent[agent_name].tool_filter == {
+        "srv1": {"read"}
+    }
 
     # Simulate aggregator disappearing (e.g., concurrent shutdown)
     async with tasks.server_aggregators_for_agent_lock:
@@ -87,6 +99,90 @@ async def test_lazy_reinitialize_missing_aggregator(monkeypatch):
     )
     assert isinstance(res, ListToolsResult)
     assert agent_name in tasks.server_aggregators_for_agent
+    assert tasks.server_aggregators_for_agent[agent_name].tool_filter == {
+        "srv1": {"read"}
+    }
+
+
+@pytest.mark.anyio
+async def test_force_initialize_replaces_existing_agent_filter(monkeypatch):
+    from mcp_agent.agents import agent as agent_mod
+
+    monkeypatch.setattr(agent_mod, "MCPAggregator", FakeAggregator)
+    tasks = AgentTasks(context=SimpleNamespace())
+    await tasks.initialize_aggregator_task(
+        InitAggregatorRequest(
+            agent_name="writer", server_names=["srv1"], tool_filter={"srv1": {"read"}}
+        )
+    )
+
+    await tasks.initialize_aggregator_task(
+        InitAggregatorRequest(
+            agent_name="writer",
+            server_names=["srv1"],
+            tool_filter={"srv1": {"write"}},
+            force=True,
+        )
+    )
+
+    aggregator = tasks.server_aggregators_for_agent["writer"]
+    assert aggregator.tool_filter == {"srv1": {"write"}}
+    assert aggregator.reload_count == 1
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("force", [False, True])
+async def test_retry_initialization_uses_updated_filter(monkeypatch, force):
+    from mcp_agent.agents import agent as agent_mod
+
+    monkeypatch.setattr(agent_mod, "MCPAggregator", FakeAggregator)
+    tasks = AgentTasks(context=SimpleNamespace())
+    request = InitAggregatorRequest(
+        agent_name="writer", server_names=["srv1"], tool_filter={"srv1": {"read"}}
+    )
+    await tasks.initialize_aggregator_task(request)
+    aggregator = tasks.server_aggregators_for_agent["writer"]
+    aggregator.initialized = False
+
+    async def retry_initialize(force=False):
+        assert aggregator.tool_filter == {"srv1": {"write"}}
+        aggregator.initialized = True
+
+    monkeypatch.setattr(aggregator, "initialize", retry_initialize)
+    await tasks.initialize_aggregator_task(
+        InitAggregatorRequest(
+            agent_name="writer",
+            server_names=["srv1"],
+            tool_filter={"srv1": {"write"}},
+            force=force,
+        )
+    )
+
+    assert aggregator.tool_filter == {"srv1": {"write"}}
+    assert aggregator.reload_count == 0
+
+
+@pytest.mark.anyio
+async def test_reused_request_mutation_refreshes_tool_filter(monkeypatch):
+    from mcp_agent.agents import agent as agent_mod
+
+    monkeypatch.setattr(agent_mod, "MCPAggregator", FakeAggregator)
+    tasks = AgentTasks(context=SimpleNamespace())
+    request = InitAggregatorRequest(
+        agent_name="writer",
+        server_names=["srv1"],
+        tool_filter={"srv1": {"read", "write"}},
+    )
+    await tasks.initialize_aggregator_task(request)
+    aggregator = tasks.server_aggregators_for_agent["writer"]
+
+    request.tool_filter["srv1"].remove("write")
+    assert aggregator.tool_filter == {"srv1": {"read", "write"}}
+
+    await tasks.initialize_aggregator_task(request)
+
+    assert aggregator.tool_filter == {"srv1": {"read"}}
+    assert aggregator.reload_count == 1
 
 
 @pytest.mark.anyio
