@@ -868,6 +868,7 @@ class MCPAggregator(ContextDependent):
                 await self.load_servers()
 
             local_tool_name: str = None
+            explicit_server = bool(server_name)
 
             if server_name:
                 span.set_attribute("server_name", server_name)
@@ -884,7 +885,17 @@ class MCPAggregator(ContextDependent):
                 if server_name is not None and local_tool_name is not None
                 else None
             )
-            indexed_tool = self._namespaced_tool_map.get(namespaced_name)
+            if explicit_server:
+                indexed_tool = next(
+                    (
+                        tool
+                        for tool in self._server_to_tool_map.get(server_name, [])
+                        if tool.tool.name == local_tool_name
+                    ),
+                    None,
+                )
+            else:
+                indexed_tool = self._namespaced_tool_map.get(namespaced_name)
             if (
                 indexed_tool is None
                 or indexed_tool.server_name != server_name

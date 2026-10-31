@@ -131,6 +131,38 @@ async def test_force_initialize_replaces_existing_agent_filter(monkeypatch):
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("force", [False, True])
+async def test_retry_initialization_uses_updated_filter(monkeypatch, force):
+    from mcp_agent.agents import agent as agent_mod
+
+    monkeypatch.setattr(agent_mod, "MCPAggregator", FakeAggregator)
+    tasks = AgentTasks(context=SimpleNamespace())
+    request = InitAggregatorRequest(
+        agent_name="writer", server_names=["srv1"], tool_filter={"srv1": {"read"}}
+    )
+    await tasks.initialize_aggregator_task(request)
+    aggregator = tasks.server_aggregators_for_agent["writer"]
+    aggregator.initialized = False
+
+    async def retry_initialize(force=False):
+        assert aggregator.tool_filter == {"srv1": {"write"}}
+        aggregator.initialized = True
+
+    monkeypatch.setattr(aggregator, "initialize", retry_initialize)
+    await tasks.initialize_aggregator_task(
+        InitAggregatorRequest(
+            agent_name="writer",
+            server_names=["srv1"],
+            tool_filter={"srv1": {"write"}},
+            force=force,
+        )
+    )
+
+    assert aggregator.tool_filter == {"srv1": {"write"}}
+    assert aggregator.reload_count == 0
+
+
+@pytest.mark.anyio
 async def test_shutdown_deferred_until_inflight_complete(monkeypatch):
     # Monkeypatch MCPAggregator to FakeAggregator
     from mcp_agent.agents import agent as agent_mod
