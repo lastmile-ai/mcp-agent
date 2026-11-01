@@ -5,7 +5,7 @@ description: "Learn how to use MCP server primitives like tools, resources, prom
 
 # MCP Primitives
 
-MCP (Model Context Protocol) primitives are standardized building blocks that enable agents to access structured data and functionality from MCP servers. This guide shows you how to use all MCP primitives: **tools**, **resources**, **prompts**, **roots**, and **elicitation**.
+MCP (Model Context Protocol) primitives are standardized building blocks that enable agents to access structured data and functionality from MCP servers. This guide covers **tools**, **resources**, **prompts**, and **elicitation**, with compatibility notes for the deprecated **roots** and **sampling** features.
 
 ## What are MCP Primitives?
 
@@ -20,15 +20,17 @@ MCP (Model Context Protocol) primitives are standardized building blocks that en
     Reusable messages and instructions that can be listed and invoked from MCP servers with parameters
   </Card>
   <Card title="Roots" icon="folder-tree">
-    File system paths that MCP servers make accessible for browsing and operations
+    Legacy client-provided workspace hints for servers (deprecated as of MCP 2026-07-28); not an access-control boundary
   </Card>
   <Card title="Elicitation" icon="question-circle">
     Interactive input requests that allow servers to ask for structured user input during tool execution
   </Card>
   <Card title="Sampling" icon="sparkles">
-    Server-side LLM invocation capability for specialized reasoning (coming soon)
+    Legacy requests from a server to a supporting client's LLM (deprecated as of MCP 2026-07-28)
   </Card>
 </CardGroup>
+
+Roots, sampling, and protocol logging were [deprecated in MCP 2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28/deprecated). Existing implementations can continue using them during the compatibility period, but new integrations should use explicit paths or resource URIs for workspace context and LLM-provider APIs for completions.
 
 ## Transport Types
 
@@ -284,36 +286,11 @@ async def deploy_application(
 ```
 </CodeGroup>
 
-## Roots Support
+## Legacy roots support (deprecated)
 
-Roots define file system paths that MCP servers make accessible:
+MCP roots let a supporting **client** describe workspace locations to a server; they do not grant filesystem access. The `Agent` class does not expose `list_roots()`, so examples that call `await agent.list_roots(...)` are not valid for this SDK.
 
-<CodeGroup>
-```yaml Configuration with Roots
-mcp:
-  servers:
-    project_server:
-      command: "python"
-      args: ["-m", "my_mcp_server"]
-      roots:
-        - uri: "file:///workspace/project"
-          name: "Project Root"
-        - uri: "file:///shared/resources"
-          name: "Shared Resources"
-        - uri: "file:///tmp/scratch"
-          name: "Scratch Space"
-```
-
-```python Accessing Roots in Agent
-# List available roots from a server
-roots = await agent.list_roots("project_server")
-for root in roots:
-    print(f"Root: {root.name} -> {root.uri}")
-    
-# Roots provide base paths for file operations
-# Tools from the server can operate within these roots
-```
-</CodeGroup>
+For new integrations, pass workspace paths explicitly through tool arguments, resource URIs, or server configuration. The [legacy roots example](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp/mcp_roots) remains available for compatibility with older MCP connections.
 
 ## Authentication Support
 
@@ -354,9 +331,9 @@ mcp-agent supports authentication for MCP servers:
 | Tools | ✅ | ✅ | ✅ | ✅ | Fully Supported |
 | Resources | ✅ | ✅ | ✅ | ✅ | Fully Supported |
 | Prompts | ✅ | ✅ | ✅ | ✅ | Fully Supported |
-| Roots | ✅ | ✅ | ✅ | ✅ | Fully Supported |
+| Roots | ✅ | ✅ | ✅ | ✅ | Deprecated; legacy compatibility |
 | Elicitation | ✅ | ✅ | ✅ | ✅ | Fully Supported |
-| Sampling | ✅ | ✅ | ✅ | ✅ | Coming Soon |
+| Sampling | ✅ | ✅ | ✅ | ✅ | Deprecated; legacy compatibility |
 
 ## Complete Examples
 

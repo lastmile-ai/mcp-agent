@@ -55,7 +55,7 @@ Configure secrets in `mcp_agent.secrets.yaml` or environment variables (see [Spe
 
 ## Using MCP capabilities from an Agent
 
-Once a server is configured, every attached agent and AugmentedLLM can access its tools, resources, prompts, and roots:
+Once a server is configured, an attached agent can list the supported tools, resources, and prompts:
 
 ```python
 from mcp_agent.agents.agent import Agent
@@ -70,21 +70,21 @@ async with agent:
     tools = await agent.list_tools()
     resources = await agent.list_resources()
     prompts = await agent.list_prompts()
-    roots = await agent.list_roots()
 
     print("Tools:", [t.name for t in tools.tools])
     print("Resources:", [r.uri for r in resources.resources])
     print("Prompts:", [p.name for p in prompts.prompts])
-    print("Roots:", [r.uri for r in roots.roots])
 ```
 
 Key primitives you will use:
 
+> **Protocol compatibility (2026-07-28):** MCP deprecated **roots** and **sampling** in the 2026-07-28 specification. Existing integrations can continue to use them during the deprecation period, but new implementations should not adopt them. Prefer tool arguments, resource URIs, or server configuration for workspace paths, and direct LLM-provider APIs for model completions. See the [official deprecated-features registry](https://modelcontextprotocol.io/specification/2026-07-28/deprecated).
+
 - **Tools**: `await agent.call_tool("tool_name", arguments={...})`
 - **Resources**: `await agent.list_resources()` / `await agent.read_resource(uri)`
 - **Prompts**: `await agent.list_prompts()` / `await agent.get_prompt(name, arguments)`
-- **Roots**: `await agent.list_roots()` for filesystem-style exploration
-- **Sampling**: Some servers expose `sampling` endpoints; see [`examples/mcp/mcp_sampling`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp/mcp_sampling)
+- **Roots (deprecated)**: legacy clients can expose workspace roots to servers, but `Agent` has no `list_roots()` method. New integrations should use explicit tool arguments or server configuration.
+- **Sampling (deprecated)**: Legacy MCP servers can request LLM completions from a supporting client; sampling is not a server-exposed endpoint. See [`examples/mcp/mcp_sampling`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp/mcp_sampling) for a compatibility example
 
 ## Connecting programmatically (`gen_client`)
 
