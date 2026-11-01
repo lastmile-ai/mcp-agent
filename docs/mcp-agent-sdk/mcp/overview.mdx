@@ -4,7 +4,7 @@ description: "How mcp-agent integrates with the Model Context Protocol"
 icon: plug
 ---
 
-mcp-agent is built on top of the Model Context Protocol (MCP). Agents connect to MCP servers to gain tools, data, prompts, and filesystem-style access. If you are new to the protocol, start with the [official MCP introduction](https://modelcontextprotocol.io/docs/getting-started/intro); this page shows how MCP fits into mcp-agent.
+mcp-agent is built on top of the Model Context Protocol (MCP). Agents connect to MCP servers to use tools, resources, and prompts. Filesystem access is typically provided through server tools; legacy MCP roots were client-provided workspace hints. If you are new to the protocol, start with the [official MCP introduction](https://modelcontextprotocol.io/docs/getting-started/intro); this page shows how MCP fits into mcp-agent.
 
 ## MCP primitives at a glance
 
@@ -19,15 +19,17 @@ mcp-agent is built on top of the Model Context Protocol (MCP). Agents connect to
     Parameterised templates listed with `agent.list_prompts` and fetched via `agent.get_prompt`.
   </Card>
   <Card title="Roots" icon="folder-tree">
-    Named filesystem locations agents can browse; list with `agent.list_roots`.
+    Client-provided workspace locations (deprecated in MCP 2026-07-28); `Agent` does not provide `list_roots()`.
   </Card>
   <Card title="Elicitation" icon="question-circle">
     Servers can pause a tool to request structured user input; see the elicitation example under `examples/mcp`.
   </Card>
   <Card title="Sampling" icon="sparkles">
-    Some servers provide LLM completion endpoints; try the sampling demo in [`examples/mcp`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp).
+    Legacy MCP servers can request LLM completions from supporting clients (deprecated in 2026-07-28). New code should use LLM-provider APIs directly; see the [compatibility example](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp).
   </Card>
 </CardGroup>
+
+**Protocol note:** Roots, sampling, and protocol logging were deprecated in the [MCP 2026-07-28 specification](https://modelcontextprotocol.io/specification/2026-07-28/deprecated). They remain available during the compatibility period; avoid them in new implementations.
 
 [Supported Capabilities →](/mcp-agent-sdk/mcp/supported-capabilities) covers each primitive in depth.
 
@@ -41,7 +43,7 @@ The quickest way to learn is to run the projects in [`examples/mcp`](https://git
 | [`mcp_sse`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp/mcp_sse) | Subscribe to an SSE MCP server | `sse` |
 | [`mcp_websockets`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp/mcp_websockets) | Bi-directional WebSocket communication | `websocket` |
 | [`mcp_prompts_and_resources`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp/mcp_prompts_and_resources) | List and consume prompts/resources | stdio |
-| [`mcp_roots`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp/mcp_roots) | Browse server roots (filesystem access) | stdio |
+| [`mcp_roots`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp/mcp_roots) | Legacy roots compatibility example (deprecated) | stdio |
 | [`mcp_elicitation`](https://github.com/lastmile-ai/mcp-agent/tree/main/examples/mcp/mcp_elicitation) | Handle elicitation (interactive prompts) | stdio |
 
 Each example includes a minimal server configuration and client code that connects via `gen_client`.
@@ -81,7 +83,6 @@ async with agent:
     tools = await agent.list_tools()
     resources = await agent.list_resources()
     prompts = await agent.list_prompts()
-    roots = await agent.list_roots()
 
     print("Tools:", [t.name for t in tools.tools])
     print("Resources:", [r.uri for r in resources.resources])
@@ -92,9 +93,8 @@ Common API calls:
 - `await agent.call_tool("tool_name", arguments={...})`
 - `await agent.read_resource(uri)`
 - `await agent.get_prompt(name, arguments)`
-- `await agent.list_roots()`
 
-AugmentedLLMs inherit these capabilities automatically.
+AugmentedLLM access depends on the configured servers and the capabilities supported by each integration.
 
 ## Lightweight MCP client (`gen_client`)
 
@@ -217,7 +217,7 @@ openai:
   default_model: "gpt-4o-mini"
 ```
 
-### Using tools, resources, prompts, and roots
+### Using tools, resources, and prompts
 
 ```python
 # Tools
@@ -228,9 +228,6 @@ resource = await agent.read_resource("file:///data/report.pdf")
 
 # Prompts
 prompt = await agent.get_prompt("code_review", {"language": "python", "file": "main.py"})
-
-# Roots
-roots = await agent.list_roots()
 ```
 
 ### Elicitation example
@@ -274,9 +271,9 @@ async def deploy_application(app_name: str, environment: str, ctx: Context) -> s
 | Tools       | ✅    | ✅  | ✅        | ✅   | Fully supported |
 | Resources   | ✅    | ✅  | ✅        | ✅   | Fully supported |
 | Prompts     | ✅    | ✅  | ✅        | ✅   | Fully supported |
-| Roots       | ✅    | ✅  | ✅        | ✅   | Fully supported |
+| Roots       | ✅    | ✅  | ✅        | ✅   | Deprecated; legacy compatibility |
 | Elicitation | ✅    | ✅  | ✅        | ✅   | Fully supported |
-| Sampling    | ✅    | ✅  | ✅        | ✅   | Supported via examples |
+| Sampling    | ✅    | ✅  | ✅        | ✅   | Deprecated; legacy examples |
 
 ### Example gallery
 
