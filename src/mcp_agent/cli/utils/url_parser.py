@@ -51,7 +51,11 @@ def generate_server_name(url: str) -> str:
         if ":" in parsed.netloc:
             port = f"_{parsed.netloc.split(':')[1]}"
         if path:
-            return f"{clean}{port}_{path[:20]}"
+            name = f"{clean}{port}_{path[:20]}"
+            if parsed.query:
+                query_hash = hashlib.md5(parsed.query.encode()).hexdigest()[:8]
+                name = f"{name}_{query_hash}"
+            return name
         url_hash = hashlib.md5(url.encode()).hexdigest()[:8]
         return f"{clean}{port}_{url_hash}"
     return clean
