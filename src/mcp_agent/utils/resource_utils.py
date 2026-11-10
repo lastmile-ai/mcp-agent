@@ -1,7 +1,7 @@
 import base64
 from pathlib import Path
 from typing import List, Optional, Tuple
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 from mcp.types import (
     BlobResourceContents,
@@ -207,13 +207,13 @@ def extract_title_from_uri(uri: AnyUrl) -> str:
             # Get the last part of the path
             path_parts = uri.path.split("/")
             filename = next((p for p in reversed(path_parts) if p), "")
-            return filename if filename else uri_str
+            return unquote(filename) if filename else uri_str
 
         # For file URLs or other schemes
         elif uri.path:
             import os.path
 
-            return os.path.basename(uri.path)
+            return unquote(os.path.basename(uri.path))
 
     except Exception:
         pass
