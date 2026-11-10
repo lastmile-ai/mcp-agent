@@ -31,8 +31,8 @@ def parse_server_url(url: str) -> Tuple[str, Literal["http", "sse"], str]:
     elif parsed.path.endswith("/mcp"):
         normalized = url
     else:
-        base = url if url.endswith("/") else f"{url}/"
-        normalized = f"{base}mcp"
+        base = parsed.path if parsed.path.endswith("/") else f"{parsed.path}/"
+        normalized = parsed._replace(path=f"{base}mcp").geturl()
 
     name = generate_server_name(normalized)
     return name, transport, normalized
