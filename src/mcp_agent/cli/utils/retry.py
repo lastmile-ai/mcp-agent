@@ -71,7 +71,7 @@ def retry_with_exponential_backoff(
         retryable_check = is_retryable_error
 
     last_exception = None
-    delay = initial_delay
+    delay = min(initial_delay, max_delay)
 
     for attempt in range(1, max_attempts + 1):
         try:
@@ -131,7 +131,7 @@ async def retry_async_with_exponential_backoff(
         retryable_check = is_retryable_error
 
     last_exception = None
-    delay = initial_delay
+    delay = min(initial_delay, max_delay)
 
     for attempt in range(1, max_attempts + 1):
         try:
