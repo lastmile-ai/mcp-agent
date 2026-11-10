@@ -831,9 +831,7 @@ class PydanticTypeEncoder(json.JSONEncoder):
                 else {"__ellipsis__": True},
                 "description": obj.description,
                 "title": obj.title,
-                "metadata": {k: str(v) for k, v in obj.metadata.items()}
-                if hasattr(obj, "metadata")
-                else {},
+                "metadata": [str(item) for item in obj.metadata],
             }
 
         # Handle types (classes)
