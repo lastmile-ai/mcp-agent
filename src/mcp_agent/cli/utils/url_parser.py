@@ -31,8 +31,8 @@ def parse_server_url(url: str) -> Tuple[str, Literal["http", "sse"], str]:
     elif parsed.path.endswith("/mcp"):
         normalized = url
     else:
-        base = url if url.endswith("/") else f"{url}/"
-        normalized = f"{base}mcp"
+        base = parsed.path if parsed.path.endswith("/") else f"{parsed.path}/"
+        normalized = parsed._replace(path=f"{base}mcp").geturl()
 
     name = generate_server_name(normalized)
     return name, transport, normalized
@@ -51,7 +51,11 @@ def generate_server_name(url: str) -> str:
         if ":" in parsed.netloc:
             port = f"_{parsed.netloc.split(':')[1]}"
         if path:
-            return f"{clean}{port}_{path[:20]}"
+            name = f"{clean}{port}_{path[:20]}"
+            if parsed.query:
+                query_hash = hashlib.md5(parsed.query.encode()).hexdigest()[:8]
+                name = f"{name}_{query_hash}"
+            return name
         url_hash = hashlib.md5(url.encode()).hexdigest()[:8]
         return f"{clean}{port}_{url_hash}"
     return clean
