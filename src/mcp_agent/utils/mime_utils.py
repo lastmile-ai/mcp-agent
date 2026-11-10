@@ -51,6 +51,8 @@ def is_text_mime_type(mime_type: str) -> bool:
     if not mime_type:
         return False
 
+    mime_type = mime_type.partition(";")[0].strip().lower()
+
     # Standard text types
     if mime_type.startswith("text/"):
         return True
@@ -73,6 +75,7 @@ def is_binary_content(mime_type: str) -> bool:
 
 def is_image_mime_type(mime_type: str) -> bool:
     """Check if a MIME type represents an image."""
+    mime_type = mime_type.partition(";")[0].strip().lower()
     return mime_type.startswith("image/") and mime_type != "image/svg+xml"
 
 
