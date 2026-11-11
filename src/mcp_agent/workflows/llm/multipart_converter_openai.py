@@ -1,3 +1,4 @@
+from html import escape
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from mcp.types import (
@@ -282,7 +283,7 @@ class OpenAIConverter:
             text = get_text(resource)
             if text:
                 file_text = (
-                    f'<mcp-agent:file title="{title}" mimetype="{mime_type}">\n'
+                    f'<mcp-agent:file title="{escape(title)}" mimetype="{mime_type}">\n'
                     f"{text}\n"
                     f"</mcp-agent:file>"
                 )
@@ -293,7 +294,7 @@ class OpenAIConverter:
             text = get_text(resource)
             if text:
                 file_text = (
-                    f'<mcp-agent:file title="{title}" mimetype="{mime_type}">\n'
+                    f'<mcp-agent:file title="{escape(title)}" mimetype="{mime_type}">\n'
                     f"{text}\n"
                     f"</mcp-agent:file>"
                 )
