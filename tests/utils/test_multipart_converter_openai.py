@@ -359,3 +359,18 @@ class TestOpenAIConverter:
         assert len(messages) == 2
         assert messages[0]["role"] == "tool"
         assert messages[1]["role"] == "user"
+
+    def test_embedded_resource_escapes_title_attribute(self):
+        for mime_type in ("text/plain", "image/svg+xml"):
+            resource = TextResourceContents(
+                uri="resource://mcp-agent/report%22%26%3C%3E.txt",
+                mimeType=mime_type,
+                text="contents",
+            )
+            embedded = EmbeddedResource(type="resource", resource=resource)
+
+            result = OpenAIConverter._convert_embedded_resource(embedded)
+
+            assert result["type"] == "text"
+            assert 'title="report&quot;&amp;&lt;&gt;.txt"' in result["text"]
+            assert "\ncontents\n" in result["text"]

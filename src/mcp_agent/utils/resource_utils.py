@@ -1,6 +1,7 @@
 import base64
 from pathlib import Path
 from typing import List, Optional, Tuple
+from urllib.parse import quote, unquote
 
 from mcp.types import (
     BlobResourceContents,
@@ -70,7 +71,7 @@ def load_resource_content(
 # Create a safe way to generate resource URIs that Pydantic accepts
 def create_resource_uri(path: str) -> str:
     """Create a resource URI from a path"""
-    return f"resource://mcp-agent/{Path(path).name}"
+    return f"resource://mcp-agent/{quote(Path(path).name, safe='')}"
 
 
 def create_resource_reference(uri: str, mime_type: str) -> "EmbeddedResource":
@@ -206,13 +207,13 @@ def extract_title_from_uri(uri: AnyUrl) -> str:
             # Get the last part of the path
             path_parts = uri.path.split("/")
             filename = next((p for p in reversed(path_parts) if p), "")
-            return filename if filename else uri_str
+            return unquote(filename) if filename else uri_str
 
         # For file URLs or other schemes
         elif uri.path:
             import os.path
 
-            return os.path.basename(uri.path)
+            return unquote(os.path.basename(uri.path))
 
     except Exception:
         pass
