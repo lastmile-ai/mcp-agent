@@ -77,6 +77,8 @@ def test_structured_conversion_preserves_forward_annotation_namespace():
     tool = StructuredTool.from_function(func=lookup_with_forward_annotation)
     converted = from_langchain_tool(tool, name="typed_lookup")
 
+    assert inspect.signature(converted).parameters["value"].annotation is LookupInput
+    assert lookup_with_forward_annotation.__annotations__["value"] == "LookupInput"
     fast_tool = FastTool.from_function(converted)
     assert fast_tool.parameters["properties"]["value"]["$ref"] == "#/$defs/LookupInput"
     assert converted(LookupInput(query="example")) == "example"

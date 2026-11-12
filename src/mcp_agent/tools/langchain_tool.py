@@ -47,6 +47,7 @@ def from_langchain_tool(
             def wrapper(*args, **kwargs):
                 return func(*args, **kwargs)
 
+        wrapper.__signature__ = inspect.signature(func, eval_str=True)
         wrapper.__name__ = func_name
         wrapper.__doc__ = func_doc
         return wrapper
