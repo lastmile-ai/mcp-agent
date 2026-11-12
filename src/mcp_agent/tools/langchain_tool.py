@@ -1,4 +1,5 @@
 import inspect
+from functools import wraps
 from typing import Callable, Any, Optional, Union
 from langchain_core.tools import BaseTool, StructuredTool
 
@@ -32,11 +33,23 @@ def from_langchain_tool(
 
     # Handle different types of LangChain tools
     if isinstance(lc_tool, StructuredTool):
-        # StructuredTool - use func directly (preserves signature)
+        # Keep each conversion's metadata independent of the original function.
         func = lc_tool.func
-        func.__name__ = func_name
-        func.__doc__ = func_doc
-        return func
+        if inspect.iscoroutinefunction(func):
+
+            @wraps(func)
+            async def wrapper(*args, **kwargs):
+                return await func(*args, **kwargs)
+
+        else:
+
+            @wraps(func)
+            def wrapper(*args, **kwargs):
+                return func(*args, **kwargs)
+
+        wrapper.__name__ = func_name
+        wrapper.__doc__ = func_doc
+        return wrapper
 
     elif hasattr(lc_tool, "_run"):
         # BaseTool with _run method - create wrapper preserving signature
