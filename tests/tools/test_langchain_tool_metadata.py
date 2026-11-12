@@ -1,4 +1,5 @@
 import inspect
+from typing import TYPE_CHECKING
 
 import pytest
 from langchain_core.tools import StructuredTool
@@ -6,6 +7,9 @@ from mcp.server.fastmcp.tools import Tool as FastTool
 from pydantic import BaseModel
 
 from mcp_agent.tools.langchain_tool import from_langchain_tool
+
+if TYPE_CHECKING:
+    MissingResult = str
 
 
 class LookupInput(BaseModel):
@@ -82,3 +86,30 @@ def test_structured_conversion_preserves_forward_annotation_namespace():
     fast_tool = FastTool.from_function(converted)
     assert fast_tool.parameters["properties"]["value"]["$ref"] == "#/$defs/LookupInput"
     assert converted(LookupInput(query="example")) == "example"
+
+
+@pytest.mark.parametrize("is_async", [False, True])
+@pytest.mark.asyncio
+async def test_structured_conversion_preserves_unresolved_return_annotation(is_async):
+    if is_async:
+
+        async def lookup(query: str) -> "MissingResult":
+            """Look up a query."""
+            return query
+
+    else:
+
+        def lookup(query: str) -> "MissingResult":
+            """Look up a query."""
+            return query
+
+    tool = StructuredTool.from_function(func=lookup, args_schema=LookupInput)
+    converted = from_langchain_tool(tool, name="unresolved_lookup")
+
+    assert inspect.signature(converted) == inspect.signature(lookup)
+    assert lookup.__annotations__["return"] == "MissingResult"
+    assert lookup.__name__ == "lookup"
+    assert converted.__name__ == "unresolved_lookup"
+    assert inspect.iscoroutinefunction(converted) is is_async
+    result = await converted("example") if is_async else converted("example")
+    assert result == "example"

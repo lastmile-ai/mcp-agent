@@ -47,7 +47,11 @@ def from_langchain_tool(
             def wrapper(*args, **kwargs):
                 return func(*args, **kwargs)
 
-        wrapper.__signature__ = inspect.signature(func, eval_str=True)
+        try:
+            wrapper.__signature__ = inspect.signature(func, eval_str=True)
+        except NameError:
+            # Keep annotations that are only available during type checking.
+            wrapper.__signature__ = inspect.signature(func)
         wrapper.__name__ = func_name
         wrapper.__doc__ = func_doc
         return wrapper
