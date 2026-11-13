@@ -64,7 +64,7 @@ INLINE_HTML_TEMPLATE = f"""
 # METHOD 2: Reference the static files from the deployed server
 SERVER_URL = "https://<server_id>.deployments.mcp-agent.com"  # e.g. "https://15da9n6bk2nj3wiwf7ghxc2fy7sc6c8a.deployments.mcp-agent.com"
 DEPLOYED_HTML_TEMPLATE = (
-    '<div id="timer-root"></div>\n'
+    '<div id="coinflip-root"></div>\n'
     f'<link rel="stylesheet" href="{SERVER_URL}/static/css/main.bf8e60c9.css">\n'
     f'<script type="module" src="{SERVER_URL}/static/js/main.50dd757e.js"></script>'
 )
