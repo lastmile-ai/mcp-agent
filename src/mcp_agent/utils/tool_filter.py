@@ -53,7 +53,7 @@ class ToolFilter:
             3. excluded list (if specified)
             4. Default: allow all
         """
-        self.allowed_global = set(allowed) if allowed else None
+        self.allowed_global = set(allowed) if allowed is not None else None
         self.excluded_global = set(excluded) if excluded else None
         self.server_filters = server_filters or {}
         self.custom_filter = custom_filter
