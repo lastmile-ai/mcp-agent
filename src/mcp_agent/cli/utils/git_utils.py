@@ -210,10 +210,8 @@ def sanitize_git_ref_component(name: str) -> str:
     s = s.replace("@{", "-{")
     # Remove leading dots and hyphens (avoid CLI option-like names)
     s = re.sub(r"^[\.-]+", "", s)
-    # Remove trailing .lock
-    s = re.sub(r"\.lock$", "", s, flags=re.IGNORECASE)
-    # Remove trailing dots
-    s = re.sub(r"\.+$", "", s)
+    # Strip suffixes together so removing one cannot expose another.
+    s = re.sub(r"(?:\.lock|\.)+$", "", s, flags=re.IGNORECASE)
     if not s:
         s = "unnamed"
     return s
