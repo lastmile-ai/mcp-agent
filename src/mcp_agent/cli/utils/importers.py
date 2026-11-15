@@ -15,8 +15,11 @@ from mcp_agent.config import MCPServerSettings
 def _detect_transport(obj: dict) -> str:
     url = obj.get("url")
     if url:
-        # Determine sse vs http by path suffix
-        return "sse" if str(url).rstrip("/").endswith("/sse") else "http"
+        if obj.get("type") == "sse":
+            return "sse"
+        if obj.get("type") != "http" and str(url).rstrip("/").endswith("/sse"):
+            return "sse"
+        return "streamable_http"
     return obj.get("transport") or "stdio"
 
 
@@ -42,6 +45,8 @@ def import_servers_from_mcp_json(path: Path) -> Dict[str, MCPServerSettings]:
     """
     Parse a cursor/vscode style mcp.json into a mapping of name -> MCPServerSettings.
     Supports a variety of simple schemas:
+      - { "mcpServers": { name: { ... } } } (Cursor)
+      - { "servers": { name: { ... } } } (VS Code)
       - { "mcp": { "servers": { name: { ... } } } }
       - { name: { ... } }
       - [ { "name": str, ... }, ... ]
@@ -60,16 +65,24 @@ def import_servers_from_mcp_json(path: Path) -> Dict[str, MCPServerSettings]:
                     servers[str(name)] = _to_settings(cfg)
             return servers
 
-    # direct mapping name -> cfg
+    # Editor server maps and the existing direct mapping.
     if isinstance(data, dict):
-        # Filter out non-server-like keys
-        for name, cfg in data.items():
-            if isinstance(cfg, dict) and (
-                "command" in cfg or "url" in cfg or "transport" in cfg
+        wrappers = (data.get("mcpServers"), data.get("servers"))
+        for server_map in (*wrappers, data):
+            if not isinstance(server_map, dict):
+                continue
+            if server_map is not data and any(
+                isinstance(server_map.get(field), str)
+                for field in ("command", "url", "transport")
             ):
-                servers[str(name)] = _to_settings(cfg)
-        if servers:
-            return servers
+                continue
+            for name, cfg in server_map.items():
+                if isinstance(cfg, dict) and (
+                    "command" in cfg or "url" in cfg or "transport" in cfg
+                ):
+                    servers[str(name)] = _to_settings(cfg)
+            if servers:
+                return servers
 
     # list of servers with name
     if isinstance(data, list):
