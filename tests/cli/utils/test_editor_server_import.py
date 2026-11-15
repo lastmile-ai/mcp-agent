@@ -63,3 +63,25 @@ def test_import_existing_formats_with_server_named_servers(tmp_path, data):
 
     assert set(servers) == {"servers"}
     assert servers["servers"].command == "node"
+
+
+@pytest.mark.parametrize("name", ["servers", "mcpServers"])
+def test_import_flat_server_with_editor_wrapper_name(tmp_path, name):
+    path = tmp_path / "mcp.json"
+    path.write_text(
+        json.dumps(
+            {
+                name: {"command": "node", "env": {"command": "helper"}},
+                "other": {"command": "python"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    servers = import_servers_from_mcp_json(path)
+
+    assert {key: value.command for key, value in servers.items()} == {
+        name: "node",
+        "other": "python",
+    }
+    assert servers[name].env == {"command": "helper"}

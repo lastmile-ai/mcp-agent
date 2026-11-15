@@ -67,8 +67,14 @@ def import_servers_from_mcp_json(path: Path) -> Dict[str, MCPServerSettings]:
 
     # Editor server maps and the existing direct mapping.
     if isinstance(data, dict):
-        for server_map in (data.get("mcpServers"), data.get("servers"), data):
+        wrappers = (data.get("mcpServers"), data.get("servers"))
+        for server_map in (*wrappers, data):
             if not isinstance(server_map, dict):
+                continue
+            if server_map is not data and any(
+                isinstance(server_map.get(field), str)
+                for field in ("command", "url", "transport")
+            ):
                 continue
             for name, cfg in server_map.items():
                 if isinstance(cfg, dict) and (
