@@ -1,0 +1,17 @@
+$schema: ../../../schema/mcp-agent.config.schema.json
+
+execution_engine: asyncio
+logger:
+  transports: [console]
+  level: info
+  show_progress: true
+
+mcp:
+  servers:
+    battle_training:
+      description: "battle.training tactical combat arena MCP server"
+      transport: streamable_http
+      url: https://api.battle.training/mcp
+
+openai:
+  default_model: "gpt-4o-mini"
