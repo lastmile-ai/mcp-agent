@@ -1,4 +1,4 @@
 # Core framework dependency
-mcp-agent @ file://../../../
+../../../
 
 openai
