@@ -37,12 +37,16 @@ async def inspect_arena(bot_name: str, use_llm: bool) -> None:
             logger.info("Connected to battle.training MCP", data={"tools": len(tool_names)})
 
             ladders_raw = await arena_agent.call_tool("list_ladders", {})
+            if getattr(ladders_raw, "isError", False):
+                raise RuntimeError(f"list_ladders failed: {extract_text_payload(ladders_raw)}")
             ladders_text = extract_text_payload(ladders_raw)
             ladders_data = json.loads(ladders_text) if ladders_text else {}
             ladders = ladders_data.get("ladders", [])
             logger.info("Active ladders", data={"count": len(ladders)})
 
             bot_raw = await arena_agent.call_tool("get_bot", {"name": bot_name})
+            if getattr(bot_raw, "isError", False):
+                raise RuntimeError(f"get_bot failed for '{bot_name}': {extract_text_payload(bot_raw)}")
             bot_text = extract_text_payload(bot_raw)
             logger.info("Bot snapshot loaded", data={"bot": bot_name, "bytes": len(bot_text)})
 
