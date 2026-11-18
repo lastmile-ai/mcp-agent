@@ -1,0 +1,4 @@
+# Core framework dependency
+../../../
+
+openai
