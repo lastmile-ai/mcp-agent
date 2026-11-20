@@ -19,8 +19,10 @@ from mcp_agent.oauth.errors import MissingUserIdentityError
 from mcp_agent.oauth.identity import (
     DEFAULT_PRECONFIGURED_IDENTITY,
     OAuthUserIdentity,
+    is_authenticated_identity,
     session_identity,
 )
+from mcp_agent.oauth.http.auth import OAuthHttpxAuth
 from mcp_agent.oauth.manager import (
     ResolvedOAuthContext,
     TokenManager,
@@ -192,9 +194,20 @@ async def test_store_user_token_rejects_default_and_invalid_identities():
     for bad_identity in (
         None,
         DEFAULT_PRECONFIGURED_IDENTITY,
+        OAuthUserIdentity(provider="mcp-agent", subject="preconfigured-tokens"),
+        OAuthUserIdentity(
+            provider="mcp-agent",
+            subject="preconfigured-tokens",
+            claims={"custom": "claim"},
+        ),
+        OAuthUserIdentity(
+            provider="  mcp-agent  ",
+            subject="  preconfigured-tokens  ",
+        ),
         OAuthUserIdentity(provider="test", subject="   "),
         OAuthUserIdentity(provider="  ", subject="user-1"),
     ):
+        assert not is_authenticated_identity(bad_identity)
         with pytest.raises(MissingUserIdentityError):
             await manager.store_user_token(
                 context=DummyContext(session_id="sess-1"),
@@ -326,3 +339,96 @@ async def test_token_manager_enforces_auth_boundary_and_rejects_missing_auth_con
     )
     assert rec_a.access_token == "token-a"
     assert rec_b.access_token == "preconfigured-token"
+
+
+@pytest.mark.asyncio
+async def test_oauth_httpx_auth_401_retry_resolves_identity_from_auth_context():
+    import httpx
+
+    from mcp_agent.oauth.records import TokenRecord
+    from mcp_agent.server import app_server
+
+    auth_settings = Settings(
+        authorization=MCPAuthorizationServerSettings(
+            enabled=True,
+            issuer_url="https://auth.example.com",
+            resource_server_url="https://api.example.com",
+            expected_audiences=["https://api.example.com"],
+        ),
+    )
+    auth_ctx = DummyContext(session_id="shared-session", config=auth_settings)
+    server_config = DummyServerConfig(
+        MCPOAuthClientSettings(
+            enabled=True,
+            authorization_server="https://auth.example.com",
+            resource="https://api.example.com/mcp",
+            scopes=["read"],
+        )
+    )
+
+    first_record = TokenRecord(
+        access_token="stale-token",
+        scopes=("read",),
+        resource="https://api.example.com/mcp",
+        authorization_server="https://auth.example.com",
+    )
+    refreshed_record = TokenRecord(
+        access_token="fresh-token",
+        scopes=("read",),
+        resource="https://api.example.com/mcp",
+        authorization_server="https://auth.example.com",
+    )
+    manager = SimpleNamespace(
+        ensure_access_token=AsyncMock(side_effect=[first_record, refreshed_record]),
+        invalidate=AsyncMock(),
+    )
+
+    httpx_auth = OAuthHttpxAuth(
+        token_manager=manager,  # type: ignore[arg-type]
+        context=auth_ctx,  # type: ignore[arg-type]
+        server_name="github",
+        server_config=server_config,
+        scopes=["read"],
+    )
+
+    # Ensure app_server current identity is None while auth_context_var has an authenticated user.
+    app_server._set_current_identity(None)  # type: ignore[attr-defined]
+    tok = auth_context_var.set(
+        AuthenticatedUser(
+            MCPAccessToken(
+                token="access-1",
+                client_id="client-1",
+                scopes=["read"],
+                subject="user-401",
+                issuer="https://auth.example.com",
+            )
+        )
+    )
+    try:
+        request = httpx.Request("GET", "https://api.example.com/mcp")
+        flow = httpx_auth.async_auth_flow(request)
+        first_req = await flow.asend(None)
+        assert first_req.headers["Authorization"] == "Bearer stale-token"
+
+        retry_req = await flow.asend(httpx.Response(401, request=first_req))
+        assert retry_req.headers["Authorization"] == "Bearer fresh-token"
+
+        expected_identity = OAuthUserIdentity(
+            provider="https://auth.example.com",
+            subject="user-401",
+            claims={},
+        )
+        assert manager.invalidate.await_count == 1
+        assert manager.invalidate.await_args.kwargs["identity"] == expected_identity
+        assert manager.ensure_access_token.await_count == 2
+        assert (
+            manager.ensure_access_token.await_args_list[0].kwargs["identity"]
+            == expected_identity
+        )
+        assert (
+            manager.ensure_access_token.await_args_list[1].kwargs["identity"]
+            == expected_identity
+        )
+    finally:
+        auth_context_var.reset(tok)
+        app_server._set_current_identity(None)  # type: ignore[attr-defined]

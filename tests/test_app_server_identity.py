@@ -365,3 +365,87 @@ async def test_workflows_store_credentials_rejects_default_identity_without_sess
             tokens=[{"access_token": "tok", "server_name": "github"}],
         )
     reset_identity()
+
+
+@pytest.mark.asyncio
+async def test_internal_auth_request_propagates_missing_user_identity_error():
+    from starlette.requests import Request
+
+    settings = _auth_enabled_settings()
+    store = InMemoryTokenStore()
+    manager = TokenManager(token_store=store, settings=settings.oauth)
+    resolved = ResolvedOAuthContext(
+        resource="https://downstream.example.com/mcp",
+        resource_metadata=SimpleNamespace(),
+        authorization_server_url="https://auth.example.com",
+        authorization_metadata=SimpleNamespace(issuer="https://auth.example.com"),
+        issuer="https://auth.example.com",
+        scopes=("read",),
+    )
+    manager._resolve_oauth_context = AsyncMock(return_value=resolved)  # type: ignore[attr-defined]
+
+    downstream_cfg = SimpleNamespace(
+        url="https://downstream.example.com/mcp",
+        auth=SimpleNamespace(
+            oauth=MCPOAuthClientSettings(
+                enabled=True,
+                authorization_server="https://auth.example.com",
+                resource="https://downstream.example.com/mcp",
+                scopes=["read"],
+            )
+        ),
+    )
+
+    app_context = Context(config=settings)
+    app_context.token_manager = manager
+    app_context.server_registry = SimpleNamespace(
+        registry={"github": downstream_cfg},
+        get_server_config=lambda name: downstream_cfg if name == "github" else None,
+    )
+    app = SimpleNamespace(
+        name="test-app",
+        description="test",
+        context=app_context,
+        workflows={"demo_workflow": object()},
+        mcp=None,
+        _icons=None,
+    )
+    mcp = app_server.create_mcp_server_for_app(app)  # type: ignore[arg-type]
+
+    relay_route = next(
+        r
+        for r in mcp._custom_starlette_routes
+        if getattr(r, "path", None) == "/internal/session/by-run/{execution_id}/request"
+    )
+
+    dummy_session = SimpleNamespace(send_request=AsyncMock())
+    await app_server._register_session(  # type: ignore[attr-defined]
+        run_id="exec-no-identity",
+        execution_id="exec-no-identity",
+        session=dummy_session,
+        identity=None,
+        context=app_context,
+    )
+
+    body_bytes = b'{"method": "auth/request", "params": {"server_name": "github", "scopes": ["read"]}}'
+
+    async def receive():
+        return {"type": "http.request", "body": body_bytes, "more_body": False}
+
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/internal/session/by-run/exec-no-identity/request",
+        "path_params": {"execution_id": "exec-no-identity"},
+        "headers": [(b"content-type", b"application/json")],
+    }
+    req = Request(scope, receive)
+
+    try:
+        resp = await relay_route.endpoint(req)
+        assert resp.status_code == 500
+        assert b"No authenticated user available" in resp.body
+        assert dummy_session.send_request.await_count == 0
+    finally:
+        await app_server._unregister_session("exec-no-identity")  # type: ignore[attr-defined]
+        reset_identity()

@@ -24,6 +24,7 @@ from mcp_agent.oauth.identity import (
     OAuthUserIdentity,
     is_authenticated_identity,
     is_authorization_enabled,
+    is_preconfigured_identity,
     resolve_identity_from_auth_context,
 )
 from mcp_agent.oauth.metadata import (
@@ -228,7 +229,7 @@ class TokenManager:
         workflow_name: str | None = None,
     ) -> None:
         """Persist a token supplied through the workflow pre-auth endpoint."""
-        if user is None or user == self._default_identity:
+        if user is None or is_preconfigured_identity(user):
             raise MissingUserIdentityError(
                 "Cannot store user token without an authenticated user or session identity"
             )
@@ -367,7 +368,7 @@ class TokenManager:
             (
                 cand
                 for cand in identity_candidates
-                if cand is not None and cand != self._default_identity
+                if cand is not None and not is_preconfigured_identity(cand)
             ),
             None,
         )

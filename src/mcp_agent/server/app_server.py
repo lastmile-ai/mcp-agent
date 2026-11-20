@@ -51,6 +51,7 @@ from mcp_agent.oauth.identity import (
     DEFAULT_PRECONFIGURED_IDENTITY,
     is_authenticated_identity,
     is_authorization_enabled,
+    is_preconfigured_identity,
     resolve_identity_from_auth_context,
     session_identity as _session_identity_from_value,
 )
@@ -1110,6 +1111,8 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                             )
                             if token:
                                 return token
+                except MissingUserIdentityError:
+                    raise
                 except Exception:
                     # elicitation fallback below
                     pass
@@ -2286,7 +2289,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                 raise ToolError("OAuth token manager not available.")
 
             identity = _resolve_identity_for_request(ctx, app_context)
-            if identity == DEFAULT_PRECONFIGURED_IDENTITY:
+            if is_preconfigured_identity(identity):
                 raise ToolError(
                     "Cannot store user credentials without an authenticated user or session identity."
                 )

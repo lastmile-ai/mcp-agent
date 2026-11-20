@@ -69,18 +69,34 @@ DEFAULT_PRECONFIGURED_IDENTITY = OAuthUserIdentity(
 )
 
 
-def is_authenticated_identity(identity: OAuthUserIdentity | None) -> bool:
-    """Return True if identity represents an authenticated user rather than a synthetic or session fallback."""
-    if identity is None or identity == DEFAULT_PRECONFIGURED_IDENTITY:
+def is_preconfigured_identity(identity: OAuthUserIdentity | None) -> bool:
+    """Return True if identity maps to the reserved preconfigured-tokens key."""
+    if identity is None:
         return False
-    if identity.provider == "mcp-session":
+    if not isinstance(identity.provider, str) or not isinstance(identity.subject, str):
         return False
     return (
-        isinstance(identity.subject, str)
-        and bool(identity.subject.strip())
-        and isinstance(identity.provider, str)
-        and bool(identity.provider.strip())
+        identity.provider.strip(),
+        identity.subject.strip(),
+    ) == (
+        DEFAULT_PRECONFIGURED_IDENTITY.provider,
+        DEFAULT_PRECONFIGURED_IDENTITY.subject,
     )
+
+
+def is_authenticated_identity(identity: OAuthUserIdentity | None) -> bool:
+    """Return True if identity represents an authenticated user rather than a synthetic or session fallback."""
+    if identity is None or is_preconfigured_identity(identity):
+        return False
+    if not isinstance(identity.provider, str) or not isinstance(identity.subject, str):
+        return False
+    provider = identity.provider.strip()
+    subject = identity.subject.strip()
+    if not provider or not subject:
+        return False
+    if provider == "mcp-session":
+        return False
+    return True
 
 
 def is_authorization_enabled(context: Any | None) -> bool:
