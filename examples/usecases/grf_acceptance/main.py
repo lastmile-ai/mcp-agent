@@ -14,7 +14,8 @@ PROJECT = Path(__file__).resolve().parent / ".grf-project"
 
 @app.workflow
 class DraftWorkflow(Workflow[str]):
-    async def run(self, deliverable: str = "deliverable.txt") -> WorkflowResult[str]:
+    async def run(self) -> WorkflowResult[str]:
+        deliverable = "deliverable.txt"
         output = PROJECT / deliverable
         output.write_text("Example workflow output\n", encoding="utf-8")
 

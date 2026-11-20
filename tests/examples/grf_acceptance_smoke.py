@@ -23,7 +23,7 @@ def run(command, *, cwd, expect=0):
 
 
 def main(runtime: Path) -> None:
-    starter = runtime / "grf_starter.py"
+    starter = (runtime / "grf_starter.py").resolve()
     if not starter.is_file():
         raise FileNotFoundError(f"GRF release starter not found: {starter}")
 
@@ -44,38 +44,49 @@ def main(runtime: Path) -> None:
         initial_id = initial["id"]
         assert initial["status"] == "active" and initial["completion"] is None
 
-        # Generated acceptance intentionally fails; completion must not occur.
+        # Existing evidence is present, but generated acceptance intentionally fails.
+        (project / "deliverable.txt").write_text(
+            "verified output\n", encoding="utf-8"
+        )
+        evidence = project / "evidence.json"
+        evidence.write_text(
+            json.dumps({"artifact": "deliverable.txt", "verified": True}) + "\n",
+            encoding="utf-8",
+        )
         failed = cli("check", expect=1)
         assert "FAIL" in (failed.stdout + failed.stderr)
+
+        example_dir = Path(__file__).resolve().parents[2] / "examples" / "usecases" / "grf_acceptance"
+        sys.path.insert(0, str(example_dir))
+        from grf_gate import complete_grf_task
+
+        try:
+            complete_grf_task(
+                project,
+                "Implemented and verified the workflow deliverable",
+                ["deliverable.txt", "evidence.json"],
+            )
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError("GRF adapter completed a task with failing acceptance")
         after_failure = json.loads(cli("session", "status").stdout)
         assert after_failure["id"] == initial_id
         assert after_failure["status"] == "active"
         assert after_failure["completion"] is None
 
         # Replace placeholder with real assertions against a generated artifact.
-        (project / "deliverable.txt").write_text(
-            "verified output\n", encoding="utf-8"
-        )
+
         (project / "checks" / "acceptance.py").write_text(
             "from pathlib import Path\n"
             "assert Path('deliverable.txt').read_text(encoding='utf-8') == 'verified output\\n'\n",
             encoding="utf-8",
         )
         cli("check")
-        evidence = project / "evidence.json"
-        evidence.write_text(
-            json.dumps({"artifact": "deliverable.txt", "verified": True}) + "\n",
-            encoding="utf-8",
-        )
-        cli(
-            "session",
-            "complete",
-            "--summary",
+        complete_grf_task(
+            project,
             "Implemented and verified the workflow deliverable",
-            "--evidence",
-            "deliverable.txt",
-            "--evidence",
-            "evidence.json",
+            ["deliverable.txt", "evidence.json"],
         )
         finished = json.loads(cli("session", "status").stdout)
         assert finished["id"] == initial_id

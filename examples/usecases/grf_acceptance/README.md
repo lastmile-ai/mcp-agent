@@ -14,7 +14,7 @@ of mcp-agent and no cloud enrollment is used.
 
    ```bash
    python /path/to/grf_starter.py init .grf-project --intent "Produce and verify a workflow deliverable"
-   python .grf-project/grf.py session sign-in --task "Produce and verify a workflow deliverable"
+   (cd .grf-project && python grf.py session sign-in --task "Produce and verify a workflow deliverable")
    ```
 
    GRF initialization refuses to overwrite an existing directory. The new
@@ -31,9 +31,18 @@ of mcp-agent and no cloud enrollment is used.
    configured mcp-agent provider, e.g. `uv run --directory . main.py`. The sample
    workflow writes `deliverable.txt`, then calls `complete_grf_task`; GRF itself
    reruns acceptance and requires that file as hashed evidence.
-4. If acceptance fails, inspect `python grf.py check` output, fix the deliverable
-   or check, then resume the existing task with `python grf.py session resume`
-   and rerun the workflow. Do not sign in over an active task.
+4. If acceptance fails, inspect the check output and fix the code that produces
+   `deliverable.txt`, or correct the check if it is wrong; editing only the generated
+   file is overwritten by the next workflow run. Run the recovery commands from the
+   GRF project directory, then rerun the workflow from this example directory:
+
+   ```bash
+   (cd .grf-project && python grf.py check)
+   (cd .grf-project && python grf.py session resume)
+   uv run --directory . main.py
+   ```
+
+   Do not sign in over an active task.
 
 The adapter invokes the project-local `grf.py` with an argument list and the
 project as its working directory. It surfaces GRF's exact command and error
