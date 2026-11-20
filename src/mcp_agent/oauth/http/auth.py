@@ -70,8 +70,16 @@ class OAuthHttpxAuth(httpx.Auth):
             except Exception:
                 identity = None
         if identity is None:
-            from mcp_agent.oauth.identity import DEFAULT_PRECONFIGURED_IDENTITY
+            from mcp_agent.oauth.errors import MissingUserIdentityError
+            from mcp_agent.oauth.identity import (
+                DEFAULT_PRECONFIGURED_IDENTITY,
+                is_authorization_enabled,
+            )
 
+            if is_authorization_enabled(self._context):
+                raise MissingUserIdentityError(
+                    "No authenticated user available for OAuth retry"
+                )
             identity = DEFAULT_PRECONFIGURED_IDENTITY
         if identity is None:
             return

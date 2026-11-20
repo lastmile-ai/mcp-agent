@@ -22,10 +22,6 @@ from json import JSONDecodeError
 
 from mcp.server.fastmcp import Context as MCPContext, FastMCP
 from mcp.server.fastmcp.server import AuthSettings
-from mcp.server.auth.middleware.auth_context import (
-    AuthenticatedUser,
-    auth_context_var,
-)
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.fastmcp.tools import Tool as FastTool
 
@@ -53,6 +49,9 @@ from mcp_agent.mcp.mcp_server_registry import ServerRegistry
 from mcp_agent.oauth.identity import (
     OAuthUserIdentity,
     DEFAULT_PRECONFIGURED_IDENTITY,
+    is_authenticated_identity,
+    is_authorization_enabled,
+    resolve_identity_from_auth_context,
     session_identity as _session_identity_from_value,
 )
 from mcp_agent.oauth.callbacks import callback_registry
@@ -60,6 +59,7 @@ from mcp_agent.server.token_verifier import MCPAgentTokenVerifier
 from mcp_agent.oauth.errors import (
     AuthorizationDeclined,
     CallbackTimeoutError,
+    MissingUserIdentityError,
     OAuthFlowError,
 )
 from mcp_agent.oauth.records import TokenRecord
@@ -180,16 +180,33 @@ def _resolve_identity_for_request(
     app_context: "Context" | None = None,
     execution_id: str | None = None,
 ) -> OAuthUserIdentity:
-    identity = _CURRENT_IDENTITY.get()
-    if identity is None and execution_id:
-        identity = _get_identity_for_execution(execution_id)
-    request_session_id: str | None = None
-    if ctx is not None:
-        request_session_id = _extract_session_id_from_context(ctx)
     if app_context is None and ctx is not None:
         app = _get_attached_app(ctx.fastmcp)
         if app is not None and getattr(app, "context", None) is not None:
             app_context = app.context
+
+    has_auth_user, token_identity = resolve_identity_from_auth_context()
+    if has_auth_user:
+        if token_identity is None:
+            raise MissingUserIdentityError(
+                "Authenticated request is missing a valid subject ('sub') claim"
+            )
+        return token_identity
+
+    identity = _CURRENT_IDENTITY.get()
+    if identity is None and execution_id:
+        identity = _get_identity_for_execution(execution_id)
+
+    if is_authorization_enabled(app_context):
+        if not is_authenticated_identity(identity):
+            raise MissingUserIdentityError(
+                "Authentication required: missing authenticated user context"
+            )
+        return identity  # type: ignore[return-value]
+
+    request_session_id: str | None = None
+    if ctx is not None:
+        request_session_id = _extract_session_id_from_context(ctx)
     if identity is None and request_session_id:
         resolved = get_identity_for_session(request_session_id, app_context)
         if resolved:
@@ -320,29 +337,6 @@ def _enter_request_context(
         session = None
 
     session_id = _extract_session_id_from_context(ctx)
-    identity: OAuthUserIdentity | None = None
-    try:
-        auth_user = auth_context_var.get()
-    except LookupError:
-        auth_user = None
-
-    if isinstance(auth_user, AuthenticatedUser):
-        access_token = getattr(auth_user, "access_token", None)
-        if access_token is not None:
-            try:
-                from mcp_agent.oauth.access_token import MCPAccessToken
-
-                if isinstance(access_token, MCPAccessToken):
-                    identity = OAuthUserIdentity.from_access_token(access_token)
-                else:
-                    token_dict = getattr(access_token, "model_dump", None)
-                    if callable(token_dict):
-                        maybe_token = MCPAccessToken.model_validate(token_dict())
-                        if maybe_token is not None:
-                            identity = OAuthUserIdentity.from_access_token(maybe_token)
-            except Exception:
-                identity = None
-
     base_context: Context | None = None
     lifespan_ctx = getattr(ctx.request_context, "lifespan_context", None)
     if (
@@ -357,11 +351,23 @@ def _enter_request_context(
         if app is not None and getattr(app, "context", None) is not None:
             base_context = app.context
 
-    if identity is None and session_id:
-        identity = _session_identity_from_value(session_id)
-
-    if identity is None:
-        identity = DEFAULT_PRECONFIGURED_IDENTITY
+    identity: OAuthUserIdentity | None = None
+    has_auth_user, token_identity = resolve_identity_from_auth_context()
+    if has_auth_user:
+        if token_identity is None:
+            raise MissingUserIdentityError(
+                "Authenticated request is missing a valid subject ('sub') claim"
+            )
+        identity = token_identity
+    elif is_authorization_enabled(base_context):
+        raise MissingUserIdentityError(
+            "Authentication required: missing authenticated user context"
+        )
+    else:
+        if session_id:
+            identity = _session_identity_from_value(session_id)
+        if identity is None:
+            identity = DEFAULT_PRECONFIGURED_IDENTITY
 
     bound_context: Context | None = None
     token: Token | None = None
@@ -2280,6 +2286,10 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                 raise ToolError("OAuth token manager not available.")
 
             identity = _resolve_identity_for_request(ctx, app_context)
+            if identity == DEFAULT_PRECONFIGURED_IDENTITY:
+                raise ToolError(
+                    "Cannot store user credentials without an authenticated user or session identity."
+                )
 
             if not tokens:
                 raise ToolError("At least one token must be provided.")

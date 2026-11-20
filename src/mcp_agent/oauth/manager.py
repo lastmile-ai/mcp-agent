@@ -22,6 +22,9 @@ from mcp_agent.oauth.flow import AuthorizationFlowCoordinator
 from mcp_agent.oauth.identity import (
     DEFAULT_PRECONFIGURED_IDENTITY,
     OAuthUserIdentity,
+    is_authenticated_identity,
+    is_authorization_enabled,
+    resolve_identity_from_auth_context,
 )
 from mcp_agent.oauth.metadata import (
     fetch_authorization_server_metadata,
@@ -225,6 +228,23 @@ class TokenManager:
         workflow_name: str | None = None,
     ) -> None:
         """Persist a token supplied through the workflow pre-auth endpoint."""
+        if user is None or user == self._default_identity:
+            raise MissingUserIdentityError(
+                "Cannot store user token without an authenticated user or session identity"
+            )
+        if not isinstance(user.subject, str) or not user.subject.strip():
+            raise MissingUserIdentityError(
+                "Cannot store user token with an empty user subject"
+            )
+        if not isinstance(user.provider, str) or not user.provider.strip():
+            raise MissingUserIdentityError(
+                "Cannot store user token with an empty identity provider"
+            )
+        if is_authorization_enabled(context) and not is_authenticated_identity(user):
+            raise MissingUserIdentityError(
+                "Authenticated user identity required when authorization is enabled"
+            )
+
         if not token_data.get("access_token"):
             raise OAuthFlowError("Missing access_token in token payload")
 
@@ -297,6 +317,131 @@ class TokenManager:
 
         await self._token_store.set(key, record)
 
+    def _resolve_identity_candidates(
+        self,
+        context: "Context",
+        identity: OAuthUserIdentity | None,
+    ) -> Tuple[list[OAuthUserIdentity], OAuthUserIdentity | None]:
+        """Resolve ordered lookup identities and optional flow-initiation identity."""
+        has_auth_user, auth_user_identity = resolve_identity_from_auth_context()
+        if has_auth_user and not is_authenticated_identity(auth_user_identity):
+            raise MissingUserIdentityError(
+                "Authenticated request is missing a valid subject ('sub') claim"
+            )
+
+        context_identity = None
+        try:
+            from mcp_agent.server import app_server
+
+            context_identity = app_server.get_current_identity()
+        except Exception:
+            context_identity = None
+
+        auth_enabled = is_authorization_enabled(context)
+        if auth_enabled:
+            primary_identity = identity or auth_user_identity or context_identity
+            if not is_authenticated_identity(primary_identity):
+                raise MissingUserIdentityError(
+                    "No authenticated user available for OAuth authorization"
+                )
+            # When authorization is enabled, bind strictly to the authenticated
+            # principal (plus read-only preconfigured tokens); never fall back to
+            # session-derived buckets.
+            return _dedupe([primary_identity, self._default_identity]), primary_identity
+
+        session_identity = self._session_identity(context)
+        identity_candidates = [
+            identity,
+            auth_user_identity,
+            context_identity,
+            session_identity,
+            self._default_identity,
+        ]
+        identities = _dedupe(identity_candidates)
+        if not identities:
+            raise MissingUserIdentityError(
+                "No authenticated user available for OAuth authorization"
+            )
+
+        flow_identity = next(
+            (
+                cand
+                for cand in identity_candidates
+                if cand is not None and cand != self._default_identity
+            ),
+            None,
+        )
+        return identities, flow_identity
+
+    async def _lookup_or_refresh_token(
+        self,
+        *,
+        identities: Sequence[OAuthUserIdentity],
+        resolved: ResolvedOAuthContext,
+        oauth_config: MCPOAuthClientSettings,
+        server_name: str,
+    ) -> Tuple[TokenRecord | None, Exception | None]:
+        leeway = (
+            self._settings.token_store.refresh_leeway_seconds
+            if self._settings.token_store
+            else 60
+        )
+
+        last_error: Exception | None = None
+        for candidate in identities:
+            key = self._build_store_key(
+                candidate,
+                resolved.resource,
+                resolved.issuer,
+                resolved.scopes,
+            )
+            lock = self._locks[key]
+            async with lock:
+                record = await self._token_store.get(key)
+                if record and not record.is_expired(leeway_seconds=leeway):
+                    logger.debug(
+                        "Token cache hit",
+                        data={
+                            "server": server_name,
+                            "identity": candidate.cache_key,
+                            "resource": resolved.resource,
+                        },
+                    )
+                    return record, None
+
+                if record and record.refresh_token:
+                    try:
+                        refreshed = await self._refresh_token(
+                            record,
+                            oauth_config=oauth_config,
+                            auth_metadata=resolved.authorization_metadata,
+                            resource=resolved.resource,
+                            scopes=resolved.scopes,
+                        )
+                    except TokenRefreshError as exc:
+                        logger.warning(
+                            "Failed to refresh token for identity '%s': %s",
+                            candidate.cache_key,
+                            exc,
+                        )
+                        await self._token_store.delete(key)
+                        last_error = exc
+                        continue
+
+                    if refreshed:
+                        refreshed = refreshed.model_copy(
+                            update={
+                                "resource": resolved.resource,
+                                "authorization_server": resolved.issuer,
+                            }
+                        )
+                        await self._token_store.set(key, refreshed)
+                        return refreshed, None
+
+                    await self._token_store.delete(key)
+
+        return None, last_error
+
     async def get_access_token_if_present(
         self,
         *,
@@ -326,22 +471,7 @@ class TokenManager:
             requested_scopes=requested_scopes,
         )
 
-        context_identity = None
-        try:
-            from mcp_agent.server import app_server
-
-            context_identity = app_server.get_current_identity()
-        except Exception:
-            context_identity = None
-        session_identity = self._session_identity(context)
-
-        identity_candidates = [
-            identity,
-            context_identity,
-            session_identity,
-            self._default_identity,
-        ]
-        identities = _dedupe(identity_candidates)
+        identities, _ = self._resolve_identity_candidates(context, identity)
         logger.debug(
             "Resolved identity candidates for token acquisition",
             data={
@@ -349,68 +479,14 @@ class TokenManager:
                 "candidates": [candidate.cache_key for candidate in identities],
             },
         )
-        if not identities:
-            raise MissingUserIdentityError(
-                "No authenticated user available for OAuth authorization"
-            )
 
-        leeway = (
-            self._settings.token_store.refresh_leeway_seconds
-            if self._settings.token_store
-            else 60
+        record, _ = await self._lookup_or_refresh_token(
+            identities=identities,
+            resolved=resolved,
+            oauth_config=oauth_config,
+            server_name=server_name,
         )
-
-        for identity in identities:
-            key = self._build_store_key(
-                identity,
-                resolved.resource,
-                resolved.issuer,
-                resolved.scopes,
-            )
-            lock = self._locks[key]
-            async with lock:
-                record = await self._token_store.get(key)
-                if record and not record.is_expired(leeway_seconds=leeway):
-                    logger.debug(
-                        "Token cache hit",
-                        data={
-                            "server": server_name,
-                            "identity": identity.cache_key,
-                            "resource": resolved.resource,
-                        },
-                    )
-                    return record
-
-                if record and record.refresh_token:
-                    try:
-                        refreshed = await self._refresh_token(
-                            record,
-                            oauth_config=oauth_config,
-                            auth_metadata=resolved.authorization_metadata,
-                            resource=resolved.resource,
-                            scopes=resolved.scopes,
-                        )
-                    except TokenRefreshError as exc:
-                        logger.warning(
-                            "Failed to refresh token for identity '%s': %s",
-                            identity.cache_key,
-                            exc,
-                        )
-                        await self._token_store.delete(key)
-                        continue
-
-                    if refreshed:
-                        refreshed = refreshed.model_copy(
-                            update={
-                                "resource": resolved.resource,
-                                "authorization_server": resolved.issuer,
-                            }
-                        )
-                        await self._token_store.set(key, refreshed)
-                        return refreshed
-
-                    await self._token_store.delete(key)
-        return None
+        return record
 
     async def ensure_access_token(
         self,
@@ -440,25 +516,21 @@ class TokenManager:
             requested_scopes=requested_scopes,
         )
 
-        context_identity = None
-        try:
-            from mcp_agent.server import app_server
+        identities, flow_identity = self._resolve_identity_candidates(context, identity)
+        record, last_error = await self._lookup_or_refresh_token(
+            identities=identities,
+            resolved=resolved,
+            oauth_config=oauth_config,
+            server_name=server_name,
+        )
+        if record is not None:
+            return record
 
-            context_identity = app_server.get_current_identity()
-        except Exception:
-            context_identity = None
-        session_identity = self._session_identity(context)
-
-        identity_candidates = [
-            identity,
-            context_identity,
-            session_identity,
-            self._default_identity,
-        ]
-        identities = _dedupe(identity_candidates)
-        if not identities:
+        if flow_identity is None:
+            if last_error:
+                raise last_error
             raise MissingUserIdentityError(
-                "No authenticated user available for OAuth authorization"
+                "No authenticated user available to initiate OAuth authorization flow"
             )
 
         leeway = (
@@ -466,67 +538,6 @@ class TokenManager:
             if self._settings.token_store
             else 60
         )
-
-        last_error: Exception | None = None
-        for identity in identities:
-            key = self._build_store_key(
-                identity,
-                resolved.resource,
-                resolved.issuer,
-                resolved.scopes,
-            )
-            lock = self._locks[key]
-            async with lock:
-                record = await self._token_store.get(key)
-                if record and not record.is_expired(leeway_seconds=leeway):
-                    return record
-
-                if record and record.refresh_token:
-                    try:
-                        refreshed = await self._refresh_token(
-                            record,
-                            oauth_config=oauth_config,
-                            auth_metadata=resolved.authorization_metadata,
-                            resource=resolved.resource,
-                            scopes=resolved.scopes,
-                        )
-                    except TokenRefreshError as exc:
-                        logger.warning(
-                            "Failed to refresh token for identity '%s': %s",
-                            identity.cache_key,
-                            exc,
-                        )
-                        await self._token_store.delete(key)
-                        last_error = exc
-                        continue
-
-                    if refreshed:
-                        refreshed = refreshed.model_copy(
-                            update={
-                                "resource": resolved.resource,
-                                "authorization_server": resolved.issuer,
-                            }
-                        )
-                        await self._token_store.set(key, refreshed)
-                        return refreshed
-
-                    await self._token_store.delete(key)
-
-        # Only authenticated users (non-default identity) can initiate new flows.
-        flow_identity = next(  # type: ignore[arg-type]
-            (
-                cand
-                for cand in identity_candidates
-                if cand is not None and cand != self._default_identity
-            ),
-            None,
-        )
-        if flow_identity is None:
-            if last_error:
-                raise last_error
-            raise MissingUserIdentityError(
-                "No authenticated user available to initiate OAuth authorization flow"
-            )
 
         user_key = self._build_store_key(
             flow_identity,

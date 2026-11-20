@@ -953,3 +953,55 @@ async def test_issuer_comparison_config_trailing_slash_token_without():
     assert token.subject == "user123"
 
     await verifier.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "sub_payload",
+    [
+        {},
+        {"sub": None},
+        {"sub": ""},
+        {"sub": "   "},
+        {"sub": 12345},
+    ],
+)
+async def test_introspect_rejects_active_token_with_missing_or_invalid_sub(sub_payload):
+    """Introspection returning active=True without a valid 'sub' claim must be rejected."""
+    settings = MCPAuthorizationServerSettings(
+        enabled=True,
+        issuer_url="https://auth.example.com",
+        resource_server_url="https://api.example.com",
+        expected_audiences=["https://api.example.com"],
+    )
+
+    verifier = MCPAgentTokenVerifier(settings)
+
+    metadata_response = Mock()
+    metadata_response.status_code = 200
+    metadata_response.json.return_value = {
+        "issuer": "https://auth.example.com",
+        "authorization_endpoint": "https://auth.example.com/authorize",
+        "token_endpoint": "https://auth.example.com/token",
+        "introspection_endpoint": "https://auth.example.com/introspect",
+        "response_types_supported": ["code"],
+    }
+
+    introspect_response = Mock()
+    introspect_response.status_code = 200
+    introspect_response.json.return_value = {
+        "active": True,
+        "aud": "https://api.example.com",
+        "exp": 9999999999,
+        "iss": "https://auth.example.com/",
+        **sub_payload,
+    }
+
+    verifier._client.get = AsyncMock(return_value=metadata_response)
+    verifier._client.post = AsyncMock(return_value=introspect_response)
+
+    assert await verifier._introspect("subless_token") is None
+    assert await verifier.verify_token("subless_token") is None
+    assert "subless_token" not in verifier._cache
+
+    await verifier.aclose()
