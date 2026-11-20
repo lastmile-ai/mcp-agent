@@ -71,18 +71,30 @@ async def example_usage():
             result = await agent.list_tools()
             tool_names = [t.name for t in result.tools]
             logger.info("battle.training tools:", data={"tools": tool_names})
-            missing = [t for t in READ_TOOLS_USED if t not in tool_names]
+            # list_tools() returns namespaced names ("battle_training_get_started"),
+            # so compare the required tools against the bare names.
+            bare_names = {
+                name[len(SERVER) + 1:] if name.startswith(f"{SERVER}_") else name
+                for name in tool_names
+            }
+            missing = [t for t in READ_TOOLS_USED if t not in bare_names]
             if missing:
                 logger.warning("Expected read tools not offered by the server", data={"missing": missing})
                 return
 
-            session = await agent.get_server_session(SERVER)
-
-            started = await session.call_tool("get_started", {})
+            # Call through the agent: get_server_session() returns session
+            # metadata, not a callable MCP session.
+            started = await agent.call_tool("get_started", {}, server_name=SERVER)
+            if getattr(started, "isError", False):
+                logger.error("get_started returned an error result", data={"result": tool_text(started)})
+                return
             guide = tool_text(started)
             logger.info("get_started (first lines):", data={"preview": guide.splitlines()[:5]})
 
-            ladder = await session.call_tool("get_ladder", {})
+            ladder = await agent.call_tool("get_ladder", {}, server_name=SERVER)
+            if getattr(ladder, "isError", False):
+                logger.error("get_ladder returned an error result", data={"result": tool_text(ladder)})
+                return
             print("\nbattle.training ladder — top 10")
             print_ladder(tool_text(ladder))
 
