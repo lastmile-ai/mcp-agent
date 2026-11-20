@@ -187,6 +187,14 @@ class MCPAgentTokenVerifier(TokenVerifier):
             else None,
         )
 
+        # Require a non-empty subject ('sub') claim so admitted tokens always bind
+        # to a distinct authenticated principal rather than falling back to shared buckets.
+        if not isinstance(token_model.subject, str) or not token_model.subject.strip():
+            logger.warning(
+                "Token introspection response missing required subject ('sub') claim"
+            )
+            return None
+
         # Respect cache TTL limit if configured
         ttl_seconds = max(0, self._settings.token_cache_ttl_seconds or 0)
         if ttl_seconds and token_model.expires_at is not None:

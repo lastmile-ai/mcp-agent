@@ -46,6 +46,18 @@ class MCPAccessToken(AccessToken):
         resource = resource_hint or audience_value
 
         expires_at = payload.get("exp")
+        raw_subject = _first_non_empty(payload.get("sub"), payload.get("subject"))
+        subject = raw_subject if isinstance(raw_subject, str) else None
+        raw_email = _first_non_empty(
+            payload.get("email"), payload.get("preferred_username")
+        )
+        email = raw_email if isinstance(raw_email, str) else None
+        raw_issuer = payload.get("iss")
+        issuer = (
+            raw_issuer.strip()
+            if isinstance(raw_issuer, str) and raw_issuer.strip()
+            else None
+        )
 
         return cls(
             token=token,
@@ -53,11 +65,9 @@ class MCPAccessToken(AccessToken):
             scopes=scopes,
             expires_at=expires_at,
             resource=resource,
-            subject=_first_non_empty(payload.get("sub"), payload.get("subject")),
-            email=_first_non_empty(
-                payload.get("email"), payload.get("preferred_username")
-            ),
-            issuer=payload.get("iss"),
+            subject=subject,
+            email=email,
+            issuer=issuer,
             resource_indicator=resource,
             audiences=audiences,
             claims=payload,
@@ -107,7 +117,10 @@ def _first_non_empty(*values: Any) -> Any | None:
     for value in values:
         if value is None:
             continue
-        if isinstance(value, str) and not value:
-            continue
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                continue
+            return stripped
         return value
     return None
