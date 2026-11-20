@@ -340,7 +340,12 @@ class TokenManager:
 
         auth_enabled = is_authorization_enabled(context)
         if auth_enabled:
-            primary_identity = identity or auth_user_identity or context_identity
+            primary_identity = (
+                identity
+                or auth_user_identity
+                or context_identity
+                or self._temporal_execution_identity()
+            )
             if not is_authenticated_identity(primary_identity):
                 raise MissingUserIdentityError(
                     "No authenticated user available for OAuth authorization"
@@ -802,7 +807,7 @@ class TokenManager:
         if callable(close):
             await close()
 
-    def _session_identity(self, context: "Context") -> OAuthUserIdentity | None:
+    def _temporal_execution_identity(self) -> OAuthUserIdentity | None:
         in_temporal = False
         try:
             from temporalio import workflow as _wf  # type: ignore
@@ -830,6 +835,12 @@ class TokenManager:
                         return identity
             except Exception:
                 pass
+        return None
+
+    def _session_identity(self, context: "Context") -> OAuthUserIdentity | None:
+        temporal_identity = self._temporal_execution_identity()
+        if temporal_identity is not None:
+            return temporal_identity
 
         session_id = getattr(context, "session_id", None)
         if not session_id:

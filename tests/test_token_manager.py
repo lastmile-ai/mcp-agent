@@ -432,3 +432,34 @@ async def test_oauth_httpx_auth_401_retry_resolves_identity_from_auth_context():
     finally:
         auth_context_var.reset(tok)
         app_server._set_current_identity(None)  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_temporal_execution_identity_used_when_authorization_enabled(monkeypatch):
+    from mcp_agent.server import app_server
+
+    manager = TokenManager(token_store=InMemoryTokenStore())
+    auth_ctx = SimpleNamespace(
+        session_id="shared-session",
+        config=SimpleNamespace(
+            authorization=SimpleNamespace(enabled=True),
+        ),
+    )
+    exec_user = OAuthUserIdentity(
+        provider="https://auth.example.com", subject="temporal-user-1"
+    )
+    monkeypatch.setattr(manager, "_temporal_execution_identity", lambda: exec_user)
+
+    app_server._set_current_identity(None)  # type: ignore[attr-defined]
+    candidates, flow_identity = manager._resolve_identity_candidates(
+        auth_ctx,  # type: ignore[arg-type]
+        None,
+    )
+    assert flow_identity == exec_user
+    assert candidates == [exec_user, DEFAULT_PRECONFIGURED_IDENTITY]
+
+    # Unauthenticated / synthetic session identity from temporal registry must still be rejected.
+    synthetic = OAuthUserIdentity(provider="mcp-session", subject="shared-session")
+    monkeypatch.setattr(manager, "_temporal_execution_identity", lambda: synthetic)
+    with pytest.raises(MissingUserIdentityError):
+        manager._resolve_identity_candidates(auth_ctx, None)  # type: ignore[arg-type]

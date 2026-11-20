@@ -53,9 +53,21 @@ class OAuthHttpxAuth(httpx.Auth):
         try:
             from mcp_agent.server import app_server
 
-            return app_server.get_current_identity()
+            current = app_server.get_current_identity()
+            if current is not None:
+                return current
         except Exception:
-            return None
+            pass
+
+        temporal_resolver = getattr(
+            self._token_manager, "_temporal_execution_identity", None
+        )
+        if callable(temporal_resolver):
+            try:
+                return temporal_resolver()
+            except Exception:
+                return None
+        return None
 
     async def async_auth_flow(self, request: httpx.Request):
         identity = self._resolve_identity()
