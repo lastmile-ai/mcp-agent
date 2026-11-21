@@ -125,7 +125,6 @@ class Executor(ABC, ContextDependent):
         """
         Run `func(item)` for each item in `inputs` with concurrency limit.
         """
-        results: List[R, BaseException] = []
 
         async def run(item):
             if self.config.max_concurrent_activities:
@@ -136,18 +135,7 @@ class Executor(ABC, ContextDependent):
                 return await self.execute(functools.partial(func, item), **kwargs)
 
         coros = [run(x) for x in inputs]
-        # gather all, each returns a single-element list
-        list_of_lists = await asyncio.gather(*coros, return_exceptions=True)
-
-        # Flatten results
-        for entry in list_of_lists:
-            if isinstance(entry, list):
-                results.extend(entry)
-            else:
-                # Means we got an exception at the gather level
-                results.append(entry)
-
-        return results
+        return await asyncio.gather(*coros, return_exceptions=True)
 
     async def validate_task(
         self, task: Callable[..., R] | Coroutine[Any, Any, R]
