@@ -294,7 +294,7 @@ class Agent(BaseModel):
 
                 executor = self.context.executor
 
-                result: InitAggregatorResponse = await executor.execute(
+                result: InitAggregatorResponse | BaseException = await executor.execute(
                     self._agent_tasks.initialize_aggregator_task,
                     InitAggregatorRequest(
                         agent_name=self.name,
@@ -303,6 +303,9 @@ class Agent(BaseModel):
                         force=force,
                     ),
                 )
+
+                if isinstance(result, BaseException):
+                    raise result
 
                 if not result.initialized:
                     raise RuntimeError(
@@ -352,10 +355,13 @@ class Agent(BaseModel):
             span.add_event("agent_shutdown_start")
 
             executor = self.context.executor
-            result: bool = await executor.execute(
+            result: bool | BaseException = await executor.execute(
                 self._agent_tasks.shutdown_aggregator_task,
                 self.name,
             )
+
+            if isinstance(result, BaseException):
+                raise result
 
             if not result:
                 raise RuntimeError(
