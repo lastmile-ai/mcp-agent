@@ -1,5 +1,6 @@
 import contextlib
 import functools
+import inspect
 from opentelemetry import trace
 from typing import Any, Callable, Coroutine, Dict, List, Optional, Type, TYPE_CHECKING
 
@@ -133,7 +134,15 @@ class FanOut(ContextDependent):
                 AugmentedLLM.annotate_span_with_request_params(span, request_params)
 
             def fn_result_to_string(fn, message):
-                return str(fn(message))
+                result = fn(message)
+                if inspect.isawaitable(result):
+                    # Keep synchronous invocation offloaded by the executor,
+                    # and let it await this projection on its event loop.
+                    async def await_and_stringify():
+                        return str(await result)
+
+                    return await_and_stringify()
+                return str(result)
 
             tasks: List[Callable[..., str] | Coroutine[Any, Any, str]] = []
             task_names: List[str] = []
