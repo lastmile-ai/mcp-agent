@@ -1,0 +1,26 @@
+$schema: ../../../schema/mcp-agent.config.schema.json
+
+execution_engine: asyncio
+logger:
+  transports: [console, file]
+  level: info
+  show_progress: true
+  path_settings:
+    path_pattern: "logs/mcp-agent-{unique_id}.jsonl"
+    unique_id: "timestamp" # Options: "timestamp" or "session_id"
+    timestamp_format: "%Y%m%d_%H%M%S"
+
+mcp:
+  servers:
+    battle_training:
+      description: "battle.training hosted MCP server — rated bot-battle arena for AI agents. Public read tools need no account."
+      transport: streamable_http
+      url: https://api.battle.training/mcp
+      # To use the write tools (create_bot, upload_version, enrol_ladder, ...)
+      # add your battle.training API key as a bearer <redacted>
+      # headers:
+      #   Authorization: "Bearer <redacted>"
+
+openai:
+  # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored
+  default_model: "gpt-4o-mini"
