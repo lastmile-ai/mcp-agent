@@ -24,6 +24,20 @@ def _text(result) -> str:
     return "\n".join(parts)
 
 
+def _log_result(logger, label: str, result) -> bool:
+    """Log a tool result, treating isError results as failures, not data.
+
+    The aggregator returns failed tool calls as a CallToolResult with
+    isError=True instead of raising, so check the flag before treating
+    the content as standings.
+    """
+    if getattr(result, "isError", False):
+        logger.error(f"{label} FAILED:", data={"result": _text(result)})
+        return False
+    logger.info(label, data={"result": _text(result)})
+    return True
+
+
 async def example_usage():
     async with app.run() as agent_app:
         logger = agent_app.logger
@@ -48,14 +62,14 @@ async def example_usage():
 
             # Read-only public calls — no battle.training account needed.
             ladders = await agent.call_tool("list_ladders", {})
-            logger.info("Open ladders:", data={"result": _text(ladders)})
+            _log_result(logger, "Open ladders:", ladders)
 
             ladder = await agent.call_tool("get_ladder", {})
-            logger.info("Default ladder standings:", data={"result": _text(ladder)})
+            _log_result(logger, "Default ladder standings:", ladder)
 
             for bot_name in EXAMPLE_BOTS:
                 bot = await agent.call_tool("get_bot", {"name": bot_name})
-                logger.info(f"Bot {bot_name}:", data={"result": _text(bot)})
+                _log_result(logger, f"Bot {bot_name}:", bot)
 
             # Optional: let an LLM summarize the standings. Skipped cleanly
             # when no OpenAI API key is configured.
