@@ -304,6 +304,15 @@ class Workflow(ABC, Generic[T], ContextDependent):
                     if cancel_task in done:
                         # Cancel signal received, cancel the run task
                         run_task.cancel()
+                        try:
+                            await run_task
+                        except asyncio.CancelledError:
+                            pass
+                        except Exception as finalizer_error:
+                            self._logger.warning(
+                                "Workflow run finalizer failed during cancellation",
+                                exception=repr(finalizer_error),
+                            )
                         self.update_status("cancelled")
                         raise CancelledError("Workflow was cancelled")
                     elif run_task in done:
