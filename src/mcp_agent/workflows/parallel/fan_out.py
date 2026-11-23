@@ -58,6 +58,15 @@ class FanOut(ContextDependent):
                 if not isinstance(agent, AugmentedLLM):
                     raise ValueError("llm_factory is required when using an Agent")
 
+    def _validate_output_names(self) -> None:
+        names: list[str | int] = [agent.name for agent in self.agents]
+        names.extend(function.__name__ or id(function) for function in self.functions)
+        seen = set()
+        for name in names:
+            if name in seen:
+                raise ValueError(f"Duplicate fan-out output name: {name!r}")
+            seen.add(name)
+
     async def generate(
         self,
         message: str | MessageParamT | List[MessageParamT],
@@ -67,6 +76,7 @@ class FanOut(ContextDependent):
         Request fan-out agent/function generations, and return the results as a dictionary.
         The keys are the names of the agents or functions that generated the results.
         """
+        self._validate_output_names()
         tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.generate"
@@ -124,6 +134,7 @@ class FanOut(ContextDependent):
         The keys are the names of the agents or functions that generated the results.
         """
 
+        self._validate_output_names()
         tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.generate_str"
@@ -179,6 +190,7 @@ class FanOut(ContextDependent):
         Request a structured fan-out agent/function generation and return the result as a Pydantic model.
         The keys are the names of the agents or functions that generated the results.
         """
+        self._validate_output_names()
         tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.generate_structured"
