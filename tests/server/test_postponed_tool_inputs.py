@@ -1,5 +1,6 @@
 import sys
 import types
+import inspect
 
 import pytest
 from mcp.server.fastmcp import FastMCP
@@ -8,6 +9,26 @@ from mcp.server.fastmcp.tools import Tool
 from mcp_agent.app import MCPApp
 from mcp_agent.config import Settings
 from mcp_agent.server.tool_adapter import create_tool_adapter_signature
+from mcp_agent.server.tool_adapter import resolve_tool_input_signature
+
+
+def test_type_checking_only_app_context_is_not_resolved():
+    module = types.ModuleType("type_checking_context")
+    exec(
+        "from __future__ import annotations\n"
+        "from typing import TYPE_CHECKING\n"
+        "if TYPE_CHECKING:\n"
+        "    from mcp_agent.core.context import Context\n"
+        "async def tool(value: str, app_ctx: Context) -> str:\n"
+        "    return value\n",
+        module.__dict__,
+    )
+    signature = resolve_tool_input_signature(
+        inspect.signature(module.tool), module.tool
+    )
+    assert list(signature.parameters) == ["value"]
+    adapter = create_tool_adapter_signature(module.tool, "tool")
+    assert "app_ctx" not in Tool.from_function(adapter).parameters["properties"]
 
 
 @pytest.fixture(params=[True, False], ids=["postponed", "eager"])

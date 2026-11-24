@@ -31,6 +31,13 @@ def resolve_tool_input_signature(
     signature: inspect.Signature, source: Callable[..., Any]
 ) -> inspect.Signature:
     """Resolve input types before detecting or inserting context parameters."""
+    signature = signature.replace(
+        parameters=[
+            parameter
+            for parameter in signature.parameters.values()
+            if parameter.name != "app_ctx"
+        ]
+    )
 
     def inputs():
         pass
