@@ -33,7 +33,10 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse
 
 from mcp_agent.app import MCPApp, phetch
-from mcp_agent.server.tool_adapter import resolve_tool_input_annotations
+from mcp_agent.server.tool_adapter import (
+    resolve_tool_input_annotations,
+    resolve_tool_input_signature,
+)
 from mcp_agent.agents.agent import Agent
 from mcp_agent.core.context_dependent import ContextDependent
 from mcp_agent.executor.workflow import Workflow
@@ -2562,7 +2565,7 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
         wname_local = workflow_name
 
         if mode == "sync" and fn is not None:
-            sig = inspect.signature(fn)
+            sig = resolve_tool_input_signature(inspect.signature(fn), fn)
             return_ann = sig.return_annotation
 
             def _make_wrapper(bound_wname: str):
@@ -2684,7 +2687,7 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
                 ann.pop("app_ctx", None)
 
                 try:
-                    sig_async = inspect.signature(fn)
+                    sig_async = resolve_tool_input_signature(inspect.signature(fn), fn)
                 except Exception:
                     sig_async = None
                 existing_ctx_param = (

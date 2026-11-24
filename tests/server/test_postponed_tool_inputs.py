@@ -70,3 +70,19 @@ def test_registered_server_tool_keeps_input_schema(source_module, decorator):
     tool = mcp._tool_manager.get_tool("read_code")
     assert tool is not None
     assert tool.parameters["$defs"]["Payload"]["properties"]["code"]["type"] == "string"
+
+
+@pytest.mark.parametrize("context_name", ["ctx", "context"])
+def test_postponed_context_input_registers(source_module, context_name):
+    exec(
+        "from __future__ import annotations\n"
+        "from mcp.server.fastmcp import Context\n"
+        f"async def with_context(payload: Payload, {context_name}: Context) -> str:\n"
+        "    return payload.code\n",
+        source_module.__dict__,
+    )
+    adapter = create_tool_adapter_signature(source_module.with_context, "with_context")
+    assert (
+        Tool.from_function(adapter).parameters
+        == Tool.from_function(source_module.with_context).parameters
+    )
