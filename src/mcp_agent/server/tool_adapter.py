@@ -12,6 +12,54 @@ from typing import Any, Callable, Optional
 from mcp.server.fastmcp import Context as _Ctx
 
 
+def resolve_tool_input_annotations(
+    adapter: Callable[..., Any], source: Callable[..., Any]
+) -> None:
+    """Resolve retained input annotations in the original callable's namespace."""
+    signature = resolve_tool_input_signature(inspect.signature(adapter), source)
+    adapter.__annotations__.update(
+        {
+            name: parameter.annotation
+            for name, parameter in signature.parameters.items()
+            if parameter.annotation is not inspect.Parameter.empty
+        }
+    )
+    adapter.__signature__ = signature
+
+
+def resolve_tool_input_signature(
+    signature: inspect.Signature, source: Callable[..., Any]
+) -> inspect.Signature:
+    """Resolve input types before detecting or inserting context parameters."""
+    signature = signature.replace(
+        parameters=[
+            parameter
+            for parameter in signature.parameters.values()
+            if parameter.name != "app_ctx"
+        ]
+    )
+
+    def inputs():
+        pass
+
+    inputs.__annotations__ = {
+        name: parameter.annotation
+        for name, parameter in signature.parameters.items()
+        if parameter.annotation is not inspect.Parameter.empty
+    }
+    hints = _typing.get_type_hints(
+        inputs,
+        globalns=getattr(inspect.unwrap(source), "__globals__", {}),
+        include_extras=True,
+    )
+    return signature.replace(
+        parameters=[
+            parameter.replace(annotation=hints.get(name, parameter.annotation))
+            for name, parameter in signature.parameters.items()
+        ]
+    )
+
+
 def create_tool_adapter_signature(
     fn: Callable[..., Any],
     tool_name: str,
@@ -36,7 +84,7 @@ def create_tool_adapter_signature(
     This is used for validation in app.py to ensure the transformed
     signature can be converted to JSON schema.
     """
-    sig = inspect.signature(fn)
+    sig = resolve_tool_input_signature(inspect.signature(fn), fn)
 
     def _annotation_is_fast_ctx(annotation) -> bool:
         if _Ctx is None or annotation is inspect._empty:
@@ -116,6 +164,7 @@ def create_tool_adapter_signature(
         parameters=signature_params, return_annotation=return_ann
     )
 
+    resolve_tool_input_annotations(_transformed, fn)
     return _transformed
 
 
@@ -148,7 +197,7 @@ def validate_tool_schema(fn: Callable[..., Any], tool_name: str) -> None:
             or "Cannot generate a JsonSchema" in error_msg
         ):
             # Provide helpful context about problematic types
-            sig = inspect.signature(fn)
+            sig = resolve_tool_input_signature(inspect.signature(fn), fn)
             param_info = []
             for param_name, param in sig.parameters.items():
                 # Skip parameters that will be filtered

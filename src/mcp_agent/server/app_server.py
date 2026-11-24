@@ -33,6 +33,10 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse
 
 from mcp_agent.app import MCPApp, phetch
+from mcp_agent.server.tool_adapter import (
+    resolve_tool_input_annotations,
+    resolve_tool_input_signature,
+)
 from mcp_agent.agents.agent import Agent
 from mcp_agent.core.context_dependent import ContextDependent
 from mcp_agent.executor.workflow import Workflow
@@ -628,6 +632,7 @@ def _build_run_param_tool(workflow_cls: Type["Workflow"]) -> FastTool:
         _schema_fn_proxy.__signature__ = _inspect.Signature(
             parameters=filtered_params, return_annotation=sig.return_annotation
         )
+        resolve_tool_input_annotations(_schema_fn_proxy, fn)
         return _schema_fn_proxy
 
     # If using run method, filter and drop 'self'
@@ -2560,7 +2565,7 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
         wname_local = workflow_name
 
         if mode == "sync" and fn is not None:
-            sig = inspect.signature(fn)
+            sig = resolve_tool_input_signature(inspect.signature(fn), fn)
             return_ann = sig.return_annotation
 
             def _make_wrapper(bound_wname: str):
@@ -2624,6 +2629,8 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
                 parameters=signature_params, return_annotation=return_ann
             )
 
+            resolve_tool_input_annotations(_wrapper, fn)
+
             def _make_adapter(context_param_name: str, inner_wrapper):
                 async def _adapter(**kw):
                     if context_param_name not in kw:
@@ -2680,7 +2687,7 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
                 ann.pop("app_ctx", None)
 
                 try:
-                    sig_async = inspect.signature(fn)
+                    sig_async = resolve_tool_input_signature(inspect.signature(fn), fn)
                 except Exception:
                     sig_async = None
                 existing_ctx_param = (
@@ -2743,6 +2750,9 @@ def create_declared_function_tools(mcp: FastMCP, server_context: ServerContext):
                     parameters=signature_params, return_annotation=ann.get("return")
                 )
 
+                if fn is not None:
+                    resolve_tool_input_annotations(_async_wrapper, fn)
+
                 # Adapter to map injected FastMCP context kwarg without additional propagation
                 def _make_async_adapter(context_param_name: str, inner_wrapper):
                     async def _adapter(**kw):
@@ -2801,6 +2811,7 @@ def create_workflow_specific_tools(
         _schema_fn_proxy.__signature__ = _inspect.Signature(
             parameters=params, return_annotation=sig.return_annotation
         )
+        resolve_tool_input_annotations(_schema_fn_proxy, param_source)
         run_fn_tool = FastTool.from_function(_schema_fn_proxy)
     else:
         run_fn_tool = FastTool.from_function(param_source)
