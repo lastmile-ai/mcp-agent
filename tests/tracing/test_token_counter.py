@@ -620,6 +620,30 @@ class TestTokenCounter:
         assert await token_counter.unwatch(watch_id) is True
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("use_bound_method", [True, False])
+    async def test_watch_async_callable_object(self, token_counter, use_bound_method):
+        """An object with an async __call__ should be awaited like a coroutine function."""
+        await token_counter.push("watch-example", "app")
+
+        calls = []
+        called = asyncio.Event()
+
+        class AsyncObserver:
+            async def __call__(self, node, usage):
+                calls.append((node.name, usage.total_tokens))
+                called.set()
+
+        observer = AsyncObserver()
+        callback = observer.__call__ if use_bound_method else observer
+        watch_id = await token_counter.watch(callback=callback, node_name="watch-example")
+        try:
+            await token_counter.record_usage(2, 3)
+            await asyncio.wait_for(called.wait(), timeout=2)
+            assert calls == [("watch-example", 5)]
+        finally:
+            await token_counter.unwatch(watch_id)
+
+    @pytest.mark.asyncio
     async def test_watch_specific_node(self, token_counter):
         """Test watching a specific node"""
         await token_counter.push("app", "app")
