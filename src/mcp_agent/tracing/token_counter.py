@@ -1707,8 +1707,11 @@ class TokenCounter:
         async with self._lock:
             watch_id = str(uuid.uuid4())
 
-            # Detect if callback is async by checking if it's a coroutine function
-            is_async = asyncio.iscoroutinefunction(callback)
+            # Detect async callbacks from both coroutine functions and callable
+            # objects whose __call__ is a coroutine function.
+            is_async = asyncio.iscoroutinefunction(callback) or (
+                callable(callback) and asyncio.iscoroutinefunction(callback.__call__)
+            )
 
             config = WatchConfig(
                 watch_id=watch_id,
