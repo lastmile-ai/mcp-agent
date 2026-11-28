@@ -1,4 +1,4 @@
-from typing import List, Sequence, Union
+from typing import Any, List, Sequence, Union, cast
 
 from anthropic.types import (
     Base64ImageSourceParam,
@@ -47,6 +47,20 @@ _logger = get_logger("multipart_converter_anthropic")
 SUPPORTED_IMAGE_MIME_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 
 
+def anthropic_message_param(
+    *,
+    role: str,
+    content: Union[str, List[ContentBlockParam]],
+    **kwargs: Any,
+) -> MessageParam:
+    """Build a MessageParam as a dict so the constructor is never called.
+
+    In Anthropic SDK 2.x, ``MessageParam`` is a union alias and is not callable.
+    A plain dict keeps the same message shape and also works with SDK 0.x TypedDicts.
+    """
+    return cast(MessageParam, {"role": role, "content": content, **kwargs})
+
+
 class AnthropicConverter:
     """Converts MCP message types to Anthropic API format."""
 
@@ -77,7 +91,7 @@ class AnthropicConverter:
 
         # Handle empty content case - create an empty list instead of a text block
         if not multipart_msg.content:
-            return MessageParam(role=role, content=[])
+            return anthropic_message_param(role=role, content=[])
 
         # Convert content blocks
         anthropic_blocks = AnthropicConverter._convert_content_items(
@@ -97,7 +111,7 @@ class AnthropicConverter:
             anthropic_blocks = text_blocks
 
         # Create the Anthropic message
-        return MessageParam(role=role, content=anthropic_blocks)
+        return anthropic_message_param(role=role, content=anthropic_blocks)
 
     @staticmethod
     def convert_prompt_message_to_anthropic(message: PromptMessage) -> MessageParam:
@@ -479,7 +493,7 @@ class AnthropicConverter:
             # Add separate blocks directly to the message
             content_blocks.extend(separate_blocks)
 
-        return MessageParam(role="user", content=content_blocks)
+        return anthropic_message_param(role="user", content=content_blocks)
 
     @staticmethod
     def convert_mixed_messages_to_anthropic(
@@ -497,7 +511,7 @@ class AnthropicConverter:
         messages: list[MessageParam] = []
 
         if isinstance(message, str):
-            messages.append(MessageParam(role="user", content=message))
+            messages.append(anthropic_message_param(role="user", content=message))
         elif isinstance(message, PromptMessage):
             messages.append(
                 AnthropicConverter.convert_prompt_message_to_anthropic(message)
@@ -509,7 +523,7 @@ class AnthropicConverter:
                         AnthropicConverter.convert_prompt_message_to_anthropic(m)
                     )
                 elif isinstance(m, str):
-                    messages.append(MessageParam(role="user", content=m))
+                    messages.append(anthropic_message_param(role="user", content=m))
                 else:
                     messages.append(m)
         else:
