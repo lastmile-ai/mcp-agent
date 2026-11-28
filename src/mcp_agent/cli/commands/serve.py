@@ -277,14 +277,19 @@ def serve(
                 )
 
             try:
-                await mcp.run_stdio_async()
-            except Exception as e:
-                if "Broken pipe" not in str(e):
-                    console.print(f"[red]Server error: {e}[/red]")
-                    if debug:
-                        import traceback
+                try:
+                    await mcp.run_stdio_async()
+                except Exception as e:
+                    if "Broken pipe" not in str(e):
+                        console.print(f"[red]Server error: {e}[/red]")
+                        if debug:
+                            import traceback
 
-                        console.print(f"[dim]{traceback.format_exc()}[/dim]")
+                            console.print(f"[dim]{traceback.format_exc()}[/dim]")
+            finally:
+                # run_stdio_async returns on a normal stdin EOF; process exit is
+                # not a substitute for application cleanup (see #828).
+                await app_obj.cleanup()
 
         elif transport in ["http", "sse"]:
             # HTTP/SSE server
