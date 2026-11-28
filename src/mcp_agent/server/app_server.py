@@ -159,6 +159,25 @@ async def _get_session(execution_id: str) -> Any | None:
         return session
 
 
+async def _resolve_upstream_session_for_execution(
+    execution_id: str | None,
+    fallback_session: Any | None,
+) -> tuple[Any | None, bool]:
+    """Prefer the execution-mapped upstream session over a latest-session fallback.
+
+    Returns (session, used_fallback). When used_fallback is True the caller may
+    bind the fallback session; an existing execution mapping must not be
+    overwritten by whichever client connected last (issue #822).
+    """
+    if execution_id:
+        mapped = await _get_session(execution_id)
+        if mapped is not None:
+            return mapped, False
+    if fallback_session is not None:
+        return fallback_session, True
+    return None, False
+
+
 def _get_identity_for_execution(execution_id: str) -> OAuthUserIdentity | None:
     return _RUN_IDENTITY_REGISTRY.get(execution_id)
 
@@ -1731,8 +1750,11 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             )
             effective_context = mapped_context or app_context
 
-            # Prefer latest upstream session first
-            latest_session = _get_fallback_upstream_session()
+            # Prefer the execution-mapped session. The latest-session
+            # fallback is only used when this execution has no mapping yet
+            # (for example after a client reconnect). Preferring the
+            # fallback first delivers Client A's prompt to whichever
+            # client connected last and overwrites the mapping (issue #822).
             import uuid
 
             request_id = str(uuid.uuid4())
@@ -1751,76 +1773,56 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
                         "signal_name": metadata.get("signal_name", "human_input"),
                         "session_id": metadata.get("session_id"),
                     }
-                # Try latest first
-                if latest_session is not None:
-                    try:
-                        latest_token: Token | None = None
-                        if effective_context is not None:
-                            latest_token = set_current_request_context(
-                                effective_context
-                            )
-                        try:
-                            await latest_session.send_log_message(  # type: ignore[attr-defined]
-                                level="info",  # type: ignore[arg-type]
-                                data=payload,
-                                logger="mcp_agent.human",
-                            )
-                        finally:
-                            reset_current_request_context(latest_token)
-                        try:
-                            identity = _get_identity_for_execution(execution_id)
-                            if identity is None:
-                                identity = _session_identity_from_value(
-                                    metadata.get("session_id")
-                                    or metadata.get("sessionId")
-                                )
-                            existing_context = _get_context_for_execution(execution_id)
-                            session_key = metadata.get("session_id") or metadata.get(
-                                "sessionId"
-                            )
-                            await _register_session(
-                                run_id=execution_id,
-                                execution_id=execution_id,
-                                session=latest_session,
-                                identity=identity,
-                                context=existing_context,
-                                session_id=session_key
-                                or getattr(
-                                    existing_context, "request_session_id", None
-                                ),
-                            )
-                            logger.info(
-                                f"[human] rebound mapping to latest session_id={id(latest_session)} for execution_id={execution_id}"
-                            )
-                        except Exception:
-                            pass
-                        return JSONResponse({"request_id": request_id})
-                    except Exception as e_latest:
-                        logger.warning(
-                            f"[human] latest session delivery failed for execution_id={execution_id}: {e_latest}"
-                        )
 
-                # Fallback to mapped session
-                mapped_context = (
-                    _get_context_for_execution(execution_id) if execution_id else None
+                session, used_fallback = await _resolve_upstream_session_for_execution(
+                    execution_id,
+                    _get_fallback_upstream_session(),
                 )
-                effective_context = mapped_context or app_context
-                session = await _get_session(execution_id)
-                if not session:
+                if session is None:
                     return JSONResponse(
                         {"error": "session_not_available"}, status_code=503
                     )
+
                 mapped_token: Token | None = None
                 if effective_context is not None:
                     mapped_token = set_current_request_context(effective_context)
                 try:
-                    await session.send_log_message(
+                    await session.send_log_message(  # type: ignore[attr-defined]
                         level="info",  # type: ignore[arg-type]
                         data=payload,
                         logger="mcp_agent.human",
                     )
                 finally:
                     reset_current_request_context(mapped_token)
+
+                # Bind the fallback only when this execution had no mapping.
+                # Never overwrite an existing execution→session mapping with
+                # the latest connected client.
+                if used_fallback and execution_id:
+                    try:
+                        identity = _get_identity_for_execution(execution_id)
+                        if identity is None:
+                            identity = _session_identity_from_value(
+                                metadata.get("session_id") or metadata.get("sessionId")
+                            )
+                        existing_context = _get_context_for_execution(execution_id)
+                        session_key = metadata.get("session_id") or metadata.get(
+                            "sessionId"
+                        )
+                        await _register_session(
+                            run_id=execution_id,
+                            execution_id=execution_id,
+                            session=session,
+                            identity=identity,
+                            context=existing_context,
+                            session_id=session_key
+                            or getattr(existing_context, "request_session_id", None),
+                        )
+                        logger.info(
+                            f"[human] bound fallback session_id={id(session)} for execution_id={execution_id}"
+                        )
+                    except Exception:
+                        pass
                 return JSONResponse({"request_id": request_id})
             except Exception as e:
                 return JSONResponse({"error": str(e)}, status_code=500)
