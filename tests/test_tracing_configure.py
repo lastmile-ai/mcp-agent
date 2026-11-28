@@ -106,3 +106,42 @@ async def test_sample_rate_only_applied_when_specified(monkeypatch):
     )
 
     assert "sampler" in provider_kwargs[1]
+
+
+@pytest.mark.anyio
+async def test_console_exporter_writes_to_stderr(monkeypatch):
+    """The console span exporter must use stderr so stdio MCP streams stay clean."""
+    import sys
+
+    recorded = []
+
+    class StubConsoleSpanExporter:
+        def __init__(self, *args, **kwargs):
+            self.args = args
+            self.kwargs = kwargs
+            recorded.append(self)
+
+    monkeypatch.setattr(
+        "mcp_agent.tracing.tracer.ConsoleSpanExporter", StubConsoleSpanExporter
+    )
+    _install_tracer_stubs(monkeypatch)
+
+    settings = OpenTelemetrySettings(
+        enabled=True,
+        service_name="stdio-trace",
+        exporters=[{"console": {}}],
+    )
+    tracer_config = TracingConfig()
+    await tracer_config.configure(settings, session_id="session-console", force=True)
+
+    assert len(recorded) == 1
+    from mcp_agent.tracing.tracer import STDERR_STREAM
+
+    out = recorded[0].kwargs.get("out")
+    assert out is STDERR_STREAM
+    assert recorded[0].kwargs.get("service_name") == "stdio-trace"
+    # The wrapper follows the current stderr, not a captured/closed handle.
+    buf = __import__("io").StringIO()
+    monkeypatch.setattr(sys, "stderr", buf)
+    out.write("trace-line\n")
+    assert "trace-line" in buf.getvalue()

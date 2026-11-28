@@ -19,7 +19,7 @@ from rich.json import JSON
 from rich.text import Text
 
 from mcp_agent.config import LoggerSettings
-from mcp_agent.console import console
+from mcp_agent.console import log_console
 from mcp_agent.logging.events import Event, EventFilter
 from mcp_agent.logging.json_serializer import JSONSerializer
 from mcp_agent.logging.listeners import EventListener, LifecycleAwareListener
@@ -85,9 +85,9 @@ class ConsoleTransport(FilteredEventTransport):
         # Map log levels to styles
         style = self.log_level_styles.get(event.type, "white")
 
-        # Use the appropriate console based on event type
-        #        output_console = error_console if event.type == "error" else console
-        output_console = console
+        # Diagnostic logs always go to stderr. stdout may be reserved for an
+        # MCP stdio JSON-RPC stream (see issue #827).
+        output_console = log_console
 
         # Create namespace without None
         namespace = event.namespace

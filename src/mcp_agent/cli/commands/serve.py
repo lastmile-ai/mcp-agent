@@ -138,6 +138,14 @@ def serve(
     # Load configuration path is handled after loading app by overriding app settings
 
     async def _run():
+        # MCP stdio reserves stdout for JSON-RPC. Redirect shared consoles
+        # before the app is loaded or initialized so startup diagnostics,
+        # progress displays, and elicitation prompts cannot pollute the stream.
+        if transport == "stdio":
+            from mcp_agent.console import redirect_console_output_to_stderr
+
+            redirect_console_output_to_stderr()
+
         # Load the app (auto-detect main.py preferred)
         script_path = detect_default_script(Path(script) if script else None)
 

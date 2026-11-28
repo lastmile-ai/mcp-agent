@@ -789,7 +789,7 @@ class TraceOTLPSettings(BaseModel):
 
 
 class ConsoleExporterSettings(BaseModel):
-    """Console exporter uses stdout; no extra settings required."""
+    """Console exporter writes to stderr; no extra settings required."""
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
