@@ -280,3 +280,31 @@ class TestAnthropicConverter:
         assert message["content"][1]["type"] == "tool_result"
         assert message["content"][1]["tool_use_id"] == "tool_2"
         assert message["content"][1]["is_error"] is True
+
+    def test_convert_mixed_string_message(self):
+        result = AnthropicConverter.convert_mixed_messages_to_anthropic("hello")
+
+        assert result == [{"role": "user", "content": "hello"}]
+
+    def test_convert_mixed_list_of_strings(self):
+        result = AnthropicConverter.convert_mixed_messages_to_anthropic(
+            ["hello", "world"]
+        )
+
+        assert result == [
+            {"role": "user", "content": "hello"},
+            {"role": "user", "content": "world"},
+        ]
+
+    def test_string_conversion_does_not_call_message_param(self, monkeypatch):
+        """Anthropic SDK 2.x makes MessageParam a non-callable union alias."""
+        import mcp_agent.workflows.llm.multipart_converter_anthropic as converter
+
+        def _boom(*args, **kwargs):
+            raise TypeError("Cannot instantiate typing.Union")
+
+        monkeypatch.setattr(converter, "MessageParam", _boom)
+        result = converter.AnthropicConverter.convert_mixed_messages_to_anthropic(
+            "hello"
+        )
+        assert result == [{"role": "user", "content": "hello"}]

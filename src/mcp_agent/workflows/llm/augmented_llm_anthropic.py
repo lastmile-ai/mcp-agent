@@ -69,6 +69,9 @@ from mcp_agent.workflows.llm.augmented_llm import (
     RequestParams,
     CallToolResult,
 )
+from mcp_agent.workflows.llm.multipart_converter_anthropic import (
+    anthropic_message_param,
+)
 from mcp_agent.workflows.llm.streaming_events import StreamEvent, StreamEventType
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.workflows.llm.multipart_converter_anthropic import AnthropicConverter
@@ -239,7 +242,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                     and responses
                     and responses[-1].stop_reason == "tool_use"
                 ):
-                    final_prompt_message = MessageParam(
+                    final_prompt_message = anthropic_message_param(
                         role="user",
                         content="""We've reached the maximum number of iterations. 
                         Please stop using tools now and provide your final comprehensive answer based on all tool results so far. 
@@ -447,6 +450,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                         for tool in list_tools_result.tools
                     ]
                     return available_tools
+
                 available_tools = await update_tools()
 
                 responses: List[Message] = []
@@ -484,7 +488,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                             and responses
                             and responses[-1].stop_reason == "tool_use"
                         ):
-                            final_prompt_message = MessageParam(
+                            final_prompt_message = anthropic_message_param(
                                 role="user",
                                 content="""We've reached the maximum number of iterations.
                                 Please stop using tools now and provide your final comprehensive answer based on all tool results so far.
@@ -900,7 +904,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                     )
                 )
 
-        return MessageParam(role="assistant", content=content, **kwargs)
+        return anthropic_message_param(role="assistant", content=content, **kwargs)
 
     def message_param_str(self, message: MessageParam) -> str:
         """Convert an input message to a string representation."""
@@ -1218,7 +1222,7 @@ class AnthropicMCPTypeConverter(ProviderToMCPConverter[MessageParam, Message]):
     def from_mcp_message_param(cls, param: MCPMessageParam) -> MessageParam:
         # MCPMessageParam -> MessageParam
         extras = param.model_dump(exclude={"role", "content"})
-        return MessageParam(
+        return anthropic_message_param(
             role=param.role,
             content=[
                 mcp_content_to_anthropic_content(param.content, for_message_param=True)
@@ -1269,7 +1273,7 @@ class AnthropicMCPTypeConverter(ProviderToMCPConverter[MessageParam, Message]):
             ]
             result.isError = True
 
-        return MessageParam(
+        return anthropic_message_param(
             role="user",
             content=[
                 ToolResultBlockParam(
