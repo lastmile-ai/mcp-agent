@@ -1,3 +1,4 @@
+import sys
 import uuid
 
 from opentelemetry import trace
@@ -17,6 +18,23 @@ from mcp_agent.logging.logger import get_logger
 from mcp_agent.tracing.file_span_exporter import FileSpanExporter
 
 logger = get_logger(__name__)
+
+
+class _CurrentStderr:
+    """File-like wrapper that always writes to the current sys.stderr."""
+
+    def write(self, data):
+        return sys.stderr.write(data)
+
+    def flush(self):
+        flush = getattr(sys.stderr, "flush", None)
+        if callable(flush):
+            return flush()
+        return None
+
+
+# Reused for console span export so traces never land on stdout (MCP stdio).
+STDERR_STREAM = _CurrentStderr()
 
 
 class TracingConfig:
@@ -136,7 +154,10 @@ class TracingConfig:
             if exporter_type == "console":
                 tracer_provider.add_span_processor(
                     BatchSpanProcessor(
-                        ConsoleSpanExporter(service_name=settings.service_name)
+                        ConsoleSpanExporter(
+                            service_name=settings.service_name,
+                            out=STDERR_STREAM,
+                        )
                     )
                 )
             elif exporter_type == "otlp":
