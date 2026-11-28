@@ -61,6 +61,26 @@ class SignalRegistration(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
+def registration_matches_signal(
+    registration: SignalRegistration, signal: Signal
+) -> bool:
+    """Return whether a pending waiter should be woken by this signal.
+
+    ``workflow_id`` and ``run_id`` on the signal are compared only when set, so
+    unscoped emitters still wake every waiter for that signal name. A provided
+    value must equal the waiter's recorded id; otherwise another workflow or
+    run can receive the payload.
+    """
+    if (
+        signal.workflow_id is not None
+        and registration.workflow_id != signal.workflow_id
+    ):
+        return False
+    if signal.run_id is not None and registration.run_id != signal.run_id:
+        return False
+    return True
+
+
 class SignalHandler(Protocol, Generic[SignalValueT]):
     """Protocol for handling signals."""
 
@@ -267,11 +287,12 @@ class ConsoleSignalHandler(SignalHandler[str]):
             *(handler(signal) for handler in handlers), return_exceptions=True
         )
 
-        # Notify any waiting coroutines
+        # Notify waiting coroutines that match this workflow/run when ids are set
         if signal.name in self._pending_signals:
             for ps in self._pending_signals[signal.name]:
-                ps.value = signal.payload
-                ps.event.set()
+                if registration_matches_signal(ps.registration, signal):
+                    ps.value = signal.payload
+                    ps.event.set()
 
 
 class AsyncioSignalHandler(BaseSignalHandler[SignalValueT]):
@@ -343,8 +364,9 @@ class AsyncioSignalHandler(BaseSignalHandler[SignalValueT]):
             if signal.name in self._pending_signals:
                 pending = self._pending_signals[signal.name]
                 for ps in pending:
-                    ps.value = signal.payload
-                    ps.event.set()
+                    if registration_matches_signal(ps.registration, signal):
+                        ps.value = signal.payload
+                        ps.event.set()
 
         # Notify any registered handler functions
         tasks = []

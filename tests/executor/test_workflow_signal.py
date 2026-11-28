@@ -10,6 +10,7 @@ from mcp_agent.executor.workflow_signal import (
     AsyncioSignalHandler,
     ConsoleSignalHandler,
     LocalSignalStore,
+    registration_matches_signal,
 )
 
 
@@ -73,6 +74,30 @@ class TestSignalModels:
         assert pending.registration == registration
         assert pending.event == event
         assert pending.value == "test_value"
+
+    def test_registration_matches_signal_filters_by_provided_ids(self):
+        registration = SignalRegistration(
+            signal_name="human_input",
+            unique_name="human_input_a",
+            workflow_id="workflow-a",
+            run_id="run-a",
+        )
+        matching = Signal(
+            name="human_input",
+            workflow_id="workflow-a",
+            run_id="run-a",
+            payload="ok",
+        )
+        other_workflow = Signal(
+            name="human_input", workflow_id="workflow-b", run_id="run-a"
+        )
+        other_run = Signal(name="human_input", workflow_id="workflow-a", run_id="run-b")
+        unscoped = Signal(name="human_input", payload="broadcast")
+
+        assert registration_matches_signal(registration, matching) is True
+        assert registration_matches_signal(registration, other_workflow) is False
+        assert registration_matches_signal(registration, other_run) is False
+        assert registration_matches_signal(registration, unscoped) is True
 
 
 class TestBaseSignalHandler:
@@ -245,6 +270,93 @@ class TestAsyncioSignalHandler:
         # Verify the callback was called with the right value
         callback_mock.assert_called_once_with(signal)
 
+    @pytest.mark.asyncio
+    async def test_signal_does_not_wake_other_workflow(self, handler):
+        """The same signal name must not deliver one workflow's payload to another."""
+        wait_a = asyncio.create_task(
+            handler.wait_for_signal(
+                Signal(name="human_input", workflow_id="workflow-a")
+            )
+        )
+        wait_b = asyncio.create_task(
+            handler.wait_for_signal(
+                Signal(name="human_input", workflow_id="workflow-b")
+            )
+        )
+        await asyncio.sleep(0.1)
+
+        await handler.signal(
+            Signal(name="human_input", workflow_id="workflow-a", payload="payload-a")
+        )
+        await asyncio.sleep(0.1)
+
+        assert wait_a.done()
+        assert not wait_b.done()
+        assert wait_a.result() == "payload-a"
+
+        await handler.signal(
+            Signal(name="human_input", workflow_id="workflow-b", payload="payload-b")
+        )
+        assert await wait_b == "payload-b"
+
+    @pytest.mark.asyncio
+    async def test_signal_does_not_wake_other_run(self, handler):
+        """Runs of the same workflow stay isolated when run_id is provided."""
+        wait_a = asyncio.create_task(
+            handler.wait_for_signal(
+                Signal(name="approval", workflow_id="workflow-a", run_id="run-1")
+            )
+        )
+        wait_b = asyncio.create_task(
+            handler.wait_for_signal(
+                Signal(name="approval", workflow_id="workflow-a", run_id="run-2")
+            )
+        )
+        await asyncio.sleep(0.1)
+
+        await handler.signal(
+            Signal(
+                name="approval",
+                workflow_id="workflow-a",
+                run_id="run-1",
+                payload="approved-1",
+            )
+        )
+        await asyncio.sleep(0.1)
+
+        assert wait_a.done()
+        assert not wait_b.done()
+        assert wait_a.result() == "approved-1"
+
+        await handler.signal(
+            Signal(
+                name="approval",
+                workflow_id="workflow-a",
+                run_id="run-2",
+                payload="approved-2",
+            )
+        )
+        assert await wait_b == "approved-2"
+
+    @pytest.mark.asyncio
+    async def test_unscoped_signal_still_wakes_all_waiters(self, handler):
+        """A signal without workflow_id or run_id keeps the previous broadcast behavior."""
+        wait_a = asyncio.create_task(
+            handler.wait_for_signal(
+                Signal(name="human_input", workflow_id="workflow-a")
+            )
+        )
+        wait_b = asyncio.create_task(
+            handler.wait_for_signal(
+                Signal(name="human_input", workflow_id="workflow-b")
+            )
+        )
+        await asyncio.sleep(0.1)
+
+        await handler.signal(Signal(name="human_input", payload="shared"))
+        assert await wait_a == "shared"
+        assert await wait_b == "shared"
+
 
 class TestConsoleSignalHandler:
     """
@@ -353,6 +465,37 @@ class TestConsoleSignalHandler:
 
         # Verify the callback was called with the right value
         callback_mock.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_signal_notifies_only_matching_pending_waiters(self, handler):
+        event_a = asyncio.Event()
+        event_b = asyncio.Event()
+        pending_a = PendingSignal(
+            registration=SignalRegistration(
+                signal_name="human_input",
+                unique_name="a",
+                workflow_id="workflow-a",
+            ),
+            event=event_a,
+        )
+        pending_b = PendingSignal(
+            registration=SignalRegistration(
+                signal_name="human_input",
+                unique_name="b",
+                workflow_id="workflow-b",
+            ),
+            event=event_b,
+        )
+        handler._pending_signals["human_input"] = [pending_a, pending_b]
+
+        await handler.signal(
+            Signal(name="human_input", workflow_id="workflow-a", payload="payload-a")
+        )
+
+        assert event_a.is_set()
+        assert not event_b.is_set()
+        assert pending_a.value == "payload-a"
+        assert pending_b.value is None
 
 
 class TestLocalSignalStore:
